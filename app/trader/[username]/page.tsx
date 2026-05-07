@@ -19,7 +19,6 @@ interface Strategy {
 }
 
 interface ProfileStats {
-  verifiedTrades:     number;
   totalTrades:        number;
   verifiedTrades:     number;
   winRate:            number;
