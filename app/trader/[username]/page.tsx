@@ -20,6 +20,7 @@ interface Strategy {
 
 interface ProfileStats {
   totalTrades:        number;
+  verifiedTrades:     number;
   winRate:            number;
   avgRR:              number;
   consistency:        number;
