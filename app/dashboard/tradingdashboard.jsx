@@ -4699,13 +4699,9 @@ function PlatformDropdown() {
   }, []);
 
   const items = [
-    { href:"/leaderboard", emoji:"🏆", label:"Leaderboard", color:"#818cf8" },
-    { href:"/traders",     emoji:"👥", label:"Traders",     color:"#38bdf8" },
-    { href:"/feed",        emoji:"🌐", label:"Feed",        color:"#a78bfa" },
-    { href:"/signals",     emoji:"📡", label:"Signals",     color:"#34d399" },
-    { href:"/funded",      emoji:"🎯", label:"Challenge",   color:"#a78bfa" },
-    { href:"/earnings",    emoji:"💰", label:"Earnings",    color:"#22d3a5" },
-  ];
+      { href:"/leaderboard", emoji:"🏆", label:"Leaderboard", color:"#818cf8" },
+      { href:"/earnings",    emoji:"💰", label:"Earnings",    color:"#22d3a5" },
+    ];
 
   return (
     <div ref={ref} style={{ position:"relative" }}>
@@ -5124,19 +5120,19 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
           <button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(56,189,248,0.25)" }}><Plus size={14}/> Log Trade</button>
         </div>
       </div>
-      {/* Leaderboard + Strategy Lab + Challenge shortcuts */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
-        <a href="/leaderboard" style={{ textDecoration:"none", borderRadius:12, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", transition:"border-color 0.15s" }}
+      {/* Shortcuts */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <a href="/leaderboard" style={{ textDecoration:"none", borderRadius:12, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}
           onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.5)"}
           onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.25)"}>
           <div style={{ width:38, height:38, borderRadius:10, background:"rgba(129,140,248,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🏆</div>
           <div>
-            <div style={{ fontSize:12, fontWeight:700, color:"#818cf8" }}>Strategy Leaderboard</div>
-            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>See top-performing published strategies</div>
+            <div style={{ fontSize:12, fontWeight:700, color:"#818cf8" }}>Leaderboard</div>
+            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>See top published strategies</div>
           </div>
           <ChevronRight size={14} style={{ color:"#475569", marginLeft:"auto", flexShrink:0 }}/>
         </a>
-        <button onClick={onAddStrat} style={{ textDecoration:"none", borderRadius:12, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", transition:"border-color 0.15s" }}
+        <button onClick={onAddStrat} style={{ borderRadius:12, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}
           onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.5)"}
           onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.25)"}>
           <div style={{ width:38, height:38, borderRadius:10, background:"rgba(129,140,248,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -5144,30 +5140,10 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
           </div>
           <div style={{ textAlign:"left" }}>
             <div style={{ fontSize:12, fontWeight:700, color:"#818cf8" }}>New Strategy</div>
-            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Build, backtest, and publish a strategy</div>
+            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Build and backtest a strategy</div>
           </div>
           <ChevronRight size={14} style={{ color:"#475569", marginLeft:"auto", flexShrink:0 }}/>
         </button>
-        <a href="/funded" style={{ textDecoration:"none", borderRadius:12, border:"1px solid rgba(167,139,250,0.25)", background:"rgba(167,139,250,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", transition:"border-color 0.15s" }}
-          onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(167,139,250,0.5)"}
-          onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(167,139,250,0.25)"}>
-          <div style={{ width:38, height:38, borderRadius:10, background:"rgba(167,139,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎯</div>
-          <div>
-            <div style={{ fontSize:12, fontWeight:700, color:"#a78bfa" }}>Funded Challenge</div>
-            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Pass the challenge, unlock funded rank</div>
-          </div>
-          <ChevronRight size={14} style={{ color:"#475569", marginLeft:"auto", flexShrink:0 }}/>
-        </a>
-        <a href="/feed" style={{ textDecoration:"none", borderRadius:12, border:"1px solid rgba(167,139,250,0.25)", background:"rgba(167,139,250,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", transition:"border-color 0.15s" }}
-          onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(167,139,250,0.5)"}
-          onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(167,139,250,0.25)"}>
-          <div style={{ width:38, height:38, borderRadius:10, background:"rgba(167,139,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🌐</div>
-          <div>
-            <div style={{ fontSize:12, fontWeight:700, color:"#a78bfa" }}>Activity Feed</div>
-            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>See what traders are doing</div>
-          </div>
-          <ChevronRight size={14} style={{ color:"#475569", marginLeft:"auto", flexShrink:0 }}/>
-        </a>
       </div>
 
       {/* Account stats card */}
@@ -5192,11 +5168,9 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
           </div>
         </div>
       )}
-      {/* Weekly Report */}
-      <WeeklyReport trades={trades}/>
-
-      {/* Weekly Challenges */}
-      <WeeklyChallenges trades={trades}/>
+      {/* Weekly Challenges — hidden for now */}
+      {/* <WeeklyReport trades={trades}/> */}
+      {/* <WeeklyChallenges trades={trades}/> */}
 
       {recent.length > 0 && (
         <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
@@ -6477,12 +6451,10 @@ function TradingDashboard({ session, onLogout }) {
   }, [trades, paperAccts.activeAccount]);
 
   const NAV_TABS = [
-    { id:"dashboard",  label:"Dashboard",      icon:<Activity size={13}/> },
-    { id:"journal",    label:"Journal",        icon:<BookOpen size={13}/> },
-    { id:"strategies", label:"Strategies",     icon:<Layers size={13}/> },
-    { id:"stratlab",   label:"Strategy Lab",   icon:<FlaskConical size={13}/> },
-    { id:"insights",   label:"Insights",       icon:<Sparkles size={13}/> },
-    { id:"copy",       label:"Social",         icon:<Users size={13}/> },
+    { id:"dashboard",  label:"Dashboard",    icon:<Activity size={13}/> },
+    { id:"journal",    label:"Journal",      icon:<BookOpen size={13}/> },
+    { id:"stratlab",   label:"Strategy Lab", icon:<FlaskConical size={13}/> },
+    { id:"insights",   label:"Insights",     icon:<Sparkles size={13}/> },
   ];
 
   return (
