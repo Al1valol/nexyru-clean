@@ -2315,7 +2315,53 @@ const ACCOUNTS_STORAGE_KEY = (u) => `tradedesk_paper_accounts_${u}_v1`;
 const ACTIVE_ACCOUNT_KEY   = (u) => `tradedesk_active_account_${u}_v1`;
 
 // ── Account model ─────────────────────────────────────────────
-// { id, name, type: "paper"|"funded", balance, startingBalance, createdAt }
+// ── Account progression tiers ─────────────────────────────────
+const ACCOUNT_TIERS = [
+  { size: 10000,  label: "$10k",  next: 50000,  targetPct: 10, color: "#38bdf8" },
+  { size: 50000,  label: "$50k",  next: 100000, targetPct: 10, color: "#a78bfa" },
+  { size: 100000, label: "$100k", next: null,   targetPct: 10, color: "#f59e0b" },
+];
+
+function getAccountTier(startingBalance) {
+  return ACCOUNT_TIERS.find(t => t.size === startingBalance) ?? ACCOUNT_TIERS[0];
+}
+
+function checkUpgradeEligible(account) {
+  const tier = getAccountTier(account.startingBalance);
+  if (!tier.next) return null;
+  const pnl     = account.balance - account.startingBalance;
+  const pnlPct  = (pnl / account.startingBalance) * 100;
+  return pnlPct >= tier.targetPct ? tier.next : null;
+}
+
+// ── Account upgrade banner ─────────────────────────────────────
+function AccountUpgradeBanner({ account, onUpgrade }) {
+  const nextSize = checkUpgradeEligible(account);
+  if (!nextSize || account.type !== "paper") return null;
+
+  const tier    = getAccountTier(account.startingBalance);
+  const pnl     = account.balance - account.startingBalance;
+  const pnlPct  = (pnl / account.startingBalance) * 100;
+
+  return (
+    <div style={{ padding:"14px 18px", borderRadius:12, background:"linear-gradient(135deg,rgba(245,158,11,0.1),rgba(167,139,250,0.08))", border:"1px solid rgba(245,158,11,0.4)", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+      <div style={{ fontSize:28 }}>🎉</div>
+      <div style={{ flex:1, minWidth:200 }}>
+        <div style={{ fontSize:13, fontWeight:800, color:"#f59e0b", marginBottom:4 }}>
+          You've hit +{pnlPct.toFixed(1)}% on your {tier.label} account!
+        </div>
+        <div style={{ fontSize:11, color:"#94a3b8" }}>
+          You're eligible to upgrade to a ${nextSize.toLocaleString()} paper account. Keep your track record and start fresh with more capital.
+        </div>
+      </div>
+      <button onClick={() => onUpgrade(nextSize)} style={{ padding:"9px 20px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#d97706,#f59e0b)", color:"#000", fontSize:12, fontWeight:800, cursor:"pointer", flexShrink:0 }}>
+        Upgrade to ${nextSize.toLocaleString()} →
+      </button>
+    </div>
+  );
+}
+
+// { id, name, type: "paper"|"funded"|"real", balance, startingBalance, createdAt }
 
 function loadPaperAccounts(username) {
   try {
@@ -2435,6 +2481,7 @@ function AddAccountModal({ onAdd, onClose }) {
   const [name,    setName]    = useState("");
   const [type,    setType]    = useState("paper");
   const [balance, setBalance] = useState("10000");
+  const [broker,  setBroker]  = useState("tradovate");
   const [err,     setErr]     = useState("");
 
   const submit = () => {
@@ -2472,10 +2519,11 @@ function AddAccountModal({ onAdd, onClose }) {
           {/* Account type toggle */}
           <div>
             <label style={lbl}>Account Type</label>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
               {[
-                { id:"paper",  icon:"📄", label:"Paper Trading",   desc:"Simulated money — risk-free practice", color:"#38bdf8" },
-                { id:"funded", icon:"💰", label:"Funded Account",  desc:"Real money — broker API (coming soon)", color:"#a78bfa" },
+                { id:"paper",  icon:"📄", label:"Paper",   desc:"Simulated — risk free", color:"#38bdf8" },
+                { id:"funded", icon:"💰", label:"Funded",  desc:"Prop firm account",      color:"#a78bfa" },
+                { id:"real",   icon:"🔗", label:"Real",    desc:"Your own capital",       color:"#34d399" },
               ].map(t => (
                 <button key={t.id} onClick={() => setType(t.id)} style={{
                   padding:"12px 10px", borderRadius:10, textAlign:"left", cursor:"pointer",
@@ -2491,30 +2539,89 @@ function AddAccountModal({ onAdd, onClose }) {
             </div>
           </div>
 
+          {/* Paper — free size selection */}
+          {type === "paper" && (
+            <div>
+              <label style={lbl}>Account Size</label>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10 }}>
+                {[10000, 50000, 100000].map(size => (
+                  <button key={size} onClick={() => setBalance(String(size))} style={{
+                    padding:"12px 10px", borderRadius:10, textAlign:"center", cursor:"pointer",
+                    border:`1px solid ${balance===String(size) ? "#38bdf855" : "#1a2035"}`,
+                    background: balance===String(size) ? "#38bdf810" : "#111827",
+                    transition:"all 0.15s",
+                  }}>
+                    <div style={{ fontSize:14, fontWeight:900, color: balance===String(size) ? "#38bdf8" : "#64748b", fontFamily:"monospace" }}>
+                      ${(size/1000).toFixed(0)}k
+                    </div>
+                    <div style={{ fontSize:9, color:"#334155", marginTop:3 }}>
+                      {size === 10000 ? "Starter" : size === 50000 ? "Intermediate" : "Advanced"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div style={{ position:"relative" }}>
+                <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#475569", fontWeight:700 }}>$</span>
+                <input type="number" style={{ ...inp, paddingLeft:24 }} value={balance} onChange={e => setBalance(e.target.value)} min="100" placeholder="Custom amount" onKeyDown={e => e.key === "Enter" && submit()}/>
+              </div>
+              <div style={{ fontSize:10, color:"#334155", marginTop:6 }}>Or enter any custom amount — match your TradingView paper account exactly</div>
+            </div>
+          )}
+
           {/* Account name */}
           <div>
             <label style={lbl}>Account Name</label>
             <input style={inp} value={name} onChange={e => setName(e.target.value)}
-              placeholder={type === "paper" ? "e.g. Main Paper, Scalping Lab" : "e.g. FTMO Challenge"}
+              placeholder={type === "paper" ? "e.g. Main Paper, Scalping Lab" : type === "real" ? "e.g. My Tradovate Account" : "e.g. Tradeify Funded"}
               onKeyDown={e => e.key === "Enter" && submit()}
             />
           </div>
 
-          {/* Starting balance (paper only) */}
-          {type === "paper" && (
-            <div>
-              <label style={lbl}>Starting Balance (USD)</label>
-              <div style={{ position:"relative" }}>
-                <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#475569", fontWeight:700 }}>$</span>
-                <input type="number" style={{ ...inp, paddingLeft:24 }} value={balance} onChange={e => setBalance(e.target.value)} min="100" max="10000000" placeholder="10000" onKeyDown={e => e.key === "Enter" && submit()}/>
+          {/* Real account — broker info */}
+          {type === "real" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div>
+                <label style={lbl}>Broker</label>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                  {["Tradovate","Apex","TopstepX","NinjaTrader","IBKR","Other"].map(b => (
+                    <button key={b} onClick={() => setBroker(b.toLowerCase())} style={{ padding:"7px 6px", borderRadius:8, fontSize:10, fontWeight:700, cursor:"pointer", border:`1px solid ${broker===b.toLowerCase()?"rgba(52,211,153,0.4)":"#1a2035"}`, background:broker===b.toLowerCase()?"rgba(52,211,153,0.1)":"#111827", color:broker===b.toLowerCase()?"#34d399":"#64748b" }}>{b}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>Starting Balance (USD)</label>
+                <div style={{ position:"relative" }}>
+                  <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#475569", fontWeight:700 }}>$</span>
+                  <input type="number" style={{ ...inp, paddingLeft:24 }} value={balance} onChange={e => setBalance(e.target.value)} min="100" placeholder="50000" onKeyDown={e => e.key === "Enter" && submit()}/>
+                </div>
+              </div>
+              <div style={{ padding:"10px 12px", borderRadius:9, background:"rgba(52,211,153,0.06)", border:"1px solid rgba(52,211,153,0.2)", fontSize:11, color:"#64748b", lineHeight:1.6 }}>
+                Import trades via <strong style={{ color:"#34d399" }}>CSV export</strong> from your broker. Auto-import via API coming soon when you get a funded Tradovate account.
               </div>
             </div>
           )}
 
-          {/* Funded notice */}
+          {/* Funded account notice */}
           {type === "funded" && (
-            <div style={{ padding:"12px 14px", borderRadius:9, background:"rgba(167,139,250,0.06)", border:"1px solid rgba(167,139,250,0.2)", fontSize:11, color:"#64748b", lineHeight:1.6 }}>
-              <strong style={{ color:"#a78bfa" }}>Coming soon.</strong> Funded account integration with OANDA, IBKR, and MT4/MT5 is in development. The account will be created now — you'll connect it to a broker later via the account settings.
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div>
+                <label style={lbl}>Prop Firm</label>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                  {["Tradeify","Apex","TopstepX","Earn2Trade","FTMO","Other"].map(b => (
+                    <button key={b} onClick={() => setBroker(b.toLowerCase())} style={{ padding:"7px 6px", borderRadius:8, fontSize:10, fontWeight:700, cursor:"pointer", border:`1px solid ${broker===b.toLowerCase()?"rgba(167,139,250,0.4)":"#1a2035"}`, background:broker===b.toLowerCase()?"rgba(167,139,250,0.1)":"#111827", color:broker===b.toLowerCase()?"#a78bfa":"#64748b" }}>{b}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>Account Size (USD)</label>
+                <div style={{ position:"relative" }}>
+                  <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#475569", fontWeight:700 }}>$</span>
+                  <input type="number" style={{ ...inp, paddingLeft:24 }} value={balance} onChange={e => setBalance(e.target.value)} min="100" placeholder="100000" onKeyDown={e => e.key === "Enter" && submit()}/>
+                </div>
+              </div>
+              <div style={{ padding:"10px 12px", borderRadius:9, background:"rgba(167,139,250,0.06)", border:"1px solid rgba(167,139,250,0.2)", fontSize:11, color:"#64748b", lineHeight:1.6 }}>
+                Import your funded account trades via <strong style={{ color:"#a78bfa" }}>CSV export</strong> from Tradovate. Trades tagged as <strong style={{ color:"#a78bfa" }}>✓ BROKER</strong> count toward your verified rank.
+              </div>
             </div>
           )}
 
@@ -2553,7 +2660,8 @@ function AccountSwitcher({ accounts, activeAccount, onSwitch, onAdd, trades }) {
   const pnl     = activeAccount.balance - activeAccount.startingBalance;
   const pnlPct  = activeAccount.startingBalance > 0 ? (pnl / activeAccount.startingBalance * 100) : 0;
   const pnlPos  = pnl >= 0;
-  const typeClr = activeAccount.type === "funded" ? "#a78bfa" : "#38bdf8";
+  const typeClr = activeAccount.type === "real" ? "#34d399" : activeAccount.type === "funded" ? "#a78bfa" : "#38bdf8";
+  const canUpgrade = checkUpgradeEligible(activeAccount);
 
   return (
     <div ref={ref} style={{ position:"relative", flexShrink:0 }}>
@@ -2564,11 +2672,11 @@ function AccountSwitcher({ accounts, activeAccount, onSwitch, onAdd, trades }) {
         background: open ? typeClr + "08" : "#111827",
         cursor:"pointer", transition:"all 0.15s",
       }}>
-        {/* Account type dot */}
-        <span style={{ width:7, height:7, borderRadius:"50%", background:typeClr, flexShrink:0 }}/>
+        {/* Account type dot — pulse if upgrade available */}
+        <span style={{ width:7, height:7, borderRadius:"50%", background: canUpgrade ? "#f59e0b" : typeClr, flexShrink:0, animation: canUpgrade ? "pulse 1.5s infinite" : "none" }}/>
         <div style={{ textAlign:"left" }}>
           <div style={{ fontSize:10, fontWeight:700, color:"#e2e8f0", whiteSpace:"nowrap", maxWidth:120, overflow:"hidden", textOverflow:"ellipsis" }}>
-            {activeAccount.name}
+            {activeAccount.name} {canUpgrade ? "⬆️" : ""}
           </div>
           <div style={{ fontSize:9, fontFamily:"monospace", color: pnlPos ? "#34d399" : "#f87171" }}>
             ${activeAccount.balance.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}
@@ -5106,7 +5214,7 @@ function WeeklyChallenges({ trades }) {
   );
 }
 
-function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onAddStrat }) {
+function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onAddStrat, onUpgradeAccount }) {
   const stats   = useMemo(() => computeStats(trades), [trades]);
   const recent  = useMemo(() => [...trades].sort((a,b)=>b.date-a.date).slice(0,5), [trades]);
   const pnlPos  = stats.totalPnl >= 0;
@@ -6516,7 +6624,9 @@ function TradingDashboard({ session, onLogout }) {
       {/* Page content */}
       <div style={{ flex:1, overflowY:"auto" }}>
         <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"24px" }}>
-          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")}/>}
+          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} onUpgradeAccount={(nextSize) => {
+              paperAccts.addAccount(`$${(nextSize/1000).toFixed(0)}k Paper Account`, "paper", nextSize);
+            }}/>}
           {tab==="journal" && (
             <JournalPage
               trades={activeTrades}
