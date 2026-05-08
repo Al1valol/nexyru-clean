@@ -238,6 +238,8 @@ function useAuth() {
     const s = { username: u, displayName: displayName.trim() };
     localStorage.setItem(SESSION_KEY, JSON.stringify(s));
     setSession(s);
+    // Seed demo data for new users
+    setTimeout(() => seedStarterData(u), 100);
     return null;
   }, []);
 
@@ -247,6 +249,121 @@ function useAuth() {
   }, []);
 
   return { session, hydrated, login, register, logout };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  STARTER EXPERIENCE — Auto-seed demo data for new users
+// ═══════════════════════════════════════════════════════════════
+
+const DEMO_FLAG_KEY = "nexyru_demo_mode_v1";
+const isDemoMode    = (u) => localStorage.getItem(`${DEMO_FLAG_KEY}_${u}`) === "1";
+const setDemoMode   = (u, v) => v
+  ? localStorage.setItem(`${DEMO_FLAG_KEY}_${u}`, "1")
+  : localStorage.removeItem(`${DEMO_FLAG_KEY}_${u}`);
+
+function generateStarterData(username) {
+  const PAIRS     = ["BTC-USD","ETH-USD","NQ1!","ES1!","MNQ1!","MES1!","SOL-USD","GC1!"];
+  const STRATEGIES= ["Breakout Momentum","VWAP Reversal","EMA Cross","Support & Resistance","Opening Range"];
+  const EMOTIONS  = ["calm","confident","fomo","calm","calm","confident","fear","calm","calm","confident"];
+
+  const now    = Date.now();
+  const DAY_MS = 86400000;
+
+  function rnd(min, max) { return Math.random() * (max - min) + min; }
+  function pick(arr)     { return arr[Math.floor(Math.random() * arr.length)]; }
+  function roundTo(n, d) { return parseFloat(n.toFixed(d)); }
+
+  // Generate 14 trades over last 30 days with 55-70% win rate
+  const trades = [];
+  const winTargetPct = rnd(0.55, 0.70);
+  let wins = 0;
+
+  for (let i = 0; i < 14; i++) {
+    const daysAgo    = rnd(0, 30);
+    const date       = now - daysAgo * DAY_MS;
+    const pair       = pick(PAIRS);
+    const strategy   = pick(STRATEGIES);
+    const type       = Math.random() > 0.45 ? "long" : "short";
+    const isCrypto   = pair.includes("USD") || pair.includes("SOL");
+    const basePrice  = isCrypto
+      ? pair.includes("BTC") ? rnd(62000, 71000) : pair.includes("ETH") ? rnd(3100, 3800) : rnd(120, 185)
+      : pair.includes("NQ")  ? rnd(17800, 19200) : pair.includes("ES") ? rnd(5050, 5380) : rnd(1950, 2150);
+
+    const shouldWin  = (wins / (i + 1)) < winTargetPct && Math.random() > 0.3;
+    const size       = isCrypto ? roundTo(rnd(0.05, 0.5), 3) : rnd(1, 3) | 0;
+    const movePct    = shouldWin ? rnd(0.4, 1.8) : rnd(0.2, 0.9);
+    const moveAmt    = basePrice * (movePct / 100);
+    const entryPrice = roundTo(basePrice, isCrypto ? 2 : 2);
+    const exitPrice  = shouldWin
+      ? roundTo(entryPrice + (type === "long" ? moveAmt : -moveAmt), 2)
+      : roundTo(entryPrice + (type === "long" ? -moveAmt : moveAmt), 2);
+    const rawPnl     = (type === "long" ? exitPrice - entryPrice : entryPrice - exitPrice) * size;
+    const pnl        = roundTo(rawPnl, 2);
+    const pnlPct     = roundTo(((exitPrice - entryPrice) / entryPrice * 100) * (type === "long" ? 1 : -1), 3);
+
+    if (pnl > 0) wins++;
+
+    trades.push({
+      id:         `demo_${i}_${Date.now()}`,
+      pair, symbol: pair.replace("/","").replace("1!","").replace("-",""),
+      type, entryPrice, exitPrice, size,
+      date:       date - rnd(0, 8 * 3600000), // vary by time of day
+      strategy,
+      notes:      pick(["Textbook setup","Clean break","Took profit early","Held through pullback","Followed plan",""]),
+      stopLoss:   roundTo(entryPrice * (type === "long" ? 0.993 : 1.007), 2),
+      takeProfit: roundTo(entryPrice * (type === "long" ? 1.018 : 0.982), 2),
+      tags:       ["Demo"],
+      confidence: Math.round(rnd(4, 9)),
+      source:     "demo",
+      pnl, pnlPct,
+      accountId:  null,
+    });
+  }
+
+  // Sort oldest first
+  trades.sort((a,b) => a.date - b.date);
+
+  return trades;
+}
+
+function seedStarterData(username) {
+  // Don't re-seed if already seeded
+  if (isDemoMode(username)) return;
+  const existing = loadUserTrades(username);
+  if (existing.length > 0) return;
+
+  const trades = generateStarterData(username);
+  saveUserTrades(username, trades);
+  setDemoMode(username, true);
+}
+
+// ── Demo mode banner ───────────────────────────────────────────
+function DemoBanner({ username, onClear }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed || !isDemoMode(username)) return null;
+
+  return (
+    <div style={{ margin:"0 0 16px", padding:"12px 16px", borderRadius:12, background:"linear-gradient(135deg,rgba(251,191,36,0.08),rgba(249,115,22,0.06))", border:"1px solid rgba(251,191,36,0.3)", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, flex:1, minWidth:200 }}>
+        <span style={{ fontSize:16 }}>🎮</span>
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+            <span style={{ fontSize:12, fontWeight:800, color:"#fbbf24" }}>Demo Mode</span>
+            <span style={{ fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:10, background:"rgba(251,191,36,0.15)", border:"1px solid rgba(251,191,36,0.3)", color:"#fbbf24" }}>SAMPLE DATA</span>
+          </div>
+          <div style={{ fontSize:11, color:"#64748b" }}>You're seeing sample trades to show what Nexyru looks like. Replace with your real trading history when ready.</div>
+        </div>
+      </div>
+      <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+        <button onClick={() => { onClear(); setDismissed(true); }} style={{ padding:"7px 14px", borderRadius:9, border:"1px solid rgba(52,211,153,0.3)", background:"rgba(52,211,153,0.08)", color:"#34d399", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+          🔄 Replace with my data
+        </button>
+        <button onClick={() => setDismissed(true)} style={{ padding:"7px 10px", borderRadius:9, border:"1px solid #1a2035", background:"transparent", color:"#475569", fontSize:11, cursor:"pointer" }}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1308,37 +1425,71 @@ function ScreenshotImporter({ onImportAll, onClose }) {
   );
 }
 
-function ImportHub({ onManual, onCSV, onScreenshot, onClose }) {
+function ImportHub({ onManual, onCSV, onScreenshot, onClose, accountType }) {
+  const isRestricted = accountType === "funded" || accountType === "real";
+
   const integrations = [
-    { id:"manual",     icon:<Zap size={20}/>,       label:"Manual Entry",        desc:"Log a trade you've taken on any platform",                     color:"#38bdf8", available:true,  action:() => { onClose(); onManual(); } },
-    { id:"screenshot", icon:<Sparkles size={20}/>,  label:"AI Screenshot",       desc:"Drop a chart screenshot — Claude reads the trade data for you", color:"#818cf8", available:true,  action:() => { onClose(); onScreenshot(); } },
-    { id:"csv",        icon:<FileText size={20}/>,  label:"CSV Import",          desc:"Upload MT4/MT5, TradingView, cTrader, IBKR export",             color:"#34d399", available:true,  action:() => { onClose(); onCSV(); } },
-    { id:"webhook",    icon:<Webhook size={20}/>,   label:"Webhook Ingestion",   desc:"Auto-import via HTTP webhook (TradingView alerts, etc.)",       color:"#fbbf24", available:false, comingSoon:true },
-    { id:"api",        icon:<Link2 size={20}/>,     label:"Broker API",          desc:"Connect directly to OANDA, Interactive Brokers, Binance",       color:"#a78bfa", available:false, comingSoon:true },
-    { id:"mt4",        icon:<Download size={20}/>,  label:"MT4 / MT5 Plugin",    desc:"Install EA plugin to auto-sync trades from MetaTrader",         color:"#f97316", available:false, comingSoon:true },
+    {
+      id:"manual", icon:<Zap size={20}/>, label:"Manual Entry",
+      desc: isRestricted ? "❌ Not allowed on funded/real accounts — import from broker only" : "Log a trade you've taken on any platform",
+      color:"#38bdf8", available:!isRestricted,
+      action:() => { onClose(); onManual(); },
+      blocked: isRestricted,
+    },
+    {
+      id:"screenshot", icon:<Sparkles size={20}/>, label:"AI Screenshot",
+      desc: isRestricted ? "❌ Not allowed on funded/real accounts — import from broker only" : "Drop a chart screenshot — Claude reads the trade data for you",
+      color:"#818cf8", available:!isRestricted,
+      action:() => { onClose(); onScreenshot(); },
+      blocked: isRestricted,
+    },
+    {
+      id:"csv", icon:<FileText size={20}/>, label:"Broker CSV Import",
+      desc: isRestricted ? "✅ Import your broker CSV — Tradovate, Apex, TopstepX, IBKR" : "Upload MT4/MT5, TradingView, cTrader, IBKR export",
+      color:"#34d399", available:true,
+      action:() => { onClose(); onCSV(); },
+      blocked: false,
+    },
+    { id:"webhook", icon:<Webhook size={20}/>,  label:"Webhook Ingestion", desc:"Auto-import via HTTP webhook (TradingView alerts, etc.)", color:"#fbbf24", available:false, comingSoon:true },
+    { id:"api",     icon:<Link2 size={20}/>,    label:"Broker API",        desc:"Connect directly to Tradovate, IBKR, Binance",          color:"#a78bfa", available:false, comingSoon:true },
+    { id:"mt4",     icon:<Download size={20}/>, label:"MT4 / MT5 Plugin",  desc:"Install EA plugin to auto-sync trades from MetaTrader",  color:"#f97316", available:false, comingSoon:true },
   ];
+
   return (
     <div style={{ position:"fixed", inset:0, zIndex:80, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(4px)" }}/>
       <div style={{ position:"relative", zIndex:10, width:"100%", maxWidth:580, borderRadius:16, border:"1px solid #1a2035", background:"#0d1120", boxShadow:"0 25px 60px rgba(0,0,0,0.6)", overflow:"hidden" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 20px", borderBottom:"1px solid #1a2035" }}>
-          <div style={{ fontSize:14, fontWeight:700, color:"#e2e8f0", display:"flex", alignItems:"center", gap:8 }}><Upload size={15} style={{ color:"#38bdf8" }}/> Add Trades</div>
+          <div style={{ fontSize:14, fontWeight:700, color:"#e2e8f0", display:"flex", alignItems:"center", gap:8 }}>
+            <Upload size={15} style={{ color:"#38bdf8" }}/> Add Trades
+            {isRestricted && <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"rgba(248,113,113,0.1)", border:"1px solid rgba(248,113,113,0.2)", color:"#f87171" }}>Broker imports only</span>}
+          </div>
           <button onClick={onClose} style={{ background:"none", border:"none", color:"#64748b", cursor:"pointer" }}><X size={16}/></button>
         </div>
+
+        {isRestricted && (
+          <div style={{ margin:"12px 20px 0", padding:"10px 14px", borderRadius:10, background:"rgba(248,113,113,0.06)", border:"1px solid rgba(248,113,113,0.2)", fontSize:11, color:"#f87171", lineHeight:1.6 }}>
+            You're on a <strong>{accountType === "funded" ? "Funded" : "Real"} Account</strong>. Manual entry and screenshot imports are disabled — all trades must come from your broker CSV to ensure accuracy.
+          </div>
+        )}
+
         <div style={{ padding:20, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           {integrations.map(i => (
-            <button key={i.id} onClick={i.available ? i.action : undefined} disabled={!i.available} style={{ padding:"16px", borderRadius:12, border:`1px solid ${i.available?i.color+"30":"#1a2035"}`, background: i.available?i.color+"08":"#111827", textAlign:"left", cursor: i.available?"pointer":"not-allowed", opacity: i.available?1:0.55, transition:"all 0.15s" }}>
-              <div style={{ color:i.color, marginBottom:8 }}>{i.icon}</div>
+            <button key={i.id} onClick={i.available && !i.blocked ? i.action : undefined}
+              disabled={!i.available || i.blocked}
+              style={{ padding:"16px", borderRadius:12, border:`1px solid ${i.available&&!i.blocked?i.color+"30":"#1a2035"}`, background: i.available&&!i.blocked?i.color+"08":"#111827", textAlign:"left", cursor: i.available&&!i.blocked?"pointer":"not-allowed", opacity: i.available&&!i.blocked?1:0.45, transition:"all 0.15s" }}>
+              <div style={{ color:i.blocked?"#334155":i.color, marginBottom:8 }}>{i.icon}</div>
               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
-                <span style={{ fontSize:12, fontWeight:700, color: i.available?"#e2e8f0":"#64748b" }}>{i.label}</span>
+                <span style={{ fontSize:12, fontWeight:700, color: i.available&&!i.blocked?"#e2e8f0":"#475569" }}>{i.label}</span>
                 {i.comingSoon && <span style={{ fontSize:8, fontWeight:700, color:"#fbbf24", background:"rgba(251,191,36,0.1)", border:"1px solid rgba(251,191,36,0.2)", padding:"1px 6px", borderRadius:10 }}>SOON</span>}
+                {i.blocked && <span style={{ fontSize:8, fontWeight:700, color:"#f87171", background:"rgba(248,113,113,0.1)", border:"1px solid rgba(248,113,113,0.2)", padding:"1px 6px", borderRadius:10 }}>BLOCKED</span>}
               </div>
-              <div style={{ fontSize:10, color:"#475569", lineHeight:1.5 }}>{i.desc}</div>
+              <div style={{ fontSize:10, color: i.blocked?"#f87171":"#475569", lineHeight:1.5 }}>{i.desc}</div>
             </button>
           ))}
         </div>
         <div style={{ padding:"12px 20px", borderTop:"1px solid #1a2035", fontSize:10, color:"#334155", textAlign:"center" }}>
-          Nexyru never connects to live brokers. All trades are imported after execution.
+          {isRestricted ? "Funded and real accounts require broker CSV imports for trade verification" : "Nexyru never connects to live brokers. All trades are imported after execution."}
         </div>
       </div>
     </div>
@@ -1569,7 +1720,7 @@ function TradeDetail({ trade, onClose }) {
   );
 }
 
-function TradeTable({ trades, onEdit, onDelete }) {
+function TradeTable({ trades, onEdit, onDelete, onReview }) {
   const [search,  setSearch]  = useState("");
   const [typeF,   setTypeF]   = useState("all");
   const [stratF,  setStratF]  = useState("all");
@@ -1662,6 +1813,7 @@ function TradeTable({ trades, onEdit, onDelete }) {
                           {(t.screenshot || t._hasScreenshot) && <Image size={9} style={{ color:"#475569" }}/>}
                           {t.copiedFrom && <span style={{ fontSize:7, fontWeight:700, color:"#818cf8", background:"rgba(129,140,248,0.1)", padding:"1px 5px", borderRadius:8 }}>COPY</span>}
                           {t.source === "broker_import" && <span style={{ fontSize:7, fontWeight:700, color:"#34d399", background:"rgba(52,211,153,0.1)", padding:"1px 5px", borderRadius:8, border:"1px solid rgba(52,211,153,0.2)" }}>✓ BROKER</span>}
+                          {(() => { const g = gradeTradeLocally(t, trades); return <span style={{ fontSize:7, fontWeight:800, color:g.gradeColor, background:`${g.gradeColor}15`, padding:"1px 5px", borderRadius:8, border:`1px solid ${g.gradeColor}30` }}>{g.grade}</span>; })()}
                         </div>
                       </td>
                       <td style={td} onClick={()=>setViewing(t)}>
@@ -1706,6 +1858,7 @@ function TradeTable({ trades, onEdit, onDelete }) {
                       <td style={{ ...td, color:"#64748b", whiteSpace:"nowrap" }} onClick={()=>setViewing(t)}>{new Date(t.date).toLocaleDateString()}</td>
                       <td style={td}>
                         <div style={{ display:"flex", gap:4 }}>
+                          <button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.06)", color:"#818cf8", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600 }}><span>🤖</span></button>
                           <button onClick={()=>onEdit(t)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #1e2d3e", background:"transparent", color:"#475569", cursor:"pointer" }}><Edit2 size={10}/></button>
                           <button onClick={()=>onDelete(t.id)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(239,68,68,0.2)", background:"transparent", color:"#f87171", cursor:"pointer" }}><Trash size={10}/></button>
                         </div>
@@ -1871,6 +2024,326 @@ function insightsByTag(trades) {
   });
   return Object.entries(map).map(([tag,d]) => ({ tag, ...d, winRate: d.count?+(d.wins/d.count*100).toFixed(1):0 })).filter(d=>d.count>=2).sort((a,b)=>b.winRate-a.winRate);
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  AI TRADE REVIEW SYSTEM
+// ═══════════════════════════════════════════════════════════════
+
+function gradeTradeLocally(trade, allTrades) {
+  let score = 70; // baseline
+  const issues = [], strengths = [], flags = [];
+
+  // ── RR Analysis ──────────────────────────────────────────────
+  const rr = trade.stopLoss && trade.takeProfit && trade.entryPrice
+    ? Math.abs((trade.takeProfit - trade.entryPrice) / (trade.entryPrice - trade.stopLoss))
+    : null;
+  if (rr !== null) {
+    if (rr >= 2.5)       { score += 12; strengths.push(`Excellent RR of ${rr.toFixed(1)}:1`); }
+    else if (rr >= 1.5)  { score += 6;  strengths.push(`Good RR of ${rr.toFixed(1)}:1`); }
+    else if (rr < 1)     { score -= 15; issues.push(`Poor RR of ${rr.toFixed(1)}:1 — risking more than potential gain`); }
+    else                 { score -= 5;  issues.push(`Below average RR of ${rr.toFixed(1)}:1`); }
+  }
+
+  // ── Win/Loss quality ─────────────────────────────────────────
+  if ((trade.pnl ?? 0) > 0) {
+    score += 8;
+    strengths.push("Profitable trade");
+    // Check if they let it run
+    if (rr && rr >= 1.5) strengths.push("Let winner run to target");
+  } else {
+    score -= 10;
+    issues.push("Trade closed at a loss");
+    if (rr && rr < 0.8) issues.push("Small stop, big target — poor planning");
+  }
+
+  // ── Confidence check ─────────────────────────────────────────
+  const conf = trade.confidence ?? 5;
+  if (conf >= 8) { score += 5; strengths.push("High conviction entry"); }
+  if (conf <= 3) { score -= 8; issues.push("Low confidence entry — avoid low-conviction setups"); flags.push("LOW_CONFIDENCE"); }
+
+  // ── Emotional check ──────────────────────────────────────────
+  const emotion = (trade.emotion ?? trade.notes ?? "").toLowerCase();
+  if (emotion.includes("fomo"))     { score -= 12; flags.push("FOMO"); issues.push("FOMO entry detected — chasing price"); }
+  if (emotion.includes("revenge"))  { score -= 15; flags.push("REVENGE"); issues.push("Revenge trade detected — emotional decision"); }
+  if (emotion.includes("fear"))     { score -= 8;  flags.push("FEAR"); issues.push("Fear may have influenced entry/exit timing"); }
+  if (emotion.includes("calm") || emotion.includes("confident")) { score += 5; strengths.push("Calm, disciplined mindset"); }
+
+  // ── Revenge trading detection ─────────────────────────────────
+  const sorted = [...allTrades].sort((a,b) => a.date - b.date);
+  const idx    = sorted.findIndex(t => t.id === trade.id);
+  if (idx >= 1) {
+    const prev = sorted[idx - 1];
+    const timeDiff = (trade.date - prev.date) / 60000; // minutes
+    if ((prev.pnl ?? 0) < 0 && timeDiff < 15) {
+      score -= 18; flags.push("REVENGE"); issues.push("Entered within 15 min of a loss — possible revenge trade");
+    }
+    if ((prev.pnl ?? 0) < 0 && (trade.pnl ?? 0) < 0) {
+      issues.push("Back-to-back losses — consider a break after consecutive losses");
+    }
+  }
+
+  // ── Overtrading check ────────────────────────────────────────
+  const sameDay = allTrades.filter(t => {
+    return new Date(t.date).toDateString() === new Date(trade.date).toDateString();
+  });
+  if (sameDay.length > 6) { score -= 10; flags.push("OVERTRADE"); issues.push(`${sameDay.length} trades in one day — possible overtrading`); }
+  else if (sameDay.length > 4) { score -= 5; issues.push(`${sameDay.length} trades today — watch for overtrading`); }
+
+  // ── Session timing ───────────────────────────────────────────
+  const hour = new Date(trade.date).getHours();
+  if (hour >= 9 && hour <= 11)  { score += 5; strengths.push("NY open session — high liquidity"); }
+  if (hour >= 13 && hour <= 14) { score += 3; strengths.push("London/NY overlap — strong session"); }
+  if (hour >= 20 || hour <= 6)  { score -= 8; issues.push("Late night / off-hours trade — low liquidity risk"); }
+
+  // ── Position sizing (if available) ───────────────────────────
+  if (trade.size && trade.entryPrice) {
+    const posValue = trade.size * trade.entryPrice;
+    if (posValue > 100000) { flags.push("OVERSIZE"); issues.push("Very large position — check your risk %"); }
+  }
+
+  // ── Rules followed ───────────────────────────────────────────
+  if (trade.rulesFollowed === true || trade.rulesFollowed === "true") {
+    score += 8; strengths.push("Followed trading rules");
+  } else if (trade.rulesFollowed === false || trade.rulesFollowed === "false") {
+    score -= 10; issues.push("Rules not followed — stick to your plan");
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  const grade = score >= 90 ? "A+" : score >= 80 ? "A" : score >= 70 ? "B" : score >= 60 ? "C" : score >= 50 ? "D" : "F";
+  const gradeColor = score >= 80 ? "#34d399" : score >= 65 ? "#38bdf8" : score >= 50 ? "#fbbf24" : "#f87171";
+
+  return { score, grade, gradeColor, strengths, issues, flags, rr };
+}
+
+// ── AI Trade Review Card ───────────────────────────────────────
+function AITradeReview({ trade, allTrades, onClose }) {
+  const [aiReview, setAiReview]   = useState(null);
+  const [loading,  setLoading]    = useState(false);
+  const local = useMemo(() => gradeTradeLocally(trade, allTrades), [trade, allTrades]);
+
+  const getAIReview = async () => {
+    setLoading(true);
+    try {
+      const rr = local.rr ? `${local.rr.toFixed(2)}:1` : "unknown";
+      const prompt = `You are an elite trading coach reviewing a single trade. Be direct, specific, and honest.
+
+TRADE DATA:
+- Pair: ${trade.pair}
+- Direction: ${trade.type}
+- Entry: ${trade.entryPrice} | Exit: ${trade.exitPrice}
+- Size: ${trade.size}
+- PnL: ${(trade.pnl ?? 0) >= 0 ? "+" : ""}${(trade.pnl ?? 0).toFixed(2)}
+- Strategy: ${trade.strategy ?? "Unknown"}
+- RR Ratio: ${rr}
+- Confidence: ${trade.confidence ?? "N/A"}/10
+- Emotion: ${trade.emotion ?? "Not recorded"}
+- Notes: ${trade.notes ?? "None"}
+- Time: ${new Date(trade.date).toLocaleString()}
+- Rules followed: ${trade.rulesFollowed ?? "Not recorded"}
+- Detected flags: ${local.flags.join(", ") || "None"}
+
+LOCAL SCORE: ${local.score}/100 (Grade: ${local.grade})
+
+Write a coaching review with these exact sections:
+**VERDICT** (1 sentence — honest assessment)
+**WHAT YOU DID WELL** (2-3 bullet points, be specific)
+**WHAT TO FIX** (2-3 bullet points, actionable)
+**NEXT TIME** (1 clear directive)
+
+Max 150 words. Be a tough but fair coach.`;
+
+      const res  = await fetch("/api/generate-insights", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary: { prompt, raw: true } }),
+      });
+      const data = await res.json();
+      setAiReview(data.insight ?? "Could not generate review.");
+    } catch { setAiReview("Failed to connect to AI coach."); }
+    finally { setLoading(false); }
+  };
+
+  const FLAG_LABELS = {
+    FOMO:         { label:"FOMO Entry",        color:"#f97316", icon:"⚡" },
+    REVENGE:      { label:"Revenge Trade",      color:"#f87171", icon:"💢" },
+    OVERTRADE:    { label:"Overtrading",        color:"#fbbf24", icon:"⚠️" },
+    LOW_CONFIDENCE:{ label:"Low Conviction",   color:"#94a3b8", icon:"❓" },
+    OVERSIZE:     { label:"Oversized Position", color:"#f87171", icon:"📦" },
+    FEAR:         { label:"Fear-Based Exit",    color:"#a78bfa", icon:"😨" },
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(8px)" }}/>
+      <div style={{ position:"relative", zIndex:10, background:"#0a1628", border:"1px solid #1e2f4a", borderRadius:24, width:"100%", maxWidth:560, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 40px 100px rgba(0,0,0,0.9)" }}>
+
+        {/* Header */}
+        <div style={{ padding:"20px 24px 16px", borderBottom:"1px solid #111827", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+              <span style={{ fontSize:16 }}>🤖</span>
+              <span style={{ fontSize:15, fontWeight:800, color:"#f0f4ff" }}>AI Trade Review</span>
+            </div>
+            <div style={{ fontSize:11, color:"#3a4a6a" }}>{trade.pair} · {trade.type} · {new Date(trade.date).toLocaleDateString()}</div>
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:"#475569", cursor:"pointer", fontSize:20, lineHeight:1 }}>×</button>
+        </div>
+
+        <div style={{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:16 }}>
+
+          {/* Score card */}
+          <div style={{ borderRadius:16, background:`linear-gradient(135deg,${local.gradeColor}12,${local.gradeColor}06)`, border:`1px solid ${local.gradeColor}30`, padding:"20px 24px", display:"flex", alignItems:"center", gap:20 }}>
+            {/* Grade badge */}
+            <div style={{ width:72, height:72, borderRadius:16, background:`${local.gradeColor}18`, border:`2px solid ${local.gradeColor}44`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:`0 0 24px ${local.gradeColor}20` }}>
+              <span style={{ fontSize:28, fontWeight:900, color:local.gradeColor, fontFamily:"monospace" }}>{local.grade}</span>
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:12, color:"#475569", marginBottom:6 }}>Trade Score</div>
+              {/* Score bar */}
+              <div style={{ height:8, borderRadius:4, background:"#111d30", marginBottom:6, overflow:"hidden" }}>
+                <div style={{ width:`${local.score}%`, height:"100%", background:`linear-gradient(90deg,${local.gradeColor}88,${local.gradeColor})`, borderRadius:4, transition:"width 1s", boxShadow:`0 0 8px ${local.gradeColor}44` }}/>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:11 }}>
+                <span style={{ color:local.gradeColor, fontWeight:800, fontFamily:"monospace" }}>{local.score}/100</span>
+                {local.rr && <span style={{ color:"#38bdf8" }}>RR: {local.rr.toFixed(1)}:1</span>}
+                <span style={{ color: (trade.pnl??0)>=0?"#34d399":"#f87171", fontWeight:700 }}>{(trade.pnl??0)>=0?"+":""}{(trade.pnl??0).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Behavior flags */}
+          {local.flags.length > 0 && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              {local.flags.map(f => {
+                const fl = FLAG_LABELS[f] ?? { label:f, color:"#64748b", icon:"⚠️" };
+                return (
+                  <div key={f} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:20, background:`${fl.color}12`, border:`1px solid ${fl.color}30`, fontSize:11, fontWeight:700, color:fl.color }}>
+                    {fl.icon} {fl.label}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Strengths */}
+          {local.strengths.length > 0 && (
+            <div style={{ borderRadius:12, background:"rgba(52,211,153,0.05)", border:"1px solid rgba(52,211,153,0.15)", padding:"14px 16px" }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"#34d399", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>✅ Strengths</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {local.strengths.map((s,i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:11, color:"#64748b" }}>
+                    <span style={{ color:"#34d399", flexShrink:0, marginTop:1 }}>•</span>{s}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Issues */}
+          {local.issues.length > 0 && (
+            <div style={{ borderRadius:12, background:"rgba(248,113,113,0.05)", border:"1px solid rgba(248,113,113,0.15)", padding:"14px 16px" }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"#f87171", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>⚠️ Issues</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {local.issues.map((s,i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:11, color:"#64748b" }}>
+                    <span style={{ color:"#f87171", flexShrink:0, marginTop:1 }}>•</span>{s}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Risk meter */}
+          <div style={{ borderRadius:12, background:"#0d1628", border:"1px solid #1a2540", padding:"14px 16px" }}>
+            <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", marginBottom:12 }}>Risk Assessment</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {[
+                { label:"Confidence",    val: trade.confidence ?? 5, max:10, color:"#38bdf8" },
+                { label:"Risk/Reward",   val: local.rr ? Math.min(local.rr, 5) : 1, max:5, color:local.rr && local.rr>=2?"#34d399":"#fbbf24" },
+                { label:"Discipline",    val: trade.rulesFollowed ? 9 : local.flags.length > 0 ? 3 : 6, max:10, color:"#a78bfa" },
+                { label:"Timing",        val: (() => { const h=new Date(trade.date).getHours(); return h>=9&&h<=11?9:h>=13&&h<=14?7:h>=20||h<=6?3:5; })(), max:10, color:"#f97316" },
+              ].map(m => (
+                <div key={m.label}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                    <span style={{ fontSize:10, color:"#3a4a6a" }}>{m.label}</span>
+                    <span style={{ fontSize:10, color:m.color, fontWeight:700, fontFamily:"monospace" }}>{(m.val/m.max*100).toFixed(0)}%</span>
+                  </div>
+                  <div style={{ height:4, borderRadius:2, background:"#111d30", overflow:"hidden" }}>
+                    <div style={{ width:`${(m.val/m.max)*100}%`, height:"100%", background:`linear-gradient(90deg,${m.color}66,${m.color})`, borderRadius:2 }}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* AI Coach section */}
+          <div style={{ borderRadius:12, background:"rgba(129,140,248,0.05)", border:"1px solid rgba(129,140,248,0.2)", overflow:"hidden" }}>
+            <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(129,140,248,0.1)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:16 }}>✨</span>
+                <span style={{ fontSize:12, fontWeight:700, color:"#818cf8" }}>AI Coach Feedback</span>
+              </div>
+              {!aiReview && (
+                <button onClick={getAIReview} disabled={loading} style={{ padding:"6px 14px", borderRadius:8, border:"none", background:loading?"#1a2035":"linear-gradient(135deg,#4f46e5,#818cf8)", color:loading?"#334155":"#fff", fontSize:11, fontWeight:700, cursor:loading?"not-allowed":"pointer" }}>
+                  {loading ? <span style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ display:"inline-block", width:10, height:10, border:"2px solid #334155", borderTopColor:"#818cf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> Analyzing…</span> : "✨ Get AI Feedback"}
+                </button>
+              )}
+            </div>
+            {aiReview ? (
+              <div style={{ padding:"14px 16px", fontSize:12, color:"#94a3b8", lineHeight:2, whiteSpace:"pre-wrap" }}>
+                {aiReview.split(/\*\*(.*?)\*\*/g).map((part,i) =>
+                  i%2===1 ? <strong key={i} style={{ color:"#e2e8f0", fontWeight:700 }}>{part}</strong> : part
+                )}
+              </div>
+            ) : !loading ? (
+              <div style={{ padding:"14px 16px", fontSize:11, color:"#2e3f5a", textAlign:"center" }}>
+                Get personalised AI coaching feedback on this trade
+              </div>
+            ) : null}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AI Insight Cards for Insights tab ─────────────────────────
+function AIInsightCard({ insight }) {
+  const COLOR = {
+    positive: { bg:"rgba(52,211,153,0.06)",  border:"rgba(52,211,153,0.25)",  text:"#34d399" },
+    warning:  { bg:"rgba(248,113,113,0.06)", border:"rgba(248,113,113,0.25)", text:"#f87171" },
+    neutral:  { bg:"rgba(56,189,248,0.06)",  border:"rgba(56,189,248,0.25)",  text:"#38bdf8" },
+  };
+  const c = COLOR[insight.type] ?? COLOR.neutral;
+
+  return (
+    <div style={{ borderRadius:14, background:c.bg, border:`1px solid ${c.border}`, padding:"16px 18px", position:"relative", overflow:"hidden" }}>
+      {/* Glow */}
+      <div style={{ position:"absolute", top:-20, right:-20, width:80, height:80, borderRadius:"50%", background:`${c.text}08`, pointerEvents:"none" }}/>
+      <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+        <div style={{ width:36, height:36, borderRadius:10, background:`${c.text}15`, border:`1px solid ${c.text}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+          {insight.icon}
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:5, gap:8 }}>
+            <div style={{ fontSize:12, fontWeight:800, color:"#e2e8f0" }}>{insight.title}</div>
+            {insight.metric && (
+              <span style={{ fontSize:10, fontWeight:800, padding:"2px 8px", borderRadius:10, background:`${c.text}15`, color:c.text, flexShrink:0 }}>{insight.metric}</span>
+            )}
+          </div>
+          <div style={{ fontSize:11, color:"#64748b", lineHeight:1.7 }}>{insight.body}</div>
+          {insight.action && (
+            <div style={{ marginTop:8, fontSize:10, fontWeight:700, color:c.text, display:"flex", alignItems:"center", gap:4 }}>
+              → {insight.action}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function generateInsights(trades) {
   if (trades.length < 3) return [];
@@ -2225,24 +2698,10 @@ function InsightsPanel({ trades }) {
         <div style={{ flex:1, height:1, background:"#1a2035" }}/>
       </div>
 
-      {/* Existing rule-based insights */}
+      {/* Existing rule-based insights — now using beautiful AIInsightCard */}
       {insights.length > 0 && (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:10 }}>
-          {insights.map((ins, i) => {
-            const s = SEVERITY_STYLES[ins.type] ?? SEVERITY_STYLES.neutral;
-            return (
-              <div key={i} style={{ borderRadius:10, border:`1px solid ${s.border}`, background:s.bg, padding:"12px 14px" }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-                    <span style={{ fontSize:14 }}>{ins.icon}</span>
-                    <span style={{ fontSize:11, fontWeight:700, color:"#e2e8f0" }}>{ins.title}</span>
-                  </div>
-                  {ins.metric && <span style={{ fontSize:9, fontWeight:700, color:s.badge, background:s.badgeBg, padding:"2px 7px", borderRadius:20, flexShrink:0 }}>{ins.metric}</span>}
-                </div>
-                <p style={{ fontSize:11, color:"#64748b", lineHeight:1.6, margin:0 }}>{ins.body}</p>
-              </div>
-            );
-          })}
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {insights.map((ins, i) => <AIInsightCard key={i} insight={ins}/>)}
         </div>
       )}
 
@@ -4727,8 +5186,12 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
 // ═══════════════════════════════════════════════════════════════
 
 function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, activeAccount }) {
+  const [reviewTrade, setReviewTrade] = useState(null);
+
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:32 }}>
+      {/* AI Trade Review Modal */}
+      {reviewTrade && <AITradeReview trade={reviewTrade} allTrades={trades} onClose={() => setReviewTrade(null)}/>}
 
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
@@ -4741,8 +5204,8 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
           )}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onCSV} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2035", background:"#111827", color:"#94a3b8", fontSize:11, fontWeight:600, cursor:"pointer" }}>
-            <Upload size={11}/> CSV
+          <button onClick={onCSV} disabled={activeAccount?.type === "funded" || activeAccount?.type === "real"} title={activeAccount?.type === "funded" || activeAccount?.type === "real" ? "Broker imports only on funded/real accounts" : ""} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2035", background:"#111827", color: activeAccount?.type === "funded" || activeAccount?.type === "real" ? "#334155" : "#94a3b8", fontSize:11, fontWeight:600, cursor: activeAccount?.type === "funded" || activeAccount?.type === "real" ? "not-allowed" : "pointer", opacity: activeAccount?.type === "funded" || activeAccount?.type === "real" ? 0.5 : 1 }}>
+            <Upload size={11}/> {activeAccount?.type === "funded" || activeAccount?.type === "real" ? "Broker CSV Only" : "CSV"}
           </button>
           <button onClick={onAdd} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
             <Plus size={12}/> Log Trade
@@ -4752,7 +5215,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
 
       {/* Trades */}
       <section>
-        <TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete}/>
+        <TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade}/>
       </section>
 
       {/* Divider */}
@@ -5214,13 +5677,15 @@ function WeeklyChallenges({ trades }) {
   );
 }
 
-function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onAddStrat, onUpgradeAccount }) {
+function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onAddStrat, onUpgradeAccount, username, onClearDemo }) {
   const stats   = useMemo(() => computeStats(trades), [trades]);
   const recent  = useMemo(() => [...trades].sort((a,b)=>b.date-a.date).slice(0,5), [trades]);
   const pnlPos  = stats.totalPnl >= 0;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+      {/* Demo mode banner */}
+      {username && <DemoBanner username={username} onClear={onClearDemo}/>}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
         <div><div style={{ fontSize:20, fontWeight:800, color:"#f1f5f9" }}>Dashboard</div><div style={{ fontSize:11, color:"#475569", marginTop:3 }}>Your trading journal & performance hub</div></div>
         <div style={{ display:"flex", gap:8 }}>
@@ -6554,9 +7019,12 @@ function TradingDashboard({ session, onLogout }) {
   // Trades scoped to active account for display
   const activeTrades = useMemo(() => {
     if (!paperAccts.activeAccount) return trades;
-    // Show all trades that have either this account's id, OR no accountId (legacy)
-    return trades.filter(t => !t.accountId || t.accountId === paperAccts.activeAccount.id);
-  }, [trades, paperAccts.activeAccount]);
+    const id = paperAccts.activeAccount.id;
+    // Strictly filter — only trades tagged with this account's ID
+    // Legacy trades with no accountId go to the first/default account only
+    const isDefault = paperAccts.accounts[0]?.id === id;
+    return trades.filter(t => t.accountId === id || (!t.accountId && isDefault));
+  }, [trades, paperAccts.activeAccount, paperAccts.accounts]);
 
   const NAV_TABS = [
     { id:"dashboard",  label:"Dashboard",    icon:<Activity size={13}/> },
@@ -6571,7 +7039,7 @@ function TradingDashboard({ session, onLogout }) {
       {/* Modals */}
       {(showForm || editTrade) && <TradeForm initial={editTrade} strategies={strategies} onSave={saveTrade} onClose={() => { setShowForm(false); setEditTrade(null); }}/>}
       {showCSV && <CSVUploader onImport={(imported) => setTrades(prev => [...prev, ...imported.map(t => ({ ...t, accountId: paperAccts.activeAccount?.id ?? null }))])} onClose={() => setShowCSV(false)}/>}
-      {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => setShowCSV(true)} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)}/>}
+      {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => setShowCSV(true)} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
       {showShot && (
         <ScreenshotImporter
@@ -6588,43 +7056,75 @@ function TradingDashboard({ session, onLogout }) {
       )}
 
       {/* Top bar */}
+      {/* ── Top nav bar ── */}
       <div style={{ display:"flex", alignItems:"center", height:52, borderBottom:"1px solid #1a2035", background:"#0d1120", flexShrink:0, padding:"0 16px", gap:8, position:"sticky", top:0, zIndex:50 }}>
         {/* Logo */}
-        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginRight:4 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
           <div style={{ width:28, height:28, borderRadius:8, background:"linear-gradient(135deg,#0369a1,#38bdf8)", display:"flex", alignItems:"center", justifyContent:"center" }}><BookOpen size={14} style={{ color:"#fff" }}/></div>
-          <span style={{ fontSize:14, fontWeight:800, color:"#f1f5f9" }}>Nexyru</span>
+          <span style={{ fontSize:14, fontWeight:800, color:"#f1f5f9" }} className="hide-mobile">Nexyru</span>
         </div>
-        {/* Nav tabs */}
-        <div style={{ display:"flex", alignItems:"center", gap:1, flex:1, overflowX:"auto" }}>
+
+        {/* Nav tabs — hidden on mobile (use bottom nav instead) */}
+        <div style={{ display:"flex", alignItems:"center", gap:1, flex:1, overflowX:"auto" }} className="hide-mobile">
           {NAV_TABS.map(({ id, label, icon }) => (
             <button key={id} onClick={()=>setTab(id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 10px", borderRadius:7, fontSize:11, fontWeight:600, cursor:"pointer", border:"none", whiteSpace:"nowrap", background:tab===id?"rgba(56,189,248,0.12)":"transparent", color:tab===id?"#38bdf8":"#64748b" }}>
               {icon}{label}
             </button>
           ))}
+          {isDemoMode(session.username) && (
+            <span style={{ marginLeft:6, fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"rgba(251,191,36,0.12)", border:"1px solid rgba(251,191,36,0.25)", color:"#fbbf24", whiteSpace:"nowrap" }}>
+              🎮 DEMO MODE
+            </span>
+          )}
         </div>
+
+        {/* Mobile: current tab label */}
+        <div style={{ flex:1 }} className="show-mobile">
+          <span style={{ fontSize:13, fontWeight:700, color:"#e2e8f0" }}>
+            {NAV_TABS.find(t => t.id === tab)?.label ?? "Nexyru"}
+          </span>
+          {isDemoMode(session.username) && <span style={{ marginLeft:8, fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:10, background:"rgba(251,191,36,0.15)", border:"1px solid rgba(251,191,36,0.3)", color:"#fbbf24" }}>DEMO</span>}
+        </div>
+
         {/* Right side */}
         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
           <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
-          <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(56,189,248,0.1)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer" }}><Plus size={12}/> Add</button>
-
-          {/* Platform dropdown */}
-          <PlatformDropdown/>
-
-          {/* User pill */}
+          <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(56,189,248,0.1)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+            <Plus size={12}/><span className="hide-mobile"> Add</span>
+          </button>
+          <span className="hide-mobile"><PlatformDropdown/></span>
+          {/* User avatar — always visible */}
           <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #1a2035", background:"#111827" }}>
             <a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}>
               <div style={{ width:22, height:22, borderRadius:"50%", background:"linear-gradient(135deg,#0369a1,#38bdf8)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:"#fff" }}>{session.displayName[0].toUpperCase()}</div>
-              <span style={{ fontSize:11, color:"#94a3b8", fontWeight:600 }}>{session.displayName}</span>
+              <span style={{ fontSize:11, color:"#94a3b8", fontWeight:600 }} className="hide-mobile">{session.displayName}</span>
             </a>
-            <button onClick={onLogout} title="Sign out" style={{ background:"none", border:"none", color:"#475569", cursor:"pointer", display:"flex", padding:2 }}><LogOut size={12}/></button>
+            <button onClick={onLogout} title="Sign out" style={{ background:"none", border:"none", color:"#475569", cursor:"pointer", display:"flex", padding:2 }} className="hide-mobile"><LogOut size={12}/></button>
           </div>
         </div>
       </div>
 
-      {/* Page content */}
-      <div style={{ flex:1, overflowY:"auto" }}>
-        <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"24px" }}>
-          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} onUpgradeAccount={(nextSize) => {
+      {/* ── Page content ── */}
+      <div style={{ flex:1, overflowY:"auto", paddingBottom:60 }}>
+        <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"16px" }}>
+
+      {/* ── Bottom nav — mobile only ── */}
+      <div className="show-mobile" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0d1120", borderTop:"1px solid #1a2035", display:"flex", alignItems:"center", zIndex:50 }}>
+        {NAV_TABS.map(({ id, label, icon }) => (
+          <button key={id} onClick={()=>setTab(id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:tab===id?"#38bdf8":"#475569", fontSize:9, fontWeight:700 }}>
+            <span style={{ fontSize:18 }}>{id==="dashboard"?"🏠":id==="journal"?"📝":id==="stratlab"?"⚗️":"✨"}</span>
+            {label}
+          </button>
+        ))}
+        <button onClick={()=>setShowHub(true)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:9, fontWeight:700 }}>
+          <span style={{ fontSize:18 }}>➕</span>Add
+        </button>
+      </div>
+          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
+              setDemoMode(session.username, false);
+              saveUserTrades(session.username, []);
+              setTrades([]);
+            }} onUpgradeAccount={(nextSize) => {
               paperAccts.addAccount(`$${(nextSize/1000).toFixed(0)}k Paper Account`, "paper", nextSize);
             }}/>}
           {tab==="journal" && (
@@ -6672,6 +7172,12 @@ function TradingDashboard({ session, onLogout }) {
         a:hover { opacity: 0.85; }
         button { transition: opacity 0.15s, transform 0.1s; }
         button:active { transform: scale(0.97); }
+        .hide-mobile { display: flex !important; }
+        .show-mobile { display: none !important; }
+        @media (max-width: 640px) {
+          .hide-mobile { display: none !important; }
+          .show-mobile { display: flex !important; }
+        }
       `}</style>
     </div>
   );
