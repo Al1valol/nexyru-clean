@@ -346,30 +346,52 @@ function seedStarterData(username) {
   setDemoMode(username, true);
 }
 
-// ── Demo mode banner ───────────────────────────────────────────
+// ── Demo mode banner with toggle ──────────────────────────────
 function DemoBanner({ username, onClear }) {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed || !isDemoMode(username)) return null;
+  const [demo, setDemo]       = useState(() => isDemoMode(username));
+  const [confirming, setConf] = useState(false);
+
+  if (!demo) return null;
+
+  const handleSwitch = () => {
+    if (!confirming) { setConf(true); return; }
+    onClear();
+    setDemo(false);
+    setConf(false);
+  };
 
   return (
-    <div style={{ margin:"0 0 16px", padding:"12px 16px", borderRadius:12, background:"linear-gradient(135deg,rgba(251,191,36,0.08),rgba(249,115,22,0.06))", border:"1px solid rgba(251,191,36,0.3)", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8, flex:1, minWidth:200 }}>
-        <span style={{ fontSize:16 }}>🎮</span>
+    <div style={{ padding:"14px 18px", borderRadius:14, background:"linear-gradient(135deg,rgba(251,191,36,0.07),rgba(249,115,22,0.05))", border:"1px solid rgba(251,191,36,0.25)", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, flex:1, minWidth:200 }}>
+        <div style={{ width:36, height:36, borderRadius:10, background:"rgba(251,191,36,0.12)", border:"1px solid rgba(251,191,36,0.25)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🎮</div>
         <div>
-          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:3 }}>
             <span style={{ fontSize:12, fontWeight:800, color:"#fbbf24" }}>Demo Mode</span>
-            <span style={{ fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:10, background:"rgba(251,191,36,0.15)", border:"1px solid rgba(251,191,36,0.3)", color:"#fbbf24" }}>SAMPLE DATA</span>
+            <span style={{ fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:10, background:"rgba(251,191,36,0.15)", border:"1px solid rgba(251,191,36,0.25)", color:"#fbbf24" }}>SAMPLE DATA</span>
           </div>
-          <div style={{ fontSize:11, color:"#64748b" }}>You're seeing sample trades to show what Nexyru looks like. Replace with your real trading history when ready.</div>
+          <div style={{ fontSize:11, color:"#64748b" }}>
+            {confirming ? "⚠️ This will delete all demo trades. Ready to switch?" : "You're viewing sample trades. Switch to real mode to log your own."}
+          </div>
         </div>
       </div>
-      <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-        <button onClick={() => { onClear(); setDismissed(true); }} style={{ padding:"7px 14px", borderRadius:9, border:"1px solid rgba(52,211,153,0.3)", background:"rgba(52,211,153,0.08)", color:"#34d399", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-          🔄 Replace with my data
-        </button>
-        <button onClick={() => setDismissed(true)} style={{ padding:"7px 10px", borderRadius:9, border:"1px solid #1a2035", background:"transparent", color:"#475569", fontSize:11, cursor:"pointer" }}>
-          Dismiss
-        </button>
+
+      {/* Toggle switch */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+        <span style={{ fontSize:11, color:"#64748b" }}>Demo</span>
+        <div onClick={handleSwitch} style={{ width:44, height:24, borderRadius:12, background:confirming?"rgba(52,211,153,0.15)":"rgba(251,191,36,0.15)", border:`1px solid ${confirming?"rgba(52,211,153,0.4)":"rgba(251,191,36,0.3)"}`, cursor:"pointer", position:"relative", transition:"all 0.2s" }}>
+          <div style={{ position:"absolute", top:3, left: confirming ? 22 : 3, width:16, height:16, borderRadius:"50%", background: confirming ? "#34d399" : "#fbbf24", transition:"left 0.2s", boxShadow:`0 0 8px ${confirming?"rgba(52,211,153,0.5)":"rgba(251,191,36,0.4)"}` }}/>
+        </div>
+        <span style={{ fontSize:11, color: confirming?"#34d399":"#475569" }}>Real</span>
+        {confirming && (
+          <button onClick={handleSwitch} style={{ padding:"5px 12px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0ea5a0,#34d399)", color:"#000", fontSize:11, fontWeight:800, cursor:"pointer" }}>
+            Confirm →
+          </button>
+        )}
+        {confirming && (
+          <button onClick={() => setConf(false)} style={{ padding:"5px 10px", borderRadius:8, border:"1px solid #1a2035", background:"transparent", color:"#475569", fontSize:11, cursor:"pointer" }}>
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2609,8 +2631,8 @@ function InsightsPanel({ trades }) {
     try {
       const summary = {
         totalTrades: trades.length,
-        winRate: +(trades.filter(t=>t.pnl>0).length/trades.length*100).toFixed(1),
-        totalPnl: +trades.reduce((s,t)=>s+t.pnl,0).toFixed(4),
+        winRate: trades.length > 0 ? +(trades.filter(t=>(t.pnl??0)>0).length/trades.length*100).toFixed(1) : 0,
+        totalPnl: +trades.reduce((s,t)=>s+(t.pnl??0),0).toFixed(4),
         patterns: patterns.slice(0,5).map(p => `${p.title}: ${p.body}`),
         topInsights: insights.slice(0,3).map(i=>`${i.title}: ${i.body}`),
         strategies: insightsByStrategy(trades).slice(0,3),
