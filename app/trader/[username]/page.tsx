@@ -150,7 +150,7 @@ export default function TraderProfile(){
       await Promise.all(allStrats.map(async s=>{const d=await fetch(`/api/follow?strategy_id=${s.id}`).then(r=>r.json());counts[s.id]=d.count??0;}));
       setFollowerCounts(counts);
 
-      if(!allStrats.length){setNotFound(true);setLoading(false);return;}
+      // Allow profiles without published strategies
 
       let winRate=0,maxDD=0,totalPnl=0,total=0,bestStreak=0;
       let currentWinStreak=0,currentTradeStreak=0,bestTradeStreak=0,verifiedTrades=0;
@@ -192,7 +192,7 @@ export default function TraderProfile(){
       }
       const monthlyReturn=realTrades.filter(t=>t.date>=Date.now()-30*86400000).reduce((s,t)=>s+(t.pnl??0),0);
       setTrades(realTrades);
-      setStats({totalTrades:total,verifiedTrades,winRate,avgRR:parseFloat((winRate>50?1.5+(winRate-50)/30:0.8).toFixed(2)),consistency:calcConsistency(winRate,maxDD,total),maxDrawdown:parseFloat(maxDD.toFixed(1)),totalPnl:parseFloat(totalPnl.toFixed(2)),monthlyReturn:parseFloat(monthlyReturn.toFixed(2)),bestStreak,currentWinStreak,currentTradeStreak,bestTradeStreak,joinDate:allStrats[0].created_at,equityCurve});
+      setStats({totalTrades:total,verifiedTrades,winRate,avgRR:parseFloat((winRate>50?1.5+(winRate-50)/30:0.8).toFixed(2)),consistency:calcConsistency(winRate,maxDD,total),maxDrawdown:parseFloat(maxDD.toFixed(1)),totalPnl:parseFloat(totalPnl.toFixed(2)),monthlyReturn:parseFloat(monthlyReturn.toFixed(2)),bestStreak,currentWinStreak,currentTradeStreak,bestTradeStreak,joinDate:allStrats[0]?.created_at??new Date().toISOString(),equityCurve});
       setStrategies(allStrats);
     }catch{setNotFound(true);}
     finally{setLoading(false);}
