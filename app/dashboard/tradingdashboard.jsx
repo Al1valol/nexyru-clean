@@ -1602,6 +1602,7 @@ function TradeDetail({ trade, onClose }) {
   }, [trade.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (trade.source === "demo") return; // Skip API calls for demo trades
     fetch(`/api/trade-notes/notes?trade_id=${trade.id}`).then(r => r.json()).then(d => {
       if (d) {
         setTradeNotes(d);
@@ -1808,8 +1809,11 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
   // Load review notes for all visible trades
   useEffect(() => {
     if (!trades.length) return;
+    // Skip API calls for demo trades entirely
+    const realTrades = trades.filter(t => t.source !== "demo");
+    if (!realTrades.length) return;
     // Fetch each trade's notes — stagger to avoid hammering the API
-    trades.slice(0, 50).forEach((t, i) => {
+    realTrades.slice(0, 50).forEach((t, i) => {
       setTimeout(() => {
         fetch(`/api/trade-notes/notes?trade_id=${t.id}`)
           .then(r => r.json())
@@ -1839,11 +1843,13 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
       {viewing && <TradeDetail trade={viewing} onClose={() => {
-          // Refresh review for this trade when modal closes
-          fetch(`/api/trade-notes/notes?trade_id=${viewing.id}`)
-            .then(r => r.json())
-            .then(d => { if (d) setReviewMap(prev => ({ ...prev, [viewing.id]: d })); })
-            .catch(() => {});
+          // Refresh review for this trade when modal closes (skip for demo trades)
+          if (viewing.source !== "demo") {
+            fetch(`/api/trade-notes/notes?trade_id=${viewing.id}`)
+              .then(r => r.json())
+              .then(d => { if (d) setReviewMap(prev => ({ ...prev, [viewing.id]: d })); })
+              .catch(() => {});
+          }
           setViewing(null);
         }}/>}
       <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
@@ -1961,9 +1967,9 @@ function MistakeInsightsWidget() {
 
   useEffect(() => {
     fetch("/api/analytics/mistakes")
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error("API error"); return r.json(); })
       .then(d => { if (d.mistakes) setMistakes(d.mistakes); })
-      .catch(() => {})
+      .catch(() => {}) // Silently fail — not critical
       .finally(() => setLoading(false));
   }, []);
 
