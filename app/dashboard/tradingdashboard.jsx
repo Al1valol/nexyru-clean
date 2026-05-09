@@ -262,9 +262,26 @@ const setDemoMode   = (u, v) => v
   : localStorage.removeItem(`${DEMO_FLAG_KEY}_${u}`);
 
 function generateStarterData(username) {
-  const PAIRS     = ["BTC-USD","ETH-USD","NQ1!","ES1!","MNQ1!","MES1!","SOL-USD","GC1!"];
-  const STRATEGIES= ["Breakout Momentum","VWAP Reversal","EMA Cross","Support & Resistance","Opening Range"];
-  const EMOTIONS  = ["calm","confident","fomo","calm","calm","confident","fear","calm","calm","confident"];
+  const PAIRS      = ["BTC-USD","ETH-USD","NQ1!","ES1!","MNQ1!","MES1!","SOL-USD","GC1!"];
+  const STRATEGIES = ["Breakout Momentum","VWAP Reversal","EMA Cross","Support & Resistance","Opening Range"];
+  const EMOTIONS   = ["calm","confident","calm","calm","confident","fomo","calm","fear","confident","calm","neutral","confident","calm","fomo"];
+  const WIN_NOTES  = [
+    "Textbook setup — waited for confirmation before entering",
+    "Clean breakout above resistance, held through first pullback",
+    "Followed the plan perfectly, took profit at target",
+    "Patient entry on the retest, great RR on this one",
+    "Strong momentum, sized in properly",
+    "Was calm and focused, no hesitation on entry",
+  ];
+  const LOSS_NOTES = [
+    "Entered too early, didn't wait for confirmation",
+    "Chased the move after missing the ideal entry",
+    "Stopped out, market reversed sharply at open",
+    "Should have waited for the retest, got impatient",
+    "Sized too big given the setup quality",
+    "Revenge traded after previous loss — need to work on this",
+    "FOMO entry at the top, learned my lesson",
+  ];
 
   const now    = Date.now();
   const DAY_MS = 86400000;
@@ -273,27 +290,26 @@ function generateStarterData(username) {
   function pick(arr)     { return arr[Math.floor(Math.random() * arr.length)]; }
   function roundTo(n, d) { return parseFloat(n.toFixed(d)); }
 
-  // Generate 14 trades over last 30 days with 55-70% win rate
   const trades = [];
   const winTargetPct = rnd(0.55, 0.70);
   let wins = 0;
 
   for (let i = 0; i < 14; i++) {
-    const daysAgo    = rnd(0, 30);
+    const daysAgo    = rnd(0.5, 29);
     const date       = now - daysAgo * DAY_MS;
     const pair       = pick(PAIRS);
     const strategy   = pick(STRATEGIES);
     const type       = Math.random() > 0.45 ? "long" : "short";
-    const isCrypto   = pair.includes("USD") || pair.includes("SOL");
+    const isCrypto   = pair.includes("USD");
     const basePrice  = isCrypto
       ? pair.includes("BTC") ? rnd(62000, 71000) : pair.includes("ETH") ? rnd(3100, 3800) : rnd(120, 185)
-      : pair.includes("NQ")  ? rnd(17800, 19200) : pair.includes("ES") ? rnd(5050, 5380) : rnd(1950, 2150);
+      : pair.includes("NQ") ? rnd(17800, 19200) : pair.includes("ES") ? rnd(5050, 5380) : rnd(1950, 2150);
 
     const shouldWin  = (wins / (i + 1)) < winTargetPct && Math.random() > 0.3;
-    const size       = isCrypto ? roundTo(rnd(0.05, 0.5), 3) : rnd(1, 3) | 0;
+    const size       = isCrypto ? roundTo(rnd(0.05, 0.5), 3) : Math.max(1, Math.round(rnd(1, 3)));
     const movePct    = shouldWin ? rnd(0.4, 1.8) : rnd(0.2, 0.9);
     const moveAmt    = basePrice * (movePct / 100);
-    const entryPrice = roundTo(basePrice, isCrypto ? 2 : 2);
+    const entryPrice = roundTo(basePrice, 2);
     const exitPrice  = shouldWin
       ? roundTo(entryPrice + (type === "long" ? moveAmt : -moveAmt), 2)
       : roundTo(entryPrice + (type === "long" ? -moveAmt : moveAmt), 2);
@@ -303,26 +319,32 @@ function generateStarterData(username) {
 
     if (pnl > 0) wins++;
 
+    // Psychology data
+    const emotion      = shouldWin ? pick(["calm","calm","confident","confident","neutral"]) : pick(["fomo","fear","calm","neutral","calm"]);
+    const confidence   = shouldWin ? Math.round(rnd(6, 9)) : Math.round(rnd(3, 7));
+    const rulesFollowed= shouldWin ? Math.random() > 0.15 : Math.random() > 0.6;
+    const notes        = shouldWin ? pick(WIN_NOTES) : pick(LOSS_NOTES);
+
     trades.push({
-      id:         `demo_${i}_${Date.now()}`,
+      id:          `demo_${i}_${Date.now()}`,
       pair, symbol: pair.replace("/","").replace("1!","").replace("-",""),
       type, entryPrice, exitPrice, size,
-      date:       date - rnd(0, 8 * 3600000), // vary by time of day
+      date:        date - rnd(0, 8 * 3600000),
       strategy,
-      notes:      pick(["Textbook setup","Clean break","Took profit early","Held through pullback","Followed plan",""]),
-      stopLoss:   roundTo(entryPrice * (type === "long" ? 0.993 : 1.007), 2),
-      takeProfit: roundTo(entryPrice * (type === "long" ? 1.018 : 0.982), 2),
-      tags:       ["Demo"],
-      confidence: Math.round(rnd(4, 9)),
-      source:     "demo",
+      notes,
+      emotion,
+      confidence,
+      rulesFollowed,
+      stopLoss:    roundTo(entryPrice * (type === "long" ? 0.993 : 1.007), 2),
+      takeProfit:  roundTo(entryPrice * (type === "long" ? 1.018 : 0.982), 2),
+      tags:        ["Demo"],
+      source:      "demo",
       pnl, pnlPct,
-      accountId:  null,
+      accountId:   null,
     });
   }
 
-  // Sort oldest first
-  trades.sort((a,b) => a.date - b.date);
-
+  trades.sort((a, b) => a.date - b.date);
   return trades;
 }
 
