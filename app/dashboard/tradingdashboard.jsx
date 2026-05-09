@@ -120,26 +120,26 @@ async function rehydrateScreenshot(trade) {
 }
 
 function computeStats(trades) {
-  if (!trades.length) return { totalTrades:0, wins:0, losses:0, winRate:0, totalPnl:0, bestTrade:0, worstTrade:0, currentStreak:0, avgWin:0, avgLoss:0, profitFactor:0 };
+  if (!trades || !trades.length) return { totalTrades:0, wins:0, losses:0, winRate:0, totalPnl:0, bestTrade:0, worstTrade:0, currentStreak:0, avgWin:0, avgLoss:0, profitFactor:0 };
   const sorted  = [...trades].sort((a,b) => a.date - b.date);
-  const wins    = sorted.filter(t => t.pnl > 0);
-  const losses  = sorted.filter(t => t.pnl < 0);
-  const totalPnl = +sorted.reduce((s,t) => s + t.pnl, 0).toFixed(4);
+  const wins    = sorted.filter(t => (t.pnl ?? 0) > 0);
+  const losses  = sorted.filter(t => (t.pnl ?? 0) < 0);
+  const totalPnl = +sorted.reduce((s,t) => s + (t.pnl ?? 0), 0).toFixed(4);
   let streak = 0;
   for (let i = sorted.length - 1; i >= 0; i--) {
-    const w = sorted[i].pnl > 0;
+    const w = (sorted[i].pnl ?? 0) > 0;
     if (streak === 0)          streak = w ? 1 : -1;
     else if (streak > 0 && w)  streak++;
     else if (streak < 0 && !w) streak--;
     else break;
   }
-  const grossWin  = wins.reduce((s,t) => s + t.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((s,t) => s + t.pnl, 0));
+  const grossWin  = wins.reduce((s,t) => s + (t.pnl ?? 0), 0);
+  const grossLoss = Math.abs(losses.reduce((s,t) => s + (t.pnl ?? 0), 0));
   return {
     totalTrades: sorted.length, wins: wins.length, losses: losses.length,
     winRate: +((wins.length / sorted.length) * 100).toFixed(1), totalPnl,
-    bestTrade:  wins.length   ? Math.max(...wins.map(t=>t.pnl))   : 0,
-    worstTrade: losses.length ? Math.min(...losses.map(t=>t.pnl)) : 0,
+    bestTrade:  wins.length   ? Math.max(...wins.map(t => t.pnl ?? 0))   : 0,
+    worstTrade: losses.length ? Math.min(...losses.map(t => t.pnl ?? 0)) : 0,
     currentStreak: streak,
     avgWin:  wins.length   ? +(grossWin/wins.length).toFixed(4)   : 0,
     avgLoss: losses.length ? +(grossLoss/losses.length).toFixed(4) : 0,
@@ -151,7 +151,7 @@ function buildCumPnl(trades) {
   const sorted = [...trades].sort((a,b) => a.date - b.date);
   let cum = 0;
   return sorted.map(t => ({
-    date: t.date, cumPnl: +(cum += t.pnl).toFixed(4),
+    date: t.date, cumPnl: +(cum += (t.pnl ?? 0)).toFixed(4),
     label: new Date(t.date).toLocaleDateString("en-US", { month:"short", day:"numeric" }),
   }));
 }
@@ -327,6 +327,13 @@ function generateStarterData(username) {
 }
 
 function seedStarterData(username) {
+  // Clear bad old demo data (v1 fix)
+  const badKey = `nexyru_demo_fixed_v2_${username}`;
+  if (!localStorage.getItem(badKey)) {
+    localStorage.removeItem(`tradedesk_trades_${username}_v1`);
+    localStorage.removeItem(`${DEMO_FLAG_KEY}_${username}`);
+    localStorage.setItem(badKey, '1');
+  }
   // Don't re-seed if already seeded
   if (isDemoMode(username)) return;
   const existing = loadUserTrades(username);
@@ -2871,6 +2878,7 @@ function usePaperAccounts(username) {
   const [accounts, setAccounts] = useState(() => {
     const saved = loadPaperAccounts(username);
     if (saved && saved.length) return saved;
+    // Create default account for new or existing users with no accounts
     const def = makeDefaultAccount();
     savePaperAccounts(username, [def]);
     return [def];
@@ -2884,6 +2892,14 @@ function usePaperAccounts(username) {
     if (id) saveActiveAccountId(username, id);
     return id;
   });
+
+  // Ensure activeId is always valid
+  useEffect(() => {
+    if (!activeId && accounts.length > 0) {
+      saveActiveAccountId(username, accounts[0].id);
+      setActiveIdState(accounts[0].id);
+    }
+  }, [accounts, activeId, username]);
 
   const persist = useCallback((next) => {
     savePaperAccounts(username, next);
@@ -7018,10 +7034,8 @@ function TradingDashboard({ session, onLogout }) {
 
   // Trades scoped to active account for display
   const activeTrades = useMemo(() => {
-    if (!paperAccts.activeAccount) return trades;
+    if (!paperAccts.activeAccount || paperAccts.accounts.length === 0) return trades;
     const id = paperAccts.activeAccount.id;
-    // Strictly filter — only trades tagged with this account's ID
-    // Legacy trades with no accountId go to the first/default account only
     const isDefault = paperAccts.accounts[0]?.id === id;
     return trades.filter(t => t.accountId === id || (!t.accountId && isDefault));
   }, [trades, paperAccts.activeAccount, paperAccts.accounts]);
