@@ -199,6 +199,28 @@ function computeTraderStats(username) {
 // ═══════════════════════════════════════════════════════════════
 
 function useAuth() {
+  // Check for Supabase OAuth token in URL hash (from Google sign-in)
+  if (typeof window !== 'undefined') {
+    const hash = window.location.hash;
+    if (hash.includes('access_token=')) {
+      const params = new URLSearchParams(hash.slice(1));
+      const accessToken = params.get('access_token');
+      if (accessToken) {
+        try {
+          // Decode JWT to get user info
+          const payload = JSON.parse(atob(accessToken.split('.')[1]));
+          const email = payload.email || '';
+          const username = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+          const displayName = payload.user_metadata?.full_name || username;
+          // Store session in localStorage for compatibility
+          const session = { username, displayName, email, googleAuth: true };
+          localStorage.setItem('tradedesk_session_v1', JSON.stringify(session));
+          // Clean the URL
+          window.history.replaceState(null, '', '/dashboard');
+        } catch(e) {}
+      }
+    }
+  }
   const [session,  setSession]  = useState(null);
   const [hydrated, setHydrated] = useState(false);
 
