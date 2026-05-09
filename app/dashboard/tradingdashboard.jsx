@@ -327,19 +327,21 @@ function generateStarterData(username) {
 }
 
 function seedStarterData(username) {
-  // Clear bad old demo data (v1 fix)
-  const badKey = `nexyru_demo_fixed_v2_${username}`;
-  if (!localStorage.getItem(badKey)) {
-    localStorage.removeItem(`tradedesk_trades_${username}_v1`);
-    localStorage.removeItem(`${DEMO_FLAG_KEY}_${username}`);
-    localStorage.setItem(badKey, '1');
-  }
-  // Don't re-seed if already seeded
   if (isDemoMode(username)) return;
   const existing = loadUserTrades(username);
   if (existing.length > 0) return;
 
-  const trades = generateStarterData(username);
+  // Get or create default account first
+  let accts = loadPaperAccounts(username);
+  if (!accts || accts.length === 0) {
+    const def = makeDefaultAccount();
+    savePaperAccounts(username, [def]);
+    saveActiveAccountId(username, def.id);
+    accts = [def];
+  }
+
+  const accountId = accts[0].id;
+  const trades = generateStarterData(username).map(t => ({ ...t, accountId }));
   saveUserTrades(username, trades);
   setDemoMode(username, true);
 }
