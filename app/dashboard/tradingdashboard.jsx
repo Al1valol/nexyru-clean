@@ -799,6 +799,62 @@ function TradeForm({ onSave, onClose, initial, strategies }) {
 
 // ═══════════════════════════════════════════════════════════════
 //  CSV UPLOADER
+
+// ── Reconstruction wrapper ─────────────────────────────────────
+function parseAndReconstructCSV(text) {
+  const result = parseCSV(text);
+  const { trades, broker } = result;
+
+  const lines = text.trim().split("\n");
+  const headers = (lines[0] ?? "").split(",").map(h => h.trim().replace(/^"|"$/g,"").toLowerCase());
+  const isExecution = headers.some(h => ["filledprice","boughtprice","transacttime","filltime"].some(k => h.includes(k)));
+
+  if (!isExecution) {
+    return { trades, broker, isExecution: false, stats: { totalRows: trades.length, parsed: trades.length, reconstructed: trades.length, scaleIns: 0, scaleOuts: 0 } };
+  }
+
+  // Execution-level fills — reconstruct into complete trades
+  const reconstructed = reconstructTradesFromFills(trades);
+  return {
+    trades: reconstructed, broker, isExecution: true,
+    stats: { totalRows: trades.length, parsed: trades.length, reconstructed: reconstructed.length,
+      scaleIns:  reconstructed.filter(t => t.tags?.includes("Scale-In")).length,
+      scaleOuts: reconstructed.filter(t => t.tags?.includes("Scale-Out")).length },
+  };
+}
+
+function reconstructTradesFromFills(fills) {
+  const bySymbol = {};
+  fills.forEach(f => { if (!bySymbol[f.pair]) bySymbol[f.pair] = []; bySymbol[f.pair].push(f); });
+  const trades = [];
+  for (const [, symFills] of Object.entries(bySymbol)) {
+    const sorted = [...symFills].sort((a, b) => a.date - b.date);
+    let open = null;
+    for (const fill of sorted) {
+      const isBuy = fill.type === "long";
+      if (!open) { open = { direction: fill.type, fills: [fill], qty: fill.size, wpx: fill.entryPrice * fill.size }; continue; }
+      const adding = (open.direction === "long" && isBuy) || (open.direction === "short" && !isBuy);
+      if (adding) { open.fills.push(fill); open.qty += fill.size; open.wpx += fill.entryPrice * fill.size; }
+      else {
+        const avgEntry = open.wpx / open.qty;
+        const avgExit  = fill.entryPrice || 0;
+        const closeQty = Math.min(fill.size, open.qty);
+        const grossPnl = open.direction === "long" ? (avgExit - avgEntry) * closeQty : (avgEntry - avgExit) * closeQty;
+        const tags = ["Reconstructed", ...(open.fills.length > 1 ? ["Scale-In"] : [])];
+        trades.push({ ...open.fills[0], id: `rec_${open.fills[0].date}_${Math.random().toString(36).slice(2,5)}`,
+          type: open.direction, entryPrice: +avgEntry.toFixed(5), exitPrice: +avgExit.toFixed(5), size: closeQty,
+          pnl: +grossPnl.toFixed(4), pnlPercent: avgEntry > 0 ? +((avgExit-avgEntry)/avgEntry*100*(open.direction==="long"?1:-1)).toFixed(3) : 0,
+          source: "broker_import", tags,
+          notes: `${open.fills.length > 1 ? `Scale-in: ${open.fills.length} entries · ` : ""}Hold: ${Math.round((fill.date - open.fills[0].date)/60000)}m`,
+        });
+        if (open.qty - closeQty < 0.0001) open = null;
+        else { open.qty -= closeQty; open.wpx -= avgEntry * closeQty; }
+      }
+    }
+    if (open) trades.push({ ...open.fills[0], id: `rec_open_${Date.now()}`, tags: ["Open Position", "Reconstructed"], source: "broker_import" });
+  }
+  return trades;
+}
 // ═══════════════════════════════════════════════════════════════
 
 // ── Broker CSV format detection ────────────────────────────────
@@ -977,11 +1033,16 @@ function CSVUploader({ onImport, onClose }) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const { trades, broker: detectedBroker } = parseCSV(ev.target.result);
+        const text = ev.target.result;
+        const { trades, broker: detectedBroker, isExecution, stats } = parseAndReconstructCSV(text);
         if (!trades.length) { setError("No valid trades found. Check your CSV columns."); return; }
         setPreview(trades);
         setBroker(detectedBroker);
         setShots({}); setError("");
+        // Show reconstruction info if execution-level data
+        if (isExecution && stats.reconstructed < stats.totalRows) {
+          console.log(`[Nexyru] Reconstructed ${stats.reconstructed} trades from ${stats.totalRows} raw fills`);
+        }
       } catch (err) { setError("Failed to parse CSV: " + err.message); }
     };
     reader.readAsText(file);
@@ -5329,9 +5390,9 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
           )}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onCSV} disabled={activeAccount?.type === "funded" || activeAccount?.type === "real"} title={activeAccount?.type === "funded" || activeAccount?.type === "real" ? "Broker imports only on funded/real accounts" : ""} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2035", background:"#111827", color: activeAccount?.type === "funded" || activeAccount?.type === "real" ? "#334155" : "#94a3b8", fontSize:11, fontWeight:600, cursor: activeAccount?.type === "funded" || activeAccount?.type === "real" ? "not-allowed" : "pointer", opacity: activeAccount?.type === "funded" || activeAccount?.type === "real" ? 0.5 : 1 }}>
-            <Upload size={11}/> {activeAccount?.type === "funded" || activeAccount?.type === "real" ? "Broker CSV Only" : "CSV"}
-          </button>
+          <a href="/import" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:"rgba(56,189,248,0.06)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer", textDecoration:"none" }}>
+            <Upload size={11}/> Import CSV
+          </a>
           <button onClick={onAdd} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
             <Plus size={12}/> Log Trade
           </button>
@@ -5397,6 +5458,7 @@ function PlatformDropdown() {
   const items = [
       { href:"/leaderboard", emoji:"🏆", label:"Leaderboard", color:"#818cf8" },
       { href:"/earnings",    emoji:"💰", label:"Earnings",    color:"#22d3a5" },
+      { href:"/import",      emoji:"📥", label:"Import",      color:"#38bdf8" },
     ];
 
   return (
