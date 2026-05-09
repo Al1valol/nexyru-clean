@@ -2638,8 +2638,15 @@ function InsightsPanel({ trades }) {
   const [aiInsight, setAiInsight] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError,   setAiError]   = useState("");
-  const insights  = useMemo(() => generateInsights(trades), [trades]);
-  const patterns  = useMemo(() => detectPatterns(trades),   [trades]);
+  const [crashed,   setCrashed]   = useState(false);
+
+  const insights = useMemo(() => {
+    try { return generateInsights(trades); } catch { return []; }
+  }, [trades]);
+
+  const patterns = useMemo(() => {
+    try { return detectPatterns(trades); } catch { return []; }
+  }, [trades]);
 
   const generateAI = async () => {
     setAiLoading(true); setAiError(""); setAiInsight("");
@@ -2650,7 +2657,7 @@ function InsightsPanel({ trades }) {
         totalPnl: +trades.reduce((s,t)=>s+(t.pnl??0),0).toFixed(4),
         patterns: patterns.slice(0,5).map(p => `${p.title}: ${p.body}`),
         topInsights: insights.slice(0,3).map(i=>`${i.title}: ${i.body}`),
-        strategies: insightsByStrategy(trades).slice(0,3),
+        strategies: (() => { try { return insightsByStrategy(trades).slice(0,3); } catch { return []; } })(),
       };
       const res  = await fetch("/api/generate-insights", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ summary }) });
       const data = await res.json();
@@ -2671,6 +2678,15 @@ function InsightsPanel({ trades }) {
       <div style={{ fontSize:32, marginBottom:12 }}>🔍</div>
       <div style={{ fontSize:14, fontWeight:700, color:"#475569", marginBottom:6 }}>Not enough data yet</div>
       Log at least 5 trades to unlock pattern detection
+    </div>
+  );
+
+  if (crashed) return (
+    <div style={{ padding:"32px 24px", borderRadius:12, border:"1px dashed rgba(248,113,113,0.3)", textAlign:"center" }}>
+      <div style={{ fontSize:32, marginBottom:12 }}>⚠️</div>
+      <div style={{ fontSize:14, fontWeight:700, color:"#f87171", marginBottom:6 }}>Couldn't load insights</div>
+      <div style={{ fontSize:12, color:"#475569", marginBottom:16 }}>Try refreshing or logging more trades</div>
+      <button onClick={() => setCrashed(false)} style={{ padding:"8px 18px", borderRadius:9, border:"1px solid rgba(56,189,248,0.3)", background:"transparent", color:"#38bdf8", fontSize:12, cursor:"pointer" }}>Try again</button>
     </div>
   );
 
