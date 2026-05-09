@@ -1049,7 +1049,7 @@ function CSVUploader({ onImport, onClose }) {
                           <td style={{ ...td, color:t.type==="long"?"#34d399":"#f87171" }}>{t.type.toUpperCase()}</td>
                           <td style={td}>{t.entryPrice}</td>
                           <td style={td}>{t.exitPrice}</td>
-                          <td style={{ ...td, color:t.pnl>=0?"#34d399":"#f87171", fontWeight:700 }}>{t.pnl>=0?"+":""}{t.pnl.toFixed(4)}</td>
+                          <td style={{ ...td, color:t.pnl>=0?"#34d399":"#f87171", fontWeight:700 }}>{t.pnl>=0?"+":""}{(t.pnl??0).toFixed(4)}</td>
                           <td style={td}>{new Date(t.date).toLocaleDateString()}</td>
                           <td style={td}>{t.strategy}</td>
                         </tr>
@@ -1086,7 +1086,7 @@ function CSVUploader({ onImport, onClose }) {
                       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                         <span style={{ fontSize:11, fontWeight:700, color:"#e2e8f0" }}>{t.pair}</span>
                         <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:4, background:t.type==="long"?"rgba(16,185,129,0.1)":"rgba(239,68,68,0.1)", color:t.type==="long"?"#34d399":"#f87171" }}>{t.type.toUpperCase()}</span>
-                        <span style={{ fontSize:10, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{t.pnl.toFixed(2)}</span>
+                        <span style={{ fontSize:10, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{(t.pnl??0).toFixed(2)}</span>
                       </div>
                       <div style={{ fontSize:9, color:"#334155", marginTop:2 }}>{t.strategy} · {new Date(t.date).toLocaleDateString()}</div>
                     </div>
@@ -1833,8 +1833,8 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{t.entryPrice}</td>
                       <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{t.exitPrice}</td>
                       <td style={{ ...td, fontFamily:"monospace", fontWeight:700, color: w?"#34d399":"#f87171" }} onClick={()=>setViewing(t)}>
-                        <div>{w?"+":""}{t.pnl?.toFixed(4)}</div>
-                        <div style={{ fontSize:9, opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{t.pnlPercent?.toFixed(3)}%</div>
+                        <div>{w?"+":""}{(t.pnl??0).toFixed(4)}</div>
+                        <div style={{ fontSize:9, opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                       </td>
                       <td style={{ ...td, color:"#64748b" }} onClick={()=>setViewing(t)}>{t.strategy}</td>
 
@@ -1965,16 +1965,16 @@ function AnalyticsPanel({ trades }) {
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10 }}>
         <StatCard label="Total Trades" value={String(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
         <StatCard label="Win Rate"     value={`${stats.winRate}%`}       sub={`PF ${stats.profitFactor}`}        pos={stats.winRate>=50}    icon={<Target size={14}/>}/>
-        <StatCard label="Total PnL"    value={`${stats.totalPnl>=0?"+":""}${stats.totalPnl.toFixed(4)}`} sub={`Avg W: +${stats.avgWin.toFixed(4)}`} pos={stats.totalPnl>=0} icon={<TrendingUp size={14}/>}/>
-        <StatCard label="Best Trade"   value={`+${stats.bestTrade.toFixed(4)}`}  pos={true}  icon={<Award size={14}/>}/>
-        <StatCard label="Worst Trade"  value={stats.worstTrade.toFixed(4)}       pos={false} icon={<TrendingDown size={14}/>}/>
-        <StatCard label="Streak"       value={streakLabel} sub={`Avg L: -${stats.avgLoss.toFixed(4)}`} pos={stats.currentStreak>0?true:stats.currentStreak<0?false:null} icon={<Zap size={14}/>}/>
+        <StatCard label="Total PnL"    value={`${stats.totalPnl>=0?"+":""}${(stats.totalPnl??0).toFixed(4)}`} sub={`Avg W: +${(stats.avgWin??0).toFixed(4)}`} pos={stats.totalPnl>=0} icon={<TrendingUp size={14}/>}/>
+        <StatCard label="Best Trade"   value={`+${(stats.bestTrade??0).toFixed(4)}`}  pos={true}  icon={<Award size={14}/>}/>
+        <StatCard label="Worst Trade"  value={(stats.worstTrade??0).toFixed(4)}       pos={false} icon={<TrendingDown size={14}/>}/>
+        <StatCard label="Streak"       value={streakLabel} sub={`Avg L: -${(stats.avgLoss??0).toFixed(4)}`} pos={stats.currentStreak>0?true:stats.currentStreak<0?false:null} icon={<Zap size={14}/>}/>
       </div>
       {chartData.length > 1 && (
         <div style={{ borderRadius:12, border:"1px solid rgba(51,65,85,0.6)", background:"rgba(15,23,42,0.85)", padding:"16px 16px 8px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
             <span style={{ fontSize:12, fontWeight:500, color:"#cbd5e1" }}>Equity Curve</span>
-            <span style={{ fontSize:12, fontFamily:"monospace", fontWeight:700, color:lineClr }}>{finalPnl>=0?"+":""}{finalPnl.toFixed(4)}</span>
+            <span style={{ fontSize:12, fontFamily:"monospace", fontWeight:700, color:lineClr }}>{finalPnl>=0?"+":""}{(finalPnl??0).toFixed(4)}</span>
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={chartData} margin={{ top:4, right:4, left:-20, bottom:0 }}>
@@ -2366,7 +2366,7 @@ function generateInsights(trades) {
 
   if (byStrat.length > 0) {
     const best = byStrat[0];
-    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${best.pnl>=0?"+":""}${best.pnl.toFixed(2)}.`, metric:`${best.winRate}% WR` });
+    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${best.pnl>=0?"+":""}${bes(t.pnl??0).toFixed(2)}.`, metric:`${best.winRate}% WR` });
     const worst = [...byStrat].sort((a,b)=>a.winRate-b.winRate)[0];
     if (worst && worst.winRate<40 && worst.count>=3) insights.push({ type:"warning", icon:"⚠️", title:`Avoid: ${worst.strategy}`, body:`Only ${worst.winRate}% win rate on ${worst.count} trades. Consider dropping it.`, metric:`${worst.winRate}% WR` });
   }
@@ -2374,7 +2374,7 @@ function generateInsights(trades) {
     const bestTag = byTag[0];
     if (bestTag.winRate>=60) insights.push({ type:"positive", icon:"🏷️", title:`Tag "${bestTag.tag}" is working`, body:`${bestTag.winRate}% WR on ${bestTag.count} trades.`, metric:`${bestTag.winRate}% WR` });
     const worstTag = [...byTag].sort((a,b)=>a.winRate-b.winRate)[0];
-    if (worstTag && worstTag.winRate<35 && worstTag.count>=2) insights.push({ type:"warning", icon:"🚫", title:`Avoid trades tagged "${worstTag.tag}"`, body:`Only ${worstTag.winRate}% WR. Total loss: ${worstTag.pnl.toFixed(2)}.`, metric:`${worstTag.winRate}% WR` });
+    if (worstTag && worstTag.winRate<35 && worstTag.count>=2) insights.push({ type:"warning", icon:"🚫", title:`Avoid trades tagged "${worstTag.tag}"`, body:`Only ${worstTag.winRate}% WR. Total loss: ${(worstTag?.pnl??0).toFixed(2)}.`, metric:`${worstTag.winRate}% WR` });
   }
   if (longs.length>=2 && shorts.length>=2) {
     const longWR  = longs.filter(t=>t.pnl>0).length/longs.length*100;
@@ -2426,7 +2426,7 @@ function detectPatterns(trades) {
       patterns.push({
         type:"positive", icon:"⏰", severity:"medium",
         title:`Best performance at ${fmt(best.hour)}`,
-        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${best.pnl >= 0 ? "+" : ""}${best.pnl.toFixed(2)} total PnL. Focus more of your trading here.`,
+        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${best.pnl >= 0 ? "+" : ""}${bes(t.pnl??0).toFixed(2)} total PnL. Focus more of your trading here.`,
         metric:`${best.wr.toFixed(0)}% WR`,
         action:"Trade more at this time",
       });
@@ -2454,7 +2454,7 @@ function detectPatterns(trades) {
       patterns.push({
         type:"warning", icon:"📅", severity:"high",
         title:`${worstDay.day}s are your worst day`,
-        body:`Only ${worstDay.wr.toFixed(0)}% WR on ${worstDay.day}s across ${worstDay.count} trades. Total PnL on ${worstDay.day}s: ${worstDay.pnl.toFixed(2)}. Consider sitting out or reducing size.`,
+        body:`Only ${worstDay.wr.toFixed(0)}% WR on ${worstDay.day}s across ${worstDay.count} trades. Total PnL on ${worstDay.day}s: ${(worstDay?.pnl??0).toFixed(2)}. Consider sitting out or reducing size.`,
         metric:`${worstDay.wr.toFixed(0)}% WR`,
         action:`Avoid trading on ${worstDay.day}s`,
       });
@@ -2463,7 +2463,7 @@ function detectPatterns(trades) {
       patterns.push({
         type:"positive", icon:"🗓️", severity:"medium",
         title:`${bestDay.day}s are your best day`,
-        body:`${bestDay.wr.toFixed(0)}% WR on ${bestDay.day}s across ${bestDay.count} trades. Total: ${bestDay.pnl >= 0 ? "+" : ""}${bestDay.pnl.toFixed(2)}. Your edge is strongest here.`,
+        body:`${bestDay.wr.toFixed(0)}% WR on ${bestDay.day}s across ${bestDay.count} trades. Total: ${bestDay.pnl >= 0 ? "+" : ""}${(bestDay?.pnl??0).toFixed(2)}. Your edge is strongest here.`,
         metric:`${bestDay.wr.toFixed(0)}% WR`,
         action:`Size up on ${bestDay.day}s`,
       });
@@ -2533,7 +2533,7 @@ function detectPatterns(trades) {
       patterns.push({
         type:"warning", icon:"⚡", severity:"medium",
         title:"Overtrading on busy days",
-        body:`On days you trade 5+ times your average win rate is ${avgHeavyWR.toFixed(0)}% with average PnL of ${avgHeavyPnl.toFixed(2)}. More trades doesn't mean more profit — quality over quantity.`,
+        body:`On days you trade 5+ times your average win rate is ${avgHeavyWR.toFixed(0)}% with average PnL of ${(avgHeavyPnl??0).toFixed(2)}. More trades doesn't mean more profit — quality over quantity.`,
         metric:`${avgHeavyWR.toFixed(0)}% WR`,
         action:"Set a daily trade limit",
       });
@@ -2756,7 +2756,7 @@ function StrategyCards({ trades }) {
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
               {[
                 { label:"Trades",    val:String(s.count),                                          color:"#94a3b8" },
-                { label:"PnL",       val:`${pnlPos?"+":""}${s.pnl.toFixed(2)}`,                   color:pnlPos?"#34d399":"#f87171" },
+                { label:"PnL",       val:`${pnlPos?"+":""}${(s.pnl??0).toFixed(2)}`,                   color:pnlPos?"#34d399":"#f87171" },
                 { label:"Avg/Trade", val:`${s.pnl/s.count>=0?"+":""}${(s.pnl/s.count).toFixed(2)}`, color:s.pnl/s.count>=0?"#34d399":"#f87171" },
               ].map(({ label,val,color }) => (
                 <div key={label} style={{ textAlign:"center", padding:"8px 4px", borderRadius:7, background:"#111827" }}>
@@ -3438,7 +3438,7 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
           <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginTop:20 }}>
             {[
               { label:"Score",     val: String(+(calculateScore(trades)).toFixed(0)),              color:"#818cf8" },
-              { label:"PnL",       val: `${stats.totalPnl>=0?"+":""}${stats.totalPnl.toFixed(2)}`, color: stats.totalPnl>=0?"#34d399":"#f87171" },
+              { label:"PnL",       val: `${stats.totalPnl>=0?"+":""}${(stats.totalPnl??0).toFixed(2)}`, color: stats.totalPnl>=0?"#34d399":"#f87171" },
               { label:"Win Rate",  val: `${stats.winRate}%`,                                       color: stats.winRate>=50?"#34d399":"#fbbf24" },
               { label:"Trades",    val: String(stats.totalTrades),                                  color:"#94a3b8" },
               { label:"Followers", val: String(followers),                                          color:"#38bdf8" },
@@ -3467,7 +3467,7 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
             <div style={{ borderRadius:12, border:"1px solid rgba(51,65,85,0.6)", background:"rgba(15,23,42,0.85)", padding:"16px 16px 8px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
                 <span style={{ fontSize:12, fontWeight:600, color:"#cbd5e1" }}>Equity Curve</span>
-                <span style={{ fontSize:12, fontFamily:"monospace", fontWeight:700, color:lineClr }}>{finalPnl>=0?"+":""}{finalPnl.toFixed(4)}</span>
+                <span style={{ fontSize:12, fontFamily:"monospace", fontWeight:700, color:lineClr }}>{finalPnl>=0?"+":""}{(finalPnl??0).toFixed(4)}</span>
               </div>
               <ResponsiveContainer width="100%" height={150}>
                 <AreaChart data={chartData} margin={{ top:4,right:4,left:-20,bottom:0 }}>
@@ -3491,7 +3491,7 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
                   <div key={s.strategy} style={{ borderRadius:9, border:`1px solid ${s.pnl>=0?"rgba(52,211,153,0.2)":"rgba(239,68,68,0.2)"}`, background:"rgba(17,24,39,0.6)", padding:"10px 12px" }}>
                     <div style={{ fontSize:11, fontWeight:700, color:"#e2e8f0", marginBottom:6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.strategy}</div>
                     <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, fontFamily:"monospace" }}>
-                      <span style={{ color: s.pnl>=0?"#34d399":"#f87171" }}>{s.pnl>=0?"+":""}{s.pnl.toFixed(2)}</span>
+                      <span style={{ color: s.pnl>=0?"#34d399":"#f87171" }}>{s.pnl>=0?"+":""}{(s.pnl??0).toFixed(2)}</span>
                       <span style={{ color:"#64748b" }}>{s.winRate}% WR</span>
                     </div>
                   </div>
@@ -3515,8 +3515,8 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
                       </div>
                     </div>
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:t.pnl>=0?"#34d399":"#f87171" }}>{t.pnl>=0?"+":""}{t.pnl.toFixed(4)}</div>
-                      <div style={{ fontSize:9, color:t.pnl>=0?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{t.pnlPercent?.toFixed(3)}%</div>
+                      <div style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:t.pnl>=0?"#34d399":"#f87171" }}>{t.pnl>=0?"+":""}{(t.pnl??0).toFixed(4)}</div>
+                      <div style={{ fontSize:9, color:t.pnl>=0?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                     </div>
                   </div>
                 ))}
@@ -3720,7 +3720,7 @@ function CopyTradingPage({ session, copyTrading }) {
                 <div style={{ fontSize:28, marginBottom:6 }}>{medal}</div>
                 <div style={{ width:36, height:36, borderRadius:"50%", background:"linear-gradient(135deg,#0369a1,#38bdf8)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:800, color:"#fff", margin:"0 auto 8px" }}>{t.displayName[0].toUpperCase()}</div>
                 <div style={{ fontSize:12, fontWeight:700, color:"#e2e8f0", marginBottom:3 }}>{t.displayName}</div>
-                <div style={{ fontSize:13, fontWeight:800, fontFamily:"monospace", color:pnlPos?"#34d399":"#f87171" }}>{pnlPos?"+":""}{t.pnl.toFixed(2)}</div>
+                <div style={{ fontSize:13, fontWeight:800, fontFamily:"monospace", color:pnlPos?"#34d399":"#f87171" }}>{pnlPos?"+":""}{(t.pnl??0).toFixed(2)}</div>
                 <div style={{ fontSize:10, color:"#64748b" }}>{t.winRate}% WR · Score {t.score.toFixed(0)}</div>
               </div>
             );
@@ -4808,7 +4808,7 @@ function BacktestPanel() {
                             <td style={{ padding:"7px 12px", fontSize:11, color:"#334155", fontFamily:"monospace" }}>{idx+1}</td>
                             <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", color:"#94a3b8" }}>{t.entryPrice.toFixed(2)}</td>
                             <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", color:"#94a3b8" }}>{t.exitPrice.toFixed(2)}</td>
-                            <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", fontWeight:700, color:t.pnl>=0?"#34d399":"#f87171" }}>{t.pnl>=0?"+":""}{t.pnl.toFixed(4)}</td>
+                            <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", fontWeight:700, color:t.pnl>=0?"#34d399":"#f87171" }}>{t.pnl>=0?"+":""}{(t.pnl??0).toFixed(4)}</td>
                             <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", color:"#64748b" }}>{t.holdBars}</td>
                             <td style={{ padding:"7px 12px" }}>
                               <span style={{ fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:8, background:t.exitReason==="TP"?"rgba(52,211,153,0.1)":t.exitReason==="SL"?"rgba(239,68,68,0.1)":"rgba(56,189,248,0.1)", color:t.exitReason==="TP"?"#34d399":t.exitReason==="SL"?"#f87171":"#38bdf8" }}>{t.exitReason}</span>
@@ -5135,7 +5135,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{t.pnl?.toFixed(2)}</div>
+                      <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{(t.pnl??0).toFixed(2)}</div>
                       <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{t.pnlPercent?.toFixed(2)}%</div>
                     </div>
                     <button onClick={() => onEditTrade(t)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #1e2d3e", background:"transparent", color:"#475569", cursor:"pointer" }}>
@@ -5175,7 +5175,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{t.pnl?.toFixed(2)}</div>
+                      <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{(t.pnl??0).toFixed(2)}</div>
                     </div>
                     <button onClick={() => setDatePicking(t)} style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(251,191,36,0.3)", background:"rgba(251,191,36,0.06)", color:"#fbbf24", cursor:"pointer", fontSize:10, fontWeight:700 }}>
                       Set Date
@@ -5744,9 +5744,9 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10 }}>
           <StatCard label="Total Trades" value={String(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
           <StatCard label="Win Rate"     value={`${stats.winRate}%`}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/>
-          <StatCard label="Total PnL"    value={`${pnlPos?"+":""}${stats.totalPnl.toFixed(2)}`} sub={`Avg W: +${stats.avgWin.toFixed(2)}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/>
-          <StatCard label="Best Trade"   value={`+${stats.bestTrade.toFixed(2)}`}  pos={true}  icon={<Award size={14}/>}/>
-          <StatCard label="Worst Trade"  value={stats.worstTrade.toFixed(2)}        pos={false} icon={<TrendingDown size={14}/>}/>
+          <StatCard label="Total PnL"    value={`${pnlPos?"+":""}${(stats.totalPnl??0).toFixed(2)}`} sub={`Avg W: +${(stats.avgWin??0).toFixed(2)}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/>
+          <StatCard label="Best Trade"   value={`+${(stats.bestTrade??0).toFixed(2)}`}  pos={true}  icon={<Award size={14}/>}/>
+          <StatCard label="Worst Trade"  value={(stats.worstTrade??0).toFixed(2)}        pos={false} icon={<TrendingDown size={14}/>}/>
         </div>
       ) : (
         <div style={{ padding:"48px 24px", borderRadius:16, border:"2px dashed #1a2035", textAlign:"center" }}>
@@ -5775,8 +5775,8 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
                   <div><div style={{ fontSize:12, fontWeight:700, color:"#e2e8f0" }}>{t.pair}</div><div style={{ fontSize:10, color:"#475569" }}>{t.strategy} · {new Date(t.date).toLocaleDateString()}</div></div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{t.pnl.toFixed(4)}</div>
-                  <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{t.pnlPercent.toFixed(3)}%</div>
+                  <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{(t.pnl??0).toFixed(4)}</div>
+                  <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                 </div>
               </div>
             );
