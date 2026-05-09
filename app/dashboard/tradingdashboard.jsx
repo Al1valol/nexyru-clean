@@ -5101,7 +5101,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
             { label:"Trades this month", val:String(monthStats.total),                                       color:"#94a3b8" },
             { label:"Wins",              val:String(monthStats.wins),                                        color:"#34d399" },
             { label:"Losses",            val:String(monthStats.losses),                                      color:"#f87171" },
-            { label:"Net PnL",           val:`${monthStat(s.pnl??0)>=0?"+":""}${monthStats.pnl}`,                 color:monthStat(s.pnl??0)>=0?"#34d399":"#f87171" },
+            { label:"Net PnL",           val:`${(monthStats.pnl??0)>=0?"+":""}${(monthStats.pnl??0).toFixed(2)}`,                 color:(monthStats.pnl??0)>=0?"#34d399":"#f87171" },
           ].map(({ label, val, color }) => (
             <div key={label} style={{ borderRadius:10, border:"1px solid #1a2035", background:"#0d1120", padding:"10px 14px" }}>
               <div style={{ fontSize:9, color:"#475569", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:4 }}>{label}</div>
