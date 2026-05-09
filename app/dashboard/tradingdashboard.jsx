@@ -2403,7 +2403,7 @@ function generateInsights(trades) {
 
   if (byStrat.length > 0) {
     const best = byStrat[0];
-    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${bes(t.pnl??0)>=0?"+":""}${bes(t.pnl??0).toFixed(2)}.`, metric:`${best.winRate}% WR` });
+    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${best.pnl>=0?"+":""}${best.pnl.toFixed(2)}.`, metric:`${best.winRate}% WR` });
     const worst = [...byStrat].sort((a,b)=>a.winRate-b.winRate)[0];
     if (worst && worst.winRate<40 && worst.count>=3) insights.push({ type:"warning", icon:"⚠️", title:`Avoid: ${worst.strategy}`, body:`Only ${worst.winRate}% win rate on ${worst.count} trades. Consider dropping it.`, metric:`${worst.winRate}% WR` });
   }
@@ -2439,7 +2439,7 @@ function detectPatterns(trades) {
     if (!byHour[h]) byHour[h] = { wins:0, losses:0, pnl:0 };
     if ((t.pnl??0)>0) byHour[h].wins++;
     else byHour[h].losses++;
-    byHour[h].pnl += (t.pnl??0) ?? 0;
+    byHour[h].pnl += (t.pnl??0);
   });
   const hourEntries = Object.entries(byHour)
     .filter(([,v]) => v.wins + v.losses >= 2)
@@ -2450,7 +2450,7 @@ function detectPatterns(trades) {
     const best  = hourEntries.sort((a,b) => b.wr - a.wr)[0];
     const fmt   = h => h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h-12}pm`;
 
-    if (wors(t.pnl??0)<0 && (worst.wins + worst.losses) >= 3) {
+    if (worst.pnl<0 && (worst.wins + worst.losses) >= 3) {
       patterns.push({
         type:"warning", icon:"🕐", severity:"high",
         title:`Losses spike around ${fmt(worst.hour)}`,
@@ -2463,7 +2463,7 @@ function detectPatterns(trades) {
       patterns.push({
         type:"positive", icon:"⏰", severity:"medium",
         title:`Best performance at ${fmt(best.hour)}`,
-        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${bes(t.pnl??0)>=0 ? "+" : ""}${bes(t.pnl??0).toFixed(2)} total PnL. Focus more of your trading here.`,
+        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${best.pnl>=0 ? "+" : ""}${best.pnl.toFixed(2)} total PnL. Focus more of your trading here.`,
         metric:`${best.wr.toFixed(0)}% WR`,
         action:"Trade more at this time",
       });
@@ -2477,7 +2477,7 @@ function detectPatterns(trades) {
     const d = new Date(t.date).getDay();
     if (!byDay[d]) byDay[d] = { wins:0, losses:0, pnl:0, count:0 };
     if ((t.pnl??0)>0) byDay[d].wins++; else byDay[d].losses++;
-    byDay[d].pnl   += (t.pnl??0) ?? 0;
+    byDay[d].pnl   += (t.pnl??0);
     byDay[d].count++;
   });
   const dayEntries = Object.entries(byDay)
@@ -5434,7 +5434,7 @@ function WeeklyReport({ trades }) {
         const s = t.strategy || "Unknown";
         if (!byStrat[s]) byStrat[s] = { wins:0, losses:0, pnl:0 };
         if ((t.pnl??0) > 0) byStrat[s].wins++; else byStrat[s].losses++;
-        byStrat[s].pnl += (t.pnl??0) ?? 0;
+        byStrat[s].pnl += (t.pnl??0);
       });
       const stratSummary = Object.entries(byStrat).map(([s,v]) => `${s}: ${v.wins}W/${v.losses}L, PnL ${(v.pnl??0).toFixed(2)}`);
 
