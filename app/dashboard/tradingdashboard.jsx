@@ -1635,7 +1635,7 @@ function TradeDetail({ trade, onClose }) {
             { label:"SL",        val: trade.stopLoss  ?? "—", color:"#f87171" },
             { label:"TP",        val: trade.takeProfit ?? "—", color:"#34d399" },
             { label:"Size",      val: trade.size, color:"#94a3b8" },
-            { label:"PnL",       val: `${trade.pnl>=0?"+":""}${trade.pnl?.toFixed(4)}`, color: trade.pnl>=0?"#34d399":"#f87171" },
+            { label:"PnL",       val: `${(trade.pnl??0)>=0?"+":""}${(trade.pnl??0).toFixed(4)}`, color: (trade.pnl??0)>=0?"#34d399":"#f87171" },
           ].map(({ label,val,color }) => (
             <div key={label} style={{ background:"#111827", borderRadius:8, padding:"10px 12px" }}>
               <div style={{ fontSize:9, color:"#334155", textTransform:"uppercase", marginBottom:4 }}>{label}</div>
@@ -1879,7 +1879,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{t.exitPrice}</td>
                       <td style={{ ...td, fontFamily:"monospace", fontWeight:700, color: w?"#34d399":"#f87171" }} onClick={()=>setViewing(t)}>
                         <div>{w?"+":""}{(t.pnl??0).toFixed(4)}</div>
-                        <div style={{ fontSize:9, opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
+                        <div style={{ fontSize:9, opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                       </td>
                       <td style={{ ...td, color:"#64748b" }} onClick={()=>setViewing(t)}>{t.strategy}</td>
 
@@ -2413,7 +2413,7 @@ function generateInsights(trades) {
 
   if (byStrat.length > 0) {
     const best = byStrat[0];
-    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${best.pnl>=0?"+":""}${best.pnl.toFixed(2)}.`, metric:`${best.winRate}% WR` });
+    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${(best.pnl??0)>=0?"+":""}${(best.pnl??0).toFixed(2)}.`, metric:`${best.winRate}% WR` });
     const worst = [...byStrat].sort((a,b)=>a.winRate-b.winRate)[0];
     if (worst && worst.winRate<40 && worst.count>=3) insights.push({ type:"warning", icon:"⚠️", title:`Avoid: ${worst.strategy}`, body:`Only ${worst.winRate}% win rate on ${worst.count} trades. Consider dropping it.`, metric:`${worst.winRate}% WR` });
   }
@@ -2460,11 +2460,11 @@ function detectPatterns(trades) {
     const best  = hourEntries.sort((a,b) => b.wr - a.wr)[0];
     const fmt   = h => h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h-12}pm`;
 
-    if (worst.pnl<0 && (worst.wins + worst.losses) >= 3) {
+    if ((worst.pnl??0)<0 && (worst.wins + worst.losses) >= 3) {
       patterns.push({
         type:"warning", icon:"🕐", severity:"high",
         title:`Losses spike around ${fmt(worst.hour)}`,
-        body:`You've lost ${Math.abs(worst.pnl).toFixed(2)} across ${worst.wins+worst.losses} trades at this hour with only ${worst.wr.toFixed(0)}% WR. Consider avoiding trading between ${fmt(worst.hour)} and ${fmt(worst.hour+1)}.`,
+        body:`You've lost ${Math.abs(worst.pnl??0).toFixed(2)} across ${worst.wins+worst.losses} trades at this hour with only ${worst.wr.toFixed(0)}% WR. Consider avoiding trading between ${fmt(worst.hour)} and ${fmt(worst.hour+1)}.`,
         metric:`${worst.wr.toFixed(0)}% WR`,
         action:"Avoid this time window",
       });
@@ -2473,7 +2473,7 @@ function detectPatterns(trades) {
       patterns.push({
         type:"positive", icon:"⏰", severity:"medium",
         title:`Best performance at ${fmt(best.hour)}`,
-        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${best.pnl>=0 ? "+" : ""}${best.pnl.toFixed(2)} total PnL. Focus more of your trading here.`,
+        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${(best.pnl??0)>=0 ? "+" : ""}${(best.pnl??0).toFixed(2)} total PnL. Focus more of your trading here.`,
         metric:`${best.wr.toFixed(0)}% WR`,
         action:"Trade more at this time",
       });
@@ -3590,7 +3590,7 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
                     </div>
                     <div style={{ textAlign:"right" }}>
                       <div style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:(t.pnl??0)>=0?"#34d399":"#f87171" }}>{(t.pnl??0)>=0?"+":""}{(t.pnl??0).toFixed(4)}</div>
-                      <div style={{ fontSize:9, color:(t.pnl??0)>=0?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
+                      <div style={{ fontSize:9, color:(t.pnl??0)>=0?"#34d399":"#f87171", opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                     </div>
                   </div>
                 ))}
@@ -4951,8 +4951,8 @@ function DatePickerModal({ trade, onSave, onClose }) {
           <div style={{ fontSize:11, color:"#64748b", textAlign:"center" }}>
             <span style={{ fontWeight:700, color:"#94a3b8" }}>{trade.pair ?? "Trade"}</span>
             {" · "}{trade.type?.toUpperCase()}{" · "}
-            <span style={{ color:trade.pnl>=0?"#34d399":"#f87171", fontWeight:700 }}>
-              {trade.pnl>=0?"+":""}{trade.pnl?.toFixed(2)}
+            <span style={{ color:(trade.pnl??0)>=0?"#34d399":"#f87171", fontWeight:700 }}>
+              {(trade.pnl??0)>=0?"+":""}{(trade.pnl??0).toFixed(2)}
             </span>
           </div>
 
@@ -5210,7 +5210,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
                   <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
                     <div style={{ textAlign:"right" }}>
                       <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{(t.pnl??0).toFixed(2)}</div>
-                      <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{t.pnlPercent?.toFixed(2)}%</div>
+                      <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(2)}%</div>
                     </div>
                     <button onClick={() => onEditTrade(t)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #1e2d3e", background:"transparent", color:"#475569", cursor:"pointer" }}>
                       <Edit2 size={10}/>
@@ -5848,7 +5848,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
                 </div>
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{(t.pnl??0).toFixed(4)}</div>
-                  <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
+                  <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                 </div>
               </div>
             );
