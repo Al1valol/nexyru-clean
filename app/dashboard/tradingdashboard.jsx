@@ -199,6 +199,23 @@ function computeTraderStats(username) {
 // ═══════════════════════════════════════════════════════════════
 
 function useAuth() {
+  // On mount, check if we came from Google OAuth
+  if (typeof window !== "undefined" && !localStorage.getItem("tradedesk_session_v1")) {
+    const hash = window.location.hash;
+    if (hash.includes("access_token=")) {
+      try {
+        const params = new URLSearchParams(hash.slice(1));
+        const token = params.get("access_token");
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        const email = payload.email || "";
+        const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "");
+        const displayName = payload.user_metadata?.full_name || username;
+        localStorage.setItem("tradedesk_session_v1", JSON.stringify({ username, displayName, email, googleAuth: true }));
+        window.history.replaceState(null, "", "/dashboard");
+        window.location.reload();
+      } catch(e) { console.error("OAuth parse error", e); }
+    }
+  }
   // Check for Supabase OAuth token in URL hash (from Google sign-in)
   if (typeof window !== 'undefined') {
     const hash = window.location.hash;
