@@ -1885,7 +1885,12 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
               <tbody>
                 {filtered.map(t => {
                   const w   = (t.pnl??0)>=0;
-                  const rev = reviewMap[t.id];
+                  const rev = reviewMap[t.id] ?? (t.source === "demo" && t.emotion ? {
+                    emotion: t.emotion,
+                    confidence: t.confidence ?? 5,
+                    followed_rules: t.rulesFollowed ?? true,
+                    notes: t.notes ?? "",
+                  } : null);
                   const EMOJIS = { calm:"😌", confident:"💪", fomo:"😰", fear:"😨", revenge:"😤" };
                   return (
                     <tr key={t.id} style={{ cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
