@@ -2879,8 +2879,17 @@ function executeTrade(trade, account) {
 function usePaperAccounts(username) {
   const [accounts, setAccounts] = useState(() => {
     const saved = loadPaperAccounts(username);
-    if (saved && saved.length) return saved;
-    // Create default account for new or existing users with no accounts
+    // If there's only a funded account with $0, add a paper account too
+    if (saved && saved.length) {
+      const hasPaper = saved.some(a => a.type === "paper");
+      if (!hasPaper) {
+        const def = makeDefaultAccount();
+        const next = [def, ...saved];
+        savePaperAccounts(username, next);
+        return next;
+      }
+      return saved;
+    }
     const def = makeDefaultAccount();
     savePaperAccounts(username, [def]);
     return [def];
@@ -2888,18 +2897,20 @@ function usePaperAccounts(username) {
 
   const [activeId, setActiveIdState] = useState(() => {
     const saved = loadActiveAccountId(username);
-    if (saved) return saved;
     const accts = loadPaperAccounts(username);
-    const id = accts?.[0]?.id ?? null;
-    if (id) saveActiveAccountId(username, id);
-    return id;
+    // Prefer paper account as default
+    const paperAcct = accts?.find(a => a.type === "paper");
+    const preferredId = saved ?? paperAcct?.id ?? accts?.[0]?.id ?? null;
+    if (preferredId) saveActiveAccountId(username, preferredId);
+    return preferredId;
   });
 
   // Ensure activeId is always valid
   useEffect(() => {
     if (!activeId && accounts.length > 0) {
-      saveActiveAccountId(username, accounts[0].id);
-      setActiveIdState(accounts[0].id);
+      const paper = accounts.find(a => a.type === "paper") ?? accounts[0];
+      saveActiveAccountId(username, paper.id);
+      setActiveIdState(paper.id);
     }
   }, [accounts, activeId, username]);
 
@@ -6937,15 +6948,14 @@ function TradingDashboard({ session, onLogout }) {
   useEffect(() => {
     const needsSeed = localStorage.getItem(`nexyru_needs_seed_${session.username}`);
     if (!needsSeed) return;
-    // Wait for accounts to be ready
     const accts = loadPaperAccounts(session.username);
     if (!accts || accts.length === 0) return;
+    // Always seed to paper account
+    const paperAcct = accts.find(a => a.type === "paper") ?? accts[0];
     localStorage.removeItem(`nexyru_needs_seed_${session.username}`);
-    const accountId = accts[0].id;
-    const trades = generateStarterData(session.username).map(t => ({ ...t, accountId }));
+    const trades = generateStarterData(session.username).map(t => ({ ...t, accountId: paperAcct.id }));
     saveUserTrades(session.username, trades);
     setDemoMode(session.username, true);
-    // Trigger trades reload
     setTrades(trades);
   }, [session.username, paperAccts.accounts]);
 
