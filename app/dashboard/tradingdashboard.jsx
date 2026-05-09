@@ -7404,6 +7404,9 @@ export default function App() {
     </div>
   );
 
-  if (!auth.session) return <AuthScreen auth={auth}/>;
+  if (!auth.session) {
+  if (typeof window !== "undefined") window.location.href = "/login";
+  return <div style={{minHeight:"100vh",background:"#060d1a"}}/>;
+}
   return <TradingDashboard session={auth.session} onLogout={auth.logout}/>;
 }
