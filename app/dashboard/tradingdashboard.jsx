@@ -238,8 +238,8 @@ function useAuth() {
     const s = { username: u, displayName: displayName.trim() };
     localStorage.setItem(SESSION_KEY, JSON.stringify(s));
     setSession(s);
-    // Seed demo data for new users
-    setTimeout(() => seedStarterData(u), 100);
+    // Mark as new user — seeding happens after account system initializes
+    localStorage.setItem(`nexyru_needs_seed_${u}`, "1");
     return null;
   }, []);
 
@@ -6932,6 +6932,22 @@ function TradingDashboard({ session, onLogout }) {
 
   const copyTrading  = useCopyTrading(session.username);
   const paperAccts   = usePaperAccounts(session.username);
+
+  // Seed demo data AFTER accounts are initialized
+  useEffect(() => {
+    const needsSeed = localStorage.getItem(`nexyru_needs_seed_${session.username}`);
+    if (!needsSeed) return;
+    // Wait for accounts to be ready
+    const accts = loadPaperAccounts(session.username);
+    if (!accts || accts.length === 0) return;
+    localStorage.removeItem(`nexyru_needs_seed_${session.username}`);
+    const accountId = accts[0].id;
+    const trades = generateStarterData(session.username).map(t => ({ ...t, accountId }));
+    saveUserTrades(session.username, trades);
+    setDemoMode(session.username, true);
+    // Trigger trades reload
+    setTrades(trades);
+  }, [session.username, paperAccts.accounts]);
 
   // Handle ?tab=stratlab&clone=1 from leaderboard redirect
   useEffect(() => {
