@@ -5390,9 +5390,9 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
           )}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onCSV} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2035", background:"#111827", color:"#94a3b8", fontSize:11, fontWeight:600, cursor:"pointer" }}>
-            <Upload size={11}/> CSV
-          </button>
+          <a href="/import" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:"rgba(56,189,248,0.06)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer", textDecoration:"none" }}>
+            <Upload size={11}/> Import CSV
+          </a>
           <button onClick={onAdd} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
             <Plus size={12}/> Log Trade
           </button>
@@ -5456,8 +5456,10 @@ function PlatformDropdown() {
   }, []);
 
   const items = [
-      { href:"/leaderboard", emoji:"🏆", label:"Leaderboard", color:"#818cf8" },
-      { href:"/earnings",    emoji:"💰", label:"Earnings",    color:"#22d3a5" },
+      { href:"/leaderboard", emoji:"🏆", label:"Leaderboard",   color:"#818cf8" },
+      { href:"/earnings",    emoji:"💰", label:"Earnings",       color:"#22d3a5" },
+      { href:"/traders",     emoji:"👥", label:"Browse Traders", color:"#38bdf8" },
+      { href:"/import",      emoji:"📥", label:"Import",         color:"#34d399" },
     ];
 
   return (
