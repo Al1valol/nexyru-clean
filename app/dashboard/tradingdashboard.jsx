@@ -351,10 +351,14 @@ function DemoBanner({ username, onClear }) {
   const [demo, setDemo]       = useState(() => isDemoMode(username));
   const [confirming, setConf] = useState(false);
 
+  // Re-check on every render in case localStorage changed
+  useEffect(() => {
+    setDemo(isDemoMode(username));
+  }, [username]);
+
   if (!demo) return null;
 
-  const handleSwitch = () => {
-    if (!confirming) { setConf(true); return; }
+  const handleConfirm = () => {
     onClear();
     setDemo(false);
     setConf(false);
@@ -370,27 +374,29 @@ function DemoBanner({ username, onClear }) {
             <span style={{ fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:10, background:"rgba(251,191,36,0.15)", border:"1px solid rgba(251,191,36,0.25)", color:"#fbbf24" }}>SAMPLE DATA</span>
           </div>
           <div style={{ fontSize:11, color:"#64748b" }}>
-            {confirming ? "⚠️ This will delete all demo trades. Ready to switch?" : "You're viewing sample trades. Switch to real mode to log your own."}
+            {confirming ? "⚠️ This will delete all demo trades. Are you sure?" : "You're viewing sample trades. Switch to real mode when ready to log your own."}
           </div>
         </div>
       </div>
 
-      {/* Toggle switch */}
       <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-        <span style={{ fontSize:11, color:"#64748b" }}>Demo</span>
-        <div onClick={handleSwitch} style={{ width:44, height:24, borderRadius:12, background:confirming?"rgba(52,211,153,0.15)":"rgba(251,191,36,0.15)", border:`1px solid ${confirming?"rgba(52,211,153,0.4)":"rgba(251,191,36,0.3)"}`, cursor:"pointer", position:"relative", transition:"all 0.2s" }}>
-          <div style={{ position:"absolute", top:3, left: confirming ? 22 : 3, width:16, height:16, borderRadius:"50%", background: confirming ? "#34d399" : "#fbbf24", transition:"left 0.2s", boxShadow:`0 0 8px ${confirming?"rgba(52,211,153,0.5)":"rgba(251,191,36,0.4)"}` }}/>
-        </div>
-        <span style={{ fontSize:11, color: confirming?"#34d399":"#475569" }}>Real</span>
-        {confirming && (
-          <button onClick={handleSwitch} style={{ padding:"5px 12px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0ea5a0,#34d399)", color:"#000", fontSize:11, fontWeight:800, cursor:"pointer" }}>
-            Confirm →
-          </button>
-        )}
-        {confirming && (
-          <button onClick={() => setConf(false)} style={{ padding:"5px 10px", borderRadius:8, border:"1px solid #1a2035", background:"transparent", color:"#475569", fontSize:11, cursor:"pointer" }}>
-            Cancel
-          </button>
+        {!confirming ? (
+          <>
+            <span style={{ fontSize:11, color:"#64748b" }}>Demo</span>
+            <div onClick={() => setConf(true)} style={{ width:44, height:24, borderRadius:12, background:"rgba(251,191,36,0.15)", border:"1px solid rgba(251,191,36,0.3)", cursor:"pointer", position:"relative" }}>
+              <div style={{ position:"absolute", top:3, left:3, width:16, height:16, borderRadius:"50%", background:"#fbbf24", boxShadow:"0 0 8px rgba(251,191,36,0.4)" }}/>
+            </div>
+            <span style={{ fontSize:11, color:"#475569" }}>Real</span>
+          </>
+        ) : (
+          <>
+            <button onClick={handleConfirm} style={{ padding:"6px 14px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0ea5a0,#34d399)", color:"#000", fontSize:11, fontWeight:800, cursor:"pointer" }}>
+              ✓ Yes, switch to real
+            </button>
+            <button onClick={() => setConf(false)} style={{ padding:"6px 12px", borderRadius:8, border:"1px solid #1a2035", background:"transparent", color:"#475569", fontSize:11, cursor:"pointer" }}>
+              Cancel
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -5735,8 +5741,6 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-      {/* Demo mode banner */}
-      {username && <DemoBanner username={username} onClear={onClearDemo}/>}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
         <div><div style={{ fontSize:20, fontWeight:800, color:"#f1f5f9" }}>Dashboard</div><div style={{ fontSize:11, color:"#475569", marginTop:3 }}>Your trading journal & performance hub</div></div>
         <div style={{ display:"flex", gap:8 }}>
@@ -7170,7 +7174,15 @@ function TradingDashboard({ session, onLogout }) {
 
       {/* ── Page content ── */}
       <div style={{ flex:1, overflowY:"auto", paddingBottom:60 }}>
-        <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"16px" }}>
+        {/* Demo banner — always visible on all tabs */}
+        <div style={{ maxWidth:1200, margin:"0 auto", padding:"16px 16px 0" }}>
+          <DemoBanner username={session.username} onClear={() => {
+            setDemoMode(session.username, false);
+            saveUserTrades(session.username, []);
+            setTrades([]);
+          }}/>
+        </div>
+        <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"12px 16px 16px" }}>
 
       {/* ── Bottom nav — mobile only ── */}
       <div className="show-mobile" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0d1120", borderTop:"1px solid #1a2035", display:"flex", alignItems:"center", zIndex:50 }}>
