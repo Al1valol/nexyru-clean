@@ -20,7 +20,7 @@ export default function LoginPage() {
       });
       if (error) { setError(error.message); setLoading(false); }
     } catch(e) {
-      setError("Auth error: " + e.message);
+      setError("Auth error: " + (e instanceof Error ? e.message : String(e)));
       setLoading(false);
     }
   };
