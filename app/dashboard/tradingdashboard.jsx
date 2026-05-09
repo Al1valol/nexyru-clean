@@ -189,7 +189,7 @@ function getTraderJournal(u) {
 function computeTraderStats(username) {
   const trades = getTraderJournal(username);
   if (!trades.length) return { totalTrades:0, winRate:0, totalPnl:0, avgPnl:0 };
-  const wins = trades.filter(t => t.pnl > 0).length;
+  const wins = trades.filter(t => (t.pnl??0)>0).length;
   const totalPnl = +trades.reduce((s,t) => s + (t.pnl ?? 0), 0).toFixed(2);
   return { totalTrades: trades.length, winRate: +((wins/trades.length)*100).toFixed(1), totalPnl, avgPnl: +(totalPnl/trades.length).toFixed(2) };
 }
@@ -1086,7 +1086,7 @@ function CSVUploader({ onImport, onClose }) {
                           <td style={{ ...td, color:t.type==="long"?"#34d399":"#f87171" }}>{t.type.toUpperCase()}</td>
                           <td style={td}>{t.entryPrice}</td>
                           <td style={td}>{t.exitPrice}</td>
-                          <td style={{ ...td, color:t.pnl>=0?"#34d399":"#f87171", fontWeight:700 }}>{t.pnl>=0?"+":""}{(t.pnl??0).toFixed(4)}</td>
+                          <td style={{ ...td, color:(t.pnl??0)>=0?"#34d399":"#f87171", fontWeight:700 }}>{(t.pnl??0)>=0?"+":""}{(t.pnl??0).toFixed(4)}</td>
                           <td style={td}>{new Date(t.date).toLocaleDateString()}</td>
                           <td style={td}>{t.strategy}</td>
                         </tr>
@@ -1110,7 +1110,7 @@ function CSVUploader({ onImport, onClose }) {
               {preview.map((t, idx) => {
                 const shot = shots[t.id];
                 const isDrag = dragIdx === t.id;
-                const w = t.pnl >= 0;
+                const w = (t.pnl??0)>=0;
                 return (
                   <div key={t.id}
                     onDrop={e => handleRowDrop(t.id, e)}
@@ -1391,7 +1391,7 @@ function ScreenshotImporter({ onImportAll, onClose }) {
                       <input type="checkbox" checked={t._selected} onChange={() => toggleTrade(img.id, t.id)} style={{ cursor:"pointer", accentColor:"#818cf8", width:14, height:14, flexShrink:0 }}/>
                       <span style={{ fontSize:12, fontWeight:700, color:"#e2e8f0" }}>{t.pair ?? "Unknown"}</span>
                       <span style={{ fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:4, background:t.type==="long"?"rgba(16,185,129,0.12)":"rgba(239,68,68,0.12)", color:t.type==="long"?"#34d399":"#f87171" }}>{(t.type??"long").toUpperCase()}</span>
-                      {t.pnl != null && <span style={{ fontSize:11, fontFamily:"monospace", color:t.pnl>=0?"#34d399":"#f87171", marginLeft:"auto" }}>{t.pnl>=0?"+":""}{t.pnl}</span>}
+                      {t.pnl != null && <span style={{ fontSize:11, fontFamily:"monospace", color:(t.pnl??0)>=0?"#34d399":"#f87171", marginLeft:"auto" }}>{(t.pnl??0)>=0?"+":""}{t.pnl}</span>}
                     </div>
                     {/* Editable fields */}
                     {t._selected && (
@@ -1848,7 +1848,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
               </thead>
               <tbody>
                 {filtered.map(t => {
-                  const w   = t.pnl >= 0;
+                  const w   = (t.pnl??0)>=0;
                   const rev = reviewMap[t.id];
                   const EMOJIS = { calm:"😌", confident:"💪", fomo:"😰", fear:"😨", revenge:"😤" };
                   return (
@@ -1987,8 +1987,8 @@ function AnalyticsPanel({ trades }) {
     trades.forEach(t => {
       const d = days[new Date(t.date).getDay()];
       if (!map[d]) map[d] = { day:d, wins:0, losses:0, pnl:0 };
-      map[d].pnl += t.pnl;
-      if (t.pnl > 0) map[d].wins++; else map[d].losses++;
+      map[d].pnl += (t.pnl??0);
+      if ((t.pnl??0)>0) map[d].wins++; else map[d].losses++;
     });
     return days.map(d => map[d] ?? { day:d, wins:0, losses:0, pnl:0 });
   }, [trades]);
@@ -2053,22 +2053,22 @@ function insightsByStrategy(trades) {
   trades.forEach(t => {
     const s = t.strategy || "Unknown";
     if (!map[s]) map[s] = { wins:0, losses:0, pnl:0, count:0 };
-    map[s].count++; map[s].pnl += t.pnl;
-    if (t.pnl>0) map[s].wins++; else map[s].losses++;
+    map[s].count++; map[s].pnl += (t.pnl ?? 0);
+    if ((t.pnl ?? 0) > 0) map[s].wins++; else map[s].losses++;
   });
-  return Object.entries(map).map(([strategy,d]) => ({ strategy, ...d, winRate: d.count?+(d.wins/d.count*100).toFixed(1):0 })).filter(d=>d.count>=2).sort((a,b)=>b.pnl-a.pnl);
+  return Object.entries(map).map(([strategy,d]) => ({ strategy, ...d, winRate: d.count ? +(d.wins/d.count*100).toFixed(1) : 0 })).filter(d=>d.count>=2).sort((a,b)=>b.pnl-a.pnl);
 }
 
 function insightsByTag(trades) {
   const map = {};
   trades.forEach(t => {
-    (t.tags??[]).forEach(tag => {
+    (t.tags ?? []).forEach(tag => {
       if (!map[tag]) map[tag] = { wins:0, losses:0, pnl:0, count:0 };
-      map[tag].count++; map[tag].pnl += t.pnl;
-      if (t.pnl>0) map[tag].wins++; else map[tag].losses++;
+      map[tag].count++; map[tag].pnl += (t.pnl ?? 0);
+      if ((t.pnl ?? 0) > 0) map[tag].wins++; else map[tag].losses++;
     });
   });
-  return Object.entries(map).map(([tag,d]) => ({ tag, ...d, winRate: d.count?+(d.wins/d.count*100).toFixed(1):0 })).filter(d=>d.count>=2).sort((a,b)=>b.winRate-a.winRate);
+  return Object.entries(map).map(([tag,d]) => ({ tag, ...d, winRate: d.count ? +(d.wins/d.count*100).toFixed(1) : 0 })).filter(d=>d.count>=2).sort((a,b)=>b.winRate-a.winRate);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2396,14 +2396,14 @@ function generateInsights(trades) {
   const insights = [];
   const byStrat  = insightsByStrategy(trades);
   const byTag    = insightsByTag(trades);
-  const wins     = trades.filter(t => t.pnl > 0);
+  const wins     = trades.filter(t => (t.pnl??0)>0);
   const winRate  = +(wins.length/trades.length*100).toFixed(1);
   const longs    = trades.filter(t => t.type==="long");
   const shorts   = trades.filter(t => t.type==="short");
 
   if (byStrat.length > 0) {
     const best = byStrat[0];
-    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${best.pnl>=0?"+":""}${bes(t.pnl??0).toFixed(2)}.`, metric:`${best.winRate}% WR` });
+    if (best.winRate >= 55) insights.push({ type:"positive", icon:"🏆", title:`Best strategy: ${best.strategy}`, body:`${best.winRate}% win rate across ${best.count} trades. PnL: ${bes(t.pnl??0)>=0?"+":""}${bes(t.pnl??0).toFixed(2)}.`, metric:`${best.winRate}% WR` });
     const worst = [...byStrat].sort((a,b)=>a.winRate-b.winRate)[0];
     if (worst && worst.winRate<40 && worst.count>=3) insights.push({ type:"warning", icon:"⚠️", title:`Avoid: ${worst.strategy}`, body:`Only ${worst.winRate}% win rate on ${worst.count} trades. Consider dropping it.`, metric:`${worst.winRate}% WR` });
   }
@@ -2414,13 +2414,13 @@ function generateInsights(trades) {
     if (worstTag && worstTag.winRate<35 && worstTag.count>=2) insights.push({ type:"warning", icon:"🚫", title:`Avoid trades tagged "${worstTag.tag}"`, body:`Only ${worstTag.winRate}% WR. Total loss: ${(worstTag?.pnl??0).toFixed(2)}.`, metric:`${worstTag.winRate}% WR` });
   }
   if (longs.length>=2 && shorts.length>=2) {
-    const longWR  = longs.filter(t=>t.pnl>0).length/longs.length*100;
-    const shortWR = shorts.filter(t=>t.pnl>0).length/shorts.length*100;
+    const longWR  = longs.filter(t=>(t.pnl??0)>0).length/longs.length*100;
+    const shortWR = shorts.filter(t=>(t.pnl??0)>0).length/shorts.length*100;
     const better  = longWR>=shortWR?"long":"short";
     if (Math.abs(longWR-shortWR)>=15) insights.push({ type: longWR>=shortWR&&longWR>=55?"positive":"neutral", icon: better==="long"?"📈":"📉", title:`You trade ${better}s better`, body:`${better==="long"?"Longs":"Shorts"}: ${(better==="long"?longWR:shortWR).toFixed(0)}% WR vs ${(better==="long"?shortWR:longWR).toFixed(0)}% WR.`, metric:`+${Math.abs(longWR-shortWR).toFixed(0)}% edge` });
   }
   const sorted = [...trades].sort((a,b)=>a.date-b.date); let maxLoss=0, curL=0;
-  sorted.forEach(t => { if(t.pnl<0){curL++;maxLoss=Math.max(maxLoss,curL);}else curL=0; });
+  sorted.forEach(t => { if((t.pnl??0)<0){curL++;maxLoss=Math.max(maxLoss,curL);}else curL=0; });
   if (maxLoss>=4) insights.push({ type:"warning", icon:"🔴", title:`Max ${maxLoss}-trade losing streak`, body:`Consider pausing after 3 consecutive losses to avoid revenge trading.`, metric:`${maxLoss} losses` });
   if (winRate>=60) insights.push({ type:"positive", icon:"✅", title:"Above-average win rate", body:`At ${winRate}% you're above the 50% threshold.`, metric:`${winRate}% WR` });
   else if (winRate<40) insights.push({ type:"warning", icon:"📉", title:`Low win rate: ${winRate}%`, body:`Check your profit factor — if above 1.5 you may be fine. Otherwise tighten entries.`, metric:`${winRate}% WR` });
@@ -2437,9 +2437,9 @@ function detectPatterns(trades) {
   trades.forEach(t => {
     const h = new Date(t.date).getHours();
     if (!byHour[h]) byHour[h] = { wins:0, losses:0, pnl:0 };
-    if (t.pnl > 0) byHour[h].wins++;
+    if ((t.pnl??0)>0) byHour[h].wins++;
     else byHour[h].losses++;
-    byHour[h].pnl += t.pnl ?? 0;
+    byHour[h].pnl += (t.pnl??0) ?? 0;
   });
   const hourEntries = Object.entries(byHour)
     .filter(([,v]) => v.wins + v.losses >= 2)
@@ -2450,7 +2450,7 @@ function detectPatterns(trades) {
     const best  = hourEntries.sort((a,b) => b.wr - a.wr)[0];
     const fmt   = h => h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h-12}pm`;
 
-    if (worst.pnl < 0 && (worst.wins + worst.losses) >= 3) {
+    if (wors(t.pnl??0)<0 && (worst.wins + worst.losses) >= 3) {
       patterns.push({
         type:"warning", icon:"🕐", severity:"high",
         title:`Losses spike around ${fmt(worst.hour)}`,
@@ -2463,7 +2463,7 @@ function detectPatterns(trades) {
       patterns.push({
         type:"positive", icon:"⏰", severity:"medium",
         title:`Best performance at ${fmt(best.hour)}`,
-        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${best.pnl >= 0 ? "+" : ""}${bes(t.pnl??0).toFixed(2)} total PnL. Focus more of your trading here.`,
+        body:`You win ${best.wr.toFixed(0)}% of trades around ${fmt(best.hour)}. ${best.wins+best.losses} trades, ${bes(t.pnl??0)>=0 ? "+" : ""}${bes(t.pnl??0).toFixed(2)} total PnL. Focus more of your trading here.`,
         metric:`${best.wr.toFixed(0)}% WR`,
         action:"Trade more at this time",
       });
@@ -2476,8 +2476,8 @@ function detectPatterns(trades) {
   trades.forEach(t => {
     const d = new Date(t.date).getDay();
     if (!byDay[d]) byDay[d] = { wins:0, losses:0, pnl:0, count:0 };
-    if (t.pnl > 0) byDay[d].wins++; else byDay[d].losses++;
-    byDay[d].pnl   += t.pnl ?? 0;
+    if ((t.pnl??0)>0) byDay[d].wins++; else byDay[d].losses++;
+    byDay[d].pnl   += (t.pnl??0) ?? 0;
     byDay[d].count++;
   });
   const dayEntries = Object.entries(byDay)
@@ -2559,13 +2559,13 @@ function detectPatterns(trades) {
     .map(([d,ts]) => ({
       date: d,
       count: ts.length,
-      pnl: ts.reduce((s,t) => s+t.pnl, 0),
-      wr: ts.filter(t=>t.pnl>0).length/ts.length*100,
+      pnl: ts.reduce((s,t) => s+(t.pnl??0), 0),
+      wr: ts.filter(t=>(t.pnl??0)>0).length/ts.length*100,
     }));
 
   if (heavyDays.length >= 2) {
     const avgHeavyWR  = heavyDays.reduce((s,d) => s+d.wr, 0) / heavyDays.length;
-    const avgHeavyPnl = heavyDays.reduce((s,d) => s+d.pnl, 0) / heavyDays.length;
+    const avgHeavyPnl = heavyDays.reduce((s,d) => s+(d.pnl??0), 0) / heavyDays.length;
     if (avgHeavyWR < 45 || avgHeavyPnl < 0) {
       patterns.push({
         type:"warning", icon:"⚡", severity:"medium",
@@ -2578,10 +2578,10 @@ function detectPatterns(trades) {
   }
 
   // ── 5. Stop loss discipline ──────────────────────────────
-  const bigLosses = trades.filter(t => t.pnl < 0).sort((a,b) => a.pnl - b.pnl);
+  const bigLosses = trades.filter(t => (t.pnl??0)<0).sort((a,b) => a.pnl - b.pnl);
   if (bigLosses.length >= 3) {
-    const avgLoss = bigLosses.reduce((s,t) => s+t.pnl, 0) / bigLosses.length;
-    const avgWin  = trades.filter(t=>t.pnl>0).reduce((s,t) => s+t.pnl, 0) / (trades.filter(t=>t.pnl>0).length || 1);
+    const avgLoss = bigLosses.reduce((s,t) => s+(t.pnl??0), 0) / bigLosses.length;
+    const avgWin  = trades.filter(t=>(t.pnl??0)>0).reduce((s,t) => s+(t.pnl??0), 0) / (trades.filter(t=>(t.pnl??0)>0).length || 1);
     const rrRatio = Math.abs(avgWin / avgLoss);
     if (rrRatio < 1) {
       patterns.push({
@@ -2607,8 +2607,8 @@ function detectPatterns(trades) {
     const half   = Math.floor(sorted.length / 2);
     const first  = sorted.slice(0, half);
     const second = sorted.slice(half);
-    const firstWR  = first.filter(t=>t.pnl>0).length / first.length * 100;
-    const secondWR = second.filter(t=>t.pnl>0).length / second.length * 100;
+    const firstWR  = first.filter(t=>(t.pnl??0)>0).length / first.length * 100;
+    const secondWR = second.filter(t=>(t.pnl??0)>0).length / second.length * 100;
     const diff = secondWR - firstWR;
     if (diff >= 10) {
       patterns.push({
@@ -2794,7 +2794,7 @@ function StrategyCards({ trades }) {
               {[
                 { label:"Trades",    val:String(s.count),                                          color:"#94a3b8" },
                 { label:"PnL",       val:`${pnlPos?"+":""}${(s.pnl??0).toFixed(2)}`,                   color:pnlPos?"#34d399":"#f87171" },
-                { label:"Avg/Trade", val:`${s.pnl/s.count>=0?"+":""}${(s.pnl/s.count).toFixed(2)}`, color:s.pnl/s.count>=0?"#34d399":"#f87171" },
+                { label:"Avg/Trade", val:`${(s.pnl??0)/s.count>=0?"+":""}${((s.pnl??0)/s.count).toFixed(2)}`, color:(s.pnl??0)/s.count>=0?"#34d399":"#f87171" },
               ].map(({ label,val,color }) => (
                 <div key={label} style={{ textAlign:"center", padding:"8px 4px", borderRadius:7, background:"#111827" }}>
                   <div style={{ fontSize:8, color:"#334155", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:3 }}>{label}</div>
@@ -3292,7 +3292,7 @@ function AccountStatsCard({ activeAccount, trades }) {
   const pnlPct    = activeAccount.startingBalance > 0 ? (pnl / activeAccount.startingBalance * 100) : 0;
   const pnlPos    = pnl >= 0;
   const typeClr   = activeAccount.type === "funded" ? "#a78bfa" : "#38bdf8";
-  const wins      = accTrades.filter(t => t.pnl > 0).length;
+  const wins      = accTrades.filter(t => (t.pnl??0)>0).length;
   const wr        = accTrades.length ? +((wins / accTrades.length) * 100).toFixed(1) : 0;
 
   return (
@@ -3341,7 +3341,7 @@ function AccountStatsCard({ activeAccount, trades }) {
 
 function calculateWinRate(trades) {
   if (!trades.length) return 0;
-  return +((trades.filter(t => t.pnl > 0).length / trades.length) * 100).toFixed(1);
+  return +((trades.filter(t => (t.pnl??0)>0).length / trades.length) * 100).toFixed(1);
 }
 
 function calculatePnL(trades) {
@@ -3353,10 +3353,10 @@ function calculateScore(trades) {
   const wr     = calculateWinRate(trades) / 100;          // 0-1
   const totalPnl = calculatePnL(trades);
   const n      = trades.length;
-  const wins   = trades.filter(t => t.pnl > 0);
-  const losses = trades.filter(t => t.pnl < 0);
-  const grossWin  = wins.reduce((s,t)=>s+t.pnl,0);
-  const grossLoss = Math.abs(losses.reduce((s,t)=>s+t.pnl,0));
+  const wins   = trades.filter(t => (t.pnl??0)>0);
+  const losses = trades.filter(t => (t.pnl??0)<0);
+  const grossWin  = wins.reduce((s,t)=>s+(t.pnl??0),0);
+  const grossLoss = Math.abs(losses.reduce((s,t)=>s+(t.pnl??0),0));
   const pf     = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 5 : 0;
   // Composite: 40% win-rate, 30% profit factor, 20% total PnL (normalised), 10% trade count
   const pnlScore  = Math.tanh(totalPnl / 1000) * 100;    // sigmoid-like, caps extremes
@@ -3370,10 +3370,10 @@ function getPerformanceBadges(trades) {
   const wr       = calculateWinRate(trades);
   const pnl      = calculatePnL(trades);
   const n        = trades.length;
-  const wins     = trades.filter(t => t.pnl > 0);
-  const losses   = trades.filter(t => t.pnl < 0);
-  const grossWin  = wins.reduce((s,t)=>s+t.pnl,0);
-  const grossLoss = Math.abs(losses.reduce((s,t)=>s+t.pnl,0));
+  const wins     = trades.filter(t => (t.pnl??0)>0);
+  const losses   = trades.filter(t => (t.pnl??0)<0);
+  const grossWin  = wins.reduce((s,t)=>s+(t.pnl??0),0);
+  const grossLoss = Math.abs(losses.reduce((s,t)=>s+(t.pnl??0),0));
   const pf        = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 5 : 0;
 
   if (wr >= 65 && n >= 5)      badges.push({ emoji:"🔥", label:"High Win Rate", color:"#fbbf24", bg:"rgba(251,191,36,0.12)" });
@@ -3443,7 +3443,7 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
     let cum = 0;
     return sorted.map(t => ({
       label: new Date(t.date).toLocaleDateString("en-US", { month:"short", day:"numeric" }),
-      cumPnl: +(cum += t.pnl).toFixed(4),
+      cumPnl: +(cum += (t.pnl??0)).toFixed(4),
     }));
   }, [trades]);
 
@@ -3536,10 +3536,10 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
               <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", marginBottom:10 }}>Strategy Breakdown</div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
                 {byStrat.map(s => (
-                  <div key={s.strategy} style={{ borderRadius:9, border:`1px solid ${s.pnl>=0?"rgba(52,211,153,0.2)":"rgba(239,68,68,0.2)"}`, background:"rgba(17,24,39,0.6)", padding:"10px 12px" }}>
+                  <div key={s.strategy} style={{ borderRadius:9, border:`1px solid ${(s.pnl??0)>=0?"rgba(52,211,153,0.2)":"rgba(239,68,68,0.2)"}`, background:"rgba(17,24,39,0.6)", padding:"10px 12px" }}>
                     <div style={{ fontSize:11, fontWeight:700, color:"#e2e8f0", marginBottom:6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.strategy}</div>
                     <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, fontFamily:"monospace" }}>
-                      <span style={{ color: s.pnl>=0?"#34d399":"#f87171" }}>{s.pnl>=0?"+":""}{(s.pnl??0).toFixed(2)}</span>
+                      <span style={{ color: (s.pnl??0)>=0?"#34d399":"#f87171" }}>{(s.pnl??0)>=0?"+":""}{(s.pnl??0).toFixed(2)}</span>
                       <span style={{ color:"#64748b" }}>{s.winRate}% WR</span>
                     </div>
                   </div>
@@ -3563,8 +3563,8 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
                       </div>
                     </div>
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:t.pnl>=0?"#34d399":"#f87171" }}>{t.pnl>=0?"+":""}{(t.pnl??0).toFixed(4)}</div>
-                      <div style={{ fontSize:9, color:t.pnl>=0?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
+                      <div style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:(t.pnl??0)>=0?"#34d399":"#f87171" }}>{(t.pnl??0)>=0?"+":""}{(t.pnl??0).toFixed(4)}</div>
+                      <div style={{ fontSize:9, color:(t.pnl??0)>=0?"#34d399":"#f87171", opacity:0.7 }}>{t.pnlPercent>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                     </div>
                   </div>
                 ))}
@@ -3762,7 +3762,7 @@ function CopyTradingPage({ session, copyTrading }) {
             const actualRank = podiumIdx === 1 ? 1 : podiumIdx === 0 ? 2 : 3;
             const medal = ["🥈","🥇","🥉"][podiumIdx];
             const h  = podiumIdx === 1 ? 130 : 110;
-            const pnlPos = t.pnl >= 0;
+            const pnlPos = (t.pnl??0)>=0;
             return (
               <div key={t.username} onClick={() => setProfile(t)} style={{ borderRadius:14, border:`1px solid ${actualRank===1?"rgba(251,191,36,0.4)":actualRank===2?"rgba(148,163,184,0.25)":"rgba(249,115,22,0.3)"}`, background:`linear-gradient(160deg,${actualRank===1?"rgba(251,191,36,0.08)":actualRank===2?"rgba(148,163,184,0.05)":"rgba(249,115,22,0.06)"},rgba(13,17,32,0.9))`, padding:"16px", textAlign:"center", cursor:"pointer", position:"relative", height:h }}>
                 <div style={{ fontSize:28, marginBottom:6 }}>{medal}</div>
@@ -4069,10 +4069,10 @@ function runBacktest({ candles, strategy, initialBalance, riskPct, slPct, tpPct,
 
   if (!trades.length) return { trades:[], equity:[{time:times[0],balance:initialBalance,label:"Start"},{time:times[times.length-1],balance:initialBalance,label:"End"}], metrics: null };
 
-  const wins       = trades.filter(t => t.pnl > 0);
-  const losses     = trades.filter(t => t.pnl <= 0);
-  const grossWin   = wins.reduce((s,t)=>s+t.pnl,0);
-  const grossLoss  = Math.abs(losses.reduce((s,t)=>s+t.pnl,0));
+  const wins       = trades.filter(t => (t.pnl??0)>0);
+  const losses     = trades.filter(t => (t.pnl??0)<=0);
+  const grossWin   = wins.reduce((s,t)=>s+(t.pnl??0),0);
+  const grossLoss  = Math.abs(losses.reduce((s,t)=>s+(t.pnl??0),0));
   const totalPnl   = balance - initialBalance;
   const returnPct  = (totalPnl / initialBalance) * 100;
   const avgHold    = trades.reduce((s,t)=>s+t.holdBars,0) / trades.length;
@@ -4424,8 +4424,8 @@ function runBacktestV2({ candles, strategy, initialBalance, riskPct, slPct, tpPc
 
   if (!trades.length) return { trades:[], equity:[{time:times[0],balance:initialBalance,label:"Start"},{time:times[times.length-1],balance:initialBalance,label:"End"}], metrics:null };
 
-  const wins=trades.filter(t=>t.pnl>0), losses=trades.filter(t=>t.pnl<=0);
-  const grossWin=wins.reduce((s,t)=>s+t.pnl,0), grossLoss=Math.abs(losses.reduce((s,t)=>s+t.pnl,0));
+  const wins=trades.filter(t=>(t.pnl??0)>0), losses=trades.filter(t=>(t.pnl??0)<=0);
+  const grossWin=wins.reduce((s,t)=>s+(t.pnl??0),0), grossLoss=Math.abs(losses.reduce((s,t)=>s+(t.pnl??0),0));
   const totalPnl=balance-initialBalance, returnPct=(totalPnl/initialBalance)*100;
   const slHits=trades.filter(t=>t.exitReason==="SL").length, tpHits=trades.filter(t=>t.exitReason==="TP").length;
 
@@ -4856,7 +4856,7 @@ function BacktestPanel() {
                             <td style={{ padding:"7px 12px", fontSize:11, color:"#334155", fontFamily:"monospace" }}>{idx+1}</td>
                             <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", color:"#94a3b8" }}>{t.entryPrice.toFixed(2)}</td>
                             <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", color:"#94a3b8" }}>{t.exitPrice.toFixed(2)}</td>
-                            <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", fontWeight:700, color:t.pnl>=0?"#34d399":"#f87171" }}>{t.pnl>=0?"+":""}{(t.pnl??0).toFixed(4)}</td>
+                            <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", fontWeight:700, color:(t.pnl??0)>=0?"#34d399":"#f87171" }}>{(t.pnl??0)>=0?"+":""}{(t.pnl??0).toFixed(4)}</td>
                             <td style={{ padding:"7px 12px", fontSize:11, fontFamily:"monospace", color:"#64748b" }}>{t.holdBars}</td>
                             <td style={{ padding:"7px 12px" }}>
                               <span style={{ fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:8, background:t.exitReason==="TP"?"rgba(52,211,153,0.1)":t.exitReason==="SL"?"rgba(239,68,68,0.1)":"rgba(56,189,248,0.1)", color:t.exitReason==="TP"?"#34d399":t.exitReason==="SL"?"#f87171":"#38bdf8" }}>{t.exitReason}</span>
@@ -5020,7 +5020,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
     const prefix = `${year}-${String(month+1).padStart(2,"0")}`;
     const ts = Object.entries(byDay).filter(([k]) => k.startsWith(prefix)).flatMap(([,v]) => v);
     const pnl = +ts.reduce((s,t) => s+(t.pnl??0), 0).toFixed(2);
-    return { total: ts.length, pnl, wins: ts.filter(t=>t.pnl>0).length, losses: ts.filter(t=>t.pnl<=0&&t.pnl!==undefined).length };
+    return { total: ts.length, pnl, wins: ts.filter(t=>(t.pnl??0)>0).length, losses: ts.filter(t=>(t.pnl??0)<=0&&t.pnl!==undefined).length };
   }, [byDay, year, month]);
 
   const prevMonth = () => month===0 ? (setYear(y=>y-1), setMonth(11)) : setMonth(m=>m-1);
@@ -5075,7 +5075,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
             { label:"Trades this month", val:String(monthStats.total),                                       color:"#94a3b8" },
             { label:"Wins",              val:String(monthStats.wins),                                        color:"#34d399" },
             { label:"Losses",            val:String(monthStats.losses),                                      color:"#f87171" },
-            { label:"Net PnL",           val:`${monthStats.pnl>=0?"+":""}${monthStats.pnl}`,                 color:monthStats.pnl>=0?"#34d399":"#f87171" },
+            { label:"Net PnL",           val:`${monthStat(s.pnl??0)>=0?"+":""}${monthStats.pnl}`,                 color:monthStat(s.pnl??0)>=0?"#34d399":"#f87171" },
           ].map(({ label, val, color }) => (
             <div key={label} style={{ borderRadius:10, border:"1px solid #1a2035", background:"#0d1120", padding:"10px 14px" }}>
               <div style={{ fontSize:9, color:"#475569", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:4 }}>{label}</div>
@@ -5139,7 +5139,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
                       {/* Dot strip */}
                       <div style={{ display:"flex", flexWrap:"wrap", gap:2, marginTop:5 }}>
                         {ts.slice(0,8).map((t,i) => (
-                          <div key={i} style={{ width:5, height:5, borderRadius:"50%", background:t.pnl>=0?"#10b981":"#ef4444", flexShrink:0 }}/>
+                          <div key={i} style={{ width:5, height:5, borderRadius:"50%", background:(t.pnl??0)>=0?"#10b981":"#ef4444", flexShrink:0 }}/>
                         ))}
                         {ts.length>8 && <span style={{ fontSize:7, color:"#475569", lineHeight:"5px" }}>+{ts.length-8}</span>}
                       </div>
@@ -5161,15 +5161,15 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
               <span style={{ fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{selected.label}</span>
               <span style={{ fontSize:10, color:"#475569" }}>— {selected.trades.length} trade{selected.trades.length!==1?"s":""}</span>
               {/* Day PnL */}
-              <span style={{ fontSize:12, fontFamily:"monospace", fontWeight:700, color: selected.trades.reduce((s,t)=>s+t.pnl,0)>=0?"#34d399":"#f87171" }}>
-                {selected.trades.reduce((s,t)=>s+t.pnl,0)>=0?"+":""}{selected.trades.reduce((s,t)=>s+(t.pnl??0),0).toFixed(2)}
+              <span style={{ fontSize:12, fontFamily:"monospace", fontWeight:700, color: selected.trades.reduce((s,t)=>s+(t.pnl??0),0)>=0?"#34d399":"#f87171" }}>
+                {selected.trades.reduce((s,t)=>s+(t.pnl??0),0)>=0?"+":""}{selected.trades.reduce((s,t)=>s+(t.pnl??0),0).toFixed(2)}
               </span>
             </div>
             <button onClick={()=>setSelected(null)} style={{ background:"none", border:"none", color:"#475569", cursor:"pointer" }}><X size={14}/></button>
           </div>
           <div style={{ padding:"12px 16px", display:"flex", flexDirection:"column", gap:7 }}>
             {selected.trades.map(t => {
-              const w = t.pnl >= 0;
+              const w = (t.pnl??0)>=0;
               return (
                 <div key={t.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:8, background:"#111827", border:`1px solid ${w?"rgba(16,185,129,0.18)":"rgba(239,68,68,0.18)"}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
@@ -5211,7 +5211,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
           </div>
           <div style={{ padding:"12px 16px", display:"flex", flexDirection:"column", gap:7 }}>
             {unknownTrades.map(t => {
-              const w = t.pnl >= 0;
+              const w = (t.pnl??0)>=0;
               return (
                 <div key={t.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:8, background:"#111827", border:"1px solid rgba(251,191,36,0.12)" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -5434,9 +5434,9 @@ function WeeklyReport({ trades }) {
         const s = t.strategy || "Unknown";
         if (!byStrat[s]) byStrat[s] = { wins:0, losses:0, pnl:0 };
         if ((t.pnl??0) > 0) byStrat[s].wins++; else byStrat[s].losses++;
-        byStrat[s].pnl += t.pnl ?? 0;
+        byStrat[s].pnl += (t.pnl??0) ?? 0;
       });
-      const stratSummary = Object.entries(byStrat).map(([s,v]) => `${s}: ${v.wins}W/${v.losses}L, PnL ${v.pnl.toFixed(2)}`);
+      const stratSummary = Object.entries(byStrat).map(([s,v]) => `${s}: ${v.wins}W/${v.losses}L, PnL ${(v.pnl??0).toFixed(2)}`);
 
       const prompt = `You are an expert trading coach reviewing a trader's weekly performance. Write a concise, personalised weekly performance report.
 
@@ -5813,7 +5813,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
         <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #111827", fontSize:12, fontWeight:700, color:"#94a3b8" }}>Recent Trades</div>
           {recent.map(t => {
-            const w = t.pnl >= 0;
+            const w = (t.pnl??0)>=0;
             return (
               <div key={t.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 16px", borderBottom:"1px solid rgba(30,41,59,0.4)" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
