@@ -348,12 +348,21 @@ function seedStarterData(username) {
 
 // ── Demo mode banner with toggle ──────────────────────────────
 function DemoBanner({ username, onClear }) {
-  const [demo, setDemo]       = useState(() => isDemoMode(username));
+  const [demo, setDemo]       = useState(false);
   const [confirming, setConf] = useState(false);
 
-  // Re-check on every render in case localStorage changed
   useEffect(() => {
-    setDemo(isDemoMode(username));
+    // Show banner if demo flag is set OR if trades are all demo source
+    const flagSet = isDemoMode(username);
+    if (flagSet) { setDemo(true); return; }
+    // Also check if existing trades are all demo
+    try {
+      const trades = JSON.parse(localStorage.getItem(`tradedesk_trades_${username}_v1`) ?? "[]");
+      if (trades.length > 0 && trades.every(t => t.source === "demo")) {
+        setDemoMode(username, true);
+        setDemo(true);
+      }
+    } catch {}
   }, [username]);
 
   if (!demo) return null;
