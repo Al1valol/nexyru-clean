@@ -1767,6 +1767,14 @@ function TradeDetail({ trade, onClose }) {
 }
 
 function TradeTable({ trades, onEdit, onDelete, onReview }) {
+  const [err, setErr] = useState(false);
+  if (err) return (
+    <div style={{ padding:"24px", borderRadius:12, border:"1px dashed rgba(248,113,113,0.3)", textAlign:"center" }}>
+      <div style={{ fontSize:32, marginBottom:8 }}>⚠️</div>
+      <div style={{ fontSize:13, fontWeight:700, color:"#f87171", marginBottom:8 }}>Couldn't render trade table</div>
+      <button onClick={() => setErr(false)} style={{ padding:"7px 16px", borderRadius:8, border:"1px solid rgba(56,189,248,0.3)", background:"transparent", color:"#38bdf8", fontSize:12, cursor:"pointer" }}>Retry</button>
+    </div>
+  );
   const [search,  setSearch]  = useState("");
   const [typeF,   setTypeF]   = useState("all");
   const [stratF,  setStratF]  = useState("all");
@@ -1859,7 +1867,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                           {(t.screenshot || t._hasScreenshot) && <Image size={9} style={{ color:"#475569" }}/>}
                           {t.copiedFrom && <span style={{ fontSize:7, fontWeight:700, color:"#818cf8", background:"rgba(129,140,248,0.1)", padding:"1px 5px", borderRadius:8 }}>COPY</span>}
                           {t.source === "broker_import" && <span style={{ fontSize:7, fontWeight:700, color:"#34d399", background:"rgba(52,211,153,0.1)", padding:"1px 5px", borderRadius:8, border:"1px solid rgba(52,211,153,0.2)" }}>✓ BROKER</span>}
-                          {(() => { const g = gradeTradeLocally(t, trades); return <span style={{ fontSize:7, fontWeight:800, color:g.gradeColor, background:`${g.gradeColor}15`, padding:"1px 5px", borderRadius:8, border:`1px solid ${g.gradeColor}30` }}>{g.grade}</span>; })()}
+                          {(() => { try { const g = gradeTradeLocally(t, trades); return <span style={{ fontSize:7, fontWeight:800, color:g.gradeColor, background:`${g.gradeColor}15`, padding:"1px 5px", borderRadius:8, border:`1px solid ${g.gradeColor}30` }}>{g.grade}</span>; } catch { return null; } })()}
                         </div>
                       </td>
                       <td style={td} onClick={()=>setViewing(t)}>
@@ -2076,8 +2084,10 @@ function insightsByTag(trades) {
 // ═══════════════════════════════════════════════════════════════
 
 function gradeTradeLocally(trade, allTrades) {
-  let score = 70; // baseline
+  if (!trade) return { score:50, grade:"C", gradeColor:"#fbbf24", strengths:[], issues:[], flags:[], rr:null };
+  let score = 70;
   const issues = [], strengths = [], flags = [];
+  const pnl = trade.pnl ?? 0;
 
   // ── RR Analysis ──────────────────────────────────────────────
   const rr = trade.stopLoss && trade.takeProfit && trade.entryPrice
@@ -2115,7 +2125,7 @@ function gradeTradeLocally(trade, allTrades) {
   if (emotion.includes("calm") || emotion.includes("confident")) { score += 5; strengths.push("Calm, disciplined mindset"); }
 
   // ── Revenge trading detection ─────────────────────────────────
-  const sorted = [...allTrades].sort((a,b) => a.date - b.date);
+  const sorted = [...(allTrades ?? [])].filter(t => t && t.date).sort((a,b) => a.date - b.date);
   const idx    = sorted.findIndex(t => t.id === trade.id);
   if (idx >= 1) {
     const prev = sorted[idx - 1];
