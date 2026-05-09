@@ -242,10 +242,30 @@ function useAuth() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    // Check URL hash for Google OAuth token first
+    const hash = window.location.hash;
+    if (hash.includes("access_token=")) {
+      try {
+        const params = new URLSearchParams(hash.slice(1));
+        const token = params.get("access_token");
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        const email = payload.email || "";
+        const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g,"");
+        const displayName = payload.user_metadata?.full_name || username;
+        const s = {username, displayName, email, googleAuth:true};
+        localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+        window.history.replaceState(null, "", "/dashboard");
+        setSession(s);
+        setHydrated(true);
+        return;
+      } catch(e) {}
+    }
+    // Check existing session
     try {
       const raw = localStorage.getItem(SESSION_KEY);
       if (raw) {
         const s = JSON.parse(raw);
+        if (s.googleAuth) { setSession(s); setHydrated(true); return; }
         const accounts = JSON.parse(localStorage.getItem(AUTH_KEY) || "{}");
         if (accounts[s.username]) setSession(s);
       }
