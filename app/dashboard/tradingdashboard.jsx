@@ -7302,14 +7302,21 @@ function TradingDashboard({ session, onLogout }) {
       {showAccountSetup && (
         <AccountSetupModal
           username={session.username}
-          onComplete={(type, size) => {
+          onComplete={(type, size, fundedInfo) => {
             setShowAccountSetup(false);
-            paperAccts.addAccount(
-              type === "funded"
-                ? `Funded Account ($${(size/1000).toFixed(0)}k)`
-                : `Paper Account ($${(size/1000).toFixed(0)}k)`,
-              type, size
-            );
+            const name = type === "funded"
+              ? `${fundedInfo?.propFirm || "Funded"} – ${fundedInfo?.phase === "phase1" ? "Phase 1" : fundedInfo?.phase === "phase2" ? "Phase 2" : "Funded"} ($${(size/1000).toFixed(0)}k)`
+              : type === "live"
+              ? `Live Account ($${(size/1000).toFixed(0)}k)`
+              : `Paper Account ($${(size/1000).toFixed(0)}k)`;
+            const acct = paperAccts.addAccount(name, type, size);
+            // Save funded challenge rules to localStorage
+            if (fundedInfo && acct) {
+              localStorage.setItem(
+                `nexyru_funded_rules_${session.username}_${acct?.id || Date.now()}`,
+                JSON.stringify(fundedInfo)
+              );
+            }
           }}
           onSkip={() => setShowAccountSetup(false)}
         />
@@ -7475,7 +7482,7 @@ function TradingDashboard({ session, onLogout }) {
 
 // ── Google Auth Screen ─────────────────────────────────────────
 function GoogleAuthScreen() {
-  const url = "/auth/signin";
+  const url = "https://xsrcaceydyqytbipvrok.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fnexyru.com%2Fdashboard";
   return (
     <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(56,189,248,0.1)}50%{box-shadow:0 0 40px rgba(56,189,248,0.25)}}`}</style>
@@ -7563,14 +7570,21 @@ function UsernamePickerScreen({ auth }) {
 
 // ── Account Setup Modal ────────────────────────────────────────
 function AccountSetupModal({ username, onComplete, onSkip }) {
-  const [step,     setStep]     = useState(1); // 1=type, 2=size
-  const [type,     setType]     = useState(null);
-  const [size,     setSize]     = useState(null);
-  const [loading,  setLoading]  = useState(false);
+  const [step,        setStep]        = useState(1);
+  const [type,        setType]        = useState(null);
+  const [size,        setSize]        = useState(null);
+  const [loading,     setLoading]     = useState(false);
+  // Funded-specific fields
+  const [propFirm,    setPropFirm]    = useState("");
+  const [phase,       setPhase]       = useState("phase1");
+  const [profitTarget,setProfitTarget]= useState("");
+  const [maxDrawdown, setMaxDrawdown] = useState("");
+  const [dailyLoss,   setDailyLoss]   = useState("");
+  const [minDays,     setMinDays]     = useState("");
 
   const TYPES = [
     { id:"paper",  emoji:"📝", label:"Paper Trading",   desc:"Practice with virtual money. No risk, full features.", color:"#38bdf8" },
-    { id:"funded", emoji:"🏆", label:"Funded Account",  desc:"I'm trading with a prop firm or funded account.", color:"#f59e0b" },
+    { id:"funded", emoji:"🏆", label:"Funded Account",  desc:"I'm trading with a prop firm challenge or funded account.", color:"#f59e0b" },
     { id:"live",   emoji:"💰", label:"Live Trading",    desc:"Trading with my own real capital.", color:"#34d399" },
   ];
 
@@ -7583,50 +7597,74 @@ function AccountSetupModal({ username, onComplete, onSkip }) {
     { value:200000, label:"$200K", tag:"Advanced" },
   ];
 
+  const PROP_FIRMS = [
+    "Apex Trader Funding", "TopstepX", "Topstep", "FTMO", "MyFundedFutures",
+    "Take Profit Trader", "Earn2Trade", "TradeDay", "Uprofit", "Other"
+  ];
+
+  const totalSteps = type === "funded" ? 3 : 2;
+
   const handleDone = () => {
     if (!type || !size) return;
     setLoading(true);
-    setTimeout(() => onComplete(type, size), 400);
+    const fundedInfo = type === "funded" ? {
+      propFirm, phase,
+      profitTarget: parseFloat(profitTarget) || (size * 0.08),
+      maxDrawdown:  parseFloat(maxDrawdown)  || (size * 0.06),
+      dailyLoss:    parseFloat(dailyLoss)    || (size * 0.03),
+      minDays:      parseInt(minDays)        || 10,
+      startDate:    new Date().toISOString(),
+    } : null;
+    setTimeout(() => onComplete(type, size, fundedInfo), 400);
   };
 
   const selectedType = TYPES.find(t => t.id === type);
+  const isFundedReady = type === "funded" ? propFirm.length > 0 : true;
+
+  // Auto-fill defaults when size is selected
+  const autoFill = (s) => {
+    setSize(s);
+    if (type === "funded") {
+      if (!profitTarget) setProfitTarget(String(Math.round(s * 0.08)));
+      if (!maxDrawdown)  setMaxDrawdown(String(Math.round(s * 0.06)));
+      if (!dailyLoss)    setDailyLoss(String(Math.round(s * 0.03)));
+      if (!minDays)      setMinDays("10");
+    }
+  };
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
       <div style={{position:"absolute",inset:0,background:"rgba(4,8,20,0.96)",backdropFilter:"blur(24px)"}}/>
-      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:560,margin:"0 20px"}}>
+      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:580,margin:"0 20px",maxHeight:"90vh",overflowY:"auto"}}>
         <style>{`@keyframes setupIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
         <div style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid #1a2540",borderRadius:28,overflow:"hidden",animation:"setupIn 0.4s ease",boxShadow:"0 40px 120px rgba(0,0,0,0.9)"}}>
 
           {/* Header */}
-          <div style={{padding:"32px 36px 24px",borderBottom:"1px solid #111d30"}}>
+          <div style={{padding:"28px 32px 20px",borderBottom:"1px solid #111d30"}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
               <div style={{width:40,height:40,borderRadius:12,background:"linear-gradient(135deg,rgba(56,189,248,0.2),rgba(56,189,248,0.05))",border:"1px solid rgba(56,189,248,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🚀</div>
               <div>
-                <div style={{fontSize:11,fontWeight:700,color:"#38bdf8",letterSpacing:"0.08em",marginBottom:2}}>STEP {step} OF 2</div>
-                <h2 style={{fontSize:20,fontWeight:900,color:"#f0f4ff",margin:0,letterSpacing:"-0.02em"}}>
-                  {step===1 ? "What type of account are you trading?" : "What's your account size?"}
+                <div style={{fontSize:11,fontWeight:700,color:"#38bdf8",letterSpacing:"0.08em",marginBottom:2}}>STEP {step} OF {totalSteps}</div>
+                <h2 style={{fontSize:19,fontWeight:900,color:"#f0f4ff",margin:0,letterSpacing:"-0.02em"}}>
+                  {step===1 ? "What type of account are you trading?" : step===2 ? "What's your account size?" : "Set up your funded challenge rules"}
                 </h2>
               </div>
             </div>
-            {/* Progress */}
-            <div style={{display:"flex",gap:6,marginTop:16}}>
-              {[1,2].map(s => (
-                <div key={s} style={{flex:1,height:3,borderRadius:2,background:s<=step?"#38bdf8":"#1a2540",transition:"background 0.3s"}}/>
+            <div style={{display:"flex",gap:6,marginTop:14}}>
+              {Array.from({length:totalSteps}).map((_,i) => (
+                <div key={i} style={{flex:1,height:3,borderRadius:2,background:i+1<=step?"#38bdf8":"#1a2540",transition:"background 0.3s"}}/>
               ))}
             </div>
           </div>
 
           {/* Step 1 — Account Type */}
           {step === 1 && (
-            <div style={{padding:"24px 36px 32px"}}>
+            <div style={{padding:"24px 32px 28px"}}>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {TYPES.map(t => (
                   <button key={t.id} onClick={() => setType(t.id)} style={{display:"flex",alignItems:"center",gap:16,padding:"16px 20px",borderRadius:16,border:`1.5px solid ${type===t.id?t.color+"60":"#1a2540"}`,background:type===t.id?`${t.color}0d`:"rgba(255,255,255,0.02)",cursor:"pointer",textAlign:"left",transition:"all 0.15s",outline:"none"}}>
-                    <div style={{width:48,height:48,borderRadius:14,background:`${t.color}18`,border:`1.5px solid ${t.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
-                      {t.emoji}
-                    </div>
+                    <div style={{width:48,height:48,borderRadius:14,background:`${t.color}18`,border:`1.5px solid ${t.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{t.emoji}</div>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
                         <span style={{fontSize:14,fontWeight:800,color:type===t.id?t.color:"#e2e8f0"}}>{t.label}</span>
@@ -7639,7 +7677,7 @@ function AccountSetupModal({ username, onComplete, onSkip }) {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:24}}>
                 <button onClick={onSkip} style={{background:"none",border:"none",color:"#334155",fontSize:13,cursor:"pointer",padding:0}}>Skip for now</button>
-                <button onClick={() => type && setStep(2)} disabled={!type} style={{padding:"11px 28px",borderRadius:14,border:"none",background:type?"linear-gradient(135deg,#0369a1,#38bdf8)":"#1a2540",color:type?"#fff":"#334155",fontSize:14,fontWeight:700,cursor:type?"pointer":"not-allowed",transition:"all 0.2s"}}>
+                <button onClick={() => type && setStep(2)} disabled={!type} style={{padding:"11px 28px",borderRadius:14,border:"none",background:type?"linear-gradient(135deg,#0369a1,#38bdf8)":"#1a2540",color:type?"#fff":"#334155",fontSize:14,fontWeight:700,cursor:type?"pointer":"not-allowed"}}>
                   Continue →
                 </button>
               </div>
@@ -7648,7 +7686,7 @@ function AccountSetupModal({ username, onComplete, onSkip }) {
 
           {/* Step 2 — Account Size */}
           {step === 2 && (
-            <div style={{padding:"24px 36px 32px"}}>
+            <div style={{padding:"24px 32px 28px"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,padding:"10px 14px",borderRadius:12,background:`${selectedType?.color}0d`,border:`1px solid ${selectedType?.color}25`}}>
                 <span style={{fontSize:16}}>{selectedType?.emoji}</span>
                 <span style={{fontSize:13,color:selectedType?.color,fontWeight:600}}>{selectedType?.label}</span>
@@ -7656,7 +7694,7 @@ function AccountSetupModal({ username, onComplete, onSkip }) {
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:24}}>
                 {SIZES.map(s => (
-                  <button key={s.value} onClick={() => setSize(s.value)} style={{padding:"14px 10px",borderRadius:14,border:`1.5px solid ${size===s.value?"rgba(56,189,248,0.5)":"#1a2540"}`,background:size===s.value?"rgba(56,189,248,0.08)":"rgba(255,255,255,0.02)",cursor:"pointer",textAlign:"center",position:"relative",outline:"none",transition:"all 0.15s"}}>
+                  <button key={s.value} onClick={() => autoFill(s.value)} style={{padding:"14px 10px",borderRadius:14,border:`1.5px solid ${size===s.value?"rgba(56,189,248,0.5)":"#1a2540"}`,background:size===s.value?"rgba(56,189,248,0.08)":"rgba(255,255,255,0.02)",cursor:"pointer",textAlign:"center",position:"relative",outline:"none",transition:"all 0.15s"}}>
                     {s.tag && <div style={{position:"absolute",top:-8,left:"50%",transform:"translateX(-50%)",background:"linear-gradient(135deg,#0369a1,#38bdf8)",borderRadius:10,padding:"1px 8px",fontSize:8,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>{s.tag}</div>}
                     <div style={{fontSize:16,fontWeight:900,color:size===s.value?"#38bdf8":"#e2e8f0",fontFamily:"monospace"}}>{s.label}</div>
                     <div style={{fontSize:10,color:"#3a4a6a",marginTop:2}}>{s.value.toLocaleString()}</div>
@@ -7665,8 +7703,73 @@ function AccountSetupModal({ username, onComplete, onSkip }) {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <button onClick={() => setStep(1)} style={{background:"none",border:"none",color:"#334155",fontSize:13,cursor:"pointer",padding:0}}>← Back</button>
-                <button onClick={handleDone} disabled={!size||loading} style={{padding:"11px 28px",borderRadius:14,border:"none",background:size&&!loading?"linear-gradient(135deg,#0369a1,#38bdf8)":"#1a2540",color:size&&!loading?"#fff":"#334155",fontSize:14,fontWeight:700,cursor:size&&!loading?"pointer":"not-allowed",transition:"all 0.2s",display:"flex",alignItems:"center",gap:8}}>
-                  {loading ? "Setting up…" : "Let's go 🚀"}
+                <button onClick={() => size && (type==="funded" ? setStep(3) : handleDone())} disabled={!size||loading} style={{padding:"11px 28px",borderRadius:14,border:"none",background:size&&!loading?"linear-gradient(135deg,#0369a1,#38bdf8)":"#1a2540",color:size&&!loading?"#fff":"#334155",fontSize:14,fontWeight:700,cursor:size&&!loading?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:8}}>
+                  {loading ? "Setting up…" : type==="funded" ? "Next →" : "Let's go 🚀"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Funded Challenge Rules (funded only) */}
+          {step === 3 && type === "funded" && (
+            <div style={{padding:"24px 32px 28px"}}>
+              {/* Prop firm selector */}
+              <div style={{marginBottom:16}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#64748b",letterSpacing:"0.06em",display:"block",marginBottom:8}}>PROP FIRM</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {PROP_FIRMS.map(f => (
+                    <button key={f} onClick={() => setPropFirm(f)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${propFirm===f?"rgba(245,158,11,0.5)":"#1a2540"}`,background:propFirm===f?"rgba(245,158,11,0.1)":"rgba(255,255,255,0.02)",color:propFirm===f?"#f59e0b":"#64748b",fontSize:11,fontWeight:propFirm===f?700:400,cursor:"pointer",outline:"none"}}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                {propFirm === "Other" && (
+                  <input value={propFirm==="Other"?"":propFirm} onChange={e=>setPropFirm(e.target.value)} placeholder="Enter firm name…" style={{marginTop:8,width:"100%",padding:"9px 12px",borderRadius:10,border:"1px solid #1a2540",background:"#0b1120",color:"#e2e8f0",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                )}
+              </div>
+
+              {/* Phase */}
+              <div style={{marginBottom:16}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#64748b",letterSpacing:"0.06em",display:"block",marginBottom:8}}>CHALLENGE PHASE</label>
+                <div style={{display:"flex",gap:8}}>
+                  {[{id:"phase1",label:"Phase 1"},{ id:"phase2",label:"Phase 2"},{id:"funded",label:"Funded"}].map(p => (
+                    <button key={p.id} onClick={() => setPhase(p.id)} style={{flex:1,padding:"8px",borderRadius:10,border:`1px solid ${phase===p.id?"rgba(245,158,11,0.4)":"#1a2540"}`,background:phase===p.id?"rgba(245,158,11,0.08)":"rgba(255,255,255,0.02)",color:phase===p.id?"#f59e0b":"#64748b",fontSize:12,fontWeight:phase===p.id?700:400,cursor:"pointer",outline:"none"}}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Challenge rules grid */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+                {[
+                  { label:"PROFIT TARGET ($)", value:profitTarget, set:setProfitTarget, hint:`e.g. ${Math.round((size||100000)*0.08).toLocaleString()}`, color:"#34d399" },
+                  { label:"MAX DRAWDOWN ($)", value:maxDrawdown,  set:setMaxDrawdown,  hint:`e.g. ${Math.round((size||100000)*0.06).toLocaleString()}`, color:"#f87171" },
+                  { label:"DAILY LOSS LIMIT ($)", value:dailyLoss, set:setDailyLoss,   hint:`e.g. ${Math.round((size||100000)*0.03).toLocaleString()}`, color:"#fbbf24" },
+                  { label:"MIN TRADING DAYS",   value:minDays,    set:setMinDays,     hint:"e.g. 10", color:"#38bdf8" },
+                ].map(f => (
+                  <div key={f.label}>
+                    <label style={{fontSize:10,fontWeight:700,color:f.color,letterSpacing:"0.06em",display:"block",marginBottom:6}}>{f.label}</label>
+                    <input
+                      type="number"
+                      value={f.value}
+                      onChange={e => f.set(e.target.value)}
+                      placeholder={f.hint}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1px solid rgba(${f.color==="34d399"?"52,211,153":f.color==="f87171"?"248,113,113":f.color==="fbbf24"?"251,191,36":"56,189,248"},0.2)`,background:"#0b1120",color:"#e2e8f0",fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"monospace"}}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Info banner */}
+              <div style={{padding:"10px 14px",borderRadius:12,background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.15)",marginBottom:20,fontSize:11,color:"#92400e",lineHeight:1.6}}>
+                📊 Nexyru will <strong style={{color:"#f59e0b"}}>automatically track</strong> your daily P&L, drawdown, and progress toward your profit target. You'll get alerts when approaching limits.
+              </div>
+
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <button onClick={() => setStep(2)} style={{background:"none",border:"none",color:"#334155",fontSize:13,cursor:"pointer",padding:0}}>← Back</button>
+                <button onClick={handleDone} disabled={!propFirm||loading} style={{padding:"11px 28px",borderRadius:14,border:"none",background:propFirm&&!loading?"linear-gradient(135deg,#92400e,#f59e0b)":"#1a2540",color:propFirm&&!loading?"#000":"#334155",fontSize:14,fontWeight:700,cursor:propFirm&&!loading?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:8}}>
+                  {loading ? "Setting up…" : "Start Tracking 🏆"}
                 </button>
               </div>
             </div>
