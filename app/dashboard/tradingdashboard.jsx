@@ -5424,7 +5424,7 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
 
 function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, activeAccount, username }) {
   const [reviewTrade, setReviewTrade] = useState(null);
-  const inDemo = trades.length > 0 && trades.every(t => t.source === "demo");
+  const inDemo = username && isDemoMode(username);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:32 }}>
@@ -5447,7 +5447,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
               🎮 Exit demo mode to add trades
             </div>
           )}
-          <a href="#"  onClick={e => { e.preventDefault(); if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')) { setDemoBlock(true); return; } window.location.href="/import"; }}
+          <a href={inDemo ? undefined : "/import"} onClick={inDemo ? e => e.preventDefault() : undefined}
             title={inDemo ? "Exit demo mode to import trades" : "Import CSV"}
             style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:inDemo?"#0b1120":"rgba(56,189,248,0.06)", color:inDemo?"#334155":"#38bdf8", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1 }}>
             <Upload size={11}/> Import CSV
@@ -7157,7 +7157,7 @@ function TradingDashboard({ session, onLogout }) {
   const [showHub,       setShowHub]       = useState(false);
   const [showAddAcct,   setShowAddAcct]   = useState(false);
   const [showShot,      setShowShot]      = useState(false);
-  const [demoBlock,     setDemoBlock]     = useState(false);
+  const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [editTrade,     setEditTrade]     = useState(null);
 
   const copyTrading  = useCopyTrading(session.username);
@@ -7299,22 +7299,23 @@ function TradingDashboard({ session, onLogout }) {
 
       {/* Modals */}
       {(showForm || editTrade) && <TradeForm initial={editTrade} strategies={strategies} onSave={saveTrade} onClose={() => { setShowForm(false); setEditTrade(null); }}/>}
-      {demoBlock && (
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(8px)"}} onClick={()=>setDemoBlock(false)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:24,padding:"36px 32px",maxWidth:400,width:"90%",textAlign:"center",boxShadow:"0 40px 80px rgba(0,0,0,0.8)"}}>
-            <div style={{width:64,height:64,borderRadius:20,background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 20px"}}>🎮</div>
-            <h2 style={{fontSize:20,fontWeight:900,color:"#f0f4ff",margin:"0 0 8px"}}>You're in Demo Mode</h2>
-            <p style={{fontSize:13,color:"#64748b",margin:"0 0 24px",lineHeight:1.7}}>Switch to Real mode to start logging your own trades. Use the Demo → Real toggle at the top of the page.</p>
-            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-              <button onClick={()=>setDemoBlock(false)} style={{padding:"10px 20px",borderRadius:12,border:"1px solid #1a2540",background:"transparent",color:"#64748b",fontSize:13,fontWeight:600,cursor:"pointer"}}>Got it</button>
-              <button onClick={()=>{setDemoBlock(false);document.querySelector("[data-demo-toggle]")?.click();}} style={{padding:"10px 20px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#0ea5a0,#34d399)",color:"#000",fontSize:13,fontWeight:700,cursor:"pointer"}}>Switch to Real →</button>
-            </div>
-          </div>
-        </div>
+      {showAccountSetup && (
+        <AccountSetupModal
+          username={session.username}
+          onComplete={(type, size) => {
+            setShowAccountSetup(false);
+            paperAccts.addAccount(
+              type === "funded"
+                ? `Funded Account ($${(size/1000).toFixed(0)}k)`
+                : `Paper Account ($${(size/1000).toFixed(0)}k)`,
+              type, size
+            );
+          }}
+          onSkip={() => setShowAccountSetup(false)}
+        />
       )}
-      {demoBlock && <DemoBlockModal onClose={()=>setDemoBlock(false)}/>}
       {showCSV && <CSVUploader onImport={(imported) => setTrades(prev => [...prev, ...imported.map(t => ({ ...t, accountId: paperAccts.activeAccount?.id ?? null }))])} onClose={() => setShowCSV(false)}/>}
-      {showHub && <ImportHub onManual={() => { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}}').username; if(JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} setShowForm(true); }} onCSV={() => { if(!!((() => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; return localStorage.getItem('nexyru_demo_mode_v1_'+u)==='1' || JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo'); } catch{return false;} })())){alert("Switch to Real mode first using the Demo → Real toggle.");return;} setShowCSV(true); }} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
+      {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => setShowCSV(true)} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
       {showShot && (
         <ScreenshotImporter
@@ -7364,7 +7365,7 @@ function TradingDashboard({ session, onLogout }) {
         {/* Right side */}
         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
           <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
-          <button onClick={()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} (()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){const d=document.createElement('div');d.id='demoAlert';d.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)';d.innerHTML=`<div onclick="event.stopPropagation()" style="background:linear-gradient(135deg,#0d1628,#0f1e30);border:1px solid rgba(251,191,36,0.35);border-radius:24px;padding:40px 36px;max-width:400px;width:90%;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.9)"><div style="font-size:48px;margin-bottom:20px">🎮</div><h2 style="font-size:22px;font-weight:900;color:#f0f4ff;margin:0 0 10px">You're in Demo Mode</h2><p style="font-size:14px;color:#64748b;margin:0 0 28px;line-height:1.7">Switch to Real mode to add your own trades. Use the Demo → Real toggle at the top.</p><div style="display:flex;gap:10px;justify-content:center"><button onclick="document.getElementById('demoAlert').remove()" style="padding:10px 22px;border-radius:12px;border:1px solid #1a2540;background:transparent;color:#64748b;font-size:14px;font-weight:600;cursor:pointer">Got it</button></div></div>`;d.onclick=()=>d.remove();document.body.appendChild(d);return;} setShowHub(true);})(); }} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(56,189,248,0.1)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+          <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(56,189,248,0.1)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
             <Plus size={12}/><span className="hide-mobile"> Add</span>
           </button>
           <span className="hide-mobile"><PlatformDropdown/></span>
@@ -7387,6 +7388,7 @@ function TradingDashboard({ session, onLogout }) {
             setDemoMode(session.username, false);
             saveUserTrades(session.username, []);
             setTrades([]);
+            setShowAccountSetup(true);
           }}/>
         </div>
         <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"12px 16px 16px" }}>
@@ -7399,11 +7401,11 @@ function TradingDashboard({ session, onLogout }) {
             {label}
           </button>
         ))}
-        <button onClick={()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} (()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){const d=document.createElement('div');d.id='demoAlert';d.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)';d.innerHTML=`<div onclick="event.stopPropagation()" style="background:linear-gradient(135deg,#0d1628,#0f1e30);border:1px solid rgba(251,191,36,0.35);border-radius:24px;padding:40px 36px;max-width:400px;width:90%;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.9)"><div style="font-size:48px;margin-bottom:20px">🎮</div><h2 style="font-size:22px;font-weight:900;color:#f0f4ff;margin:0 0 10px">You're in Demo Mode</h2><p style="font-size:14px;color:#64748b;margin:0 0 28px;line-height:1.7">Switch to Real mode to add your own trades. Use the Demo → Real toggle at the top.</p><div style="display:flex;gap:10px;justify-content:center"><button onclick="document.getElementById('demoAlert').remove()" style="padding:10px 22px;border-radius:12px;border:1px solid #1a2540;background:transparent;color:#64748b;font-size:14px;font-weight:600;cursor:pointer">Got it</button></div></div>`;d.onclick=()=>d.remove();document.body.appendChild(d);return;} setShowHub(true);})(); }} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:9, fontWeight:700 }}>
+        <button onClick={()=>setShowHub(true)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:9, fontWeight:700 }}>
           <span style={{ fontSize:18 }}>➕</span>Add
         </button>
       </div>
-          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} setShowForm(true); }} onOpenImport={()=>(()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){const d=document.createElement('div');d.id='demoAlert';d.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)';d.innerHTML=`<div onclick="event.stopPropagation()" style="background:linear-gradient(135deg,#0d1628,#0f1e30);border:1px solid rgba(251,191,36,0.35);border-radius:24px;padding:40px 36px;max-width:400px;width:90%;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,0.9)"><div style="font-size:48px;margin-bottom:20px">🎮</div><h2 style="font-size:22px;font-weight:900;color:#f0f4ff;margin:0 0 10px">You're in Demo Mode</h2><p style="font-size:14px;color:#64748b;margin:0 0 28px;line-height:1.7">Switch to Real mode to add your own trades. Use the Demo → Real toggle at the top.</p><div style="display:flex;gap:10px;justify-content:center"><button onclick="document.getElementById('demoAlert').remove()" style="padding:10px 22px;border-radius:12px;border:1px solid #1a2540;background:transparent;color:#64748b;font-size:14px;font-weight:600;cursor:pointer">Got it</button></div></div>`;d.onclick=()=>d.remove();document.body.appendChild(d);return;} setShowHub(true);})()} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
+          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
               setDemoMode(session.username, false);
               saveUserTrades(session.username, []);
               setTrades([]);
@@ -7415,8 +7417,8 @@ function TradingDashboard({ session, onLogout }) {
               trades={activeTrades}
               onEdit={t => setEditTrade(t)}
               onDelete={deleteTrade}
-              onAdd={() => { if(!!((() => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; return localStorage.getItem('nexyru_demo_mode_v1_'+u)==='1' || JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo'); } catch{return false;} })())){alert("Switch to Real mode first using the Demo → Real toggle.");return;} setShowForm(true); }}
-              onCSV={() => { if(!!((() => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; return localStorage.getItem('nexyru_demo_mode_v1_'+u)==='1' || JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo'); } catch{return false;} })())){alert("Switch to Real mode first using the Demo → Real toggle.");return;} setShowCSV(true); }}
+              onAdd={() => setShowForm(true)}
+              onCSV={() => setShowCSV(true)}
               onSaveTrade={saveTrade}
               activeAccount={paperAccts.activeAccount}
               username={session.username}
@@ -7559,20 +7561,116 @@ function UsernamePickerScreen({ auth }) {
   );
 }
 
+// ── Account Setup Modal ────────────────────────────────────────
+function AccountSetupModal({ username, onComplete, onSkip }) {
+  const [step,     setStep]     = useState(1); // 1=type, 2=size
+  const [type,     setType]     = useState(null);
+  const [size,     setSize]     = useState(null);
+  const [loading,  setLoading]  = useState(false);
 
-// ── Demo Block Modal ───────────────────────────────────────────
-function DemoBlockModal({ onClose }) {
+  const TYPES = [
+    { id:"paper",  emoji:"📝", label:"Paper Trading",   desc:"Practice with virtual money. No risk, full features.", color:"#38bdf8" },
+    { id:"funded", emoji:"🏆", label:"Funded Account",  desc:"I'm trading with a prop firm or funded account.", color:"#f59e0b" },
+    { id:"live",   emoji:"💰", label:"Live Trading",    desc:"Trading with my own real capital.", color:"#34d399" },
+  ];
+
+  const SIZES = [
+    { value:10000,  label:"$10K",  tag:null },
+    { value:25000,  label:"$25K",  tag:"Popular" },
+    { value:50000,  label:"$50K",  tag:null },
+    { value:100000, label:"$100K", tag:"Most Common" },
+    { value:150000, label:"$150K", tag:null },
+    { value:200000, label:"$200K", tag:"Advanced" },
+  ];
+
+  const handleDone = () => {
+    if (!type || !size) return;
+    setLoading(true);
+    setTimeout(() => onComplete(type, size), 400);
+  };
+
+  const selectedType = TYPES.find(t => t.id === type);
+
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
-      <div style={{position:"absolute",inset:0,background:"rgba(4,8,20,0.93)",backdropFilter:"blur(20px)"}}/>
-      <div onClick={e=>e.stopPropagation()} style={{position:"relative",zIndex:1,background:"linear-gradient(135deg,#0d1628 0%,#0f1e30 100%)",border:"1px solid rgba(251,191,36,0.4)",borderRadius:28,padding:"48px 40px",maxWidth:420,width:"90%",textAlign:"center",boxShadow:"0 0 0 1px rgba(251,191,36,0.08),0 40px 120px rgba(0,0,0,0.95),0 0 80px rgba(251,191,36,0.06)"}}>
-        <div style={{width:80,height:80,borderRadius:24,background:"linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))",border:"1px solid rgba(251,191,36,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 24px",boxShadow:"0 0 40px rgba(251,191,36,0.12)"}}>🎮</div>
-        <div style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)",fontSize:11,fontWeight:700,color:"#fbbf24",letterSpacing:"0.08em",marginBottom:16}}>DEMO MODE ACTIVE</div>
-        <h2 style={{fontSize:24,fontWeight:900,color:"#f0f4ff",margin:"0 0 12px",letterSpacing:"-0.02em"}}>You're in Demo Mode</h2>
-        <p style={{fontSize:14,color:"#64748b",margin:"0 0 6px",lineHeight:1.7}}>You're viewing <strong style={{color:"#fbbf24"}}>sample trades</strong>. Switch to Real mode to start logging your own trades.</p>
-        <p style={{fontSize:13,color:"#334155",margin:"0 0 32px"}}>Use the <span style={{color:"#fbbf24",fontWeight:700}}>Demo → Real</span> toggle at the top.</p>
-        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-          <button onClick={onClose} style={{padding:"12px 28px",borderRadius:14,border:"1px solid #1e2f4a",background:"rgba(255,255,255,0.04)",color:"#94a3b8",fontSize:14,fontWeight:600,cursor:"pointer"}}>Got it</button>
+    <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(4,8,20,0.96)",backdropFilter:"blur(24px)"}}/>
+      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:560,margin:"0 20px"}}>
+        <style>{`@keyframes setupIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+        <div style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid #1a2540",borderRadius:28,overflow:"hidden",animation:"setupIn 0.4s ease",boxShadow:"0 40px 120px rgba(0,0,0,0.9)"}}>
+
+          {/* Header */}
+          <div style={{padding:"32px 36px 24px",borderBottom:"1px solid #111d30"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+              <div style={{width:40,height:40,borderRadius:12,background:"linear-gradient(135deg,rgba(56,189,248,0.2),rgba(56,189,248,0.05))",border:"1px solid rgba(56,189,248,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🚀</div>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:"#38bdf8",letterSpacing:"0.08em",marginBottom:2}}>STEP {step} OF 2</div>
+                <h2 style={{fontSize:20,fontWeight:900,color:"#f0f4ff",margin:0,letterSpacing:"-0.02em"}}>
+                  {step===1 ? "What type of account are you trading?" : "What's your account size?"}
+                </h2>
+              </div>
+            </div>
+            {/* Progress */}
+            <div style={{display:"flex",gap:6,marginTop:16}}>
+              {[1,2].map(s => (
+                <div key={s} style={{flex:1,height:3,borderRadius:2,background:s<=step?"#38bdf8":"#1a2540",transition:"background 0.3s"}}/>
+              ))}
+            </div>
+          </div>
+
+          {/* Step 1 — Account Type */}
+          {step === 1 && (
+            <div style={{padding:"24px 36px 32px"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {TYPES.map(t => (
+                  <button key={t.id} onClick={() => setType(t.id)} style={{display:"flex",alignItems:"center",gap:16,padding:"16px 20px",borderRadius:16,border:`1.5px solid ${type===t.id?t.color+"60":"#1a2540"}`,background:type===t.id?`${t.color}0d`:"rgba(255,255,255,0.02)",cursor:"pointer",textAlign:"left",transition:"all 0.15s",outline:"none"}}>
+                    <div style={{width:48,height:48,borderRadius:14,background:`${t.color}18`,border:`1.5px solid ${t.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+                      {t.emoji}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                        <span style={{fontSize:14,fontWeight:800,color:type===t.id?t.color:"#e2e8f0"}}>{t.label}</span>
+                        {type===t.id && <span style={{fontSize:10,color:t.color}}>✓</span>}
+                      </div>
+                      <span style={{fontSize:12,color:"#475569",lineHeight:1.5}}>{t.desc}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:24}}>
+                <button onClick={onSkip} style={{background:"none",border:"none",color:"#334155",fontSize:13,cursor:"pointer",padding:0}}>Skip for now</button>
+                <button onClick={() => type && setStep(2)} disabled={!type} style={{padding:"11px 28px",borderRadius:14,border:"none",background:type?"linear-gradient(135deg,#0369a1,#38bdf8)":"#1a2540",color:type?"#fff":"#334155",fontSize:14,fontWeight:700,cursor:type?"pointer":"not-allowed",transition:"all 0.2s"}}>
+                  Continue →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 — Account Size */}
+          {step === 2 && (
+            <div style={{padding:"24px 36px 32px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,padding:"10px 14px",borderRadius:12,background:`${selectedType?.color}0d`,border:`1px solid ${selectedType?.color}25`}}>
+                <span style={{fontSize:16}}>{selectedType?.emoji}</span>
+                <span style={{fontSize:13,color:selectedType?.color,fontWeight:600}}>{selectedType?.label}</span>
+                <button onClick={() => setStep(1)} style={{marginLeft:"auto",background:"none",border:"none",color:"#475569",fontSize:11,cursor:"pointer",padding:"2px 8px",borderRadius:6,border:"1px solid #1a2540"}}>Change</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:24}}>
+                {SIZES.map(s => (
+                  <button key={s.value} onClick={() => setSize(s.value)} style={{padding:"14px 10px",borderRadius:14,border:`1.5px solid ${size===s.value?"rgba(56,189,248,0.5)":"#1a2540"}`,background:size===s.value?"rgba(56,189,248,0.08)":"rgba(255,255,255,0.02)",cursor:"pointer",textAlign:"center",position:"relative",outline:"none",transition:"all 0.15s"}}>
+                    {s.tag && <div style={{position:"absolute",top:-8,left:"50%",transform:"translateX(-50%)",background:"linear-gradient(135deg,#0369a1,#38bdf8)",borderRadius:10,padding:"1px 8px",fontSize:8,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>{s.tag}</div>}
+                    <div style={{fontSize:16,fontWeight:900,color:size===s.value?"#38bdf8":"#e2e8f0",fontFamily:"monospace"}}>{s.label}</div>
+                    <div style={{fontSize:10,color:"#3a4a6a",marginTop:2}}>{s.value.toLocaleString()}</div>
+                  </button>
+                ))}
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <button onClick={() => setStep(1)} style={{background:"none",border:"none",color:"#334155",fontSize:13,cursor:"pointer",padding:0}}>← Back</button>
+                <button onClick={handleDone} disabled={!size||loading} style={{padding:"11px 28px",borderRadius:14,border:"none",background:size&&!loading?"linear-gradient(135deg,#0369a1,#38bdf8)":"#1a2540",color:size&&!loading?"#fff":"#334155",fontSize:14,fontWeight:700,cursor:size&&!loading?"pointer":"not-allowed",transition:"all 0.2s",display:"flex",alignItems:"center",gap:8}}>
+                  {loading ? "Setting up…" : "Let's go 🚀"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -7582,22 +7680,6 @@ function DemoBlockModal({ onClose }) {
 // ── App ────────────────────────────────────────────────────────
 export default function App() {
   const auth = useAuth();
-
-  useEffect(() => {
-    const isDemoNow = () => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; const t=JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]'); return t.length>0&&t.every(x=>x.source==='demo'); } catch{return false;} };
-    const showBlock = () => { document.getElementById('ndm')?.remove(); const el=document.createElement('div'); el.id='ndm'; el.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif'; el.innerHTML=`<div style="position:absolute;inset:0;background:rgba(4,8,20,0.93);backdrop-filter:blur(20px)"></div><div onclick="event.stopPropagation()" style="position:relative;z-index:1;background:linear-gradient(135deg,#0d1628,#0f1e30);border:1px solid rgba(251,191,36,0.4);border-radius:28px;padding:48px 40px;max-width:420px;width:90%;text-align:center;box-shadow:0 40px 120px rgba(0,0,0,0.95)"><div style="width:80px;height:80px;border-radius:24px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 24px">🎮</div><div style="padding:4px 12px;border-radius:20px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);font-size:11px;font-weight:700;color:#fbbf24;display:inline-block;margin-bottom:16px;letter-spacing:.08em">DEMO MODE ACTIVE</div><h2 style="font-size:24px;font-weight:900;color:#f0f4ff;margin:0 0 12px">You're in Demo Mode</h2><p style="font-size:14px;color:#64748b;margin:0 0 6px;line-height:1.7">You're viewing <strong style="color:#fbbf24">sample trades</strong>. Switch to Real mode to log your own.</p><p style="font-size:13px;color:#334155;margin:0 0 32px">Use the <span style="color:#fbbf24;font-weight:700">Demo → Real</span> toggle at the top.</p><button onclick="document.getElementById('ndm').remove()" style="padding:12px 28px;border-radius:14px;border:1px solid #1e2f4a;background:rgba(255,255,255,0.04);color:#94a3b8;font-size:14px;font-weight:600;cursor:pointer">Got it</button></div>`; el.onclick=e=>{if(e.target===el)el.remove();}; document.body.appendChild(el); };
-    const handler = (e) => { if(!isDemoNow())return; let node=e.target; while(node&&node!==document.body){if(node.tagName==='BUTTON'){const txt=(node.textContent||'').trim();if(txt==='Import'||txt==='+Add'||txt==='+ Add'||txt==='Add'||txt==='Log Trade'){e.stopImmediatePropagation();e.preventDefault();setTimeout(showBlock,0);return;}}node=node.parentElement;}};
-    document.addEventListener('click',handler,{capture:true});
-    return ()=>document.removeEventListener('click',handler,{capture:true});
-  }, []);
-
-  useEffect(() => {
-    const DEMO = () => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; const t=JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]'); return t.length>0&&t.every(x=>x.source==='demo'); } catch{return false;} };
-    const SHOW = () => { document.getElementById('ndm')?.remove(); const el=document.createElement('div'); el.id='ndm'; el.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif'; el.innerHTML=`<div style="position:absolute;inset:0;background:rgba(4,8,20,0.93);backdrop-filter:blur(20px)"></div><div onclick="event.stopPropagation()" style="position:relative;z-index:1;background:linear-gradient(135deg,#0d1628,#0f1e30);border:1px solid rgba(251,191,36,0.4);border-radius:28px;padding:48px 40px;max-width:420px;width:90%;text-align:center;box-shadow:0 0 80px rgba(251,191,36,0.06),0 40px 120px rgba(0,0,0,0.95)"><div style="width:80px;height:80px;border-radius:24px;background:linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04));border:1px solid rgba(251,191,36,0.3);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 24px">🎮</div><div style="display:inline-block;padding:4px 12px;border-radius:20px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);font-size:11px;font-weight:700;color:#fbbf24;letter-spacing:.08em;margin-bottom:16px">DEMO MODE ACTIVE</div><h2 style="font-size:24px;font-weight:900;color:#f0f4ff;margin:0 0 12px">You're in Demo Mode</h2><p style="font-size:14px;color:#64748b;margin:0 0 6px;line-height:1.7">You're viewing <strong style="color:#fbbf24">sample trades</strong>. Switch to Real mode to log your own.</p><p style="font-size:13px;color:#334155;margin:0 0 32px">Use the <span style="color:#fbbf24;font-weight:700">Demo → Real</span> toggle at the top.</p><button onclick="document.getElementById('ndm').remove()" style="padding:12px 28px;border-radius:14px;border:1px solid #1e2f4a;background:rgba(255,255,255,0.04);color:#94a3b8;font-size:14px;font-weight:600;cursor:pointer">Got it</button></div>`; el.onclick=e=>{if(e.target===el)el.remove();}; document.body.appendChild(el); };
-    const handler = (e) => { if(!DEMO())return; let el=e.target; while(el&&el!==document){const tag=el.tagName;const txt=(el.textContent||'').trim();if(tag==='BUTTON'&&(txt==='Import'||txt.startsWith('Add')||txt==='Log Trade'||txt==='+ Add')){e.stopImmediatePropagation();e.preventDefault();setTimeout(SHOW,0);return;}el=el.parentElement;} };
-    document.addEventListener('click', handler, { capture: true });
-    return () => document.removeEventListener('click', handler, { capture: true });
-  }, []);
 
   if (!auth.hydrated) return (
     <div style={{ minHeight:"100vh", background:"#080c18", display:"flex", alignItems:"center", justifyContent:"center" }}>
