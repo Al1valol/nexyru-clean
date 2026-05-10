@@ -7299,7 +7299,7 @@ function TradingDashboard({ session, onLogout }) {
       {/* Modals */}
       {(showForm || editTrade) && <TradeForm initial={editTrade} strategies={strategies} onSave={saveTrade} onClose={() => { setShowForm(false); setEditTrade(null); }}/>}
       {showCSV && <CSVUploader onImport={(imported) => setTrades(prev => [...prev, ...imported.map(t => ({ ...t, accountId: paperAccts.activeAccount?.id ?? null }))])} onClose={() => setShowCSV(false)}/>}
-      {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => setShowCSV(true)} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
+      {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => { if(!!((() => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; return localStorage.getItem('nexyru_demo_mode_v1_'+u)==='1' || JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo'); } catch{return false;} })())){alert("Switch to Real mode first using the Demo → Real toggle.");return;} setShowCSV(true); }} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
       {showShot && (
         <ScreenshotImporter
@@ -7400,8 +7400,8 @@ function TradingDashboard({ session, onLogout }) {
               trades={activeTrades}
               onEdit={t => setEditTrade(t)}
               onDelete={deleteTrade}
-              onAdd={() => setShowForm(true)}
-              onCSV={() => setShowCSV(true)}
+              onAdd={() => { if(!!((() => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; return localStorage.getItem('nexyru_demo_mode_v1_'+u)==='1' || JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo'); } catch{return false;} })())){alert("Switch to Real mode first using the Demo → Real toggle.");return;} setShowForm(true); }}
+              onCSV={() => { if(!!((() => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; return localStorage.getItem('nexyru_demo_mode_v1_'+u)==='1' || JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo'); } catch{return false;} })())){alert("Switch to Real mode first using the Demo → Real toggle.");return;} setShowCSV(true); }}
               onSaveTrade={saveTrade}
               activeAccount={paperAccts.activeAccount}
               username={session.username}
