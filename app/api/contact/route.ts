@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Nexyru <onboarding@resend.dev>",
-        to: ["calemax5@gmail.com"],
+        from: "Nexyru <contact@nexyru.com>",
+        to: ["founder@nexyru.com"],
         reply_to: email,
         subject: `[Nexyru] ${topic} from ${name}`,
         text: `Name: ${name}\nEmail: ${email}\nTopic: ${topic}\n\nMessage:\n${message}`,
