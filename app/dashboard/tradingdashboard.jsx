@@ -7157,6 +7157,7 @@ function TradingDashboard({ session, onLogout }) {
   const [showHub,       setShowHub]       = useState(false);
   const [showAddAcct,   setShowAddAcct]   = useState(false);
   const [showShot,      setShowShot]      = useState(false);
+  const [demoBlock,     setDemoBlock]     = useState(false);
   const [demoBlock,     setDemoBlockMsg]  = useState(false);
   const [editTrade,     setEditTrade]     = useState(null);
 
@@ -7312,6 +7313,7 @@ function TradingDashboard({ session, onLogout }) {
           </div>
         </div>
       )}
+      {demoBlock && <DemoBlockModal onClose={()=>setDemoBlock(false)}/>}
       {showCSV && <CSVUploader onImport={(imported) => setTrades(prev => [...prev, ...imported.map(t => ({ ...t, accountId: paperAccts.activeAccount?.id ?? null }))])} onClose={() => setShowCSV(false)}/>}
       {showHub && <ImportHub onManual={() => { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}}').username; if(JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} setShowForm(true); }} onCSV={() => { if(!!((() => { try { const u=JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username; return localStorage.getItem('nexyru_demo_mode_v1_'+u)==='1' || JSON.parse(localStorage.getItem('tradedesk_trades_'+u+'_v1')||'[]').every(t=>t.source==='demo'); } catch{return false;} })())){alert("Switch to Real mode first using the Demo → Real toggle.");return;} setShowCSV(true); }} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
@@ -7553,6 +7555,21 @@ function UsernamePickerScreen({ auth }) {
             {loading ? "Setting up…" : "Continue →"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Demo Block Modal ───────────────────────────────────────────
+function DemoBlockModal({ onClose }) {
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(8px)",fontFamily:"system-ui,sans-serif"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:24,padding:"40px 36px",maxWidth:400,width:"90%",textAlign:"center",boxShadow:"0 40px 80px rgba(0,0,0,0.9)"}}>
+        <div style={{fontSize:52,marginBottom:20}}>🎮</div>
+        <h2 style={{fontSize:22,fontWeight:900,color:"#f0f4ff",margin:"0 0 10px"}}>You're in Demo Mode</h2>
+        <p style={{fontSize:14,color:"#64748b",margin:"0 0 28px",lineHeight:1.7}}>Switch to Real mode to add your own trades. Use the <strong style={{color:"#fbbf24"}}>Demo → Real</strong> toggle at the top of the page.</p>
+        <button onClick={onClose} style={{padding:"10px 28px",borderRadius:12,border:"1px solid #1a2540",background:"transparent",color:"#94a3b8",fontSize:14,fontWeight:600,cursor:"pointer"}}>Got it</button>
       </div>
     </div>
   );
