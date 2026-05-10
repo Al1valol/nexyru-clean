@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         from: "Nexyru <onboarding@resend.dev>",
-        to: ["calemax5@gmail.com"],
+        to: ["founder@nexyru.com"],
         reply_to: email,
         subject: `[Nexyru] ${topic} from ${name}`,
         text: `New contact form submission:\n\nName: ${name}\nEmail: ${email}\nTopic: ${topic}\n\nMessage:\n${message}`,
