@@ -73,7 +73,7 @@ function generateLocalFeed(): FeedItem[] {
       
       // Big wins
       realTrades.filter(t => (t.pnl??0) > 50).forEach(t => {
-        items.push({ id:`bw_${t.id}`, user_id:username, type:"big_win", data:{ pair:t.pair, pnl:t.pnl, type:t.type }, created_at: new Date(t.date).toISOString(), likes: Math.floor(Math.random()*20) });
+        items.push({ id:`bw_${t.id}`, user_id:username, type:"big_win", data:{ pair:t.pair, pnl:t.pnl, type:t.type }, created_at: new Date(t.date).toISOString(), likes: 0 });
       });
 
       // Win streaks
@@ -82,7 +82,7 @@ function generateLocalFeed(): FeedItem[] {
         if((t.pnl??0)>0){streak++;if(streak>maxStreak){maxStreak=streak;}}else streak=0;
       });
       if (maxStreak >= 3) {
-        items.push({ id:`ws_${username}`, user_id:username, type:"win_streak", data:{ streak:maxStreak }, created_at: new Date(Date.now() - Math.random()*86400000*3).toISOString(), likes: Math.floor(Math.random()*15) });
+        items.push({ id:`ws_${username}`, user_id:username, type:"win_streak", data:{ streak:maxStreak }, created_at: new Date(Date.now()).toISOString(), likes: 0 });
       }
     }
   } catch {}
