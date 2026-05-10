@@ -5447,7 +5447,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
               🎮 Exit demo mode to add trades
             </div>
           )}
-          <a href="#"  onClick={e => { e.preventDefault(); if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')) { setDemoBlockMsg(true); return; } window.location.href="/import"; }}
+          <a href="#"  onClick={e => { e.preventDefault(); if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')) { setDemoBlock(true); return; } window.location.href="/import"; }}
             title={inDemo ? "Exit demo mode to import trades" : "Import CSV"}
             style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:inDemo?"#0b1120":"rgba(56,189,248,0.06)", color:inDemo?"#334155":"#38bdf8", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1 }}>
             <Upload size={11}/> Import CSV
@@ -7158,7 +7158,6 @@ function TradingDashboard({ session, onLogout }) {
   const [showAddAcct,   setShowAddAcct]   = useState(false);
   const [showShot,      setShowShot]      = useState(false);
   const [demoBlock,     setDemoBlock]     = useState(false);
-  const [demoBlock,     setDemoBlockMsg]  = useState(false);
   const [editTrade,     setEditTrade]     = useState(null);
 
   const copyTrading  = useCopyTrading(session.username);
@@ -7301,14 +7300,14 @@ function TradingDashboard({ session, onLogout }) {
       {/* Modals */}
       {(showForm || editTrade) && <TradeForm initial={editTrade} strategies={strategies} onSave={saveTrade} onClose={() => { setShowForm(false); setEditTrade(null); }}/>}
       {demoBlock && (
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(8px)"}} onClick={()=>setDemoBlockMsg(false)}>
+        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(8px)"}} onClick={()=>setDemoBlock(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:24,padding:"36px 32px",maxWidth:400,width:"90%",textAlign:"center",boxShadow:"0 40px 80px rgba(0,0,0,0.8)"}}>
             <div style={{width:64,height:64,borderRadius:20,background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 20px"}}>🎮</div>
             <h2 style={{fontSize:20,fontWeight:900,color:"#f0f4ff",margin:"0 0 8px"}}>You're in Demo Mode</h2>
             <p style={{fontSize:13,color:"#64748b",margin:"0 0 24px",lineHeight:1.7}}>Switch to Real mode to start logging your own trades. Use the Demo → Real toggle at the top of the page.</p>
             <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-              <button onClick={()=>setDemoBlockMsg(false)} style={{padding:"10px 20px",borderRadius:12,border:"1px solid #1a2540",background:"transparent",color:"#64748b",fontSize:13,fontWeight:600,cursor:"pointer"}}>Got it</button>
-              <button onClick={()=>{setDemoBlockMsg(false);document.querySelector("[data-demo-toggle]")?.click();}} style={{padding:"10px 20px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#0ea5a0,#34d399)",color:"#000",fontSize:13,fontWeight:700,cursor:"pointer"}}>Switch to Real →</button>
+              <button onClick={()=>setDemoBlock(false)} style={{padding:"10px 20px",borderRadius:12,border:"1px solid #1a2540",background:"transparent",color:"#64748b",fontSize:13,fontWeight:600,cursor:"pointer"}}>Got it</button>
+              <button onClick={()=>{setDemoBlock(false);document.querySelector("[data-demo-toggle]")?.click();}} style={{padding:"10px 20px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#0ea5a0,#34d399)",color:"#000",fontSize:13,fontWeight:700,cursor:"pointer"}}>Switch to Real →</button>
             </div>
           </div>
         </div>
