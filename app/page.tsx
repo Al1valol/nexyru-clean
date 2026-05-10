@@ -124,7 +124,7 @@ export default function HomePage(){
       </section>
       <footer style={{padding:"40px",borderTop:"1px solid rgba(255,255,255,0.05)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#0369a1,#38bdf8)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>📈</div><span style={{fontSize:15,fontWeight:800,color:"#f0f4ff"}}>Nexyru</span></div>
-        <div style={{display:"flex",gap:24}}>{["Privacy","Terms","Contact"].map(l=><a key={l} href="#" style={{fontSize:12,color:"#334155",textDecoration:"none"}}>{l}</a>)}</div>
+        <div style={{display:"flex",gap:24}}>{[["Privacy","/privacy"],["Terms","/terms"],["Contact","/contact"]].map(([l,h])=><a key={l} href={h} style={{fontSize:12,color:"#334155",textDecoration:"none"}}>{l}</a>)}</div>
         <div style={{fontSize:12,color:"#1e2f4a"}}>© 2026 Nexyru. All rights reserved.</div>
       </footer>
     </div>
