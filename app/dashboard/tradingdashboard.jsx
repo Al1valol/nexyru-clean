@@ -5441,12 +5441,24 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
           )}
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <a href="/import" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:"rgba(56,189,248,0.06)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer", textDecoration:"none" }}>
-            <Upload size={11}/> Import CSV
-          </a>
-          <button onClick={onAdd} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-            <Plus size={12}/> Log Trade
-          </button>
+          {!isDemoMode(session?.username) ? (
+            <a href="/import" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:"rgba(56,189,248,0.06)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer", textDecoration:"none" }}>
+              <Upload size={11}/> Import CSV
+            </a>
+          ) : (
+            <div title="Exit demo mode to import trades" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2540", background:"#0b1120", color:"#334155", fontSize:11, fontWeight:700, cursor:"not-allowed", opacity:0.5 }}>
+              <Upload size={11}/> Import CSV
+            </div>
+          )}
+          {!isDemoMode(session?.username) ? (
+            <button onClick={onAdd} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+              <Plus size={12}/> Log Trade
+            </button>
+          ) : (
+            <div title="Exit demo mode to log trades" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2540", background:"#0b1120", color:"#334155", fontSize:11, fontWeight:700, cursor:"not-allowed", opacity:0.5 }}>
+              <Plus size={12}/> Log Trade
+            </div>
+          )}
         </div>
       </div>
 
