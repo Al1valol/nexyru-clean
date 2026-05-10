@@ -5422,8 +5422,9 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
 //  JOURNAL PAGE  — trades + calendar + analytics unified
 // ═══════════════════════════════════════════════════════════════
 
-function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, activeAccount }) {
+function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, activeAccount, username }) {
   const [reviewTrade, setReviewTrade] = useState(null);
+  const inDemo = username && isDemoMode(username);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:32 }}>
@@ -5440,25 +5441,22 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
             </div>
           )}
         </div>
-        <div style={{ display:"flex", gap:8 }}>
-          {!isDemoMode(session?.username) ? (
-            <a href="/import" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:"rgba(56,189,248,0.06)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer", textDecoration:"none" }}>
-              <Upload size={11}/> Import CSV
-            </a>
-          ) : (
-            <div title="Exit demo mode to import trades" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2540", background:"#0b1120", color:"#334155", fontSize:11, fontWeight:700, cursor:"not-allowed", opacity:0.5 }}>
-              <Upload size={11}/> Import CSV
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          {inDemo && (
+            <div style={{ fontSize:10, fontWeight:700, color:"#fbbf24", background:"rgba(251,191,36,0.1)", border:"1px solid rgba(251,191,36,0.25)", padding:"4px 10px", borderRadius:8 }}>
+              🎮 Exit demo mode to add trades
             </div>
           )}
-          {!isDemoMode(session?.username) ? (
-            <button onClick={onAdd} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-              <Plus size={12}/> Log Trade
-            </button>
-          ) : (
-            <div title="Exit demo mode to log trades" style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid #1a2540", background:"#0b1120", color:"#334155", fontSize:11, fontWeight:700, cursor:"not-allowed", opacity:0.5 }}>
-              <Plus size={12}/> Log Trade
-            </div>
-          )}
+          <a href={inDemo ? undefined : "/import"} onClick={inDemo ? e => e.preventDefault() : undefined}
+            title={inDemo ? "Exit demo mode to import trades" : "Import CSV"}
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"1px solid rgba(56,189,248,0.25)", background:inDemo?"#0b1120":"rgba(56,189,248,0.06)", color:inDemo?"#334155":"#38bdf8", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1 }}>
+            <Upload size={11}/> Import CSV
+          </a>
+          <button onClick={inDemo ? undefined : onAdd} disabled={inDemo}
+            title={inDemo ? "Exit demo mode to log trades" : "Log Trade"}
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#0b1120":"linear-gradient(135deg,#0369a1,#38bdf8)", color:inDemo?"#334155":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}>
+            <Plus size={12}/> Log Trade
+          </button>
         </div>
       </div>
 
@@ -5522,7 +5520,6 @@ function PlatformDropdown() {
       { href:"/leaderboard", emoji:"🏆", label:"Leaderboard",   color:"#818cf8" },
       { href:"/earnings",    emoji:"💰", label:"Earnings",       color:"#22d3a5" },
       { href:"/traders",     emoji:"👥", label:"Browse Traders", color:"#38bdf8" },
-      { href:"/feed",        emoji:"📡", label:"Social Feed",     color:"#34d399" },
       { href:"/import",      emoji:"📥", label:"Import",         color:"#34d399" },
     ];
 
@@ -7407,6 +7404,7 @@ function TradingDashboard({ session, onLogout }) {
               onCSV={() => setShowCSV(true)}
               onSaveTrade={saveTrade}
               activeAccount={paperAccts.activeAccount}
+              username={session.username}
             />
           )}
           {tab==="strategies" && (
