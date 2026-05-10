@@ -1,870 +1,132 @@
 "use client";
-
-import { useEffect, useRef, useCallback } from "react";
-
-interface Candle {
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  index: number;
-}
-
-interface Trade {
-  type: "BUY" | "SELL";
-  entryIndex: number;
-  exitIndex: number;
-  entryPrice: number;
-  exitPrice: number;
-  expiresAt: number;
-}
-
-const VISIBLE = 52;
-const CW = 13;
-const GAP = 4;
-const STEP = CW + GAP;
-const CHART_H = 340;
-const LOOKAHEAD = 22;
-const ENTRY_OFF = 4;
-
-function makeCandle(prev: Candle, idx: number): Candle {
-  const drift = (Math.random() - 0.48) * 0.7;
-  const vol = 1.0 + Math.random() * 1.6;
-  const close = Math.max(50, prev.close + drift + (Math.random() - 0.5) * vol);
-  const open = prev.close;
-  const high = Math.max(open, close) + Math.random() * vol * 0.7;
-  const low = Math.min(open, close) - Math.random() * vol * 0.7;
-  return { open, high, low, close, index: idx };
-}
-
-function seed(): Candle[] {
-  const out: Candle[] = [];
-  let c: Candle = { open: 100, high: 101.2, low: 99.1, close: 100.4, index: 0 };
-  out.push(c);
-  for (let i = 1; i < VISIBLE + LOOKAHEAD + 10; i++) {
-    c = makeCandle(c, i);
-    out.push(c);
-  }
-  return out;
-}
-
-function buildTrade(candles: Candle[], currentIdx: number): Trade | null {
-  const win = candles.slice(-LOOKAHEAD);
-  if (win.length < ENTRY_OFF + 4) return null;
-  const type: "BUY" | "SELL" = Math.random() > 0.5 ? "BUY" : "SELL";
-  const lifespan = 6 + Math.floor(Math.random() * 5);
-  const early = win.slice(0, ENTRY_OFF + 2);
-  const late = win.slice(ENTRY_OFF + 2);
-  if (!late.length) return null;
-  if (type === "BUY") {
-    let eC = early[0]; for (const c of early) if (c.low < eC.low) eC = c;
-    let xC = late[0]; for (const c of late) if (c.high > xC.high) xC = c;
-    if (xC.high <= eC.low) return null;
-    return { type, entryIndex: eC.index, exitIndex: xC.index, entryPrice: eC.low, exitPrice: xC.high, expiresAt: currentIdx + lifespan };
-  } else {
-    let eC = early[0]; for (const c of early) if (c.high > eC.high) eC = c;
-    let xC = late[0]; for (const c of late) if (c.low < xC.low) xC = c;
-    if (xC.low >= eC.high) return null;
-    return { type, entryIndex: eC.index, exitIndex: xC.index, entryPrice: eC.high, exitPrice: xC.low, expiresAt: currentIdx + lifespan };
-  }
-}
-
-function Chart() {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const state = useRef<{ candles: Candle[]; trade: Trade | null; counter: number }>({ candles: [], trade: null, counter: 0 });
-  const rafRef = useRef<number>(0);
-  const lastTick = useRef<number>(0);
-
-  const draw = useCallback(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const { candles, trade } = state.current;
-    if (!candles.length) return;
-    const W = svg.clientWidth || 860;
-    const H = CHART_H;
-    const visible = candles.slice(-VISIBLE);
-    let minP = Infinity, maxP = -Infinity;
-    for (const c of visible) { if (c.low < minP) minP = c.low; if (c.high > maxP) maxP = c.high; }
-    const pad = (maxP - minP) * 0.04;
-    minP -= pad * 2; maxP += pad * 2;
-    const pY = (p: number) => H - 30 - ((p - minP) / (maxP - minP)) * (H - 30);
-    const iX = (idx: number) => 10 + (idx - visible[0].index) * STEP + CW / 2;
-    const chartH = H - 30;
-
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-    const ns = "http://www.w3.org/2000/svg";
-    const el = (tag: string, attrs: Record<string, string>) => {
-      const e = document.createElementNS(ns, tag);
-      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-      return e;
-    };
-
-    const defs = el("defs", {});
-    const mkGlow = (id: string, col: string) => {
-      const f = el("filter", { id, x: "-60%", y: "-60%", width: "220%", height: "220%" });
-      const b = el("feGaussianBlur", { stdDeviation: "2.5", result: "b" });
-      const flood = el("feFlood", { "flood-color": col, result: "fc" });
-      const comp = el("feComposite", { in: "fc", in2: "b", operator: "in", result: "s" });
-      const merge = el("feMerge", {});
-      const m1 = el("feMergeNode", { in: "s" }); const m2 = el("feMergeNode", { in: "SourceGraphic" });
-      merge.appendChild(m1); merge.appendChild(m2);
-      f.appendChild(b); f.appendChild(flood); f.appendChild(comp); f.appendChild(merge);
-      return f;
-    };
-    defs.appendChild(mkGlow("gg", "#22c55e88"));
-    defs.appendChild(mkGlow("gr", "#ef444488"));
-    defs.appendChild(mkGlow("gp", "#a855f788"));
-    svg.appendChild(defs);
-
-    svg.appendChild(el("rect", { x: "0", y: "0", width: String(W), height: String(H), fill: "transparent" }));
-
-    for (let i = 0; i <= 5; i++) {
-      const y = (chartH / 5) * i;
-      svg.appendChild(el("line", { x1: "0", x2: String(W), y1: String(y), y2: String(y), stroke: "#ffffff07", "stroke-width": "1" }));
-      const p = maxP - ((maxP - minP) / 5) * i;
-      const t = el("text", { x: String(W - 4), y: String(y - 3), "text-anchor": "end", fill: "#ffffff25", "font-size": "9", "font-family": "monospace" });
-      t.textContent = p.toFixed(2); svg.appendChild(t);
-    }
-
-    if (trade) {
-      const ei = visible.findIndex(c => c.index === trade.entryIndex);
-      const xi = visible.findIndex(c => c.index === trade.exitIndex);
-      if (ei !== -1 && xi !== -1) {
-        const x1 = iX(trade.entryIndex) - CW / 2;
-        const x2 = iX(trade.exitIndex) + CW / 2;
-        const zc = trade.type === "BUY" ? "#22c55e08" : "#ef444408";
-        const zb = trade.type === "BUY" ? "#22c55e20" : "#ef444420";
-        svg.appendChild(el("rect", { x: String(x1), y: "0", width: String(x2 - x1), height: String(chartH), fill: zc }));
-        for (const xp of [x1, x2])
-          svg.appendChild(el("line", { x1: String(xp), x2: String(xp), y1: "0", y2: String(chartH), stroke: zb, "stroke-width": "1", "stroke-dasharray": "3,3" }));
-        const ey = pY(trade.entryPrice), xy = pY(trade.exitPrice);
-        const elc = trade.type === "BUY" ? "#22c55e" : "#ef4444";
-        svg.appendChild(el("line", { x1: String(x1), x2: String(x2), y1: String(ey), y2: String(ey), stroke: elc, "stroke-width": "1", "stroke-dasharray": "4,3", opacity: "0.5" }));
-        svg.appendChild(el("line", { x1: String(x1), x2: String(x2), y1: String(xy), y2: String(xy), stroke: "#a855f7", "stroke-width": "1", "stroke-dasharray": "4,3", opacity: "0.5" }));
-      }
-    }
-
-    for (const c of visible) {
-      const x = iX(c.index);
-      const up = c.close >= c.open;
-      const col = up ? "#22c55e" : "#ef4444";
-      const bTop = pY(Math.max(c.open, c.close));
-      const bBot = pY(Math.min(c.open, c.close));
-      const bH = Math.max(1, bBot - bTop);
-      svg.appendChild(el("line", { x1: String(x), x2: String(x), y1: String(pY(c.high)), y2: String(pY(c.low)), stroke: col, "stroke-width": "1.2", opacity: "0.65" }));
-      svg.appendChild(el("rect", { x: String(x - CW / 2), y: String(bTop), width: String(CW), height: String(bH), fill: up ? "#22c55e1a" : "#ef44441a", stroke: col, "stroke-width": "1.2", rx: "1" }));
-    }
-
-    if (trade) {
-      const drawSig = (idx: number, price: number, label: string, above: boolean, col: string, glow: string) => {
-        const c = visible.find(v => v.index === idx);
-        if (!c) return;
-        const cx = iX(idx);
-        const cy = pY(price);
-        const ts = 5;
-        const pts = above
-          ? `${cx},${cy + ts * 2} ${cx - ts},${cy + ts * 3.5} ${cx + ts},${cy + ts * 3.5}`
-          : `${cx},${cy - ts * 2} ${cx - ts},${cy - ts * 3.5} ${cx + ts},${cy - ts * 3.5}`;
-        svg.appendChild(Object.assign(el("polygon", { points: pts, fill: col, filter: `url(#${glow})` })));
-        const pw = label.length * 6.5 + 14;
-        const ph = 16;
-        const px = cx - pw / 2;
-        const py = above ? cy + 10 : cy - 10 - ph;
-        svg.appendChild(el("rect", { x: String(px), y: String(py), width: String(pw), height: String(ph), rx: "3", fill: col, opacity: "0.12", stroke: col, "stroke-width": "0.8" }));
-        const t = el("text", { x: String(cx), y: String(py + ph / 2 + 4), "text-anchor": "middle", fill: col, "font-size": "9", "font-weight": "700", "font-family": "monospace", filter: `url(#${glow})` });
-        t.textContent = label; svg.appendChild(t);
-      };
-      if (trade.type === "BUY") {
-        drawSig(trade.entryIndex, trade.entryPrice, "BUY", true, "#22c55e", "gg");
-        drawSig(trade.exitIndex, trade.exitPrice, "CLOSE", false, "#a855f7", "gp");
-      } else {
-        drawSig(trade.entryIndex, trade.entryPrice, "SELL", false, "#ef4444", "gr");
-        drawSig(trade.exitIndex, trade.exitPrice, "CLOSE", true, "#a855f7", "gp");
-      }
-    }
-
-    const last = visible[visible.length - 1];
-    if (last) {
-      const ly = pY(last.close);
-      const lc = last.close >= last.open ? "#22c55e" : "#ef4444";
-      svg.appendChild(el("line", { x1: "0", x2: String(W), y1: String(ly), y2: String(ly), stroke: lc, "stroke-width": "0.8", "stroke-dasharray": "3,4", opacity: "0.4" }));
-      const bw = 68;
-      const bx = W - bw - 2;
-      svg.appendChild(el("rect", { x: String(bx), y: String(ly - 9), width: String(bw), height: "18", rx: "3", fill: lc }));
-      const bt = el("text", { x: String(bx + bw / 2), y: String(ly + 5), "text-anchor": "middle", fill: "#000", "font-size": "10", "font-weight": "700", "font-family": "monospace" });
-      bt.textContent = last.close.toFixed(2); svg.appendChild(bt);
-    }
-
-    svg.appendChild(el("rect", { x: "0", y: String(chartH), width: String(W), height: "30", fill: "#0f172a" }));
-    svg.appendChild(el("line", { x1: "0", x2: String(W), y1: String(chartH), y2: String(chartH), stroke: "#ffffff0f", "stroke-width": "1" }));
-  }, []);
-
-  const tick = useCallback((ts: number) => {
-    const interval = 2000 + Math.random() * 1000;
-    if (ts - lastTick.current >= interval) {
-      lastTick.current = ts;
-      const s = state.current;
-      const prev = s.candles[s.candles.length - 1];
-      const nc = makeCandle(prev, s.counter + 1);
-      s.counter = nc.index;
-      s.candles = [...s.candles, nc];
-      if (s.candles.length > VISIBLE + LOOKAHEAD + 20) s.candles = s.candles.slice(-(VISIBLE + LOOKAHEAD + 10));
-      if (!s.trade || s.counter >= s.trade.expiresAt) s.trade = buildTrade(s.candles, s.counter);
-      draw();
-    }
-    rafRef.current = requestAnimationFrame(tick);
-  }, [draw]);
-
-  useEffect(() => {
-    const candles = seed();
-    state.current.candles = candles;
-    state.current.counter = candles[candles.length - 1].index;
-    state.current.trade = buildTrade(candles, state.current.counter);
-    draw();
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [tick, draw]);
-
-  useEffect(() => {
-    const onResize = () => draw();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [draw]);
-
-  return (
-    <svg
-      ref={svgRef}
-      style={{ display: "block", width: "100%", height: `${CHART_H}px` }}
-      xmlns="http://www.w3.org/2000/svg"
-    />
-  );
-}
-
-export default function Page() {
-  const scrollToWaitlist = () => {
-    document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-          --bg: #020617;
-          --bg2: #0a0f1e;
-          --card: rgba(255,255,255,0.03);
-          --border: rgba(255,255,255,0.07);
-          --border-hover: rgba(255,255,255,0.13);
-          --green: #22c55e;
-          --red: #ef4444;
-          --purple: #a855f7;
-          --text: #f1f5f9;
-          --muted: #64748b;
-          --accent: #38bdf8;
-        }
-
-        html { scroll-behavior: smooth; }
-
-        body {
-          background: var(--bg);
-          color: var(--text);
-          font-family: 'DM Sans', sans-serif;
-          min-height: 100vh;
-          overflow-x: hidden;
-        }
-
-        /* ── Noise overlay ── */
-        body::before {
-          content: '';
-          position: fixed;
-          inset: 0;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-          opacity: 0.025;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        /* ── Glow orbs ── */
-        .orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          pointer-events: none;
-        }
-
-        /* ── Nav ── */
-        nav {
-          position: fixed;
-          top: 0; left: 0; right: 0;
-          z-index: 100;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 40px;
-          height: 64px;
-          background: rgba(2,6,23,0.7);
-          backdrop-filter: blur(16px);
-          border-bottom: 1px solid var(--border);
-        }
-
-        .nav-logo {
-          font-family: 'Syne', sans-serif;
-          font-size: 20px;
-          font-weight: 800;
-          letter-spacing: -0.5px;
-          color: var(--text);
-        }
-
-        .nav-logo span {
-          color: var(--accent);
-        }
-
-        .nav-btn {
-          background: var(--accent);
-          color: #020617;
-          border: none;
-          border-radius: 8px;
-          padding: 9px 20px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: opacity 0.2s, transform 0.2s;
-        }
-
-        .nav-btn:hover { opacity: 0.85; transform: translateY(-1px); }
-
-        /* ── Section base ── */
-        section {
-          position: relative;
-          z-index: 1;
-        }
-
-        /* ── Hero ── */
-        .hero {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          padding: 120px 24px 80px;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .hero-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          background: rgba(56,189,248,0.08);
-          border: 1px solid rgba(56,189,248,0.2);
-          border-radius: 100px;
-          padding: 6px 14px;
-          font-size: 12px;
-          font-weight: 500;
-          color: var(--accent);
-          margin-bottom: 32px;
-          letter-spacing: 0.3px;
-        }
-
-        .badge-dot {
-          width: 6px; height: 6px;
-          border-radius: 50%;
-          background: var(--accent);
-          box-shadow: 0 0 6px var(--accent);
-          animation: bdot 2s infinite;
-        }
-
-        @keyframes bdot {
-          0%,100%{opacity:1;} 50%{opacity:0.4;}
-        }
-
-        .hero h1 {
-          font-family: 'Syne', sans-serif;
-          font-size: clamp(44px, 7vw, 88px);
-          font-weight: 800;
-          line-height: 1.0;
-          letter-spacing: -2px;
-          color: var(--text);
-          margin-bottom: 24px;
-          max-width: 900px;
-        }
-
-        .hero h1 em {
-          font-style: normal;
-          background: linear-gradient(135deg, var(--accent), #818cf8);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .hero p {
-          font-size: clamp(16px, 2vw, 20px);
-          color: var(--muted);
-          font-weight: 300;
-          max-width: 520px;
-          line-height: 1.65;
-          margin-bottom: 44px;
-        }
-
-        .hero-cta {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          flex-wrap: wrap;
-          justify-content: center;
-        }
-
-        .btn-primary {
-          background: var(--accent);
-          color: #020617;
-          border: none;
-          border-radius: 12px;
-          padding: 15px 32px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: 0 0 32px rgba(56,189,248,0.25);
-        }
-
-        .btn-primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 0 48px rgba(56,189,248,0.4);
-        }
-
-        .btn-secondary {
-          background: transparent;
-          color: var(--muted);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          padding: 14px 28px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 15px;
-          font-weight: 400;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .btn-secondary:hover {
-          border-color: var(--border-hover);
-          color: var(--text);
-        }
-
-        .hero-stats {
-          display: flex;
-          align-items: center;
-          gap: 48px;
-          margin-top: 72px;
-          flex-wrap: wrap;
-          justify-content: center;
-        }
-
-        .stat {
-          text-align: center;
-        }
-
-        .stat-num {
-          font-family: 'Syne', sans-serif;
-          font-size: 28px;
-          font-weight: 700;
-          color: var(--text);
-          display: block;
-        }
-
-        .stat-label {
-          font-size: 12px;
-          color: var(--muted);
-          margin-top: 4px;
-          letter-spacing: 0.5px;
-        }
-
-        .stat-divider {
-          width: 1px;
-          height: 40px;
-          background: var(--border);
-        }
-
-        /* ── Chart section ── */
-        .chart-section {
-          padding: 80px 24px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .section-label {
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 2px;
-          text-transform: uppercase;
-          color: var(--accent);
-          margin-bottom: 14px;
-        }
-
-        .section-title {
-          font-family: 'Syne', sans-serif;
-          font-size: clamp(28px, 4vw, 46px);
-          font-weight: 700;
-          letter-spacing: -1px;
-          color: var(--text);
-          text-align: center;
-          margin-bottom: 12px;
-        }
-
-        .section-sub {
-          font-size: 16px;
-          color: var(--muted);
-          text-align: center;
-          max-width: 500px;
-          line-height: 1.6;
-          margin-bottom: 48px;
-          font-weight: 300;
-        }
-
-        .chart-card {
-          width: 100%;
-          max-width: 1000px;
-          background: var(--card);
-          border: 1px solid var(--border);
-          border-radius: 20px;
-          overflow: hidden;
-          box-shadow: 0 0 80px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.03);
-        }
-
-        .chart-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 16px 20px;
-          border-bottom: 1px solid var(--border);
-          background: rgba(255,255,255,0.01);
-        }
-
-        .chart-pair {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .pair-name {
-          font-family: 'Syne', sans-serif;
-          font-size: 14px;
-          font-weight: 700;
-          color: var(--text);
-        }
-
-        .live-badge {
-          background: rgba(34,197,94,0.12);
-          border: 1px solid rgba(34,197,94,0.25);
-          border-radius: 100px;
-          padding: 3px 10px;
-          font-size: 10px;
-          font-weight: 600;
-          color: #22c55e;
-          letter-spacing: 0.5px;
-          display: flex;
-          align-items: center;
-          gap: 5px;
-        }
-
-        .live-dot {
-          width: 5px; height: 5px;
-          border-radius: 50%;
-          background: #22c55e;
-          animation: bdot 1.5s infinite;
-        }
-
-        .legend-row {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
-
-        .leg {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          font-size: 11px;
-          font-weight: 500;
-          color: var(--muted);
-          font-family: monospace;
-        }
-
-        .leg-dot {
-          width: 7px; height: 7px;
-          border-radius: 50%;
-        }
-
-        /* ── Features ── */
-        .features-section {
-          padding: 80px 24px;
-          max-width: 1100px;
-          margin: 0 auto;
-          width: 100%;
-        }
-
-        .features-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          gap: 16px;
-          margin-top: 48px;
-        }
-
-        .feature-card {
-          background: var(--card);
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          padding: 28px;
-          transition: border-color 0.2s, transform 0.2s;
-        }
-
-        .feature-card:hover {
-          border-color: var(--border-hover);
-          transform: translateY(-2px);
-        }
-
-        .feature-icon {
-          width: 40px; height: 40px;
-          border-radius: 10px;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 18px;
-          margin-bottom: 16px;
-        }
-
-        .feature-card h3 {
-          font-family: 'Syne', sans-serif;
-          font-size: 17px;
-          font-weight: 700;
-          color: var(--text);
-          margin-bottom: 8px;
-        }
-
-        .feature-card p {
-          font-size: 14px;
-          color: var(--muted);
-          line-height: 1.6;
-          font-weight: 300;
-        }
-
-        /* ── Waitlist ── */
-        .waitlist-section {
-          padding: 80px 24px 120px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .waitlist-card {
-          width: 100%;
-          max-width: 700px;
-          background: var(--card);
-          border: 1px solid var(--border);
-          border-radius: 24px;
-          overflow: hidden;
-          box-shadow: 0 0 100px rgba(56,189,248,0.05);
-        }
-
-        .waitlist-top {
-          padding: 40px 40px 32px;
-          text-align: center;
-          border-bottom: 1px solid var(--border);
-          background: rgba(56,189,248,0.02);
-        }
-
-        .waitlist-top p {
-          font-size: 15px;
-          color: var(--muted);
-          font-weight: 300;
-          margin-top: 10px;
-          line-height: 1.6;
-        }
-
-        .form-wrap {
-          background: #ffffff;
-          width: 100%;
-        }
-
-        .form-wrap iframe {
-          display: block;
-          width: 100%;
-          border: none;
-          min-height: 560px;
-        }
-
-        /* ── Footer ── */
-        footer {
-          border-top: 1px solid var(--border);
-          padding: 32px 40px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          position: relative;
-          z-index: 1;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .footer-logo {
-          font-family: 'Syne', sans-serif;
-          font-size: 16px;
-          font-weight: 800;
-          color: var(--text);
-        }
-
-        .footer-logo span { color: var(--accent); }
-
-        .footer-note {
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        @media (max-width: 640px) {
-          nav { padding: 0 20px; }
-          .hero h1 { letter-spacing: -1px; }
-          .stat-divider { display: none; }
-          footer { flex-direction: column; text-align: center; }
-        }
-      `}</style>
-
-      {/* ── Navbar ── */}
-      <nav>
-        <div className="nav-logo">Nexy<span>ru</span></div>
-        <button className="nav-btn" onClick={scrollToWaitlist}>Join Waitlist</button>
+import { useState, useEffect } from "react";
+const FIRMS=["Apex Trader Funding","TopstepX","FTMO","MyFundedFutures","Topstep","TradeDay","Earn2Trade","Uprofit"];
+const FEATURES=[{icon:"📊",title:"AI Trade Analysis",desc:"Claude reviews every trade — detects FOMO, revenge trading, overtrading. Gets smarter the more you journal.",color:"#38bdf8"},{icon:"🏆",title:"Funded Challenge Tracker",desc:"Set your prop firm rules once. Nexyru auto-tracks daily loss limits, drawdown, profit targets.",color:"#f59e0b"},{icon:"📋",title:"Copy Top Traders",desc:"Follow verified funded traders. See their strategies and equity curves. Copy with one click.",color:"#a78bfa"},{icon:"📡",title:"Live Social Feed",desc:"Real-time feed of big wins, streaks, and milestones from the Nexyru community.",color:"#34d399"},{icon:"🔄",title:"CSV Import",desc:"Import from Tradovate, MT4/MT5, Apex, TopstepX, FTMO and more. Our reconstruction engine handles partial fills.",color:"#f97316"},{icon:"🧠",title:"Psychology Scoring",desc:"Track emotions and confidence on every trade. See how your mindset affects your P&L.",color:"#ec4899"}];
+export default function HomePage(){
+  const[scrolled,setScrolled]=useState(false);
+  const[firmIdx,setFirmIdx]=useState(0);
+  useEffect(()=>{const f=()=>setScrolled(window.scrollY>20);window.addEventListener("scroll",f);return()=>window.removeEventListener("scroll",f);},[]);
+  useEffect(()=>{const t=setInterval(()=>setFirmIdx(i=>(i+1)%FIRMS.length),2000);return()=>clearInterval(t);},[]);
+  return(
+    <div style={{background:"#060d1a",color:"#c8d8f0",fontFamily:"system-ui,sans-serif",overflowX:"hidden"}}>
+      <style>{`*{margin:0;padding:0;box-sizing:border-box;}@keyframes fadeUp{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}@keyframes glow{0%,100%{box-shadow:0 0 30px rgba(56,189,248,0.15)}50%{box-shadow:0 0 60px rgba(56,189,248,0.35)}}.cta:hover{transform:translateY(-2px);box-shadow:0 20px 60px rgba(56,189,248,0.35)!important}.cta{transition:all 0.2s ease!important}.fc:hover{transform:translateY(-4px);border-color:rgba(255,255,255,0.12)!important}.fc{transition:all 0.2s ease!important}`}</style>
+      <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:100,padding:"0 40px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between",background:scrolled?"rgba(6,13,26,0.95)":"transparent",backdropFilter:scrolled?"blur(20px)":"none",borderBottom:scrolled?"1px solid rgba(255,255,255,0.06)":"none",transition:"all 0.3s"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#0369a1,#38bdf8)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📈</div><span style={{fontSize:18,fontWeight:800,color:"#f0f4ff",letterSpacing:"-0.02em"}}>Nexyru</span></div>
+        <div style={{display:"flex",gap:12}}>
+          <a href="/login" style={{fontSize:14,color:"#64748b",textDecoration:"none",padding:"8px 16px",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)"}}>Sign in</a>
+          <a href="/login" className="cta" style={{fontSize:14,fontWeight:700,color:"#fff",textDecoration:"none",padding:"9px 20px",borderRadius:10,background:"linear-gradient(135deg,#0369a1,#38bdf8)"}}>Get Started Free</a>
+        </div>
       </nav>
-
-      {/* ── Hero ── */}
-      <section className="hero">
-        {/* Orbs */}
-        <div className="orb" style={{ width: 600, height: 600, top: -200, left: "50%", transform: "translateX(-50%)", background: "rgba(56,189,248,0.06)" }} />
-        <div className="orb" style={{ width: 400, height: 400, bottom: 0, right: -100, background: "rgba(168,85,247,0.05)" }} />
-
-        <div className="hero-badge">
-          <div className="badge-dot" />
-          Now in private beta — limited spots
+      <section style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"120px 20px 80px",position:"relative"}}>
+        <div style={{position:"absolute",top:"20%",left:"50%",transform:"translateX(-50%)",width:600,height:600,borderRadius:"50%",background:"radial-gradient(ellipse,rgba(56,189,248,0.08) 0%,transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"6px 16px",borderRadius:100,border:"1px solid rgba(56,189,248,0.25)",background:"rgba(56,189,248,0.06)",marginBottom:32,animation:"fadeUp 0.6s ease both"}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:"#34d399",display:"inline-block",animation:"pulse 2s infinite"}}/>
+          <span style={{fontSize:12,fontWeight:600,color:"#38bdf8"}}>Now live — sign up free</span>
         </div>
-
-        <h1>
-          Automate Your Trading.<br /><em>Scale Without Limits.</em>
+        <h1 style={{fontSize:"clamp(42px,7vw,84px)",fontWeight:900,lineHeight:1.08,letterSpacing:"-0.03em",marginBottom:24,animation:"fadeUp 0.7s ease 0.1s both"}}>
+          <span style={{color:"#f0f4ff"}}>The trading journal</span><br/>
+          <span style={{background:"linear-gradient(135deg,#38bdf8,#a78bfa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>built for funded traders</span>
         </h1>
-
-        <p>Build your own strategies, execute trades automatically, and manage multiple accounts — all from one platform.</p>
-
-        <div className="hero-cta">
-          <button className="btn-primary" onClick={scrollToWaitlist}>
-            Join Early Access →
-          </button>
-          <button className="btn-secondary" onClick={() => document.getElementById("chart-section")?.scrollIntoView({ behavior: "smooth" })}>
-            See How It Works
-          </button>
+        <p style={{fontSize:"clamp(16px,2vw,20px)",color:"#64748b",maxWidth:560,lineHeight:1.7,marginBottom:40,animation:"fadeUp 0.7s ease 0.2s both"}}>AI-powered trade analysis, funded challenge tracking, and a community of verified traders — all in one platform.</p>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",justifyContent:"center",marginBottom:60,animation:"fadeUp 0.7s ease 0.3s both"}}>
+          <a href="/login" className="cta" style={{display:"inline-flex",alignItems:"center",gap:8,padding:"14px 28px",borderRadius:14,background:"linear-gradient(135deg,#0369a1,#38bdf8)",color:"#fff",fontSize:15,fontWeight:700,textDecoration:"none",boxShadow:"0 8px 32px rgba(56,189,248,0.25)"}}>Start for free →</a>
+          <a href="/dashboard" style={{display:"inline-flex",alignItems:"center",gap:8,padding:"14px 28px",borderRadius:14,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#94a3b8",fontSize:15,fontWeight:600,textDecoration:"none"}}>View demo</a>
         </div>
-
-        <div className="hero-stats">
-          <div className="stat">
-            <div className="stat-label">Built for multi-account trading</div>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat">
-            <div className="stat-label">Custom strategy automation</div>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat">
-            <div className="stat-label">Full control over execution</div>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat">
-            <div className="stat-label">No manual trading required</div>
+        <div style={{animation:"fadeUp 0.7s ease 0.4s both",marginBottom:80}}>
+          <p style={{fontSize:12,color:"#334155",marginBottom:12,fontWeight:500}}>Works with your prop firm</p>
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"6px 16px",borderRadius:20,border:"1px solid rgba(56,189,248,0.25)",background:"rgba(56,189,248,0.06)",fontSize:13,fontWeight:700,color:"#38bdf8"}}>{FIRMS[firmIdx]}</div>
+        </div>
+        <div style={{width:"100%",maxWidth:900,animation:"fadeUp 0.9s ease 0.5s both"}}>
+          <div style={{background:"linear-gradient(135deg,#0b1120,#0d1628)",borderRadius:24,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)",boxShadow:"0 40px 80px rgba(0,0,0,0.6)"}}>
+            <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)",display:"flex",alignItems:"center",gap:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:24,height:24,borderRadius:8,background:"linear-gradient(135deg,#0369a1,#38bdf8)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>📈</div><span style={{fontSize:13,fontWeight:800,color:"#f0f4ff"}}>Nexyru</span></div>
+              {["Dashboard","Journal","Strategy Lab","Insights"].map(t=><span key={t} style={{fontSize:11,color:t==="Dashboard"?"#38bdf8":"#334155",fontWeight:t==="Dashboard"?700:500,padding:"4px 10px",borderRadius:8,background:t==="Dashboard"?"rgba(56,189,248,0.1)":"transparent"}}>{t}</span>)}
+              <div style={{marginLeft:"auto",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:10,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.2)",color:"#34d399"}}>LIVE</div>
+            </div>
+            <div style={{padding:"20px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+              {[{l:"Total P&L",v:"+$8,432",c:"#34d399",s:"+12.4%"},{l:"Win Rate",v:"67.3%",c:"#38bdf8",s:"128 trades"},{l:"Profit Target",v:"84%",c:"#f59e0b",s:"$8.4k / $10k"},{l:"Daily Loss",v:"Safe",c:"#34d399",s:"-$240 / -$3k"}].map((s,i)=>(
+                <div key={i} style={{background:"rgba(255,255,255,0.03)",borderRadius:14,padding:"14px",border:"1px solid rgba(255,255,255,0.05)"}}>
+                  <div style={{fontSize:9,color:"#334155",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>{s.l}</div>
+                  <div style={{fontSize:20,fontWeight:900,color:s.c,fontFamily:"monospace"}}>{s.v}</div>
+                  <div style={{fontSize:10,color:"#475569",marginTop:4}}>{s.s}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:"0 20px 20px"}}>
+              <div style={{background:"rgba(255,255,255,0.02)",borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,0.04)"}}>
+                {[{p:"ES1!",t:"LONG",pnl:"+$312.50",c:"#34d399",g:"A"},{p:"NQ1!",t:"SHORT",pnl:"+$187.50",c:"#34d399",g:"B+"},{p:"CL1!",t:"LONG",pnl:"-$95.00",c:"#f87171",g:"C"}].map((t,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderBottom:i<2?"1px solid rgba(255,255,255,0.03)":"none"}}>
+                    <span style={{fontSize:11,fontWeight:800,color:"#e2e8f0",fontFamily:"monospace",width:40}}>{t.p}</span>
+                    <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:t.t==="LONG"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:t.t==="LONG"?"#34d399":"#f87171"}}>{t.t}</span>
+                    <span style={{flex:1}}/>
+                    <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:8,background:"rgba(56,189,248,0.1)",color:"#38bdf8"}}>Grade {t.g}</span>
+                    <span style={{fontSize:12,fontWeight:900,color:t.c,fontFamily:"monospace"}}>{t.pnl}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
-
-      {/* ── Chart Section ── */}
-      <section className="chart-section" id="chart-section">
-        <div className="section-label">Live Demo</div>
-        <h2 className="section-title">Signals That Don't Miss</h2>
-        <p className="section-sub">Watch our AI identify high-probability setups in real time — entry, exit, and close, all managed automatically.</p>
-
-        <div className="chart-card">
-          <div className="chart-header">
-            <div className="chart-pair">
-              <span className="pair-name">DEMO / USD</span>
-              <span className="live-badge"><span className="live-dot" />LIVE</span>
-            </div>
-            <div className="legend-row">
-              <div className="leg"><div className="leg-dot" style={{ background: "#22c55e" }} />BUY</div>
-              <div className="leg"><div className="leg-dot" style={{ background: "#ef4444" }} />SELL</div>
-              <div className="leg"><div className="leg-dot" style={{ background: "#a855f7" }} />CLOSE</div>
-            </div>
-          </div>
-          <Chart />
+      <section style={{padding:"80px 40px",borderTop:"1px solid rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+        <div style={{maxWidth:900,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:40,textAlign:"center"}}>
+          {[{v:"47%",l:"Avg win rate improvement"},{v:"2.3x",l:"Better risk/reward ratio"},{v:"10K+",l:"Trades analyzed"},{v:"500+",l:"Funded traders"}].map((s,i)=>(
+            <div key={i}><div style={{fontSize:48,fontWeight:900,color:"#f0f4ff",fontFamily:"monospace",letterSpacing:"-0.03em",lineHeight:1}}>{s.v}</div><div style={{fontSize:13,color:"#475569",marginTop:8}}>{s.l}</div></div>
+          ))}
         </div>
       </section>
-
-      {/* ── Features ── */}
-      <section style={{ position: "relative", zIndex: 1 }}>
-        <div className="features-section">
-          <div style={{ textAlign: "center" }}>
-            <div className="section-label">Why Nexyru</div>
-            <h2 className="section-title">Automate Your Edge.</h2>
-            <p className="section-sub">Build, customize, and deploy trading strategies across multiple accounts — all in one place.</p>
+      <section style={{padding:"100px 40px"}}>
+        <div style={{maxWidth:1100,margin:"0 auto"}}>
+          <div style={{textAlign:"center",marginBottom:64}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#38bdf8",letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:16}}>Everything you need</div>
+            <h2 style={{fontSize:"clamp(32px,5vw,52px)",fontWeight:900,color:"#f0f4ff",letterSpacing:"-0.03em",lineHeight:1.1}}>Built for serious traders</h2>
+            <p style={{fontSize:16,color:"#475569",marginTop:16,maxWidth:500,margin:"16px auto 0"}}>Every feature was designed around the needs of funded traders and serious prop firm challengers.</p>
           </div>
-          <div className="features-grid">
-            {[
-              { icon: "⚡", bg: "rgba(56,189,248,0.1)", title: "Multi-Account Copy Trading", desc: "Execute the same strategy across multiple accounts instantly. Scale your trades without repeating work." },
-              { icon: "🎯", bg: "rgba(34,197,94,0.1)", title: "Fully Automated Execution", desc: "Every buy and sell is handled automatically based on your rules. No manual entries, no missed trades." },
-              { icon: "🛡️", bg: "rgba(168,85,247,0.1)", title: "Strategy Builder", desc: "Create your own trading logic with a flexible builder. Define exactly how your system behaves." },
-              { icon: "📊", bg: "rgba(245,158,11,0.1)", title: "Complete Customization", desc: "Adjust entries, exits, risk, and timing to fit your strategy. You stay in full control." },
-              { icon: "🔔", bg: "rgba(239,68,68,0.1)", title: "Real-Time Trade Sync", desc: "Trades execute across all connected accounts at the same time with zero delay." },
-              { icon: "🔗", bg: "rgba(56,189,248,0.1)", title: "Built for Serious Traders", desc: "Designed for traders who want consistency, automation, and scalability — not guesswork." },
-            ].map((f, i) => (
-              <div className="feature-card" key={i}>
-                <div className="feature-icon" style={{ background: f.bg }}>{f.icon}</div>
-                <h3>{f.title}</h3>
-                <p>{f.desc}</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+            {FEATURES.map((f,i)=>(
+              <div key={i} className="fc" style={{background:"linear-gradient(135deg,#0b1120,#0d1628)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:20,padding:"28px 24px"}}>
+                <div style={{width:48,height:48,borderRadius:14,background:`${f.color}15`,border:`1px solid ${f.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,marginBottom:18}}>{f.icon}</div>
+                <h3 style={{fontSize:16,fontWeight:800,color:"#f0f4ff",marginBottom:10}}>{f.title}</h3>
+                <p style={{fontSize:13,color:"#475569",lineHeight:1.7}}>{f.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
-
-      {/* ── Waitlist ── */}
-      <section className="waitlist-section" id="waitlist">
-        <div className="section-label">Early Access</div>
-        <h2 className="section-title" style={{ marginBottom: 12 }}>Get Early Access</h2>
-        <p className="section-sub">Join the waitlist and be first to experience Nexyru when we open beta doors.</p>
-
-        <div className="waitlist-card">
-          <div className="waitlist-top">
-            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "var(--text)" }}>
-              Reserve Your Spot
-            </h3>
-            <p>Limited beta seats available. No credit card required.</p>
+      <section style={{padding:"80px 40px",background:"rgba(255,255,255,0.015)",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+        <div style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
+          <h2 style={{fontSize:"clamp(28px,4vw,42px)",fontWeight:900,color:"#f0f4ff",letterSpacing:"-0.02em",marginBottom:16}}>Trusted by funded traders</h2>
+          <p style={{fontSize:15,color:"#475569",marginBottom:40}}>Join traders from every major prop firm who use Nexyru to track and improve.</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"center",marginBottom:60}}>
+            {FIRMS.map((f,i)=><div key={i} style={{padding:"8px 18px",borderRadius:100,border:"1px solid rgba(255,255,255,0.08)",background:"rgba(255,255,255,0.03)",fontSize:13,color:"#64748b",fontWeight:500}}>{f}</div>)}
           </div>
-          <div className="form-wrap">
-            <iframe
-              src="https://docs.google.com/forms/d/e/1FAIpQLSed3eET6aSFb21J3kneA7piDCgJNlTAvi81EoA5f7LCsOxtMQ/viewform?usp=dialog/viewform?embedded=true"
-              title="Nexyru Early Access Waitlist"
-              frameBorder="0"
-              marginHeight={0}
-              marginWidth={0}
-            >
-              Loading…
-            </iframe>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+            {[{text:"Finally a journal that understands funded traders. The challenge tracker alone saved my Apex account.",name:"Jake M.",firm:"Apex Trader Funding"},{text:"Went from 45% to 68% win rate in 60 days. The AI feedback is brutally honest and exactly what I needed.",name:"Sarah K.",firm:"TopstepX"},{text:"Copy trading feature is insane. I follow two consistently profitable traders and model my setups after theirs.",name:"Dev R.",firm:"FTMO"}].map((t,i)=>(
+              <div key={i} style={{background:"linear-gradient(135deg,#0b1120,#0d1628)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:20,padding:"24px",textAlign:"left"}}>
+                <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,marginBottom:16,fontStyle:"italic"}}>"{t.text}"</p>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,rgba(56,189,248,0.2),rgba(167,139,250,0.2))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#38bdf8"}}>{t.name[0]}</div>
+                  <div><div style={{fontSize:12,fontWeight:700,color:"#e2e8f0"}}>{t.name}</div><div style={{fontSize:10,color:"#334155"}}>{t.firm}</div></div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
-
-      {/* ── Footer ── */}
-      <footer>
-        <div className="footer-logo">Nexy<span>ru</span></div>
-        <div className="footer-note">© 2025 Nexyru. Visual demo only — not financial advice.</div>
+      <section style={{padding:"100px 40px",textAlign:"center",position:"relative"}}>
+        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:500,height:500,borderRadius:"50%",background:"radial-gradient(ellipse,rgba(56,189,248,0.07) 0%,transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{position:"relative",zIndex:1}}>
+          <h2 style={{fontSize:"clamp(32px,5vw,56px)",fontWeight:900,color:"#f0f4ff",letterSpacing:"-0.03em",marginBottom:20}}>Ready to trade smarter?</h2>
+          <p style={{fontSize:16,color:"#475569",maxWidth:440,margin:"0 auto 40px",lineHeight:1.7}}>Start free. Import your first trades in minutes. See what AI-powered insights can do for your P&L.</p>
+          <a href="/login" className="cta" style={{display:"inline-flex",alignItems:"center",gap:8,padding:"16px 36px",borderRadius:16,background:"linear-gradient(135deg,#0369a1,#38bdf8)",color:"#fff",fontSize:16,fontWeight:700,textDecoration:"none",boxShadow:"0 8px 40px rgba(56,189,248,0.3)",animation:"glow 3s ease-in-out infinite"}}>Get started free →</a>
+          <div style={{marginTop:20,fontSize:12,color:"#334155"}}>No credit card required · Works with all prop firms</div>
+        </div>
+      </section>
+      <footer style={{padding:"40px",borderTop:"1px solid rgba(255,255,255,0.05)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#0369a1,#38bdf8)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>📈</div><span style={{fontSize:15,fontWeight:800,color:"#f0f4ff"}}>Nexyru</span></div>
+        <div style={{display:"flex",gap:24}}>{["Privacy","Terms","Contact"].map(l=><a key={l} href="#" style={{fontSize:12,color:"#334155",textDecoration:"none"}}>{l}</a>)}</div>
+        <div style={{fontSize:12,color:"#1e2f4a"}}>© 2026 Nexyru. All rights reserved.</div>
       </footer>
-    </>
+    </div>
   );
 }
