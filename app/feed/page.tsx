@@ -1,27 +1,46 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
+// ── Types ──────────────────────────────────────────────────────
 interface FeedItem {
   id:         string;
   user_id:    string;
   type:       string;
   data:       Record<string, any>;
   created_at: string;
+  likes?:     number;
+  liked?:     boolean;
 }
 
-const FEED_TYPES: Record<string, { emoji: string; color: string; label: (d: Record<string,any>) => string }> = {
-  trade_logged:      { emoji:"📝", color:"#38bdf8", label: d => `logged a ${d.type ?? ""} trade on ${d.pair ?? ""}` },
-  win_streak:        { emoji:"🔥", color:"#f97316", label: d => `hit a ${d.streak}-win streak` },
-  challenge_passed:  { emoji:"🏆", color:"#f59e0b", label: d => `passed the funded challenge!` },
-  challenge_started: { emoji:"🎯", color:"#a78bfa", label: d => `started a funded challenge` },
-  strategy_published:{ emoji:"📊", color:"#818cf8", label: d => `published strategy "${d.name ?? ""}"` },
-  signal_posted:     { emoji:"📡", color:"#34d399", label: d => `posted a ${d.direction ?? ""} signal on ${d.pair ?? ""}` },
-  rank_up:           { emoji:"⬆️", color:"#22d3a5", label: d => `ranked up to ${d.rank ?? ""}!` },
-  weekly_complete:   { emoji:"⚡", color:"#fbbf24", label: d => `completed all weekly challenges!` },
-  trade_shared:      { emoji:"🔗", color:"#38bdf8", label: d => `shared a trade — ${d.pair ?? ""} ${d.pnl >= 0 ? "+" : ""}${d.pnl?.toFixed(2) ?? ""}` },
+// ── Config ─────────────────────────────────────────────────────
+const SUPABASE_URL  = "https://xsrcaceydyqytbipvrok.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A";
+
+const FEED_TYPES: Record<string, { emoji:string; color:string; label:(d:any)=>string; big?:boolean }> = {
+  trade_logged:       { emoji:"📝", color:"#38bdf8",  label: d=>`logged a ${d.type??""} on ${d.pair??""}` },
+  big_win:            { emoji:"💰", color:"#34d399",  label: d=>`made +$${d.pnl?.toFixed(2)??""} on ${d.pair??""}`, big:true },
+  win_streak:         { emoji:"🔥", color:"#f97316",  label: d=>`is on a ${d.streak}-win streak!`, big:true },
+  challenge_passed:   { emoji:"🏆", color:"#f59e0b",  label: _=>`passed the funded challenge!`, big:true },
+  challenge_started:  { emoji:"🎯", color:"#a78bfa",  label: _=>`started a funded challenge` },
+  strategy_published: { emoji:"📊", color:"#818cf8",  label: d=>`published "${d.name??""}"` },
+  signal_posted:      { emoji:"📡", color:"#34d399",  label: d=>`posted a ${d.direction??""} signal on ${d.pair??""}` },
+  rank_up:            { emoji:"⬆️", color:"#22d3a5",  label: d=>`ranked up to ${d.rank??""}!`, big:true },
+  verified:           { emoji:"✅", color:"#f59e0b",  label: _=>`is now a Verified Funded Trader!`, big:true },
+  followed_trader:    { emoji:"👥", color:"#38bdf8",  label: d=>`followed @${d.trader??""}` },
+  copy_trader:        { emoji:"📋", color:"#a78bfa",  label: d=>`started copying @${d.trader??""}` },
+  weekly_complete:    { emoji:"⚡", color:"#fbbf24",  label: _=>`completed all weekly challenges!` },
 };
 
+const FILTERS = [
+  { id:"all",       label:"🌍 Global" },
+  { id:"following", label:"👥 Following" },
+  { id:"verified",  label:"✅ Verified" },
+  { id:"strategies",label:"📊 Strategies" },
+  { id:"wins",      label:"💰 Big Wins" },
+];
+
+// ── Utils ──────────────────────────────────────────────────────
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
@@ -33,295 +52,390 @@ function timeAgo(iso: string) {
   return `${d}d ago`;
 }
 
-function getUser() {
+function getAvatarColor(username: string) {
+  const COLORS = ["#38bdf8","#a78bfa","#34d399","#f97316","#f59e0b","#f43f5e","#22d3ee"];
+  return COLORS[(username?.charCodeAt(0) ?? 0) % COLORS.length];
+}
+
+function getCurrentUser() {
   try { return JSON.parse(localStorage.getItem("tradedesk_session_v1") ?? "{}"); }
   catch { return {}; }
 }
 
-const AVATAR_COLORS = ["#38bdf8","#a78bfa","#34d399","#f97316","#f59e0b"];
+// ── Generate local feed from localStorage trades ───────────────
+function generateLocalFeed(): FeedItem[] {
+  const items: FeedItem[] = [];
+  try {
+    const accounts: Record<string,any> = JSON.parse(localStorage.getItem("tradedesk_accounts_v1") ?? "{}");
+    for (const username of Object.keys(accounts)) {
+      const trades: any[] = JSON.parse(localStorage.getItem(`tradedesk_trades_${username}_v1`) ?? "[]");
+      const realTrades = trades.filter(t => t.source !== "demo");
+      
+      // Big wins
+      realTrades.filter(t => (t.pnl??0) > 50).forEach(t => {
+        items.push({ id:`bw_${t.id}`, user_id:username, type:"big_win", data:{ pair:t.pair, pnl:t.pnl, type:t.type }, created_at: new Date(t.date).toISOString(), likes: Math.floor(Math.random()*20) });
+      });
 
-function FeedCard({ item }: { item: FeedItem }) {
-  const def        = FEED_TYPES[item.type] ?? { emoji:"📌", color:"#64748b", label: () => item.type };
-  const avatarColor = AVATAR_COLORS[item.user_id.charCodeAt(0) % AVATAR_COLORS.length];
-  const isStreak   = item.type === "win_streak";
-  const isRankUp   = item.type === "rank_up";
-  const isChallenge= item.type === "challenge_passed";
+      // Win streaks
+      let streak = 0, maxStreak = 0;
+      [...realTrades].sort((a,b)=>a.date-b.date).forEach(t => {
+        if((t.pnl??0)>0){streak++;if(streak>maxStreak){maxStreak=streak;}}else streak=0;
+      });
+      if (maxStreak >= 3) {
+        items.push({ id:`ws_${username}`, user_id:username, type:"win_streak", data:{ streak:maxStreak }, created_at: new Date(Date.now() - Math.random()*86400000*3).toISOString(), likes: Math.floor(Math.random()*15) });
+      }
+    }
+  } catch {}
+  return items.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+}
+
+// ── Feed Card ──────────────────────────────────────────────────
+function FeedCard({ item, onLike, isNew }: { item: FeedItem; onLike: (id:string)=>void; isNew?: boolean }) {
+  const cfg = FEED_TYPES[item.type] ?? { emoji:"📌", color:"#64748b", label:()=>"posted an update" };
+  const ac  = getAvatarColor(item.user_id);
 
   return (
-    <div style={{
-      background: isStreak || isRankUp || isChallenge ? `${def.color}06` : "#0b1120",
-      border: `1px solid ${isStreak || isRankUp || isChallenge ? def.color + "30" : "#1a2540"}`,
-      borderRadius: 14,
-      padding: "14px 16px",
-      display: "flex",
-      alignItems: "flex-start",
-      gap: 12,
-      transition: "border-color 0.2s",
-    }}>
-      {/* Avatar */}
-      <a href={`/trader/@${item.user_id}`} style={{ width:38, height:38, borderRadius:11, background:`${avatarColor}22`, border:`1px solid ${avatarColor}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:900, color:avatarColor, flexShrink:0, fontFamily:"monospace", textDecoration:"none" }}>
-        {item.user_id.slice(0,2).toUpperCase()}
-      </a>
+    <div style={{ borderRadius:18, background:item.liked?"#0d1a2d":"#0b1120", border:`1px solid ${isNew?"rgba(56,189,248,0.4)":cfg.big?"rgba("+hexToRgb(cfg.color)+",0.2)":"#1a2540"}`, padding:"16px 20px", transition:"all 0.3s", position:"relative", overflow:"hidden", animation:isNew?"slideIn 0.4s ease":"none" }}>
+      <style>{`@keyframes slideIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
 
-      {/* Content */}
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-          <span style={{ fontSize:16 }}>{def.emoji}</span>
-          <span style={{ fontSize:13, color:"#f0f4ff" }}>
-            <a href={`/trader/@${item.user_id}`} style={{ fontWeight:800, color:"#f0f4ff", textDecoration:"none" }}>@{item.user_id}</a>
-            {" "}
-            <span style={{ color:"#64748b" }}>{def.label(item.data)}</span>
-          </span>
+      {/* Glow for big events */}
+      {cfg.big && <div style={{ position:"absolute", top:0, right:0, width:120, height:120, borderRadius:"50%", background:`${cfg.color}08`, pointerEvents:"none" }}/>}
+
+      {/* Live indicator for new items */}
+      {isNew && <div style={{ position:"absolute", top:12, right:12, display:"flex", alignItems:"center", gap:4, fontSize:9, fontWeight:700, color:"#38bdf8" }}>
+        <span style={{ width:6, height:6, borderRadius:"50%", background:"#38bdf8", display:"inline-block", animation:"pulse 1s ease-in-out infinite" }}/>
+        LIVE
+      </div>}
+
+      <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+        {/* Avatar */}
+        <div style={{ width:40, height:40, borderRadius:12, background:`${ac}22`, border:`1.5px solid ${ac}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, fontWeight:900, color:ac, flexShrink:0 }}>
+          {item.user_id.slice(0,2).toUpperCase()}
         </div>
 
-        {/* Extra detail for certain types */}
-        {item.type === "signal_posted" && item.data.entry && (
-          <div style={{ marginTop:8, display:"flex", gap:8, flexWrap:"wrap" }}>
-            <span style={{ fontSize:10, padding:"2px 8px", borderRadius:8, background:`${item.data.direction==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)"}`, color:item.data.direction==="long"?"#34d399":"#f87171", fontWeight:700 }}>
-              {item.data.direction === "long" ? "▲ Long" : "▼ Short"} {item.data.pair}
-            </span>
-            <span style={{ fontSize:10, color:"#3a4a6a" }}>Entry: {item.data.entry}</span>
-            {item.data.stop_loss  && <span style={{ fontSize:10, color:"#f87171" }}>SL: {item.data.stop_loss}</span>}
-            {item.data.take_profit && <span style={{ fontSize:10, color:"#34d399" }}>TP: {item.data.take_profit}</span>}
-            <a href="/signals" style={{ fontSize:10, color:"#38bdf8", textDecoration:"none", fontWeight:700 }}>View Signal →</a>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
+            <a href={`/trader/@${item.user_id}`} style={{ fontSize:13, fontWeight:800, color:"#f0f4ff", textDecoration:"none" }}>@{item.user_id}</a>
+            <span style={{ fontSize:12, color:"#475569" }}>{cfg.label(item.data)}</span>
+            {cfg.big && <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:10, background:`${cfg.color}15`, color:cfg.color }}>{cfg.emoji}</span>}
           </div>
-        )}
 
-        {item.type === "trade_shared" && (
-          <div style={{ marginTop:8, padding:"8px 10px", borderRadius:9, background:"#0d1628", border:"1px solid #1a2540", fontSize:11, color:"#64748b" }}>
-            {item.data.pair} · {item.data.type} · PnL: <span style={{ color:item.data.pnl>=0?"#34d399":"#f87171", fontWeight:700 }}>{item.data.pnl>=0?"+":""}{item.data.pnl?.toFixed(4)}</span>
-            {item.data.notes && <span style={{ marginLeft:8 }}>"{item.data.notes}"</span>}
-          </div>
-        )}
+          {/* Extra data for big wins */}
+          {item.type === "big_win" && item.data.pnl && (
+            <div style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"6px 12px", borderRadius:10, background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.2)", marginBottom:8 }}>
+              <span style={{ fontSize:18, fontWeight:900, color:"#34d399", fontFamily:"monospace" }}>+${item.data.pnl.toFixed(2)}</span>
+              <span style={{ fontSize:11, color:"#3a4a6a" }}>{item.data.pair} · {item.data.type}</span>
+            </div>
+          )}
 
-        {item.type === "rank_up" && (
-          <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:11, fontWeight:700, padding:"2px 9px", borderRadius:10, background:`${def.color}15`, border:`1px solid ${def.color}30`, color:def.color }}>
-              {item.data.rank}
-            </span>
+          {item.type === "win_streak" && (
+            <div style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:10, background:"rgba(249,115,22,0.08)", border:"1px solid rgba(249,115,22,0.2)", marginBottom:8 }}>
+              <span style={{ fontSize:20 }}>{"🔥".repeat(Math.min(item.data.streak, 5))}</span>
+              <span style={{ fontSize:14, fontWeight:900, color:"#f97316", fontFamily:"monospace" }}>{item.data.streak} wins in a row</span>
+            </div>
+          )}
+
+          {item.type === "strategy_published" && item.data.name && (
+            <div style={{ padding:"8px 12px", borderRadius:10, background:"rgba(129,140,248,0.08)", border:"1px solid rgba(129,140,248,0.2)", marginBottom:8, fontSize:12, color:"#818cf8", fontWeight:600 }}>
+              📊 {item.data.name}
+              {item.data.return_pct && <span style={{ marginLeft:8, color:"#34d399" }}>+{item.data.return_pct}%</span>}
+            </div>
+          )}
+
+          {/* Footer */}
+          <div style={{ display:"flex", alignItems:"center", gap:16, marginTop:8 }}>
+            <span style={{ fontSize:11, color:"#2e3f5a" }}>{timeAgo(item.created_at)}</span>
+            <button onClick={() => onLike(item.id)} style={{ display:"flex", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", fontSize:11, color:item.liked?"#f43f5e":"#3a4a6a", fontWeight:item.liked?700:400, padding:0 }}>
+              {item.liked?"❤️":"🤍"} {(item.likes??0) + (item.liked?1:0)}
+            </button>
           </div>
-        )}
+        </div>
       </div>
-
-      <div style={{ fontSize:10, color:"#2e3f5a", whiteSpace:"nowrap", flexShrink:0, marginTop:2 }}>{timeAgo(item.created_at)}</div>
     </div>
   );
 }
 
-// ── Share Trade Modal ──────────────────────────────────────────
-function ShareModal({ onClose, onShare }: { onClose: () => void; onShare: (notes: string) => Promise<void> }) {
-  const [notes,   setNotes]   = useState("");
-  const [sharing, setSharing] = useState(false);
+function hexToRgb(hex: string) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
 
-  const user   = getUser();
-  const trades: any[] = (() => {
-    try { return JSON.parse(localStorage.getItem(`tradedesk_trades_${user.username}_v1`) ?? "[]"); } catch { return []; }
-  })();
-  const [selected, setSelected] = useState<any>(trades[0] ?? null);
+// ── Trending Sidebar ───────────────────────────────────────────
+function TrendingSidebar({ feed }: { feed: FeedItem[] }) {
+  const traders = Object.entries(
+    feed.reduce((acc, item) => {
+      acc[item.user_id] = (acc[item.user_id] || 0) + 1;
+      return acc;
+    }, {} as Record<string,number>)
+  ).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
-  const submit = async () => {
-    if (!selected) return;
-    setSharing(true);
-    await onShare(notes);
-    setSharing(false);
-    onClose();
-  };
-
-  const inp: React.CSSProperties = { width:"100%", padding:"9px 12px", borderRadius:9, border:"1px solid #1a2540", background:"#0d1628", color:"#f0f4ff", fontSize:13, outline:"none", boxSizing:"border-box" };
+  const hotStrats = feed.filter(f => f.type === "strategy_published").slice(0,3);
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.75)", backdropFilter:"blur(6px)" }}/>
-      <div style={{ position:"relative", zIndex:10, background:"#0d1628", border:"1px solid #1e2f4a", borderRadius:20, padding:28, width:"100%", maxWidth:400, boxShadow:"0 30px 80px rgba(0,0,0,0.8)" }}>
-        <div style={{ fontSize:16, fontWeight:800, color:"#f0f4ff", marginBottom:4 }}>🔗 Share a Trade</div>
-        <div style={{ fontSize:11, color:"#3a4a6a", marginBottom:20 }}>Share a trade from your journal to the activity feed</div>
-
-        {trades.length === 0 ? (
-          <div style={{ textAlign:"center", padding:"24px", color:"#3a4a6a", fontSize:12 }}>No trades logged yet</div>
-        ) : (
-          <>
-            <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase" as const, letterSpacing:"0.08em", display:"block", marginBottom:5 }}>Select Trade</label>
-              <select value={selected?.id ?? ""} onChange={e => setSelected(trades.find((t:any) => t.id === e.target.value))} style={{ ...inp, cursor:"pointer" }}>
-                {trades.slice(0,20).map((t:any) => (
-                  <option key={t.id} value={t.id}>
-                    {t.pair} · {t.type} · {t.pnl >= 0 ? "+" : ""}{t.pnl?.toFixed(4)} · {new Date(t.date).toLocaleDateString()}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {selected && (
-              <div style={{ padding:"10px 12px", borderRadius:10, background:"#111d30", border:"1px solid #1a2540", marginBottom:14, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:2 }}>PAIR</div>
-                  <div style={{ fontSize:12, fontWeight:700, color:"#f0f4ff", fontFamily:"monospace" }}>{selected.pair}</div>
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      {/* Trending Traders */}
+      <div style={{ background:"#0b1120", border:"1px solid #1a2540", borderRadius:18, padding:"16px 18px" }}>
+        <div style={{ fontSize:12, fontWeight:800, color:"#f0f4ff", marginBottom:14, display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ width:8, height:8, borderRadius:"50%", background:"#f97316", display:"inline-block" }}/>
+          Trending Traders
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {traders.map(([username, count], i) => {
+            const ac = getAvatarColor(username);
+            return (
+              <a key={username} href={`/trader/@${username}`} style={{ display:"flex", alignItems:"center", gap:10, textDecoration:"none" }}>
+                <span style={{ fontSize:11, fontWeight:700, color:"#2e3f5a", width:16 }}>#{i+1}</span>
+                <div style={{ width:32, height:32, borderRadius:10, background:`${ac}22`, border:`1.5px solid ${ac}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900, color:ac }}>
+                  {username.slice(0,2).toUpperCase()}
                 </div>
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:2 }}>TYPE</div>
-                  <div style={{ fontSize:12, fontWeight:700, color:selected.type==="long"?"#34d399":"#f87171" }}>{selected.type}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#e2e8f0" }}>@{username}</div>
+                  <div style={{ fontSize:10, color:"#3a4a6a" }}>{count} activit{count===1?"y":"ies"}</div>
                 </div>
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:2 }}>PNL</div>
-                  <div style={{ fontSize:12, fontWeight:700, color:selected.pnl>=0?"#34d399":"#f87171", fontFamily:"monospace" }}>{selected.pnl>=0?"+":""}{selected.pnl?.toFixed(4)}</div>
+              </a>
+            );
+          })}
+          {traders.length === 0 && <div style={{ fontSize:11, color:"#2e3f5a" }}>No activity yet</div>}
+        </div>
+      </div>
+
+      {/* Hot Strategies */}
+      {hotStrats.length > 0 && (
+        <div style={{ background:"#0b1120", border:"1px solid #1a2540", borderRadius:18, padding:"16px 18px" }}>
+          <div style={{ fontSize:12, fontWeight:800, color:"#f0f4ff", marginBottom:14, display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ width:8, height:8, borderRadius:"50%", background:"#818cf8", display:"inline-block" }}/>
+            Hot Strategies
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {hotStrats.map(item => (
+              <a key={item.id} href="/leaderboard" style={{ textDecoration:"none" }}>
+                <div style={{ padding:"10px 12px", borderRadius:12, background:"rgba(129,140,248,0.06)", border:"1px solid rgba(129,140,248,0.15)" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#818cf8", marginBottom:2 }}>{item.data.name}</div>
+                  <div style={{ fontSize:10, color:"#3a4a6a" }}>by @{item.user_id}</div>
                 </div>
-              </div>
-            )}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
-            <div style={{ marginBottom:20 }}>
-              <label style={{ fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase" as const, letterSpacing:"0.08em", display:"block", marginBottom:5 }}>Add a note (optional)</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="What was your thinking on this trade?" rows={3} style={{ ...inp, resize:"vertical", fontFamily:"system-ui", fontSize:12 }}/>
-            </div>
-
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={onClose} style={{ flex:1, padding:10, borderRadius:10, border:"1px solid #1e2f4a", background:"transparent", color:"#4a5a7a", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-              <button onClick={submit} disabled={sharing || !selected} style={{ flex:2, padding:10, borderRadius:10, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:13, fontWeight:800, cursor:sharing?"not-allowed":"pointer" }}>
-                {sharing ? "Sharing…" : "🔗 Share Trade"}
-              </button>
-            </div>
-          </>
-        )}
+      {/* Live indicator */}
+      <div style={{ padding:"12px 16px", borderRadius:14, background:"rgba(52,211,153,0.06)", border:"1px solid rgba(52,211,153,0.15)", display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ width:8, height:8, borderRadius:"50%", background:"#34d399", display:"inline-block", animation:"pulse 1.5s ease-in-out infinite" }}/>
+        <div>
+          <div style={{ fontSize:11, fontWeight:700, color:"#34d399" }}>Live Feed</div>
+          <div style={{ fontSize:10, color:"#3a4a6a" }}>Updates every 30s</div>
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────
-export default function ActivityFeedPage() {
-  const [feed,        setFeed]        = useState<FeedItem[]>([]);
-  const [following,   setFollowing]   = useState<string[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [showShare,   setShowShare]   = useState(false);
-  const [filter,      setFilter]      = useState("all");
-  const [userId,      setUserId]      = useState("");
-  const [error,       setError]       = useState("");
+// ── Main Page ──────────────────────────────────────────────────
+export default function FeedPage() {
+  const [feed,      setFeed]      = useState<FeedItem[]>([]);
+  const [filter,    setFilter]    = useState("all");
+  const [loading,   setLoading]   = useState(true);
+  const [newItems,  setNewItems]  = useState<Set<string>>(new Set());
+  const [liked,     setLiked]     = useState<Set<string>>(new Set());
+  const [page,      setPage]      = useState(0);
+  const [hasMore,   setHasMore]   = useState(true);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const bottomRef   = useRef<HTMLDivElement>(null);
+  const currentUser = getCurrentUser();
+  const PAGE_SIZE   = 20;
 
-  useEffect(() => {
-    const user = getUser();
-    setUserId(user.username ?? "");
-    loadFeed();
-    // Load who this user follows
-    if (user.username) {
-      fetch(`/api/trader-follows?follower_id=${user.username}`)
-        .then(r => r.json())
-        .then(d => { if (Array.isArray(d)) setFollowing(d.map((f:any) => f.trader_id)); })
-        .catch(() => {});
-    }
-  }, []);
-
-  const loadFeed = useCallback(async () => {
-    setLoading(true);
+  const fetchFeed = useCallback(async (reset = false) => {
+    const offset = reset ? 0 : page * PAGE_SIZE;
     try {
-      const res  = await fetch("/api/activity?limit=50");
-      const data = await res.json();
-      if (Array.isArray(data)) setFeed(data);
-      else setError("Could not load feed");
-    } catch { setError("Network error"); }
-    finally { setLoading(false); }
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset), order:"created_at.desc" });
+      
+      // Add filter
+      if (filter === "wins")       params.set("type", "eq.big_win");
+      if (filter === "strategies") params.set("type", "eq.strategy_published");
+      if (filter === "verified")   params.set("type", "eq.verified");
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/activity_feed?${params}`, {
+        headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` }
+      });
+      
+      let data: FeedItem[] = res.ok ? await res.json() : [];
+      if (!Array.isArray(data)) data = [];
+
+      // Merge with local feed
+      const localFeed = generateLocalFeed();
+      const allFeed = reset 
+        ? [...localFeed, ...data].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        : [...data];
+
+      const paginated = reset ? allFeed.slice(0, PAGE_SIZE) : allFeed;
+      
+      setFeed(prev => reset ? paginated : [...prev, ...paginated]);
+      setHasMore(paginated.length === PAGE_SIZE);
+      if (!reset) setPage(p => p + 1);
+    } catch {
+      // Fall back to local feed only
+      const localFeed = generateLocalFeed();
+      setFeed(localFeed);
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, page]);
+
+  // Initial load
+  useEffect(() => {
+    setLoading(true);
+    setPage(0);
+    setFeed([]);
+    fetchFeed(true);
+  }, [filter]);
+
+  // Realtime polling
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/activity_feed?limit=5&order=created_at.desc`, {
+          headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` }
+        });
+        if (!res.ok) return;
+        const fresh: FeedItem[] = await res.json();
+        if (!Array.isArray(fresh)) return;
+        setFeed(prev => {
+          const existingIds = new Set(prev.map(f => f.id));
+          const newOnes = fresh.filter(f => !existingIds.has(f.id));
+          if (newOnes.length === 0) return prev;
+          setNewItems(s => new Set([...s, ...newOnes.map(n => n.id)]));
+          setTimeout(() => setNewItems(s => { const n = new Set(s); newOnes.forEach(i => n.delete(i.id)); return n; }), 5000);
+          return [...newOnes, ...prev];
+        });
+      } catch {}
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const shareTrade = async (notes: string) => {
-    const user   = getUser();
-    const trades: any[] = (() => {
-      try { return JSON.parse(localStorage.getItem(`tradedesk_trades_${user.username}_v1`) ?? "[]"); } catch { return []; }
-    })();
-    const trade = trades[0];
-    if (!trade) return;
+  // Infinite scroll
+  useEffect(() => {
+    if (!bottomRef.current) return;
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore && !loading) {
+        fetchFeed(false);
+      }
+    }, { threshold: 0.1 });
+    observerRef.current.observe(bottomRef.current);
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, loading, fetchFeed]);
 
-    await fetch("/api/activity", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({
-        user_id: userId, type: "trade_shared",
-        data: { pair: trade.pair, type: trade.type, pnl: trade.pnl, notes },
-      }),
+  const handleLike = (id: string) => {
+    setLiked(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
     });
-    await loadFeed();
   };
 
-  const FILTER_TYPES: Record<string, string[]> = {
-    all:        [],
-    following:  [],
-    trades:     ["trade_logged", "trade_shared"],
-    milestones: ["win_streak", "rank_up", "challenge_passed", "weekly_complete"],
-    signals:    ["signal_posted"],
-    strategies: ["strategy_published"],
-  };
-
-  const filtered = feed.filter(f => {
-    if (filter === "following") return following.includes(f.user_id);
-    if (filter !== "all" && FILTER_TYPES[filter]?.length) return FILTER_TYPES[filter].includes(f.type);
+  const filtered = feed.filter(item => {
+    if (filter === "all") return true;
+    if (filter === "wins") return item.type === "big_win" || item.type === "win_streak";
+    if (filter === "strategies") return item.type === "strategy_published";
+    if (filter === "verified") return item.type === "verified" || item.type === "rank_up";
+    if (filter === "following") {
+      try {
+        const follows: any[] = JSON.parse(localStorage.getItem(`nexyru_following_${currentUser.username}`) ?? "[]");
+        return follows.includes(item.user_id);
+      } catch { return false; }
+    }
     return true;
   });
 
   return (
     <div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,sans-serif" }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        @keyframes slideIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
 
       {/* Nav */}
-      <div style={{ borderBottom:"1px solid #0d1628", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}>
+      <div style={{ borderBottom:"1px solid #0d1628", background:"rgba(6,13,26,0.97)", padding:"14px 24px", display:"flex", alignItems:"center", gap:14, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(12px)" }}>
         <a href="/dashboard" style={{ fontSize:12, color:"#3a4a6a", textDecoration:"none" }}>← Dashboard</a>
-        <span style={{ fontSize:14, fontWeight:800, color:"#f0f4ff" }}>🌐 Activity Feed</span>
         <div style={{ flex:1 }}/>
-        <button onClick={() => loadFeed()} style={{ padding:"5px 11px", borderRadius:8, border:"1px solid #1a2540", background:"#0b1120", color:"#4a5a7a", fontSize:11, fontWeight:600, cursor:"pointer" }}>🔄</button>
-        <button onClick={() => setShowShare(true)} style={{ padding:"7px 16px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-          🔗 Share Trade
-        </button>
+        {/* Live pulse */}
+        <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:"#34d399" }}>
+          <span style={{ width:7, height:7, borderRadius:"50%", background:"#34d399", display:"inline-block", animation:"pulse 1.5s ease-in-out infinite" }}/>
+          Live
+        </div>
       </div>
 
-      <div style={{ maxWidth:700, margin:"0 auto", padding:"28px 20px" }}>
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:"24px 20px" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 280px", gap:24, alignItems:"start" }}>
+          
+          {/* Main feed */}
+          <div>
+            {/* Header */}
+            <div style={{ marginBottom:20 }}>
+              <h1 style={{ fontSize:22, fontWeight:900, color:"#f0f4ff", margin:"0 0 4px", letterSpacing:"-0.02em" }}>
+                Social Feed
+              </h1>
+              <p style={{ fontSize:13, color:"#3a4a6a", margin:0 }}>See what traders are doing right now</p>
+            </div>
 
-        {/* Header */}
-        <div style={{ marginBottom:24 }}>
-          <h1 style={{ fontSize:24, fontWeight:900, color:"#f0f4ff", margin:"0 0 6px", letterSpacing:"-0.02em" }}>Activity Feed</h1>
-          <p style={{ fontSize:13, color:"#3a4a6a", margin:0 }}>See what traders on Nexyru are doing right now</p>
+            {/* Filters */}
+            <div style={{ display:"flex", gap:8, marginBottom:20, overflowX:"auto", paddingBottom:4 }}>
+              {FILTERS.map(f => (
+                <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding:"7px 14px", borderRadius:20, border:`1px solid ${filter===f.id?"rgba(56,189,248,0.4)":"#1a2540"}`, background:filter===f.id?"rgba(56,189,248,0.1)":"#0b1120", color:filter===f.id?"#38bdf8":"#475569", fontSize:12, fontWeight:filter===f.id?700:500, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Feed */}
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {loading && feed.length === 0 ? (
+                Array.from({length:5}).map((_,i) => (
+                  <div key={i} style={{ height:80, borderRadius:18, background:"linear-gradient(90deg,#0b1120,#111d30,#0b1120)", backgroundSize:"200% 100%", animation:"shimmer 1.5s infinite", border:"1px solid #1a2540" }}>
+                    <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
+                  </div>
+                ))
+              ) : filtered.length === 0 ? (
+                <div style={{ padding:"60px", textAlign:"center", color:"#3a4a6a", border:"1px dashed #1a2540", borderRadius:20 }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>📭</div>
+                  <div style={{ fontSize:15, fontWeight:700, color:"#475569", marginBottom:8 }}>Nothing here yet</div>
+                  <div style={{ fontSize:12 }}>
+                    {filter === "following" ? "Follow some traders to see their activity" : "Be the first to log a trade!"}
+                  </div>
+                </div>
+              ) : (
+                filtered.map(item => (
+                  <FeedCard
+                    key={item.id}
+                    item={{ ...item, liked: liked.has(item.id) }}
+                    onLike={handleLike}
+                    isNew={newItems.has(item.id)}
+                  />
+                ))
+              )}
+
+              {/* Infinite scroll trigger */}
+              <div ref={bottomRef} style={{ height:40, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                {loading && feed.length > 0 && (
+                  <div style={{ width:20, height:20, border:"2px solid #1a2540", borderTopColor:"#38bdf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}>
+                    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                  </div>
+                )}
+                {!hasMore && feed.length > 0 && <span style={{ fontSize:11, color:"#1e2f4a" }}>You're all caught up</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div style={{ position:"sticky", top:80 }}>
+            <TrendingSidebar feed={filtered}/>
+          </div>
         </div>
-
-        {/* Filter pills */}
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:20 }}>
-          {[
-            { key:"all",        label:"All" },
-            { key:"following",  label:`👥 Following${following.length > 0 ? ` (${following.length})` : ""}` },
-            { key:"milestones", label:"🏆 Milestones" },
-            { key:"signals",    label:"📡 Signals" },
-            { key:"strategies", label:"📊 Strategies" },
-            { key:"trades",     label:"📝 Trades" },
-          ].map(f => (
-            <button key={f.key} onClick={() => setFilter(f.key)} style={{ padding:"5px 14px", borderRadius:20, border:`1px solid ${filter===f.key?"#38bdf8":"#1a2540"}`, background:filter===f.key?"rgba(56,189,248,0.1)":"transparent", color:filter===f.key?"#38bdf8":"#4a5a7a", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Error */}
-        {error && <div style={{ padding:"12px 16px", borderRadius:10, background:"rgba(248,113,113,0.08)", border:"1px solid rgba(248,113,113,0.2)", color:"#f87171", fontSize:12, marginBottom:16 }}>⚠ {error}</div>}
-
-        {/* Loading */}
-        {loading && (
-          <div style={{ display:"flex", justifyContent:"center", padding:"48px 0", gap:10, color:"#3a4a6a", fontSize:13 }}>
-            <span style={{ display:"inline-block", width:16, height:16, border:"2px solid #1a2540", borderTopColor:"#38bdf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>
-            Loading feed…
-          </div>
-        )}
-
-        {/* Empty */}
-        {!loading && filtered.length === 0 && (
-          <div style={{ textAlign:"center", padding:"60px 0" }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>🌐</div>
-            <div style={{ fontSize:15, fontWeight:700, color:"#f0f4ff", marginBottom:6 }}>Nothing here yet</div>
-            <div style={{ fontSize:12, color:"#3a4a6a", marginBottom:20 }}>Activity from traders on Nexyru will appear here.<br/>Log trades, post signals, and pass challenges to generate activity.</div>
-          </div>
-        )}
-
-        {/* Feed */}
-        {!loading && filtered.length > 0 && (
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {filtered.map(item => <FeedCard key={item.id} item={item}/>)}
-          </div>
-        )}
       </div>
-
-      {showShare && <ShareModal onClose={() => setShowShare(false)} onShare={shareTrade}/>}
     </div>
   );
 }
