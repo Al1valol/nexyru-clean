@@ -7349,7 +7349,7 @@ function TradingDashboard({ session, onLogout }) {
         {/* Right side */}
         <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
           <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
-          <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(56,189,248,0.1)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+          <button onClick={()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} setShowHub(true); }} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(56,189,248,0.1)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
             <Plus size={12}/><span className="hide-mobile"> Add</span>
           </button>
           <span className="hide-mobile"><PlatformDropdown/></span>
@@ -7384,11 +7384,11 @@ function TradingDashboard({ session, onLogout }) {
             {label}
           </button>
         ))}
-        <button onClick={()=>setShowHub(true)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:9, fontWeight:700 }}>
+        <button onClick={()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} setShowHub(true); }} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:9, fontWeight:700 }}>
           <span style={{ fontSize:18 }}>➕</span>Add
         </button>
       </div>
-          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
+          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>{ if(JSON.parse(localStorage.getItem('tradedesk_trades_'+(JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'')+'_v1')||'[]').every(t=>t.source==='demo')){alert('Switch to Real mode first using the Demo → Real toggle.');return;} setShowForm(true); }} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
               setDemoMode(session.username, false);
               saveUserTrades(session.username, []);
               setTrades([]);
