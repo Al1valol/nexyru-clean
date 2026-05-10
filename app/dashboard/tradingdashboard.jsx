@@ -7475,7 +7475,7 @@ function TradingDashboard({ session, onLogout }) {
 
 // ── Google Auth Screen ─────────────────────────────────────────
 function GoogleAuthScreen() {
-  const url = "https://xsrcaceydyqytbipvrok.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fnexyru.com%2Fdashboard";
+  const url = "/auth/signin";
   return (
     <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(56,189,248,0.1)}50%{box-shadow:0 0 40px rgba(56,189,248,0.25)}}`}</style>
