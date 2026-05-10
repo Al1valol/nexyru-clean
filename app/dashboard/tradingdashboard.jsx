@@ -7564,12 +7564,17 @@ function UsernamePickerScreen({ auth }) {
 // ── Demo Block Modal ───────────────────────────────────────────
 function DemoBlockModal({ onClose }) {
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(8px)",fontFamily:"system-ui,sans-serif"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:24,padding:"40px 36px",maxWidth:400,width:"90%",textAlign:"center",boxShadow:"0 40px 80px rgba(0,0,0,0.9)"}}>
-        <div style={{fontSize:52,marginBottom:20}}>🎮</div>
-        <h2 style={{fontSize:22,fontWeight:900,color:"#f0f4ff",margin:"0 0 10px"}}>You're in Demo Mode</h2>
-        <p style={{fontSize:14,color:"#64748b",margin:"0 0 28px",lineHeight:1.7}}>Switch to Real mode to add your own trades. Use the <strong style={{color:"#fbbf24"}}>Demo → Real</strong> toggle at the top of the page.</p>
-        <button onClick={onClose} style={{padding:"10px 28px",borderRadius:12,border:"1px solid #1a2540",background:"transparent",color:"#94a3b8",fontSize:14,fontWeight:600,cursor:"pointer"}}>Got it</button>
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(4,8,20,0.93)",backdropFilter:"blur(20px)"}}/>
+      <div onClick={e=>e.stopPropagation()} style={{position:"relative",zIndex:1,background:"linear-gradient(135deg,#0d1628 0%,#0f1e30 100%)",border:"1px solid rgba(251,191,36,0.4)",borderRadius:28,padding:"48px 40px",maxWidth:420,width:"90%",textAlign:"center",boxShadow:"0 0 0 1px rgba(251,191,36,0.08),0 40px 120px rgba(0,0,0,0.95),0 0 80px rgba(251,191,36,0.06)"}}>
+        <div style={{width:80,height:80,borderRadius:24,background:"linear-gradient(135deg,rgba(251,191,36,0.15),rgba(251,191,36,0.04))",border:"1px solid rgba(251,191,36,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 24px",boxShadow:"0 0 40px rgba(251,191,36,0.12)"}}>🎮</div>
+        <div style={{display:"inline-block",padding:"4px 12px",borderRadius:20,background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)",fontSize:11,fontWeight:700,color:"#fbbf24",letterSpacing:"0.08em",marginBottom:16}}>DEMO MODE ACTIVE</div>
+        <h2 style={{fontSize:24,fontWeight:900,color:"#f0f4ff",margin:"0 0 12px",letterSpacing:"-0.02em"}}>You're in Demo Mode</h2>
+        <p style={{fontSize:14,color:"#64748b",margin:"0 0 6px",lineHeight:1.7}}>You're viewing <strong style={{color:"#fbbf24"}}>sample trades</strong>. Switch to Real mode to start logging your own trades.</p>
+        <p style={{fontSize:13,color:"#334155",margin:"0 0 32px"}}>Use the <span style={{color:"#fbbf24",fontWeight:700}}>Demo → Real</span> toggle at the top.</p>
+        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+          <button onClick={onClose} style={{padding:"12px 28px",borderRadius:14,border:"1px solid #1e2f4a",background:"rgba(255,255,255,0.04)",color:"#94a3b8",fontSize:14,fontWeight:600,cursor:"pointer"}}>Got it</button>
+        </div>
       </div>
     </div>
   );
