@@ -5424,7 +5424,10 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
 
 function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, activeAccount, username }) {
   const [reviewTrade, setReviewTrade] = useState(null);
-  const inDemo = username && isDemoMode(username);
+  const inDemo = !!(username && (
+    localStorage.getItem("nexyru_demo_mode_v1_" + username) === "1" ||
+    (() => { try { const t = JSON.parse(localStorage.getItem("tradedesk_trades_" + username + "_v1") || "[]"); return t.length > 0 && t.every(x => x.source === "demo"); } catch { return false; } })()
+  ));
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:32 }}>
