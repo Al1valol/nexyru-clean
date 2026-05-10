@@ -201,9 +201,11 @@ function computeTraderStats(username) {
 function useAuth() {
   const [session,  setSession]  = useState(null);
   const [hydrated, setHydrated] = useState(false);
+  const [needsUsername, setNeedsUsername] = useState(false);
+  const [pendingGoogle, setPendingGoogle] = useState(null);
 
   useEffect(() => {
-    // First check URL hash for Google OAuth token
+    // Check URL hash for Google OAuth token first
     const hash = window.location.hash;
     if (hash.includes("access_token=")) {
       try {
@@ -211,31 +213,53 @@ function useAuth() {
         const token = params.get("access_token");
         const payload = JSON.parse(atob(token.split(".")[1]));
         const email = payload.email || "";
-        const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "");
-        const displayName = payload.user_metadata?.full_name || username;
-        const s = { username, displayName, email, googleAuth: true };
-        localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+        const autoUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "");
+        const displayName = payload.user_metadata?.full_name || autoUsername;
+        const googleData = { email, displayName, token, autoUsername };
         window.history.replaceState(null, "", "/dashboard");
-        setSession(s);
+        // Check if user already has a chosen username
+        const existing = localStorage.getItem(`nexyru_google_username_${email}`);
+        if (existing) {
+          const s = { username: existing, displayName, email, googleAuth: true };
+          localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+          setSession(s);
+        } else {
+          setPendingGoogle(googleData);
+          setNeedsUsername(true);
+        }
         setHydrated(true);
         return;
       } catch(e) { console.error("OAuth parse error", e); }
     }
-
-    // Then check localStorage for existing session
+    // Check existing session
     try {
       const raw = localStorage.getItem(SESSION_KEY);
       if (raw) {
         const s = JSON.parse(raw);
-        // Accept Google OAuth sessions directly
         if (s.googleAuth) { setSession(s); setHydrated(true); return; }
-        // Check password-based accounts
         const accounts = JSON.parse(localStorage.getItem(AUTH_KEY) || "{}");
         if (accounts[s.username]) setSession(s);
       }
     } catch {}
     setHydrated(true);
   }, []);
+
+  const confirmUsername = useCallback((username) => {
+    if (!pendingGoogle) return "No Google session found.";
+    const u = username.toLowerCase().trim();
+    if (!u || u.length < 3) return "Username must be at least 3 characters.";
+    if (!/^[a-z0-9_]+$/.test(u)) return "Letters, numbers, underscores only.";
+    // Save username mapping for this email
+    localStorage.setItem(`nexyru_google_username_${pendingGoogle.email}`, u);
+    const s = { username: u, displayName: pendingGoogle.displayName, email: pendingGoogle.email, googleAuth: true };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    // Trigger demo seeding for new users
+    localStorage.setItem(`nexyru_needs_seed_${u}`, "1");
+    setSession(s);
+    setNeedsUsername(false);
+    setPendingGoogle(null);
+    return null;
+  }, [pendingGoogle]);
 
   const login = useCallback((username, password) => {
     const accounts = JSON.parse(localStorage.getItem(AUTH_KEY) || "{}");
@@ -271,7 +295,7 @@ function useAuth() {
     setSession(null);
   }, []);
 
-  return { session, hydrated, login, register, logout };
+  return { session, hydrated, needsUsername, pendingGoogle, confirmUsername, login, register, logout };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -397,12 +421,16 @@ function DemoBanner({ username, onClear }) {
   const [confirming, setConf] = useState(false);
 
   useEffect(() => {
-    // Show banner if demo flag is set OR if trades are all demo source
+    // Show banner if demo flag is set OR if trades are all demo source OR new user with no trades
     const flagSet = isDemoMode(username);
     if (flagSet) { setDemo(true); return; }
-    // Also check if existing trades are all demo
     try {
       const trades = JSON.parse(localStorage.getItem(`tradedesk_trades_${username}_v1`) ?? "[]");
+      if (trades.length === 0) {
+        // New user — will get seeded — show demo banner
+        setDemo(true);
+        return;
+      }
       if (trades.length > 0 && trades.every(t => t.source === "demo")) {
         setDemoMode(username, true);
         setDemo(true);
@@ -7417,6 +7445,95 @@ function TradingDashboard({ session, onLogout }) {
 //  ROOT
 // ═══════════════════════════════════════════════════════════════
 
+// ── Google Auth Screen ─────────────────────────────────────────
+function GoogleAuthScreen() {
+  const url = "https://xsrcaceydyqytbipvrok.supabase.co/auth/v1/authorize?provider=google&redirect_to=https%3A%2F%2Fnexyru.com%2Fdashboard";
+  return (
+    <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
+      <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(56,189,248,0.1)}50%{box-shadow:0 0 40px rgba(56,189,248,0.25)}}`}</style>
+      <div style={{width:"100%",maxWidth:420,padding:20,animation:"fadeIn 0.5s ease"}}>
+        <div style={{textAlign:"center",marginBottom:40}}>
+          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:72,height:72,borderRadius:20,background:"linear-gradient(135deg,#0f1e32,#1a2f4a)",border:"1px solid rgba(56,189,248,0.2)",marginBottom:20,animation:"glow 3s ease-in-out infinite"}}>
+            <span style={{fontSize:32}}>📈</span>
+          </div>
+          <h1 style={{fontSize:36,fontWeight:900,color:"#f0f4ff",margin:"0 0 8px",letterSpacing:"-0.03em"}}>Nexyru</h1>
+          <p style={{fontSize:14,color:"#3a4a6a",margin:0}}>Your trading journal & performance hub</p>
+        </div>
+        <div style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid #1a2540",borderRadius:24,padding:"36px 32px"}}>
+          <h2 style={{fontSize:20,fontWeight:800,color:"#f0f4ff",textAlign:"center",margin:"0 0 6px"}}>Welcome to Nexyru</h2>
+          <p style={{fontSize:13,color:"#3a4a6a",textAlign:"center",margin:"0 0 28px"}}>Sign in to access your trades and insights</p>
+          <a href={url} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,width:"100%",padding:"14px 20px",borderRadius:14,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#f0f4ff",fontSize:15,fontWeight:700,textDecoration:"none",boxSizing:"border-box"}}>
+            <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            Continue with Google
+          </a>
+          <div style={{display:"flex",alignItems:"center",gap:12,margin:"24px 0"}}><div style={{flex:1,height:1,background:"#1a2540"}}/><span style={{fontSize:11,color:"#2e3f5a"}}>what you get</span><div style={{flex:1,height:1,background:"#1a2540"}}/></div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {[["📊","AI-powered trade analysis & insights"],["🏆","Verified leaderboard rankings"],["📋","Copy top traders"],["🔄","Works across all your devices"]].map(([i,t],idx)=>(
+              <div key={idx} style={{display:"flex",alignItems:"center",gap:10,fontSize:12,color:"#475569"}}><span style={{fontSize:16}}>{i}</span>{t}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Username Picker Screen ─────────────────────────────────────
+function UsernamePickerScreen({ auth }) {
+  const [username, setUsername] = useState(auth.pendingGoogle?.autoUsername || "");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+
+  const handleSubmit = () => {
+    setLoading(true);
+    const err = auth.confirmUsername(username);
+    if (err) { setError(err); setLoading(false); }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
+      <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <div style={{width:"100%",maxWidth:420,padding:20,animation:"fadeIn 0.4s ease"}}>
+        {/* Avatar */}
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{width:72,height:72,borderRadius:20,background:"rgba(56,189,248,0.15)",border:"2px solid rgba(56,189,248,0.3)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:900,color:"#38bdf8",marginBottom:16}}>
+            {auth.pendingGoogle?.displayName?.slice(0,2).toUpperCase() || "👤"}
+          </div>
+          <div style={{fontSize:16,fontWeight:700,color:"#f0f4ff"}}>{auth.pendingGoogle?.displayName}</div>
+          <div style={{fontSize:12,color:"#3a4a6a"}}>{auth.pendingGoogle?.email}</div>
+        </div>
+
+        <div style={{background:"linear-gradient(135deg,#0d1628,#0f1e30)",border:"1px solid #1a2540",borderRadius:24,padding:"32px 28px"}}>
+          <h2 style={{fontSize:20,fontWeight:800,color:"#f0f4ff",margin:"0 0 6px",textAlign:"center"}}>Choose your username</h2>
+          <p style={{fontSize:13,color:"#3a4a6a",textAlign:"center",margin:"0 0 24px"}}>This is how other traders will find you on Nexyru</p>
+
+          <div style={{marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",background:"#0b1628",border:`1px solid ${error?"rgba(248,113,113,0.4)":"#1a2540"}`,borderRadius:12,overflow:"hidden"}}>
+              <span style={{padding:"0 12px",color:"#3a4a6a",fontSize:14,flexShrink:0}}>@</span>
+              <input
+                value={username}
+                onChange={e => { setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,"")); setError(""); }}
+                onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                placeholder="yourname"
+                maxLength={20}
+                style={{flex:1,padding:"13px 12px 13px 0",background:"transparent",border:"none",color:"#f0f4ff",fontSize:15,outline:"none"}}
+                autoFocus
+              />
+            </div>
+            {error && <div style={{fontSize:11,color:"#f87171",marginTop:6}}>{error}</div>}
+            <div style={{fontSize:11,color:"#3a4a6a",marginTop:6}}>Letters, numbers and underscores only · 3-20 characters</div>
+          </div>
+
+          <button onClick={handleSubmit} disabled={loading || username.length < 3} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:username.length >= 3 ? "linear-gradient(135deg,#0369a1,#38bdf8)" : "#0d1628",color:username.length >= 3 ? "#fff" : "#3a4a6a",fontSize:15,fontWeight:700,cursor:username.length >= 3 ? "pointer" : "not-allowed"}}>
+            {loading ? "Setting up…" : "Continue →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App ────────────────────────────────────────────────────────
 export default function App() {
   const auth = useAuth();
 
@@ -7427,6 +7544,7 @@ export default function App() {
     </div>
   );
 
-  if (!auth.session) return <AuthScreen auth={auth}/>;
+  if (!auth.session && !auth.needsUsername) return <GoogleAuthScreen/>;
+  if (auth.needsUsername) return <UsernamePickerScreen auth={auth}/>;
   return <TradingDashboard session={auth.session} onLogout={auth.logout}/>;
 }
