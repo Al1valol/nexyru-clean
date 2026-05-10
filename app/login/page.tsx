@@ -9,7 +9,7 @@ export default function LoginPage() {
     // Direct OAuth redirect - no Supabase client needed
     const supabaseUrl = "https://xsrcaceydyqytbipvrok.supabase.co";
     const redirectTo = encodeURIComponent("https://nexyru.com/auth/callback");
-    window.location.href = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
+    window.location.href = "/auth/signin";
   };
 
   return (
