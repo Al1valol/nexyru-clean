@@ -7304,6 +7304,16 @@ function TradingDashboard({ session, onLogout }) {
           username={session.username}
           onComplete={(type, size, fundedInfo) => {
             setShowAccountSetup(false);
+            // Clear demo mode when user sets up real account
+            try {
+              const u = JSON.parse(localStorage.getItem("tradedesk_session_v1")||"{}").username;
+              localStorage.removeItem("nexyru_demo_mode_v1_"+u);
+              localStorage.removeItem("nexyru_needs_seed_"+u);
+              // Clear demo trades
+              const trades = JSON.parse(localStorage.getItem("tradedesk_trades_"+u+"_v1")||"[]");
+              const realTrades = trades.filter(t => t.source !== "demo");
+              localStorage.setItem("tradedesk_trades_"+u+"_v1", JSON.stringify(realTrades));
+            } catch(e) {}
             const name = type === "funded"
               ? `${fundedInfo?.propFirm || "Funded"} – ${fundedInfo?.phase === "phase1" ? "Phase 1" : fundedInfo?.phase === "phase2" ? "Phase 2" : "Funded"} ($${(size/1000).toFixed(0)}k)`
               : type === "live"
