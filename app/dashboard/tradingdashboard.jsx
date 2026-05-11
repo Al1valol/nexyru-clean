@@ -421,21 +421,17 @@ function DemoBanner({ username, onClear }) {
   const [confirming, setConf] = useState(false);
 
   useEffect(() => {
-    // Show banner if demo flag is set OR if trades are all demo source OR new user with no trades
+    // Only show demo banner if flag is explicitly set AND trades are all demo
     const flagSet = isDemoMode(username);
-    if (flagSet) { setDemo(true); return; }
+    if (!flagSet) { setDemo(false); return; }
     try {
       const trades = JSON.parse(localStorage.getItem(`tradedesk_trades_${username}_v1`) ?? "[]");
-      if (trades.length === 0) {
-        // New user — will get seeded — show demo banner
-        setDemo(true);
-        return;
-      }
       if (trades.length > 0 && trades.every(t => t.source === "demo")) {
-        setDemoMode(username, true);
         setDemo(true);
+      } else {
+        setDemo(false);
       }
-    } catch {}
+    } catch { setDemo(false); }
   }, [username]);
 
   if (!demo) return null;
