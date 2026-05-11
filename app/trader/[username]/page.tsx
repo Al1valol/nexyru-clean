@@ -1,4 +1,5 @@
 "use client";
+import FollowButton from "@/components/FollowButton";
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
