@@ -7787,6 +7787,147 @@ function AccountSetupModal({ username, onComplete, onSkip }) {
   );
 }
 
+
+// ── Share Trade Button ─────────────────────────────────────────
+function ShareTradeButton({ trade, username }) {
+  const [state, setState] = React.useState("idle"); // idle | sharing | done | error
+  const [showModal, setShowModal] = React.useState(false);
+  const [notes, setNotes] = React.useState("");
+  const [visibility, setVisibility] = React.useState("public");
+
+  const handleShare = async () => {
+    setState("sharing");
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      // Get user profile id
+      const profRes = await fetch(`${supabaseUrl}/rest/v1/profiles?username=eq.${username}&select=id`, {
+        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` }
+      });
+      const profiles = await profRes.json();
+      if (!profiles?.length) throw new Error("Profile not found");
+      const userId = profiles[0].id;
+
+      // Check dedup - don't share same trade twice
+      const dedupRes = await fetch(`${supabaseUrl}/rest/v1/trade_posts?trade_id=eq.${trade.id}&user_id=eq.${userId}&select=id`, {
+        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` }
+      });
+      const existing = await dedupRes.json();
+      if (existing?.length) { setState("done"); setShowModal(false); return; }
+
+      // Post to trade_posts
+      const pnl = trade.pnl ?? 0;
+      const post = {
+        user_id:    userId,
+        trade_id:   trade.id,
+        symbol:     trade.symbol || trade.pair || "Unknown",
+        side:       (trade.type === "long" || trade.side === "long") ? "long" : "short",
+        entry_price: trade.entryPrice ?? null,
+        exit_price:  trade.exitPrice ?? null,
+        pnl:         pnl,
+        contracts:   trade.contracts ?? trade.quantity ?? null,
+        setup_name:  trade.strategy || trade.setup || null,
+        timeframe:   trade.timeframe ?? null,
+        notes:       notes || null,
+        status:      "closed",
+        visibility,
+      };
+
+      const postRes = await fetch(`${supabaseUrl}/rest/v1/trade_posts`, {
+        method: "POST",
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify(post)
+      });
+
+      if (!postRes.ok) throw new Error("Failed to post");
+      setState("done");
+      setShowModal(false);
+    } catch (e) {
+      console.error(e);
+      setState("error");
+      setTimeout(() => setState("idle"), 3000);
+    }
+  };
+
+  const pnl = trade.pnl ?? 0;
+  const pos = pnl >= 0;
+
+  return (
+    <>
+      <button
+        onClick={() => { if (state === "done") return; setShowModal(true); }}
+        title={state === "done" ? "Already shared" : "Share to feed"}
+        style={{
+          padding: "3px 8px", borderRadius: 8, border: "none", cursor: state === "done" ? "default" : "pointer",
+          background: state === "done" ? "rgba(52,211,153,0.1)" : "rgba(56,189,248,0.08)",
+          color: state === "done" ? "#34d399" : "#38bdf8",
+          fontSize: 10, fontWeight: 700, transition: "all 0.15s"
+        }}>
+        {state === "done" ? "✓ Shared" : state === "sharing" ? "…" : state === "error" ? "✗" : "📡 Share"}
+      </button>
+
+      {showModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}
+          style={{ position:"fixed", inset:0, zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(4,8,20,0.92)", backdropFilter:"blur(16px)", fontFamily:"system-ui,sans-serif" }}>
+          <div style={{ background:"linear-gradient(135deg,#0d1628,#0f1e30)", border:"1px solid #1a2540", borderRadius:24, padding:"28px 28px 24px", maxWidth:420, width:"90%", boxShadow:"0 40px 120px rgba(0,0,0,0.9)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+              <h3 style={{ fontSize:18, fontWeight:900, color:"#f0f4ff", margin:0 }}>Share to Feed 📡</h3>
+              <button onClick={() => setShowModal(false)} style={{ background:"none", border:"none", color:"#475569", cursor:"pointer", fontSize:18 }}>✕</button>
+            </div>
+
+            {/* Trade preview */}
+            <div style={{ padding:"14px 16px", borderRadius:14, background: pos?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)", border:`1px solid ${pos?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`, marginBottom:16 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                <span style={{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:4, background: trade.type==="long"?"rgba(52,211,153,0.15)":"rgba(248,113,113,0.15)", color: trade.type==="long"?"#34d399":"#f87171" }}>
+                  {trade.type==="long"?"▲ LONG":"▼ SHORT"}
+                </span>
+                <span style={{ fontSize:14, fontWeight:800, color:"#f0f4ff", fontFamily:"monospace" }}>{trade.symbol || trade.pair}</span>
+                {trade.strategy && <span style={{ fontSize:10, color:"#475569" }}>{trade.strategy}</span>}
+              </div>
+              <div style={{ fontSize:22, fontWeight:900, color: pos?"#34d399":"#f87171", fontFamily:"monospace" }}>
+                {pos?"+":""}{pnl.toFixed(2)}
+              </div>
+              {trade.entryPrice && <div style={{ fontSize:10, color:"#475569", marginTop:4 }}>Entry {trade.entryPrice} → Exit {trade.exitPrice}</div>}
+            </div>
+
+            {/* Caption */}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:"#64748b", display:"block", marginBottom:6, letterSpacing:"0.06em", textTransform:"uppercase" }}>Add a note (optional)</label>
+              <textarea
+                value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="What was your setup? Any lessons learned?"
+                rows={3}
+                style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #1a2540", background:"#0b1120", color:"#e2e8f0", fontSize:13, outline:"none", resize:"vertical", fontFamily:"system-ui", boxSizing:"border-box" }}
+              />
+            </div>
+
+            {/* Visibility */}
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:"#64748b", display:"block", marginBottom:6, letterSpacing:"0.06em", textTransform:"uppercase" }}>Visibility</label>
+              <div style={{ display:"flex", gap:8 }}>
+                {[["public","🌍 Public"],["followers","👥 Followers"],["private","🔒 Private"]].map(([v,l]) => (
+                  <button key={v} onClick={() => setVisibility(v)} style={{ flex:1, padding:"7px 4px", borderRadius:10, border:`1px solid ${visibility===v?"rgba(56,189,248,0.4)":"#1a2540"}`, background:visibility===v?"rgba(56,189,248,0.08)":"rgba(255,255,255,0.02)", color:visibility===v?"#38bdf8":"#475569", fontSize:11, fontWeight:visibility===v?700:500, cursor:"pointer" }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={handleShare} disabled={state==="sharing"} style={{ width:"100%", padding:"12px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:14, fontWeight:700, cursor:state==="sharing"?"wait":"pointer" }}>
+              {state==="sharing" ? "Sharing…" : "Share Trade 🚀"}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── App ────────────────────────────────────────────────────────
 export default function App() {
   const auth = useAuth();
