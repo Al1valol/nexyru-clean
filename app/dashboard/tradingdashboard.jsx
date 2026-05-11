@@ -2023,7 +2023,6 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                         <div style={{ fontSize:9, opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
                       </td>
                       <td style={{ ...td, color:"#64748b" }} onClick={()=>setViewing(t)}>{t.strategy}</td>
-                      <td style={td}><ShareTradeButton trade={t} username={session?.username} /></td>
 
                       {/* Psychology column */}
                       <td style={td} onClick={()=>setViewing(t)}>
