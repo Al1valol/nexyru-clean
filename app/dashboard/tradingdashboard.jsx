@@ -2051,7 +2051,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       </td>
 
                       <td style={{ ...td, color:"#64748b", whiteSpace:"nowrap" }} onClick={()=>setViewing(t)}>{new Date(t.date).toLocaleDateString()}</td>
-                      <td style={{...td, padding:"4px 8px"}}><button onClick={(e)=>{e.stopPropagation();setShareTrade(t);}} style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",cursor:"pointer",background:"rgba(56,189,248,0.08)",color:"#38bdf8",fontSize:10,fontWeight:700}}>📡 Share</button></td>
+                      <td style={{...td, padding:"4px 8px"}}><button onClick={(e)=>{e.stopPropagation();window.dispatchEvent(new CustomEvent("openShareModal",{detail:t}));}} style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",cursor:"pointer",background:"rgba(56,189,248,0.08)",color:"#38bdf8",fontSize:10,fontWeight:700}}>📡 Share</button></td>
                       <td style={td}>
                         <div style={{ display:"flex", gap:4 }}>
                           <button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.06)", color:"#818cf8", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600 }}><span>🤖</span></button>
@@ -7157,6 +7157,11 @@ function TradingDashboard({ session, onLogout }) {
   const [showShot,      setShowShot]      = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [shareTrade, setShareTrade] = useState(null);
+  useEffect(() => {
+    const handler = (e) => setShareTrade(e.detail ?? null);
+    window.addEventListener("openShareModal", handler);
+    return () => window.removeEventListener("openShareModal", handler);
+  }, []);
   const [editTrade,     setEditTrade]     = useState(null);
 
   const copyTrading  = useCopyTrading(session.username);
