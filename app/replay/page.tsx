@@ -122,10 +122,35 @@ function fmtPrice(n: number | string | undefined) {
   return v.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
-function tvSymbol(raw: string | undefined): string {
-  if (!raw) return "NASDAQ:AAPL";
-  const s = raw.toUpperCase().replace(/[^A-Z0-9:_-]/g, "");
-  return s.includes(":") ? s : s;
+function formatSymbol(trade: Trade): string {
+  const raw = (trade.symbol || trade.pair || "").toString().trim();
+  if (!raw) return "";
+  if (raw.includes(":")) return raw.toUpperCase();
+  const norm = raw.toUpperCase().replace(/[\/\-\s]/g, "");
+  const map: Record<string, string> = {
+    SOLUSD: "COINBASE:SOLUSD",
+    BTCUSD: "COINBASE:BTCUSD",
+    ETHUSD: "COINBASE:ETHUSD",
+    GOLDUSD: "OANDA:XAUUSD",
+    XAUUSD: "OANDA:XAUUSD",
+    SILVERUSD: "OANDA:XAGUSD",
+    XAGUSD: "OANDA:XAGUSD",
+    USOILUSD: "NYMEX:CL1!",
+    "CL1!": "NYMEX:CL1!",
+    "CL1!USD": "NYMEX:CL1!",
+    "ES1!": "CME_MINI:ES1!",
+    "ES1!USD": "CME_MINI:ES1!",
+    "NQ1!": "CME_MINI:NQ1!",
+    "NQ1!USD": "CME_MINI:NQ1!",
+  };
+  return map[norm] || raw.toUpperCase();
+}
+
+function fmtInfoDate(v: number | string | undefined): string {
+  if (!v) return "—";
+  const d = new Date(typeof v === "number" ? v : v);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function topTheme(reviews: Review[]): string | null {
@@ -163,6 +188,7 @@ export default function ReplayPage() {
   const [done, setDone] = useState(false);
   const [slideDir, setSlideDir] = useState<"next" | "prev">("next");
   const [slideKey, setSlideKey] = useState(0);
+  const [viewMode, setViewMode] = useState<"chart" | "screenshot" | "both">("chart");
 
   // draft form state
   const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
@@ -464,10 +490,46 @@ export default function ReplayPage() {
             animation: `${slideDir === "next" ? "slideInNext" : "slideInPrev"} 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both`,
           }}
         >
-          {/* Chart area */}
+          {/* Info bar */}
           <div style={{
             ...cardStyle,
             marginTop: 18,
+            padding: "10px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            fontSize: 12,
+            color: "#cbd5e1",
+            fontFamily: "ui-monospace, SFMono-Regular, monospace",
+          }}>
+            <span style={{ color: "#4a5a7a", fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+              Viewing
+            </span>
+            <span style={{ color: "#f0f4ff", fontWeight: 800 }}>{sym || "—"}</span>
+            <span style={{ color: "#1e2540" }}>·</span>
+            <span>{fmtInfoDate(t.date)}</span>
+            <span style={{ color: "#1e2540" }}>·</span>
+            <span>5min chart</span>
+            <span style={{ color: "#1e2540" }}>·</span>
+            <span>
+              Entry <span style={{ color: "#22d3a5", fontWeight: 700 }}>{fmtPrice(entry)}</span>
+              <span style={{ color: "#4a5a7a", margin: "0 4px" }}>→</span>
+              Exit <span style={{ color: "#f43f5e", fontWeight: 700 }}>{fmtPrice(exit)}</span>
+            </span>
+          </div>
+
+          {/* View toggle */}
+          <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+            <ToggleBtn label="📈 Live Chart" active={viewMode === "chart"} onClick={() => setViewMode("chart")} />
+            <ToggleBtn label="📸 Screenshot" active={viewMode === "screenshot"} onClick={() => setViewMode("screenshot")} disabled={!shot && !shotLoading} />
+            <ToggleBtn label="📊 Both" active={viewMode === "both"} onClick={() => setViewMode("both")} disabled={!shot && !shotLoading} />
+          </div>
+
+          {/* Chart card */}
+          <div style={{
+            ...cardStyle,
+            marginTop: 10,
             padding: 0,
             overflow: "hidden",
             position: "relative",
@@ -476,7 +538,7 @@ export default function ReplayPage() {
               trade={t}
               shot={shot}
               shotLoading={shotLoading}
-              symbol={sym}
+              viewMode={viewMode}
             />
 
             {/* Top overlay: symbol + side + date */}
@@ -488,7 +550,7 @@ export default function ReplayPage() {
               justifyContent: "space-between",
               gap: 10,
               pointerEvents: "none",
-              zIndex: 2,
+              zIndex: 3,
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={overlayChipStrong}>
@@ -510,20 +572,13 @@ export default function ReplayPage() {
               </div>
             </div>
 
-            {/* Right side: entry / exit price lines */}
-            <div style={{
-              position: "absolute",
-              top: 60,
-              right: 14,
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              pointerEvents: "none",
-              zIndex: 2,
-            }}>
-              <PriceLine label="Entry" value={fmtPrice(entry)} color="#38bdf8" />
-              <PriceLine label="Exit"  value={fmtPrice(exit)}  color={pnlColor} />
-            </div>
+            {/* Horizontal entry/exit reference lines (chart visible only) */}
+            {(viewMode === "chart" || viewMode === "both") && entry > 0 && (
+              <ReferenceLine label="ENTRY" value={fmtPrice(entry)} color="#22d3a5" top="42%" half={viewMode === "both"} />
+            )}
+            {(viewMode === "chart" || viewMode === "both") && exit > 0 && (
+              <ReferenceLine label="EXIT" value={fmtPrice(exit)} color="#f43f5e" top="58%" half={viewMode === "both"} />
+            )}
 
             {/* Bottom-left: contracts */}
             <div style={{
@@ -531,7 +586,7 @@ export default function ReplayPage() {
               bottom: 14,
               left: 14,
               pointerEvents: "none",
-              zIndex: 2,
+              zIndex: 3,
             }}>
               <div style={{ ...overlayChip, fontSize: 11, color: "#cbd5e1" }}>
                 <span style={{ color: "#4a5a7a", marginRight: 6, fontWeight: 700 }}>SIZE</span>
@@ -545,7 +600,7 @@ export default function ReplayPage() {
               bottom: 14,
               right: 14,
               pointerEvents: "none",
-              zIndex: 2,
+              zIndex: 3,
             }}>
               <div style={{
                 padding: "10px 14px",
@@ -720,65 +775,63 @@ export default function ReplayPage() {
 // ───────────────────── sub-components ─────────────────────
 
 function ChartArea({
-  trade, shot, shotLoading, symbol,
-}: { trade: Trade; shot: string | null; shotLoading: boolean; symbol: string }) {
-  const [iframeFailed, setIframeFailed] = useState(false);
+  trade, shot, shotLoading, viewMode,
+}: { trade: Trade; shot: string | null; shotLoading: boolean; viewMode: "chart" | "screenshot" | "both" }) {
+  const HEIGHT = 500;
+  const tvSym = formatSymbol(trade);
+  const src = tvSym
+    ? `https://www.tradingview.com/widgetembed/?frameElementId=tv_chart&symbol=${encodeURIComponent(tvSym)}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=131722&studies=RSI@tv-basicstudies,MACD@tv-basicstudies&theme=dark&style=1&timezone=America%2FNew_York&withdateranges=1&showpopupbutton=1`
+    : "";
 
-  if (shotLoading) {
-    return (
-      <div style={{ height: 400, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
-        Loading screenshot…
-      </div>
-    );
-  }
-
-  if (shot) {
-    return (
-      <div style={{ position: "relative", background: "#060d1a", height: 400, overflow: "hidden" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={shot}
-          alt="Trade screenshot"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-        />
-        {/* subtle gradient overlays so chips stay readable */}
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(6,13,26,0.55) 0%, rgba(6,13,26,0) 22%, rgba(6,13,26,0) 70%, rgba(6,13,26,0.7) 100%)", pointerEvents: "none" }} />
-      </div>
-    );
-  }
-
-  // TradingView fallback
-  const tvSym = tvSymbol(symbol);
-  const src = `https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSym)}&interval=5&theme=dark&style=1`;
-
-  if (iframeFailed || !tvSym) {
-    return (
-      <div style={{ height: 400, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
-        <div style={{ fontSize: 32 }}>📊</div>
-        <div style={{ fontSize: 12 }}>No chart available for {symbol || "this symbol"}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ position: "relative", background: "#060d1a", height: 400, overflow: "hidden" }}>
-      <iframe
-        src={src}
-        width="100%"
-        height="400"
-        frameBorder="0"
-        onError={() => setIframeFailed(true)}
-        style={{ display: "block", border: 0 }}
-        title={`Chart ${symbol}`}
-      />
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(6,13,26,0.45) 0%, rgba(6,13,26,0) 18%, rgba(6,13,26,0) 75%, rgba(6,13,26,0.65) 100%)", pointerEvents: "none" }} />
+  const chartEl = tvSym ? (
+    <iframe
+      key={trade.id}
+      src={src}
+      width="100%"
+      height={String(HEIGHT)}
+      frameBorder="0"
+      style={{ display: "block", border: 0, height: HEIGHT, borderRadius: 12 }}
+      title={`Chart ${tvSym}`}
+    />
+  ) : (
+    <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
+      <div style={{ fontSize: 32 }}>📊</div>
+      <div style={{ fontSize: 12 }}>No chart available for this symbol</div>
     </div>
   );
+
+  const screenshotEl = shotLoading ? (
+    <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
+      Loading screenshot…
+    </div>
+  ) : shot ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={shot}
+      alt="Trade screenshot"
+      style={{ width: "100%", height: HEIGHT, objectFit: "cover", display: "block" }}
+    />
+  ) : (
+    <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
+      <div style={{ fontSize: 28 }}>📸</div>
+      <div style={{ fontSize: 12 }}>No screenshot attached</div>
+    </div>
+  );
+
+  if (viewMode === "screenshot") {
+    return <div style={{ background: "#060d1a", height: HEIGHT }}>{screenshotEl}</div>;
+  }
+
+  if (viewMode === "both") {
+    return (
+      <div style={{ display: "flex", background: "#060d1a", height: HEIGHT }}>
+        <div style={{ width: "50%", borderRight: "1px solid #1a2540", overflow: "hidden" }}>{screenshotEl}</div>
+        <div style={{ width: "50%", overflow: "hidden" }}>{chartEl}</div>
+      </div>
+    );
+  }
+
+  return <div style={{ background: "#060d1a", height: HEIGHT }}>{chartEl}</div>;
 }
 
 function ProgressBar({
@@ -888,23 +941,64 @@ function ConfidenceDots({ value, onChange }: { value: number; onChange: (v: numb
   );
 }
 
-function PriceLine({ label, value, color }: { label: string; value: string; color: string }) {
+function ReferenceLine({
+  label, value, color, top, half,
+}: { label: string; value: string; color: string; top: string; half?: boolean }) {
   return (
     <div style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      padding: "5px 9px",
-      borderRadius: 6,
-      background: "rgba(6,13,26,0.7)",
-      border: `1px solid ${color}66`,
-      backdropFilter: "blur(8px)",
-      WebkitBackdropFilter: "blur(8px)",
-      fontFamily: "ui-monospace, SFMono-Regular, monospace",
+      position: "absolute",
+      top,
+      right: 0,
+      width: half ? "50%" : "100%",
+      height: 1,
+      background: `linear-gradient(90deg, transparent 0%, ${color}66 25%, ${color} 100%)`,
+      pointerEvents: "none",
+      zIndex: 2,
     }}>
-      <span style={{ fontSize: 9, fontWeight: 800, color, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#f0f4ff" }}>{value}</span>
+      <div style={{
+        position: "absolute",
+        right: 10,
+        top: -10,
+        padding: "3px 8px",
+        background: color,
+        color: "#000",
+        fontSize: 9,
+        fontWeight: 900,
+        borderRadius: 4,
+        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        letterSpacing: "0.06em",
+        boxShadow: `0 2px 8px ${color}55`,
+        whiteSpace: "nowrap",
+      }}>
+        {label} {value}
+      </div>
     </div>
+  );
+}
+
+function ToggleBtn({
+  label, active, onClick, disabled,
+}: { label: string; active: boolean; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: `1px solid ${active ? "#38bdf8" : "#1e2540"}`,
+        background: active ? "rgba(56,189,248,0.15)" : "#0d1628",
+        color: active ? "#38bdf8" : disabled ? "#3a4a6a" : "#94a3b8",
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        transition: "all 0.15s",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
