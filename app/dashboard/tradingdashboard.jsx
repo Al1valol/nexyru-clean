@@ -6300,37 +6300,242 @@ function saveStratLab(username, strategies) {
   localStorage.setItem(STRAT_LAB_KEY(username), JSON.stringify(strategies));
 }
 
-// Condition builder options (reuses backtest condition vocab)
+// ── Condition library — categorized, every trader type ─────────
+const COND_CATEGORIES = [
+  { id:"price_action",    label:"Price Action",    color:"#f59e0b" },
+  { id:"moving_averages", label:"Moving Averages", color:"#38bdf8" },
+  { id:"vwap",            label:"VWAP",            color:"#a78bfa" },
+  { id:"rsi",             label:"RSI",             color:"#ec4899" },
+  { id:"momentum_volume", label:"Momentum/Volume", color:"#22d3ee" },
+  { id:"session_time",    label:"Session/Time",    color:"#fbbf24" },
+  { id:"risk_position",   label:"Risk/Position",   color:"#f87171" },
+];
+
+// Each condition: { id, category, label, desc?, sides:[entry|exit|filter], params? }
+//   params: [{ name, type:"number"|"select"|"time", default, options?, step?, label?, hint? }]
 const RULE_CONDITIONS = [
-  { id:"rsi_below",         label:"RSI < value",              type:"threshold" },
-  { id:"rsi_above",         label:"RSI > value",              type:"threshold" },
-  { id:"rsi_cross_up",      label:"RSI crosses up value",     type:"threshold" },
-  { id:"rsi_cross_down",    label:"RSI crosses down value",   type:"threshold" },
-  { id:"ema9_above_ema21",  label:"EMA 9 crosses above EMA 21", type:"signal" },
-  { id:"ema9_below_ema21",  label:"EMA 9 crosses below EMA 21", type:"signal" },
-  { id:"macd_cross_up",     label:"MACD crosses above zero",  type:"signal" },
-  { id:"macd_cross_down",   label:"MACD crosses below zero",  type:"signal" },
-  { id:"price_above_sma50", label:"Price above SMA 50",       type:"signal" },
-  { id:"price_below_sma50", label:"Price below SMA 50",       type:"signal" },
-  { id:"price_above_sma200",label:"Price above SMA 200",      type:"signal" },
-  { id:"price_below_sma200",label:"Price below SMA 200",      type:"signal" },
-  { id:"breakout_high",     label:"N-bar high breakout",      type:"bars" },
-  { id:"breakdown_low",     label:"N-bar low breakdown",      type:"bars" },
-  { id:"consecutive_green", label:"N consecutive green bars", type:"bars" },
-  { id:"consecutive_red",   label:"N consecutive red bars",   type:"bars" },
+  // ── Price Action ─────────────────────────────────────────────
+  { id:"trendline_break_bull", category:"price_action", label:"Trendline break bullish", desc:"closes above falling trendline", sides:["entry"] },
+  { id:"trendline_break_bear", category:"price_action", label:"Trendline break bearish", desc:"closes below rising trendline",  sides:["entry","exit"] },
+  { id:"support_bounce",       category:"price_action", label:"Support bounce",          desc:"touches support and reverses up", sides:["entry"] },
+  { id:"resistance_bounce",    category:"price_action", label:"Resistance bounce",       desc:"touches resistance and reverses down", sides:["entry","exit"] },
+  { id:"support_break",        category:"price_action", label:"Support break",           desc:"closes below support",            sides:["entry","exit"] },
+  { id:"resistance_break",     category:"price_action", label:"Resistance break",        desc:"closes above resistance",         sides:["entry"] },
+  { id:"higher_high",          category:"price_action", label:"Higher high formed",      sides:["entry","filter"] },
+  { id:"lower_low",            category:"price_action", label:"Lower low formed",        sides:["entry","exit","filter"] },
+  { id:"higher_low",           category:"price_action", label:"Higher low formed",       sides:["entry","filter"] },
+  { id:"lower_high",           category:"price_action", label:"Lower high formed",       sides:["exit","filter"] },
+  { id:"engulf_bull",          category:"price_action", label:"Bullish engulfing candle", sides:["entry"] },
+  { id:"engulf_bear",          category:"price_action", label:"Bearish engulfing candle", sides:["entry","exit"] },
+  { id:"pin_bar_bull",         category:"price_action", label:"Pin bar bullish",         desc:"long lower wick", sides:["entry"] },
+  { id:"pin_bar_bear",         category:"price_action", label:"Pin bar bearish",         desc:"long upper wick", sides:["entry","exit"] },
+  { id:"inside_bar",           category:"price_action", label:"Inside bar",              desc:"inside previous range", sides:["entry","filter"] },
+  { id:"outside_bar",          category:"price_action", label:"Outside bar",             desc:"outside previous range", sides:["entry","filter"] },
+
+  // ── Moving Averages ──────────────────────────────────────────
+  { id:"price_above_ema", category:"moving_averages", label:"Price above EMA", sides:["entry","filter"],
+    params:[{ name:"period", type:"select", options:[8,9,20,21,50,100,200], default:21 }] },
+  { id:"price_below_ema", category:"moving_averages", label:"Price below EMA", sides:["entry","exit","filter"],
+    params:[{ name:"period", type:"select", options:[8,9,20,21,50,100,200], default:21 }] },
+  { id:"ema_cross_up",    category:"moving_averages", label:"EMA crosses above EMA", sides:["entry"],
+    params:[
+      { name:"fast", label:"fast", type:"select", options:[5,8,9,12,20,21,50], default:9 },
+      { name:"slow", label:"slow", type:"select", options:[20,21,26,50,100,200], default:21 },
+    ]},
+  { id:"ema_cross_down",  category:"moving_averages", label:"EMA crosses below EMA", sides:["entry","exit"],
+    params:[
+      { name:"fast", label:"fast", type:"select", options:[5,8,9,12,20,21,50], default:9 },
+      { name:"slow", label:"slow", type:"select", options:[20,21,26,50,100,200], default:21 },
+    ]},
+  { id:"price_bounce_ema",category:"moving_averages", label:"Price bounces off EMA", sides:["entry"],
+    params:[{ name:"period", type:"select", options:[8,9,20,21,50,100,200], default:50 }] },
+  { id:"price_above_sma", category:"moving_averages", label:"Price above SMA", sides:["entry","filter"],
+    params:[{ name:"period", type:"select", options:[20,50,100,200], default:200 }] },
+  { id:"price_below_sma", category:"moving_averages", label:"Price below SMA", sides:["entry","exit","filter"],
+    params:[{ name:"period", type:"select", options:[20,50,100,200], default:200 }] },
+  { id:"sma_cross_up",    category:"moving_averages", label:"SMA crosses above SMA", sides:["entry"],
+    params:[
+      { name:"fast", label:"fast", type:"select", options:[10,20,50,100], default:50 },
+      { name:"slow", label:"slow", type:"select", options:[50,100,200], default:200 },
+    ]},
+
+  // ── VWAP ─────────────────────────────────────────────────────
+  { id:"price_above_vwap",   category:"vwap", label:"Price above VWAP",       sides:["entry","filter"] },
+  { id:"price_below_vwap",   category:"vwap", label:"Price below VWAP",       sides:["entry","exit","filter"] },
+  { id:"vwap_reclaim",       category:"vwap", label:"Price reclaims VWAP",    desc:"was below, now above", sides:["entry"] },
+  { id:"vwap_loses",         category:"vwap", label:"Price loses VWAP",       desc:"was above, now below", sides:["exit"] },
+  { id:"vwap_within",        category:"vwap", label:"Price within X% of VWAP",sides:["entry","filter"],
+    params:[{ name:"percent", type:"number", default:0.5, step:0.1, label:"%" }] },
+  { id:"vwap_stretch_long",  category:"vwap", label:"VWAP stretch long",      desc:"price X% above VWAP", sides:["exit","filter"],
+    params:[{ name:"percent", type:"number", default:2, step:0.1, label:"%" }] },
+  { id:"vwap_stretch_short", category:"vwap", label:"VWAP stretch short",     desc:"price X% below VWAP", sides:["entry","filter"],
+    params:[{ name:"percent", type:"number", default:2, step:0.1, label:"%" }] },
+
+  // ── RSI ──────────────────────────────────────────────────────
+  { id:"rsi_above",      category:"rsi", label:"RSI above value", sides:["entry","filter"],
+    params:[{ name:"value", type:"number", default:50, label:"RSI" }] },
+  { id:"rsi_below",      category:"rsi", label:"RSI below value", sides:["entry","filter"],
+    params:[{ name:"value", type:"number", default:30, label:"RSI" }] },
+  { id:"rsi_cross_up",   category:"rsi", label:"RSI crosses up value", sides:["entry"],
+    params:[{ name:"value", type:"number", default:50, label:"RSI" }] },
+  { id:"rsi_cross_down", category:"rsi", label:"RSI crosses down value", sides:["exit"],
+    params:[{ name:"value", type:"number", default:50, label:"RSI" }] },
+  { id:"rsi_oversold",   category:"rsi", label:"RSI oversold (<30)",   sides:["entry"] },
+  { id:"rsi_overbought", category:"rsi", label:"RSI overbought (>70)", sides:["exit"] },
+  { id:"rsi_bull_div",   category:"rsi", label:"RSI bullish divergence", sides:["entry"] },
+  { id:"rsi_bear_div",   category:"rsi", label:"RSI bearish divergence", sides:["exit"] },
+
+  // ── Momentum / Volume ────────────────────────────────────────
+  { id:"volume_above_avg", category:"momentum_volume", label:"Volume above average", sides:["entry","filter"],
+    params:[{ name:"multiplier", type:"number", default:1.5, step:0.1, label:"×avg" }] },
+  { id:"volume_spike",     category:"momentum_volume", label:"Volume spike", desc:"largest bar in Y candles", sides:["entry","filter"],
+    params:[{ name:"lookback", type:"number", default:20, label:"bars" }] },
+  { id:"macd_cross_up",    category:"momentum_volume", label:"MACD crosses above signal", sides:["entry"] },
+  { id:"macd_cross_down",  category:"momentum_volume", label:"MACD crosses below signal", sides:["exit"] },
+  { id:"macd_hist_pos",    category:"momentum_volume", label:"MACD histogram positive", sides:["entry","filter"] },
+  { id:"macd_hist_neg",    category:"momentum_volume", label:"MACD histogram negative", sides:["exit","filter"] },
+  { id:"bb_upper_touch",   category:"momentum_volume", label:"Bollinger upper touch", sides:["exit"] },
+  { id:"bb_lower_touch",   category:"momentum_volume", label:"Bollinger lower touch", sides:["entry"] },
+  { id:"bb_squeeze",       category:"momentum_volume", label:"Bollinger squeeze", desc:"bands narrowing", sides:["entry","filter"] },
+  { id:"atr_above",        category:"momentum_volume", label:"ATR above value", desc:"high volatility", sides:["entry","filter"],
+    params:[{ name:"value", type:"number", default:1, step:0.1, label:"ATR" }] },
+  { id:"atr_below",        category:"momentum_volume", label:"ATR below value", desc:"low volatility",  sides:["entry","filter"],
+    params:[{ name:"value", type:"number", default:0.5, step:0.1, label:"ATR" }] },
+
+  // ── Session / Time ───────────────────────────────────────────
+  { id:"orb_long",   category:"session_time", label:"Opening range breakout long",  desc:"break above first Xmin high", sides:["entry"],
+    params:[{ name:"minutes", type:"select", options:[15,30,60], default:30, label:"min" }] },
+  { id:"orb_short",  category:"session_time", label:"Opening range breakout short", desc:"break below first Xmin low",  sides:["entry","exit"],
+    params:[{ name:"minutes", type:"select", options:[15,30,60], default:30, label:"min" }] },
+  { id:"time_after", category:"session_time", label:"Time of day after", sides:["filter"],
+    params:[{ name:"time", type:"time", default:"09:30", label:"ET" }] },
+  { id:"time_before",category:"session_time", label:"Time of day before", sides:["filter"],
+    params:[{ name:"time", type:"time", default:"16:00", label:"ET" }] },
+  { id:"day_of_week",category:"session_time", label:"Day of week is", sides:["filter"],
+    params:[{ name:"day", type:"select", options:["Mon","Tue","Wed","Thu","Fri"], default:"Mon" }] },
+  { id:"london_open",category:"session_time", label:"London session open (3-4am ET)", sides:["filter"] },
+  { id:"ny_open",    category:"session_time", label:"NY session open (9:30am ET)",    sides:["filter"] },
+  { id:"avoid_news", category:"session_time", label:"Avoid news",       desc:"no trade within X mins of major news", sides:["filter"],
+    params:[{ name:"minutes", type:"number", default:15, label:"min" }] },
+
+  // ── Risk / Position ──────────────────────────────────────────
+  { id:"daily_loss_ok",       category:"risk_position", label:"Daily loss limit not hit", sides:["filter"],
+    params:[{ name:"percent", type:"number", default:3, step:0.1, label:"% max loss" }] },
+  { id:"max_trades_ok",       category:"risk_position", label:"Max daily trades not reached", sides:["filter"],
+    params:[{ name:"trades", type:"number", default:5, label:"trades" }] },
+  { id:"prev_trade_win",      category:"risk_position", label:"Previous trade was winner",   sides:["filter"] },
+  { id:"prev_trade_loss",     category:"risk_position", label:"Previous trade was loser",    sides:["filter"] },
+  { id:"consec_losses_under", category:"risk_position", label:"Consecutive losses under",    sides:["filter"],
+    params:[{ name:"count", type:"number", default:3, label:"losses" }] },
+];
+
+// Build default params object for a given condition def
+function defaultParamsFor(def) {
+  const p = {};
+  (def?.params ?? []).forEach(pp => { p[pp.name] = pp.default; });
+  return p;
+}
+// Render a human-readable param suffix for a condition pill
+function paramSuffix(def, cond) {
+  if (!def?.params?.length) return "";
+  const parts = def.params.map(pp => {
+    const raw = cond.params?.[pp.name] ?? (cond.value != null && def.params.length === 1 ? cond.value : pp.default);
+    if (pp.label === "%" || pp.name === "percent")   return `${raw}%`;
+    if (pp.name === "time")                          return `${raw} ET`;
+    if (pp.name === "fast" || pp.name === "slow")    return `${pp.label} ${raw}`;
+    return `${raw}`;
+  });
+  return ` ${parts.join(" / ")}`;
+}
+
+// ── Pre-built strategy templates ─────────────────────────────
+const STRATEGY_TEMPLATES = [
+  {
+    name: "EMA Crossover",
+    description: "EMA 9 crosses EMA 21 while above SMA 50; RSI confirms uptrend.",
+    entryConds: [
+      { id:"ema_cross_up",    params:{ fast:9, slow:21 } },
+      { id:"price_above_sma", params:{ period:50 } },
+      { id:"rsi_above",       params:{ value:50 } },
+    ],
+    exitConds:  [{ id:"ema_cross_down", params:{ fast:9, slow:21 } }],
+    filterConds:[],
+    slPct:2, tpPct:4, riskPct:1,
+  },
+  {
+    name: "VWAP Reclaim",
+    description: "Price reclaims VWAP on volume, after the NY open.",
+    entryConds: [
+      { id:"vwap_reclaim",     params:{} },
+      { id:"volume_above_avg", params:{ multiplier:1.5 } },
+    ],
+    exitConds:  [{ id:"vwap_loses", params:{} }],
+    filterConds:[{ id:"time_after", params:{ time:"09:30" } }],
+    slPct:1.5, tpPct:3, riskPct:1,
+  },
+  {
+    name: "Opening Range Breakout",
+    description: "Break first 30-min high with volume spike, after 10am ET.",
+    entryConds: [
+      { id:"orb_long",     params:{ minutes:30 } },
+      { id:"volume_spike", params:{ lookback:20 } },
+    ],
+    exitConds:  [{ id:"vwap_loses", params:{} }],
+    filterConds:[{ id:"time_after", params:{ time:"10:00" } }],
+    slPct:1, tpPct:3, riskPct:1,
+  },
+  {
+    name: "Support/Resistance",
+    description: "Support bounce + RSI cross up from oversold + bullish pin bar.",
+    entryConds: [
+      { id:"support_bounce", params:{} },
+      { id:"rsi_cross_up",   params:{ value:50 } },
+      { id:"pin_bar_bull",   params:{} },
+    ],
+    exitConds:  [{ id:"resistance_bounce", params:{} }],
+    filterConds:[],
+    slPct:1.5, tpPct:4, riskPct:1,
+  },
+  {
+    name: "Trend Following",
+    description: "Above EMA 200, EMA 20 above EMA 50, RSI above 50 but not overbought.",
+    entryConds: [
+      { id:"price_above_ema", params:{ period:200 } },
+      { id:"ema_cross_up",    params:{ fast:20, slow:50 } },
+      { id:"rsi_above",       params:{ value:50 } },
+    ],
+    exitConds:  [
+      { id:"rsi_overbought",  params:{} },
+      { id:"price_below_ema", params:{ period:50 } },
+    ],
+    filterConds:[],
+    slPct:3, tpPct:9, riskPct:1,
+  },
 ];
 
 const BLANK_STRATEGY = {
   name: "", description: "",
-  rules: { entryConds: [], exitConds: [], slPct: 2, tpPct: 4, riskPct: 1 },
+  rules: { entryConds: [], exitConds: [], filterConds: [], slPct: 2, tpPct: 4, riskPct: 1 },
 };
+
+// Migrate legacy { id, value } → { id, params }
+function migrateCond(c) {
+  if (!c || typeof c !== "object") return c;
+  if (c.params && typeof c.params === "object") return c;
+  const def = RULE_CONDITIONS.find(d => d.id === c.id);
+  if (!def) return { id: c.id, params: {} };
+  const params = defaultParamsFor(def);
+  if (c.value != null && def.params?.length === 1) params[def.params[0].name] = c.value;
+  return { id: c.id, params };
+}
 
 // ── Strategy Form modal ───────────────────────────────────────
 function StrategyFormModal({ initial, onSave, onClose }) {
   const [name,        setName]        = useState(initial?.name              ?? "");
   const [description, setDescription] = useState(initial?.description       ?? "");
-  const [entryConds,  setEntryConds]  = useState(initial?.rules?.entryConds ?? []);
-  const [exitConds,   setExitConds]   = useState(initial?.rules?.exitConds  ?? []);
+  const [entryConds,  setEntryConds]  = useState((initial?.rules?.entryConds ?? []).map(migrateCond));
+  const [exitConds,   setExitConds]   = useState((initial?.rules?.exitConds  ?? []).map(migrateCond));
+  const [filterConds, setFilterConds] = useState((initial?.rules?.filterConds?? []).map(migrateCond));
   const [slPct,       setSlPct]       = useState(initial?.rules?.slPct      ?? 2);
   const [tpPct,       setTpPct]       = useState(initial?.rules?.tpPct      ?? 4);
   const [riskPct,     setRiskPct]     = useState(initial?.rules?.riskPct    ?? 1);
@@ -6339,10 +6544,20 @@ function StrategyFormModal({ initial, onSave, onClose }) {
   const [aiPrompt,    setAiPrompt]    = useState("");
   const [aiLoading,   setAiLoading]   = useState(false);
   const [aiErr,       setAiErr]       = useState("");
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  // category pickers per section
+  const [pickEntryCat,  setPickEntryCat]  = useState("price_action");
+  const [pickEntryCond, setPickEntryCond] = useState("");
+  const [pickExitCat,   setPickExitCat]   = useState("price_action");
+  const [pickExitCond,  setPickExitCond]  = useState("");
+  const [pickFilterCat, setPickFilterCat] = useState("session_time");
+  const [pickFilterCond,setPickFilterCond]= useState("");
+  // drag state
+  const dragRef = useRef(null);
 
-  // Valid condition IDs the AI can use
-  const ENTRY_IDS = ["rsi_below","rsi_cross_up","ema9_above_ema21","macd_cross_up","price_above_sma50","price_above_sma200","breakout_high","consecutive_green"];
-  const EXIT_IDS  = ["rsi_above","rsi_cross_down","ema9_below_ema21","macd_cross_down","price_below_sma50","price_below_sma200","breakdown_low","consecutive_red"];
+  // Valid condition IDs the AI can use (subset that the backtest engine supports)
+  const ENTRY_IDS = ["rsi_below","rsi_cross_up","ema_cross_up","macd_cross_up","price_above_sma","price_above_ema","volume_above_avg","engulf_bull","pin_bar_bull"];
+  const EXIT_IDS  = ["rsi_above","rsi_cross_down","ema_cross_down","macd_cross_down","price_below_sma","price_below_ema","rsi_overbought","engulf_bear","pin_bar_bear"];
 
   const generateFromAI = async () => {
     if (!aiPrompt.trim()) return;
@@ -6363,8 +6578,9 @@ function StrategyFormModal({ initial, onSave, onClose }) {
       const s = data.strategy;
       if (s.name)        setName(s.name);
       if (s.description) setDescription(s.description);
-      if (s.entryConds?.length) setEntryConds(s.entryConds);
-      if (s.exitConds?.length)  setExitConds(s.exitConds);
+      if (s.entryConds?.length) setEntryConds(s.entryConds.map(migrateCond));
+      if (s.exitConds?.length)  setExitConds(s.exitConds.map(migrateCond));
+      if (s.filterConds?.length) setFilterConds(s.filterConds.map(migrateCond));
       if (s.slPct)   setSlPct(s.slPct);
       if (s.tpPct)   setTpPct(s.tpPct);
       if (s.riskPct) setRiskPct(s.riskPct);
@@ -6376,18 +6592,47 @@ function StrategyFormModal({ initial, onSave, onClose }) {
     }
   };
 
-  const addCond = (side) => {
-    const def = RULE_CONDITIONS[0];
-    const setter = side === "entry" ? setEntryConds : setExitConds;
-    setter(prev => [...prev, { id: def.id, value: 14 }]);
+  const setterFor = (side) => side === "entry" ? setEntryConds : side === "exit" ? setExitConds : setFilterConds;
+  const listFor   = (side) => side === "entry" ? entryConds   : side === "exit" ? exitConds   : filterConds;
+
+  const addCondById = (side, id) => {
+    const def = RULE_CONDITIONS.find(d => d.id === id);
+    if (!def) return;
+    setterFor(side)(prev => [...prev, { id: def.id, params: defaultParamsFor(def) }]);
   };
   const removeCond = (side, idx) => {
-    const setter = side === "entry" ? setEntryConds : setExitConds;
-    setter(prev => prev.filter((_, i) => i !== idx));
+    setterFor(side)(prev => prev.filter((_, i) => i !== idx));
   };
-  const setCond = (side, idx, patch) => {
-    const setter = side === "entry" ? setEntryConds : setExitConds;
-    setter(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c));
+  const setCondParam = (side, idx, name, value) => {
+    setterFor(side)(prev => prev.map((c, i) => i === idx
+      ? { ...c, params: { ...(c.params ?? {}), [name]: value } }
+      : c));
+  };
+  // ── drag-to-reorder ────────────────────────────────────────
+  const onDragStart = (side, idx) => { dragRef.current = { side, idx }; };
+  const onDragOver  = (e) => { e.preventDefault(); };
+  const onDrop = (side, idx) => {
+    const src = dragRef.current;
+    if (!src || src.side !== side || src.idx === idx) { dragRef.current = null; return; }
+    setterFor(side)(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(src.idx, 1);
+      next.splice(idx, 0, moved);
+      return next;
+    });
+    dragRef.current = null;
+  };
+
+  const applyTemplate = (tpl) => {
+    if (!name.trim()) setName(tpl.name);
+    if (!description.trim()) setDescription(tpl.description);
+    setEntryConds(tpl.entryConds ?? []);
+    setExitConds(tpl.exitConds ?? []);
+    setFilterConds(tpl.filterConds ?? []);
+    if (tpl.slPct)   setSlPct(tpl.slPct);
+    if (tpl.tpPct)   setTpPct(tpl.tpPct);
+    if (tpl.riskPct) setRiskPct(tpl.riskPct);
+    setTemplatesOpen(false);
   };
 
   const submit = () => {
@@ -6399,7 +6644,7 @@ function StrategyFormModal({ initial, onSave, onClose }) {
       id:            initial?.id ?? `strat_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
       name:          name.trim(),
       description:   description.trim(),
-      rules:         { entryConds, exitConds, slPct, tpPct, riskPct },
+      rules:         { entryConds, exitConds, filterConds, slPct, tpPct, riskPct },
       monthly_price: parseFloat(monthlyPrice) || 0,
       createdAt:     initial?.createdAt ?? Date.now(),
       backtests:     initial?.backtests ?? [],
@@ -6409,23 +6654,103 @@ function StrategyFormModal({ initial, onSave, onClose }) {
   const inp = { width:"100%", padding:"8px 10px", borderRadius:7, boxSizing:"border-box", background:"#111827", border:"1px solid #1e2d3e", fontSize:12, color:"#e2e8f0", outline:"none" };
   const lbl = { display:"block", fontSize:9, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:5 };
 
-  const CondRow = ({ cond, side, idx }) => {
+  // Side → theme colors for tags & sections
+  const SIDE_THEME = {
+    entry:  { border:"rgba(52,211,153,0.35)", bg:"rgba(52,211,153,0.10)", chip:"rgba(52,211,153,0.18)", text:"#34d399", icon:"▲" },
+    exit:   { border:"rgba(239,68,68,0.35)",  bg:"rgba(239,68,68,0.10)",  chip:"rgba(239,68,68,0.18)",  text:"#f87171", icon:"▼" },
+    filter: { border:"rgba(251,146,60,0.4)",  bg:"rgba(251,146,60,0.10)", chip:"rgba(251,146,60,0.18)", text:"#fb923c", icon:"⏱" },
+  };
+
+  // Tag pill for a chosen condition (with inline param editors)
+  const CondTag = ({ cond, side, idx }) => {
     const def = RULE_CONDITIONS.find(d => d.id === cond.id);
+    const theme = SIDE_THEME[side];
+    if (!def) return null;
     return (
-      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 10px", borderRadius:7, background:"#111827", border:"1px solid #1e2d3e" }}>
-        <select value={cond.id} onChange={e => setCond(side, idx, { id: e.target.value, value: 14 })}
-          style={{ flex:1, ...inp, padding:"5px 8px" }}>
-          {RULE_CONDITIONS.filter(d => side === "entry"
-            ? ["rsi_below","rsi_cross_up","ema9_above_ema21","macd_cross_up","price_above_sma50","price_above_sma200","breakout_high","consecutive_green"].includes(d.id)
-            : ["rsi_above","rsi_cross_down","ema9_below_ema21","macd_cross_down","price_below_sma50","price_below_sma200","breakdown_low","consecutive_red"].includes(d.id)
-          ).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+      <div
+        draggable
+        onDragStart={() => onDragStart(side, idx)}
+        onDragOver={onDragOver}
+        onDrop={() => onDrop(side, idx)}
+        title={def.desc ?? def.label}
+        style={{
+          display:"inline-flex", alignItems:"center", gap:6,
+          padding:"5px 8px 5px 10px", borderRadius:999,
+          background: theme.bg, border:`1px solid ${theme.border}`, color: theme.text,
+          fontSize:11, fontWeight:600, cursor:"grab", userSelect:"none",
+        }}>
+        <span style={{ opacity:0.7, fontSize:10 }}>⋮⋮</span>
+        <span>{theme.icon} {def.label}</span>
+        {(def.params ?? []).map(pp => {
+          const val = cond.params?.[pp.name] ?? pp.default;
+          const ctrlBase = {
+            background:"rgba(0,0,0,0.25)", border:`1px solid ${theme.border}`,
+            color: theme.text, borderRadius:6, fontSize:10, fontWeight:700,
+            padding:"2px 6px", outline:"none",
+          };
+          if (pp.type === "select") {
+            return (
+              <select key={pp.name} value={val}
+                onChange={e => {
+                  const raw = e.target.value;
+                  const cast = (typeof pp.options?.[0] === "number") ? parseFloat(raw) : raw;
+                  setCondParam(side, idx, pp.name, cast);
+                }}
+                style={ctrlBase}>
+                {pp.options.map(o => <option key={o} value={o} style={{ background:"#0d1120", color:"#e2e8f0" }}>
+                  {pp.label ? `${pp.label}=${o}` : o}
+                </option>)}
+              </select>
+            );
+          }
+          if (pp.type === "time") {
+            return (
+              <input key={pp.name} type="time" value={val}
+                onChange={e => setCondParam(side, idx, pp.name, e.target.value)}
+                style={{ ...ctrlBase, width:90 }}/>
+            );
+          }
+          return (
+            <input key={pp.name} type="number" value={val}
+              step={pp.step ?? 1}
+              onChange={e => setCondParam(side, idx, pp.name, parseFloat(e.target.value))}
+              style={{ ...ctrlBase, width:56 }}
+              placeholder={pp.label ?? pp.name}/>
+          );
+        })}
+        <button onClick={() => removeCond(side, idx)}
+          style={{ background:"none", border:"none", color:theme.text, opacity:0.7, cursor:"pointer", padding:0, marginLeft:2, display:"inline-flex" }}
+          aria-label="remove">
+          <X size={12}/>
+        </button>
+      </div>
+    );
+  };
+
+  // Picker: Category → Condition → Add
+  const CondPicker = ({ side, cat, setCat, condId, setCondId }) => {
+    const theme = SIDE_THEME[side];
+    const inCat = RULE_CONDITIONS.filter(d => d.category === cat && d.sides.includes(side));
+    return (
+      <div style={{ display:"flex", gap:6, marginTop:8 }}>
+        <select value={cat} onChange={e => { setCat(e.target.value); setCondId(""); }}
+          style={{ ...inp, padding:"6px 8px", fontSize:11, flex:"0 0 130px" }}>
+          {COND_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
-        {(def?.type === "threshold" || def?.type === "bars") && (
-          <input type="number" value={cond.value ?? 14}
-            onChange={e => setCond(side, idx, { value: parseFloat(e.target.value) || 14 })}
-            style={{ ...inp, width:60, padding:"5px 8px", flexShrink:0 }}/>
-        )}
-        <button onClick={() => removeCond(side, idx)} style={{ background:"none", border:"none", color:"#475569", cursor:"pointer", padding:2, flexShrink:0 }}><X size={12}/></button>
+        <select value={condId} onChange={e => setCondId(e.target.value)}
+          style={{ ...inp, padding:"6px 8px", fontSize:11, flex:1 }}>
+          <option value="">— pick a condition —</option>
+          {inCat.map(d => <option key={d.id} value={d.id}>{d.label}{d.desc?` · ${d.desc}`:""}</option>)}
+        </select>
+        <button
+          disabled={!condId}
+          onClick={() => { addCondById(side, condId); setCondId(""); }}
+          style={{
+            padding:"6px 12px", borderRadius:7, border:`1px solid ${theme.border}`,
+            background: condId ? theme.chip : "transparent",
+            color: condId ? theme.text : "#334155",
+            fontSize:11, fontWeight:700, cursor: condId ? "pointer" : "not-allowed", flexShrink:0,
+          }}>+ Add</button>
       </div>
     );
   };
@@ -6495,28 +6820,71 @@ function StrategyFormModal({ initial, onSave, onClose }) {
               placeholder="Describe when this strategy works and what market conditions it targets..."/>
           </div>
 
-          {/* Entry conditions */}
+          {/* ── Template Strategies ── */}
+          <div style={{ position:"relative" }}>
+            <button onClick={() => setTemplatesOpen(o => !o)} style={{
+              width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+              padding:"9px 12px", borderRadius:8,
+              border:"1px solid rgba(56,189,248,0.3)", background:"rgba(56,189,248,0.06)",
+              color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer",
+            }}>
+              <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+                <Wand2 size={12}/> Template Strategies <span style={{ color:"#475569", fontWeight:400 }}>— pre-built setups</span>
+              </span>
+              <span style={{ fontSize:10 }}>{templatesOpen ? "▴" : "▾"}</span>
+            </button>
+            {templatesOpen && (
+              <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
+                {STRATEGY_TEMPLATES.map(tpl => (
+                  <button key={tpl.name} onClick={() => applyTemplate(tpl)} style={{
+                    textAlign:"left", padding:"9px 12px", borderRadius:8,
+                    border:"1px solid #1a2035", background:"#111827", cursor:"pointer",
+                  }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#e2e8f0", marginBottom:3 }}>{tpl.name}</div>
+                    <div style={{ fontSize:10, color:"#64748b", lineHeight:1.5 }}>{tpl.description}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Entry Conditions ── */}
           <div style={{ borderRadius:10, border:"1px solid rgba(52,211,153,0.2)", background:"rgba(52,211,153,0.03)", padding:"12px 14px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
               <span style={{ fontSize:11, fontWeight:700, color:"#34d399" }}>▲ Entry Conditions <span style={{ color:"#475569", fontWeight:400 }}>(ALL must be true)</span></span>
-              <button onClick={() => addCond("entry")} style={{ background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.2)", color:"#34d399", borderRadius:6, padding:"2px 10px", fontSize:10, fontWeight:700, cursor:"pointer" }}>+ Add</button>
+              <span style={{ fontSize:9, color:"#475569" }}>drag tags to reorder</span>
             </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-              {entryConds.map((c,i) => <CondRow key={i} cond={c} side="entry" idx={i}/>)}
-              {!entryConds.length && <div style={{ fontSize:10, color:"#334155", fontStyle:"italic", padding:"6px 4px" }}>No entry conditions yet — click + Add</div>}
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, minHeight:24 }}>
+              {entryConds.map((c,i) => <CondTag key={`e${i}`} cond={c} side="entry" idx={i}/>)}
+              {!entryConds.length && <div style={{ fontSize:10, color:"#334155", fontStyle:"italic", padding:"4px 2px" }}>No entry conditions yet — pick one below</div>}
             </div>
+            <CondPicker side="entry" cat={pickEntryCat} setCat={setPickEntryCat} condId={pickEntryCond} setCondId={setPickEntryCond}/>
           </div>
 
-          {/* Exit conditions */}
+          {/* ── Exit Conditions ── */}
           <div style={{ borderRadius:10, border:"1px solid rgba(239,68,68,0.2)", background:"rgba(239,68,68,0.03)", padding:"12px 14px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
               <span style={{ fontSize:11, fontWeight:700, color:"#f87171" }}>▼ Exit Conditions <span style={{ color:"#475569", fontWeight:400 }}>(ANY fires)</span></span>
-              <button onClick={() => addCond("exit")} style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", color:"#f87171", borderRadius:6, padding:"2px 10px", fontSize:10, fontWeight:700, cursor:"pointer" }}>+ Add</button>
+              <span style={{ fontSize:9, color:"#475569" }}>drag tags to reorder</span>
             </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-              {exitConds.map((c,i) => <CondRow key={i} cond={c} side="exit" idx={i}/>)}
-              {!exitConds.length && <div style={{ fontSize:10, color:"#334155", fontStyle:"italic", padding:"6px 4px" }}>No exit conditions yet — click + Add</div>}
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, minHeight:24 }}>
+              {exitConds.map((c,i) => <CondTag key={`x${i}`} cond={c} side="exit" idx={i}/>)}
+              {!exitConds.length && <div style={{ fontSize:10, color:"#334155", fontStyle:"italic", padding:"4px 2px" }}>No exit conditions yet — pick one below</div>}
             </div>
+            <CondPicker side="exit" cat={pickExitCat} setCat={setPickExitCat} condId={pickExitCond} setCondId={setPickExitCond}/>
+          </div>
+
+          {/* ── Filters (time-of-day, risk) ── */}
+          <div style={{ borderRadius:10, border:"1px solid rgba(251,146,60,0.25)", background:"rgba(251,146,60,0.04)", padding:"12px 14px" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+              <span style={{ fontSize:11, fontWeight:700, color:"#fb923c" }}>⏱ Filters <span style={{ color:"#475569", fontWeight:400 }}>(time / risk gates)</span></span>
+              <span style={{ fontSize:9, color:"#475569" }}>optional</span>
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, minHeight:24 }}>
+              {filterConds.map((c,i) => <CondTag key={`f${i}`} cond={c} side="filter" idx={i}/>)}
+              {!filterConds.length && <div style={{ fontSize:10, color:"#334155", fontStyle:"italic", padding:"4px 2px" }}>No filters — add time-of-day or risk gates below</div>}
+            </div>
+            <CondPicker side="filter" cat={pickFilterCat} setCat={setPickFilterCat} condId={pickFilterCond} setCondId={setPickFilterCond}/>
           </div>
 
           {/* Risk defaults */}
@@ -6983,11 +7351,18 @@ function StrategyLabPage({ session, trades }) {
               <div style={{ flex:1, display:"flex", flexWrap:"wrap", gap:4 }}>
                 {(s.rules?.entryConds ?? []).map((c,i) => {
                   const def = RULE_CONDITIONS.find(d => d.id === c.id);
-                  return <span key={i} style={{ fontSize:9, padding:"2px 7px", borderRadius:10, background:"rgba(52,211,153,0.08)", color:"#34d399", border:"1px solid rgba(52,211,153,0.2)" }}>▲ {def?.label}{c.value!=null?" "+c.value:""}</span>;
+                  if (!def) return null;
+                  return <span key={`e${i}`} style={{ fontSize:9, padding:"2px 7px", borderRadius:10, background:"rgba(52,211,153,0.08)", color:"#34d399", border:"1px solid rgba(52,211,153,0.2)" }}>▲ {def.label}{paramSuffix(def, c)}</span>;
                 })}
                 {(s.rules?.exitConds ?? []).map((c,i) => {
                   const def = RULE_CONDITIONS.find(d => d.id === c.id);
-                  return <span key={i} style={{ fontSize:9, padding:"2px 7px", borderRadius:10, background:"rgba(239,68,68,0.08)", color:"#f87171", border:"1px solid rgba(239,68,68,0.2)" }}>▼ {def?.label}{c.value!=null?" "+c.value:""}</span>;
+                  if (!def) return null;
+                  return <span key={`x${i}`} style={{ fontSize:9, padding:"2px 7px", borderRadius:10, background:"rgba(239,68,68,0.08)", color:"#f87171", border:"1px solid rgba(239,68,68,0.2)" }}>▼ {def.label}{paramSuffix(def, c)}</span>;
+                })}
+                {(s.rules?.filterConds ?? []).map((c,i) => {
+                  const def = RULE_CONDITIONS.find(d => d.id === c.id);
+                  if (!def) return null;
+                  return <span key={`f${i}`} style={{ fontSize:9, padding:"2px 7px", borderRadius:10, background:"rgba(251,146,60,0.08)", color:"#fb923c", border:"1px solid rgba(251,146,60,0.25)" }}>⏱ {def.label}{paramSuffix(def, c)}</span>;
                 })}
               </div>
               {/* Action buttons */}
