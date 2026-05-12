@@ -134,80 +134,217 @@ function fmtPrice(n: number | string | undefined) {
   return v.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
-function formatTwelveDataSymbol(trade: Trade): string {
-  const raw = (trade.symbol || trade.pair || "").toString().trim();
-  if (!raw) return "";
-  // Twelve Data accepts: AAPL, SOL/USD, BTC/USD, ES1!, NQ1!, etc.
-  return raw.toUpperCase();
+type Interval = "1m" | "5m" | "15m" | "1h";
+
+const CRYPTO_MAP: Record<string, string> = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  SOL: "solana",
+  DOGE: "dogecoin",
+  ADA: "cardano",
+  XRP: "ripple",
+  AVAX: "avalanche-2",
+  MATIC: "matic-network",
+  DOT: "polkadot",
+  LINK: "chainlink",
+  UNI: "uniswap",
+  ATOM: "cosmos",
+  LTC: "litecoin",
+  BCH: "bitcoin-cash",
+  NEAR: "near",
+  SHIB: "shiba-inu",
+  TRX: "tron",
+  XLM: "stellar",
+  FIL: "filecoin",
+  ALGO: "algorand",
+  APT: "aptos",
+  ARB: "arbitrum",
+  OP: "optimism",
+  INJ: "injective-protocol",
+  TIA: "celestia",
+  SUI: "sui",
+  PEPE: "pepe",
+  WIF: "dogwifcoin",
+  BONK: "bonk",
+  HYPE: "hyperliquid",
+};
+
+const YAHOO_MAP: Record<string, string> = {
+  "ES1!": "ES=F",
+  "NQ1!": "NQ=F",
+  "CL1!": "CL=F",
+  "YM1!": "YM=F",
+  "RTY1!": "RTY=F",
+  "GC1!": "GC=F",
+  "SI1!": "SI=F",
+  "NG1!": "NG=F",
+  "ZB1!": "ZB=F",
+  "ZN1!": "ZN=F",
+  "ZS1!": "ZS=F",
+  "ZC1!": "ZC=F",
+  "ZW1!": "ZW=F",
+  "HG1!": "HG=F",
+  "PL1!": "PL=F",
+  "PA1!": "PA=F",
+  "GOLD/USD": "GC=F",
+  "SILVER/USD": "SI=F",
+  "OIL/USD": "CL=F",
+  "COPPER/USD": "HG=F",
+};
+
+const YAHOO_INTERVAL: Record<Interval, string> = {
+  "1m": "1m",
+  "5m": "5m",
+  "15m": "15m",
+  "1h": "60m",
+};
+
+const YAHOO_RANGE: Record<Interval, string> = {
+  "1m": "1d",
+  "5m": "5d",
+  "15m": "5d",
+  "1h": "1mo",
+};
+
+type Instrument =
+  | { kind: "crypto"; coinId: string }
+  | { kind: "yahoo"; yahooSymbol: string }
+  | { kind: "unknown" };
+
+function classifySymbol(raw: string): Instrument {
+  const symbol = (raw || "").toUpperCase().trim();
+  if (!symbol) return { kind: "unknown" };
+
+  const base = symbol.split("/")[0];
+  if (CRYPTO_MAP[base]) return { kind: "crypto", coinId: CRYPTO_MAP[base] };
+  if (YAHOO_MAP[symbol]) return { kind: "yahoo", yahooSymbol: YAHOO_MAP[symbol] };
+
+  // Plain equity ticker (AAPL, TSLA…) or anything else — let Yahoo try
+  const yahooFallback = symbol.replace(/\/USD$/i, "").replace(/\//g, "-");
+  if (!yahooFallback) return { kind: "unknown" };
+  return { kind: "yahoo", yahooSymbol: yahooFallback };
 }
 
-type Interval = "1min" | "5min" | "15min" | "1h";
+async function fetchCryptoCandles(
+  coinId: string
+): Promise<CandlestickData<UTCTimestamp>[]> {
+  const url = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=1`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data) || data.length === 0) throw new Error("No OHLC rows");
+  return data
+    .map((row: number[]) => ({
+      time: Math.floor(row[0] / 1000) as UTCTimestamp,
+      open: row[1],
+      high: row[2],
+      low: row[3],
+      close: row[4],
+    }))
+    .filter(
+      (c) =>
+        Number.isFinite(c.open) &&
+        Number.isFinite(c.high) &&
+        Number.isFinite(c.low) &&
+        Number.isFinite(c.close)
+    )
+    .sort((a, b) => (a.time as number) - (b.time as number));
+}
 
-const INTERVAL_MINUTES: Record<Interval, number> = {
-  "1min": 1,
-  "5min": 5,
-  "15min": 15,
-  "1h": 60,
-};
-
-const TWELVE_INTERVAL: Record<Interval, string> = {
-  "1min": "1min",
-  "5min": "5min",
-  "15min": "15min",
-  "1h": "1h",
-};
-
-async function fetchCandles(
-  trade: Trade,
+async function fetchYahooCandles(
+  yahooSymbol: string,
   interval: Interval
-): Promise<CandlestickData<UTCTimestamp>[] | null> {
-  const symbol = formatTwelveDataSymbol(trade);
-  if (!symbol) return null;
-  const tradeMs = typeof trade.date === "number" ? trade.date : new Date(trade.date || "").getTime();
-  if (isNaN(tradeMs)) return null;
+): Promise<CandlestickData<UTCTimestamp>[]> {
+  const ivl = YAHOO_INTERVAL[interval];
+  const range = YAHOO_RANGE[interval];
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    yahooSymbol
+  )}?interval=${ivl}&range=${range}`;
+  const url = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
 
-  const mins = INTERVAL_MINUTES[interval];
-  const halfWindow = mins * 60 * 1000 * 50;
-  const startD = new Date(tradeMs - halfWindow);
-  const endD = new Date(tradeMs + halfWindow);
-  const fmt = (d: Date) =>
-    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Proxy ${res.status}`);
+  const wrapped = await res.json();
+  const inner = wrapped?.contents ? JSON.parse(wrapped.contents) : null;
+  const result = inner?.chart?.result?.[0];
+  if (!result) throw new Error("Yahoo: no result");
 
-  const url =
-    `https://api.twelvedata.com/time_series` +
-    `?symbol=${encodeURIComponent(symbol)}` +
-    `&interval=${TWELVE_INTERVAL[interval]}` +
-    `&outputsize=100` +
-    `&start_date=${encodeURIComponent(fmt(startD))}` +
-    `&end_date=${encodeURIComponent(fmt(endD))}` +
-    `&timezone=UTC` +
-    `&apikey=demo`;
+  const timestamps: number[] = result.timestamp || [];
+  const quote = result.indicators?.quote?.[0];
+  if (!quote || !timestamps.length) throw new Error("Yahoo: empty quote");
 
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || data.status === "error" || !Array.isArray(data.values) || data.values.length === 0) {
-      return null;
+  const candles: CandlestickData<UTCTimestamp>[] = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const o = quote.open?.[i];
+    const h = quote.high?.[i];
+    const l = quote.low?.[i];
+    const c = quote.close?.[i];
+    if (
+      Number.isFinite(o) &&
+      Number.isFinite(h) &&
+      Number.isFinite(l) &&
+      Number.isFinite(c)
+    ) {
+      candles.push({
+        time: timestamps[i] as UTCTimestamp,
+        open: o,
+        high: h,
+        low: l,
+        close: c,
+      });
     }
-    const rows = data.values
-      .map((v: any) => ({
-        time: Math.floor(new Date(v.datetime.replace(" ", "T") + "Z").getTime() / 1000) as UTCTimestamp,
-        open: parseFloat(v.open),
-        high: parseFloat(v.high),
-        low: parseFloat(v.low),
-        close: parseFloat(v.close),
-      }))
-      .filter((c: CandlestickData<UTCTimestamp>) =>
-        Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close)
-      )
-      .sort((a: CandlestickData<UTCTimestamp>, b: CandlestickData<UTCTimestamp>) =>
-        (a.time as number) - (b.time as number)
-      );
-    return rows.length ? rows : null;
-  } catch {
-    return null;
   }
+  if (!candles.length) throw new Error("Yahoo: all rows missing");
+  return candles;
+}
+
+function useTradeChart(trade: Trade | undefined, interval: Interval) {
+  const [candles, setCandles] = useState<CandlestickData<UTCTimestamp>[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!trade) {
+      setCandles(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    const symbol = (trade.symbol || trade.pair || "").toString();
+    const info = classifySymbol(symbol);
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setCandles(null);
+
+    (async () => {
+      try {
+        let data: CandlestickData<UTCTimestamp>[];
+        if (info.kind === "crypto") {
+          data = await fetchCryptoCandles(info.coinId);
+        } else if (info.kind === "yahoo") {
+          data = await fetchYahooCandles(info.yahooSymbol, interval);
+        } else {
+          throw new Error("Unsupported symbol");
+        }
+        if (cancelled) return;
+        if (!data.length) throw new Error("No candle data");
+        setCandles(data);
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(e?.message || "Failed to load candles");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trade?.id, interval]);
+
+  return { candles, loading, error };
 }
 
 function fmtTradeDateTime(v: number | string | undefined): string {
@@ -260,7 +397,7 @@ export default function ReplayPage() {
   const [slideDir, setSlideDir] = useState<"next" | "prev">("next");
   const [slideKey, setSlideKey] = useState(0);
   const [viewMode, setViewMode] = useState<"chart" | "screenshot">("chart");
-  const [interval, setInterval] = useState<Interval>("5min");
+  const [interval, setInterval] = useState<Interval>("5m");
 
   // draft form state
   const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
@@ -616,10 +753,10 @@ export default function ReplayPage() {
             flexWrap: "wrap",
           }}>
             <div style={{ display: "flex", gap: 4 }}>
-              {(["1min", "5min", "15min", "1h"] as Interval[]).map((iv) => (
+              {(["1m", "5m", "15m", "1h"] as Interval[]).map((iv) => (
                 <IntervalBtn
                   key={iv}
-                  label={iv === "1min" ? "1m" : iv === "5min" ? "5m" : iv === "15min" ? "15m" : "1h"}
+                  label={iv}
                   active={viewMode === "chart" && interval === iv}
                   disabled={viewMode !== "chart"}
                   onClick={() => { setInterval(iv); setViewMode("chart"); }}
@@ -867,152 +1004,124 @@ function CandleChart({
   trade, interval, height,
 }: { trade: Trade; interval: Interval; height: number }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const { candles, loading, error } = useTradeChart(trade, interval);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || !candles || candles.length === 0) return;
 
-    let disposed = false;
-    let chart: IChartApi | null = null;
-    let resizeObs: ResizeObserver | null = null;
-
-    setStatus("loading");
-
-    const init = async () => {
-      const candles = await fetchCandles(trade, interval);
-      if (disposed || !container) return;
-      if (!candles || candles.length === 0) {
-        setStatus("error");
-        return;
-      }
-
-      chart = createChart(container, {
-        layout: {
-          background: { type: ColorType.Solid, color: "#060d1a" },
-          textColor: "#94a3b8",
-          fontSize: 11,
-          fontFamily: "ui-monospace, SFMono-Regular, monospace",
-        },
-        grid: {
-          vertLines: { color: "#1a2540" },
-          horzLines: { color: "#1a2540" },
-        },
-        timeScale: {
-          borderColor: "#1a2540",
-          timeVisible: true,
-          secondsVisible: false,
-        },
-        rightPriceScale: {
-          borderColor: "#1a2540",
-        },
-        crosshair: { mode: 1 },
-        width: container.clientWidth,
-        height,
-      });
-
-      const series: ISeriesApi<"Candlestick"> = chart.addSeries(CandlestickSeries, {
-        upColor: "#22d3a5",
-        downColor: "#f43f5e",
-        borderUpColor: "#22d3a5",
-        borderDownColor: "#f43f5e",
-        wickUpColor: "#22d3a5",
-        wickDownColor: "#f43f5e",
-      });
-
-      series.setData(candles);
-
-      const tradeSec = Math.floor(
-        (typeof trade.date === "number" ? trade.date : new Date(trade.date || 0).getTime()) / 1000
-      );
-      const entryPrice = Number(trade.entryPrice ?? 0);
-      const exitPrice = Number(trade.exitPrice ?? 0);
-
-      const findClosestTime = (t: number): UTCTimestamp => {
-        let best = candles[0].time as number;
-        let bestDiff = Math.abs(best - t);
-        for (const c of candles) {
-          const diff = Math.abs((c.time as number) - t);
-          if (diff < bestDiff) {
-            best = c.time as number;
-            bestDiff = diff;
-          }
-        }
-        return best as UTCTimestamp;
-      };
-
-      const markerTime = findClosestTime(tradeSec);
-      const markers: SeriesMarker<UTCTimestamp>[] = [];
-      if (entryPrice > 0) {
-        markers.push({
-          time: markerTime,
-          position: "belowBar",
-          color: "#22d3a5",
-          shape: "arrowUp",
-          text: `▲ Entry $${entryPrice.toFixed(2)}`,
-        });
-      }
-      if (exitPrice > 0) {
-        markers.push({
-          time: markerTime,
-          position: "aboveBar",
-          color: "#f43f5e",
-          shape: "arrowDown",
-          text: `▼ Exit $${exitPrice.toFixed(2)}`,
-        });
-      }
-      if (markers.length) createSeriesMarkers(series, markers);
-
-      if (entryPrice > 0) {
-        series.createPriceLine({
-          price: entryPrice,
-          color: "#22d3a5",
-          lineWidth: 2,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: "Entry",
-        });
-      }
-      if (exitPrice > 0) {
-        series.createPriceLine({
-          price: exitPrice,
-          color: "#f43f5e",
-          lineWidth: 2,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: "Exit",
-        });
-      }
-
-      chart.timeScale().fitContent();
-      setStatus("ready");
-
-      resizeObs = new ResizeObserver(() => {
-        if (chart && container) {
-          chart.applyOptions({ width: container.clientWidth, height });
-        }
-      });
-      resizeObs.observe(container);
-    };
-
-    init().catch(() => {
-      if (!disposed) setStatus("error");
+    const chart: IChartApi = createChart(container, {
+      layout: {
+        background: { type: ColorType.Solid, color: "#0b1120" },
+        textColor: "#94a3b8",
+        fontSize: 11,
+        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+      },
+      grid: {
+        vertLines: { color: "#1a2540" },
+        horzLines: { color: "#1a2540" },
+      },
+      timeScale: {
+        borderColor: "#1a2540",
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      rightPriceScale: { borderColor: "#1a2540" },
+      crosshair: { mode: 1 },
+      width: container.clientWidth,
+      height,
     });
 
-    return () => {
-      disposed = true;
-      if (resizeObs) resizeObs.disconnect();
-      if (chart) {
-        chart.remove();
-        chart = null;
+    const series: ISeriesApi<"Candlestick"> = chart.addSeries(CandlestickSeries, {
+      upColor: "#34d399",
+      downColor: "#f87171",
+      borderUpColor: "#34d399",
+      borderDownColor: "#f87171",
+      wickUpColor: "#34d399",
+      wickDownColor: "#f87171",
+    });
+
+    series.setData(candles);
+
+    const entryPrice = Number(trade.entryPrice ?? 0);
+    const exitPrice = Number(trade.exitPrice ?? 0);
+    const tradeMs = typeof trade.date === "number"
+      ? trade.date
+      : new Date(trade.date || 0).getTime();
+    const tradeSec = isNaN(tradeMs) ? 0 : Math.floor(tradeMs / 1000);
+
+    const findClosestTime = (t: number): UTCTimestamp => {
+      let best = candles[0].time as number;
+      let bestDiff = Math.abs(best - t);
+      for (const c of candles) {
+        const diff = Math.abs((c.time as number) - t);
+        if (diff < bestDiff) {
+          best = c.time as number;
+          bestDiff = diff;
+        }
       }
+      return best as UTCTimestamp;
     };
-  }, [trade.id, interval, height]);
+
+    const markers: SeriesMarker<UTCTimestamp>[] = [];
+    if (entryPrice > 0 && tradeSec > 0) {
+      markers.push({
+        time: findClosestTime(tradeSec),
+        position: "belowBar",
+        color: "#34d399",
+        shape: "arrowUp",
+        text: `▲ Entry $${entryPrice.toFixed(2)}`,
+      });
+    }
+    if (exitPrice > 0 && tradeSec > 0) {
+      markers.push({
+        time: findClosestTime(tradeSec),
+        position: "aboveBar",
+        color: "#f87171",
+        shape: "arrowDown",
+        text: `▼ Exit $${exitPrice.toFixed(2)}`,
+      });
+    }
+    if (markers.length) createSeriesMarkers(series, markers);
+
+    if (entryPrice > 0) {
+      series.createPriceLine({
+        price: entryPrice,
+        color: "#34d399",
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "Entry",
+      });
+    }
+    if (exitPrice > 0) {
+      series.createPriceLine({
+        price: exitPrice,
+        color: "#f87171",
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "Exit",
+      });
+    }
+
+    chart.timeScale().fitContent();
+
+    const resizeObs = new ResizeObserver(() => {
+      chart.applyOptions({ width: container.clientWidth, height });
+    });
+    resizeObs.observe(container);
+
+    return () => {
+      resizeObs.disconnect();
+      chart.remove();
+    };
+  }, [candles, trade.entryPrice, trade.exitPrice, trade.date, height]);
 
   return (
-    <div style={{ position: "relative", height, background: "#060d1a" }}>
+    <div style={{ position: "relative", height, background: "#0b1120" }}>
       <div ref={containerRef} style={{ width: "100%", height }} />
-      {status === "loading" && (
+      {loading && (
         <div style={{
           position: "absolute", inset: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
@@ -1021,14 +1130,16 @@ function CandleChart({
           Loading chart data…
         </div>
       )}
-      {status === "error" && (
+      {!loading && error && (
         <div style={{
           position: "absolute", inset: 0,
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           color: "#4a5a7a", fontSize: 12, gap: 8, pointerEvents: "none",
+          padding: 16, textAlign: "center",
         }}>
           <div style={{ fontSize: 32 }}>📊</div>
           <div>Chart data unavailable for this symbol</div>
+          <div style={{ fontSize: 10, color: "#3a4a6a" }}>{error}</div>
         </div>
       )}
     </div>
