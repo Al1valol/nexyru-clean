@@ -111,9 +111,9 @@ const RULES: Record<FirmKey, Partial<Record<PhaseKey, Record<number, PhaseRule>>
   },
   topstep: {
     combine: {
-      50000:  { ...blank, dailyLoss:1000, maxDrawdown:2000, profitTarget:3000, benchmarkDays:5 },
-      100000: { ...blank, dailyLoss:2000, maxDrawdown:3000, profitTarget:6000, benchmarkDays:5 },
-      150000: { ...blank, dailyLoss:3000, maxDrawdown:4500, profitTarget:9000, benchmarkDays:5 },
+      50000:  { ...blank, dailyLoss:1000, maxDrawdown:2000, profitTarget:3000, consistencyMax:30, benchmarkDays:5 },
+      100000: { ...blank, dailyLoss:2000, maxDrawdown:3000, profitTarget:6000, consistencyMax:30, benchmarkDays:5 },
+      150000: { ...blank, dailyLoss:3000, maxDrawdown:4500, profitTarget:9000, consistencyMax:30, benchmarkDays:5 },
     },
     express: {
       50000:  { ...blank, dailyLoss:1000, maxDrawdown:2000, consistencyMax:40, benchmarkDays:5 },
