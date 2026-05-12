@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 
 // ───────────────────────── types ─────────────────────────
 
@@ -21,6 +21,7 @@ interface Trade {
   tags?: string[];
   _hasScreenshot?: boolean;
   screenshot?: string | null;
+  screenshotUrl?: string | null;
 }
 
 type Triad = "yes" | "no" | "partial";
@@ -73,7 +74,7 @@ async function loadShot(tradeId: string): Promise<string | null> {
   }
 }
 
-// ───────────────────── helpers ─────────────────────
+// ───────────────────── constants & helpers ─────────────────────
 
 const SESSION_KEY = "tradedesk_session_v1";
 const tradesKey = (u: string) => `tradedesk_trades_${u}_v1`;
@@ -121,8 +122,14 @@ function fmtPrice(n: number | string | undefined) {
   return v.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
+function tvSymbol(raw: string | undefined): string {
+  if (!raw) return "NASDAQ:AAPL";
+  const s = raw.toUpperCase().replace(/[^A-Z0-9:_-]/g, "");
+  return s.includes(":") ? s : s;
+}
+
 function topTheme(reviews: Review[]): string | null {
-  const STOP = new Set(["the","and","for","that","this","with","have","was","were","but","not","you","your","but","from","into","when","then","than","just","more","some","what","why","how","its","it's","i","a","an","of","to","in","on","is","be","by","as","or","at","it","my","me","we","do","did","didn't","could","would","should","too","so","if","get","got","go","gone"]);
+  const STOP = new Set(["the","and","for","that","this","with","have","was","were","but","not","you","your","from","into","when","then","than","just","more","some","what","why","how","its","it's","i","a","an","of","to","in","on","is","be","by","as","or","at","it","my","me","we","do","did","didn't","could","would","should","too","so","if","get","got","go","gone"]);
   const counts: Record<string, number> = {};
   for (const r of reviews) {
     const text = (r.differently || "").toLowerCase();
@@ -143,32 +150,6 @@ function topTheme(reviews: Review[]): string | null {
   return `Theme: "${sorted[0][0]}" mentioned in ${sorted[0][1]} reviews`;
 }
 
-// ───────────────────── UI atoms ─────────────────────
-
-function PillBtn({
-  label, active, color, onClick,
-}: { label: string; active: boolean; color: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        flex: 1,
-        padding: "10px 14px",
-        borderRadius: 10,
-        border: `1px solid ${active ? color : "#1e2540"}`,
-        background: active ? `${color}22` : "transparent",
-        color: active ? color : "#94a3b8",
-        fontSize: 12,
-        fontWeight: 700,
-        cursor: "pointer",
-        transition: "all 0.15s",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 // ───────────────────── page ─────────────────────
 
 export default function ReplayPage() {
@@ -180,9 +161,10 @@ export default function ReplayPage() {
   const [shot, setShot] = useState<string | null>(null);
   const [shotLoading, setShotLoading] = useState(false);
   const [done, setDone] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
+  const [slideDir, setSlideDir] = useState<"next" | "prev">("next");
+  const [slideKey, setSlideKey] = useState(0);
 
-  // current draft state
+  // draft form state
   const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
   const [followedRules, setFollowedRules] = useState<Triad | null>(null);
   const [confidence, setConfidence] = useState(5);
@@ -222,7 +204,7 @@ export default function ReplayPage() {
 
   const current = trades[idx];
 
-  // hydrate form when current trade changes (allow editing existing review)
+  // hydrate form when current trade changes
   useEffect(() => {
     if (!current) return;
     const existing = reviews[current.id];
@@ -231,13 +213,16 @@ export default function ReplayPage() {
     setConfidence(existing?.confidence ?? 5);
     setDifferently(existing?.differently ?? "");
     setGrade(existing?.grade ?? null);
+    setSlideKey((k) => k + 1);
   }, [current?.id]);
 
   // load screenshot for current trade
   useEffect(() => {
     setShot(null);
-    if (!current?._hasScreenshot && !current?.screenshot) return;
-    if (current.screenshot) { setShot(current.screenshot); return; }
+    if (!current) return;
+    const direct = current.screenshot || current.screenshotUrl;
+    if (direct) { setShot(direct); return; }
+    if (!current._hasScreenshot) return;
     setShotLoading(true);
     loadShot(current.id).then((d) => {
       setShot(d);
@@ -250,7 +235,14 @@ export default function ReplayPage() {
     () => trades.filter((t) => reviews[t.id]).length,
     [trades, reviews]
   );
-  const progressPct = total ? Math.round((reviewedCount / total) * 100) : 0;
+  const progressPct = total ? Math.round(((idx + (done ? 1 : 0)) / total) * 100) : 0;
+
+  const sessionGrade = useMemo<Grade | null>(() => {
+    const r = Object.values(reviews).filter((x) => x && x.grade);
+    if (!r.length) return null;
+    const avg = r.reduce((s, x) => s + (GRADE_SCORE[x.grade!] ?? 0), 0) / r.length;
+    return SCORE_TO_GRADE(avg);
+  }, [reviews]);
 
   const canAdvance = matchedSetup && followedRules && grade;
 
@@ -276,23 +268,30 @@ export default function ReplayPage() {
       reviewedAt: Date.now(),
     };
     saveCurrent(r);
+    setSlideDir("next");
     if (idx + 1 >= total) setDone(true);
     else setIdx(idx + 1);
   };
 
   const handleSkip = () => {
+    setSlideDir("next");
     if (idx + 1 >= total) setDone(true);
     else setIdx(idx + 1);
   };
 
   const handlePrev = () => {
+    setSlideDir("prev");
     if (done) { setDone(false); setIdx(Math.max(0, total - 1)); return; }
     setIdx(Math.max(0, idx - 1));
   };
 
   const handleRestart = () => {
+    if (!username) return;
+    setReviews({});
+    try { localStorage.removeItem(reviewsKey(username)); } catch {}
     setDone(false);
     setIdx(0);
+    setSlideDir("next");
   };
 
   // ── Summary ──
@@ -313,6 +312,17 @@ export default function ReplayPage() {
     const ruledPct = Math.round((ruled / reviewedList.length) * 100);
     const avgConf =
       reviewedList.reduce((s, r) => s + (r.confidence || 0), 0) / reviewedList.length;
+
+    // best/worst by pnl among reviewed trades
+    const reviewedTrades = trades.filter((t) => reviews[t.id]);
+    let best: Trade | null = null;
+    let worst: Trade | null = null;
+    for (const t of reviewedTrades) {
+      const p = Number(t.pnl ?? 0);
+      if (best === null || p > Number(best.pnl ?? 0)) best = t;
+      if (worst === null || p < Number(worst.pnl ?? 0)) worst = t;
+    }
+
     return {
       avgGrade,
       matchedPct,
@@ -320,23 +330,10 @@ export default function ReplayPage() {
       avgConf: avgConf.toFixed(1),
       lesson: topTheme(reviewedList),
       count: reviewedList.length,
+      best,
+      worst,
     };
-  }, [reviewedList]);
-
-  const handleShare = async () => {
-    if (!summary) return;
-    const text = `📽️ Trade Replay — ${summary.count} trades reviewed
-Avg Grade: ${summary.avgGrade} • Setup match: ${summary.matchedPct}% • Rules followed: ${summary.ruledPct}%${summary.lesson ? `\nTop lesson — ${summary.lesson}` : ""}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: "Nexyru Trade Replay", text });
-      } else {
-        await navigator.clipboard.writeText(text);
-        setShareCopied(true);
-        setTimeout(() => setShareCopied(false), 1800);
-      }
-    } catch {}
-  };
+  }, [reviewedList, trades, reviews]);
 
   // ───────────────────── render ─────────────────────
 
@@ -384,44 +381,32 @@ Avg Grade: ${summary.avgGrade} • Setup match: ${summary.matchedPct}% • Rules
   if (done || idx >= total) {
     return (
       <div style={shellStyle}>
-        <div style={{ width: "100%", maxWidth: 720 }}>
-          <ProgressBar reviewed={reviewedCount} total={total} pct={progressPct} />
+        <div style={{ width: "100%", maxWidth: 760 }}>
+          <ProgressBar idx={total} total={total} pct={100} sessionGrade={sessionGrade} done />
 
-          <div style={{ ...cardStyle, marginTop: 18, padding: "32px 28px" }}>
+          <div style={{ ...cardStyle, marginTop: 18, padding: "36px 28px" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#22d3a5", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>
               Replay Complete
             </div>
-            <div style={{ fontSize: 26, fontWeight: 900, color: "#f0f4ff", marginBottom: 24 }}>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#f0f4ff", marginBottom: 28, letterSpacing: "-0.01em" }}>
               Session summary
             </div>
 
             {summary ? (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 }}>
-                  <SummaryStat
-                    label="Average Grade"
-                    value={summary.avgGrade}
-                    color={GRADE_COLOR[summary.avgGrade]}
-                    big
-                  />
-                  <SummaryStat
-                    label="Matched Setup"
-                    value={`${summary.matchedPct}%`}
-                    color={summary.matchedPct >= 70 ? "#22d3a5" : summary.matchedPct >= 40 ? "#fbbf24" : "#f43f5e"}
-                  />
-                  <SummaryStat
-                    label="Followed Rules"
-                    value={`${summary.ruledPct}%`}
-                    color={summary.ruledPct >= 70 ? "#22d3a5" : summary.ruledPct >= 40 ? "#fbbf24" : "#f43f5e"}
-                  />
-                  <SummaryStat
-                    label="Avg Confidence"
-                    value={summary.avgConf}
-                    color="#38bdf8"
-                  />
+                  <SummaryStat label="Session Grade" value={summary.avgGrade} color={GRADE_COLOR[summary.avgGrade]} big />
+                  <SummaryStat label="Setup Match" value={`${summary.matchedPct}%`} color={pctColor(summary.matchedPct)} />
+                  <SummaryStat label="Rules Followed" value={`${summary.ruledPct}%`} color={pctColor(summary.ruledPct)} />
+                  <SummaryStat label="Avg Confidence" value={summary.avgConf} color="#38bdf8" />
                 </div>
 
-                <div style={{ background: "#0b1120", border: "1px solid #1a2540", borderRadius: 14, padding: "18px 20px", marginBottom: 20 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14, marginBottom: 22 }}>
+                  <BestWorstCard label="Best Trade" trade={summary.best} positive />
+                  <BestWorstCard label="Worst Trade" trade={summary.worst} positive={false} />
+                </div>
+
+                <div style={{ background: "#0b1120", border: "1px solid #1a2540", borderRadius: 14, padding: "18px 20px", marginBottom: 22 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
                     Top Lesson
                   </div>
@@ -431,14 +416,11 @@ Avg Grade: ${summary.avgGrade} • Setup match: ${summary.matchedPct}% • Rules
                 </div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button onClick={handleShare} style={{ ...primaryBtnStyle, flex: "1 1 200px" }}>
-                    {shareCopied ? "✓ Copied!" : "📤 Share Results"}
-                  </button>
-                  <button onClick={handleRestart} style={{ ...secondaryBtnStyle, flex: "1 1 140px" }}>
-                    Review Again
+                  <button onClick={handleRestart} style={{ ...primaryBtnStyle, flex: "1 1 200px" }}>
+                    Start New Session
                   </button>
                   <a href="/dashboard" style={{ ...secondaryBtnStyle, flex: "1 1 140px", textAlign: "center" }}>
-                    Dashboard
+                    Back to Dashboard
                   </a>
                 </div>
               </>
@@ -463,270 +445,272 @@ Avg Grade: ${summary.avgGrade} • Setup match: ${summary.matchedPct}% • Rules
   const pnlColor = isWin ? "#22d3a5" : isLoss ? "#f43f5e" : "#94a3b8";
   const sideUpper = (t.type || "").toString().toUpperCase();
   const isLong = sideUpper === "LONG";
+  const sym = (t.pair || t.symbol || "").toString();
+  const entry = Number(t.entryPrice ?? 0);
+  const exit = Number(t.exitPrice ?? 0);
+  const contracts = Number(t.size ?? 0);
 
   return (
     <div style={shellStyle}>
-      <div style={{ width: "100%", maxWidth: 720 }}>
-        <ProgressBar reviewed={reviewedCount} total={total} pct={progressPct} idx={idx} />
+      <style>{slideAnimCSS}</style>
 
-        {/* Trade card */}
-        <div style={{ ...cardStyle, marginTop: 18, padding: 0, overflow: "hidden" }}>
-          {/* header strip */}
+      <div style={{ width: "100%", maxWidth: 760 }}>
+        <ProgressBar idx={idx} total={total} pct={Math.round(((idx) / total) * 100)} sessionGrade={sessionGrade} />
+
+        {/* Sliding trade panel */}
+        <div
+          key={slideKey}
+          style={{
+            animation: `${slideDir === "next" ? "slideInNext" : "slideInPrev"} 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both`,
+          }}
+        >
+          {/* Chart area */}
           <div style={{
-            padding: "18px 22px",
-            background: `linear-gradient(135deg, ${pnlColor}11, transparent 60%)`,
-            borderBottom: "1px solid #1a2540",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 10,
+            ...cardStyle,
+            marginTop: 18,
+            padding: 0,
+            overflow: "hidden",
+            position: "relative",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: "#f0f4ff", letterSpacing: "-0.01em" }}>
-                {t.pair || t.symbol || "—"}
+            <ChartArea
+              trade={t}
+              shot={shot}
+              shotLoading={shotLoading}
+              symbol={sym}
+            />
+
+            {/* Top overlay: symbol + side + date */}
+            <div style={{
+              position: "absolute",
+              top: 14, left: 14, right: 14,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              pointerEvents: "none",
+              zIndex: 2,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={overlayChipStrong}>
+                  {sym || "—"}
+                </div>
+                <div style={{
+                  ...overlayChip,
+                  background: isLong ? "rgba(34,211,165,0.22)" : "rgba(244,63,94,0.22)",
+                  color: isLong ? "#22d3a5" : "#f43f5e",
+                  border: `1px solid ${isLong ? "#22d3a566" : "#f43f5e66"}`,
+                  fontSize: 10,
+                  letterSpacing: "0.1em",
+                }}>
+                  {sideUpper || "—"}
+                </div>
               </div>
-              <div style={{
-                padding: "4px 10px",
-                borderRadius: 6,
-                fontSize: 10,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                background: isLong ? "rgba(34,211,165,0.15)" : "rgba(244,63,94,0.15)",
-                color: isLong ? "#22d3a5" : "#f43f5e",
-                border: `1px solid ${isLong ? "#22d3a544" : "#f43f5e44"}`,
-              }}>
-                {sideUpper || "—"}
+              <div style={{ ...overlayChip, fontSize: 10, color: "#cbd5e1" }}>
+                {fmtDate(t.date)}
               </div>
             </div>
-            <div style={{ fontSize: 11, color: "#4a5a7a", fontWeight: 600 }}>{fmtDate(t.date)}</div>
-          </div>
 
-          {/* body */}
-          <div style={{ padding: "22px" }}>
-            {/* big PnL */}
-            <div style={{ textAlign: "center", marginBottom: 22 }}>
-              <div style={{ fontSize: 11, color: "#4a5a7a", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>
-                Realized P&amp;L
+            {/* Right side: entry / exit price lines */}
+            <div style={{
+              position: "absolute",
+              top: 60,
+              right: 14,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              pointerEvents: "none",
+              zIndex: 2,
+            }}>
+              <PriceLine label="Entry" value={fmtPrice(entry)} color="#38bdf8" />
+              <PriceLine label="Exit"  value={fmtPrice(exit)}  color={pnlColor} />
+            </div>
+
+            {/* Bottom-left: contracts */}
+            <div style={{
+              position: "absolute",
+              bottom: 14,
+              left: 14,
+              pointerEvents: "none",
+              zIndex: 2,
+            }}>
+              <div style={{ ...overlayChip, fontSize: 11, color: "#cbd5e1" }}>
+                <span style={{ color: "#4a5a7a", marginRight: 6, fontWeight: 700 }}>SIZE</span>
+                {contracts ? `${contracts} ${contracts === 1 ? "contract" : "contracts"}` : "—"}
               </div>
+            </div>
+
+            {/* Bottom-right: PnL badge */}
+            <div style={{
+              position: "absolute",
+              bottom: 14,
+              right: 14,
+              pointerEvents: "none",
+              zIndex: 2,
+            }}>
               <div style={{
-                fontSize: 44,
-                fontWeight: 900,
+                padding: "10px 14px",
+                borderRadius: 12,
+                background: `${pnlColor}22`,
+                border: `1px solid ${pnlColor}88`,
                 color: pnlColor,
                 fontFamily: "ui-monospace, SFMono-Regular, monospace",
-                letterSpacing: "-0.02em",
-                lineHeight: 1.1,
+                fontWeight: 900,
+                fontSize: 17,
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                letterSpacing: "-0.01em",
+                boxShadow: `0 6px 18px ${pnlColor}33`,
               }}>
                 {pnl > 0 ? "+" : ""}{fmtMoney(pnl)}
+                {t.pnlPct !== undefined && t.pnlPct !== null && (
+                  <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.85 }}>
+                    ({Number(t.pnlPct) > 0 ? "+" : ""}{Number(t.pnlPct).toFixed(2)}%)
+                  </span>
+                )}
               </div>
-              {t.pnlPct !== undefined && t.pnlPct !== null && (
-                <div style={{ fontSize: 12, color: pnlColor, fontWeight: 700, marginTop: 4 }}>
-                  {Number(t.pnlPct) > 0 ? "+" : ""}{Number(t.pnlPct).toFixed(2)}%
+            </div>
+          </div>
+
+          {/* strategy + notes (below chart) */}
+          {(t.strategy || t.notes) && (
+            <div style={{ ...cardStyle, marginTop: 12, padding: "14px 18px" }}>
+              {t.strategy && (
+                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: t.notes ? 8 : 0 }}>
+                  <span style={{ color: "#4a5a7a", fontWeight: 700, marginRight: 8, letterSpacing: "0.06em", textTransform: "uppercase", fontSize: 10 }}>Setup</span>
+                  <span style={{ color: "#f0f4ff", fontWeight: 700 }}>{t.strategy}</span>
+                </div>
+              )}
+              {t.notes && (
+                <div style={{
+                  fontSize: 12,
+                  color: "#cbd5e1",
+                  lineHeight: 1.55,
+                  whiteSpace: "pre-wrap",
+                  background: "#0b1120",
+                  border: "1px dashed #1a2540",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>
+                    Notes at the time
+                  </div>
+                  {t.notes}
                 </div>
               )}
             </div>
-
-            {/* prices */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-              <PriceCell label="Entry" value={fmtPrice(t.entryPrice)} />
-              <PriceCell label="Exit" value={fmtPrice(t.exitPrice)} />
-            </div>
-
-            {/* strategy */}
-            {t.strategy && (
-              <div style={{
-                background: "#0b1120",
-                border: "1px solid #1a2540",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 12,
-                color: "#94a3b8",
-                marginBottom: 14,
-              }}>
-                <span style={{ color: "#4a5a7a", fontWeight: 700, marginRight: 8 }}>Setup</span>
-                <span style={{ color: "#f0f4ff", fontWeight: 700 }}>{t.strategy}</span>
-              </div>
-            )}
-
-            {/* screenshot */}
-            {(shot || shotLoading) && (
-              <div style={{
-                background: "#060d1a",
-                border: "1px solid #1a2540",
-                borderRadius: 12,
-                padding: 8,
-                marginBottom: 14,
-                minHeight: shotLoading ? 120 : undefined,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                {shotLoading ? (
-                  <div style={{ color: "#3a4a6a", fontSize: 12 }}>Loading screenshot…</div>
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={shot!}
-                    alt="Trade screenshot"
-                    style={{ maxWidth: "100%", borderRadius: 8, display: "block" }}
-                  />
-                )}
-              </div>
-            )}
-
-            {/* notes */}
-            {t.notes && (
-              <div style={{
-                background: "#0b1120",
-                border: "1px dashed #1a2540",
-                borderRadius: 10,
-                padding: "12px 14px",
-                fontSize: 13,
-                color: "#cbd5e1",
-                lineHeight: 1.55,
-                whiteSpace: "pre-wrap",
-              }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>
-                  Notes at the time
-                </div>
-                {t.notes}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Review form */}
-        <div style={{ ...cardStyle, marginTop: 14, padding: "22px" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>
-            Review this trade
-          </div>
-
-          <FormBlock label="Was this your setup?">
-            <div style={{ display: "flex", gap: 8 }}>
-              <PillBtn label="Yes"     active={matchedSetup === "yes"}     color="#22d3a5" onClick={() => setMatchedSetup("yes")} />
-              <PillBtn label="Partial" active={matchedSetup === "partial"} color="#fbbf24" onClick={() => setMatchedSetup("partial")} />
-              <PillBtn label="No"      active={matchedSetup === "no"}      color="#f43f5e" onClick={() => setMatchedSetup("no")} />
-            </div>
-          </FormBlock>
-
-          <FormBlock label="Did you follow your rules?">
-            <div style={{ display: "flex", gap: 8 }}>
-              <PillBtn label="Yes"     active={followedRules === "yes"}     color="#22d3a5" onClick={() => setFollowedRules("yes")} />
-              <PillBtn label="Partial" active={followedRules === "partial"} color="#fbbf24" onClick={() => setFollowedRules("partial")} />
-              <PillBtn label="No"      active={followedRules === "no"}      color="#f43f5e" onClick={() => setFollowedRules("no")} />
-            </div>
-          </FormBlock>
-
-          <FormBlock label={`Confidence level — ${confidence}/10`}>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={confidence}
-              onChange={(e) => setConfidence(Number(e.target.value))}
-              style={{
-                width: "100%",
-                accentColor: "#38bdf8",
-                height: 6,
-              }}
-            />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#4a5a7a", marginTop: 4, fontWeight: 600 }}>
-              <span>1</span><span>5</span><span>10</span>
-            </div>
-          </FormBlock>
-
-          <FormBlock label="What would you do differently?">
-            <textarea
-              value={differently}
-              onChange={(e) => setDifferently(e.target.value)}
-              placeholder="One honest takeaway. Skip if nothing comes to mind."
-              rows={3}
-              style={{
-                width: "100%",
-                background: "#0b1120",
-                border: "1px solid #1a2540",
-                borderRadius: 10,
-                color: "#f0f4ff",
-                fontSize: 13,
-                padding: "10px 12px",
-                fontFamily: "inherit",
-                resize: "vertical",
-                outline: "none",
-                lineHeight: 1.5,
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = "#38bdf8")}
-              onBlur={(e) => (e.currentTarget.style.borderColor = "#1a2540")}
-            />
-          </FormBlock>
-
-          <FormBlock label="Grade">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
-              {GRADE_LIST.map((g) => {
-                const active = grade === g;
-                const c = GRADE_COLOR[g];
-                return (
-                  <button
-                    key={g}
-                    onClick={() => setGrade(g)}
-                    style={{
-                      padding: "12px 0",
-                      borderRadius: 999,
-                      border: `1px solid ${active ? c : "#1e2540"}`,
-                      background: active ? c : "transparent",
-                      color: active ? "#000" : c,
-                      fontSize: 14,
-                      fontWeight: 900,
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      boxShadow: active ? `0 0 0 3px ${c}22` : "none",
-                    }}
-                  >
-                    {g}
-                  </button>
-                );
-              })}
-            </div>
-          </FormBlock>
-
-          {/* actions */}
-          <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" }}>
-            <button
-              onClick={handlePrev}
-              disabled={idx === 0}
-              style={{
-                ...secondaryBtnStyle,
-                opacity: idx === 0 ? 0.4 : 1,
-                cursor: idx === 0 ? "not-allowed" : "pointer",
-                flex: "0 0 auto",
-              }}
-            >
-              ← Prev
-            </button>
-            <button
-              onClick={handleSkip}
-              style={{ ...secondaryBtnStyle, flex: "0 0 auto" }}
-            >
-              Skip
-            </button>
-            <button
-              onClick={handleNext}
-              disabled={!canAdvance}
-              style={{
-                ...primaryBtnStyle,
-                flex: 1,
-                opacity: canAdvance ? 1 : 0.45,
-                cursor: canAdvance ? "pointer" : "not-allowed",
-              }}
-            >
-              {idx + 1 >= total ? "Finish Review →" : "Next Trade →"}
-            </button>
-          </div>
-
-          {!canAdvance && (
-            <div style={{ marginTop: 10, fontSize: 11, color: "#4a5a7a" }}>
-              Pick setup, rules, and a grade to continue.
-            </div>
           )}
+
+          {/* Review form */}
+          <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>
+              Review this trade
+            </div>
+
+            <FormBlock label="Was this your setup?">
+              <TriadRow value={matchedSetup} onChange={setMatchedSetup} />
+            </FormBlock>
+
+            <FormBlock label="Did you follow your rules?">
+              <TriadRow value={followedRules} onChange={setFollowedRules} />
+            </FormBlock>
+
+            <FormBlock label={`Confidence — ${confidence}/10`}>
+              <ConfidenceDots value={confidence} onChange={setConfidence} />
+            </FormBlock>
+
+            <FormBlock label="What would you do differently?">
+              <textarea
+                value={differently}
+                onChange={(e) => setDifferently(e.target.value)}
+                placeholder="One honest takeaway. Skip if nothing comes to mind."
+                rows={3}
+                style={{
+                  width: "100%",
+                  background: "#0b1120",
+                  border: "1px solid #1a2540",
+                  borderRadius: 10,
+                  color: "#f0f4ff",
+                  fontSize: 13,
+                  padding: "10px 12px",
+                  fontFamily: "inherit",
+                  resize: "vertical",
+                  outline: "none",
+                  lineHeight: 1.5,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "#38bdf8")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "#1a2540")}
+              />
+            </FormBlock>
+
+            <FormBlock label="Trade Grade">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+                {GRADE_LIST.map((g) => {
+                  const active = grade === g;
+                  const c = GRADE_COLOR[g];
+                  return (
+                    <button
+                      key={g}
+                      onClick={() => setGrade(g)}
+                      style={{
+                        padding: "12px 0",
+                        borderRadius: 999,
+                        border: `1px solid ${active ? c : "#1e2540"}`,
+                        background: active ? c : "transparent",
+                        color: active ? "#000" : c,
+                        fontSize: 14,
+                        fontWeight: 900,
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                        boxShadow: active ? `0 0 0 3px ${c}22` : "none",
+                      }}
+                    >
+                      {g}
+                    </button>
+                  );
+                })}
+              </div>
+            </FormBlock>
+
+            {/* actions */}
+            <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" }}>
+              <button
+                onClick={handlePrev}
+                disabled={idx === 0}
+                style={{
+                  ...secondaryBtnStyle,
+                  opacity: idx === 0 ? 0.4 : 1,
+                  cursor: idx === 0 ? "not-allowed" : "pointer",
+                  flex: "0 0 auto",
+                }}
+              >
+                ← Prev
+              </button>
+              <button
+                onClick={handleSkip}
+                style={{ ...secondaryBtnStyle, flex: "0 0 auto" }}
+              >
+                Skip
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={!canAdvance}
+                style={{
+                  ...primaryBtnStyle,
+                  flex: 1,
+                  opacity: canAdvance ? 1 : 0.45,
+                  cursor: canAdvance ? "pointer" : "not-allowed",
+                }}
+              >
+                {idx + 1 >= total ? "Finish →" : "Next →"}
+              </button>
+            </div>
+
+            {!canAdvance && (
+              <div style={{ marginTop: 10, fontSize: 11, color: "#4a5a7a" }}>
+                Pick setup, rules, and a grade to continue.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -735,29 +719,92 @@ Avg Grade: ${summary.avgGrade} • Setup match: ${summary.matchedPct}% • Rules
 
 // ───────────────────── sub-components ─────────────────────
 
-function ProgressBar({ reviewed, total, pct, idx }: { reviewed: number; total: number; pct: number; idx?: number }) {
-  const showing = idx !== undefined ? idx + 1 : reviewed;
+function ChartArea({
+  trade, shot, shotLoading, symbol,
+}: { trade: Trade; shot: string | null; shotLoading: boolean; symbol: string }) {
+  const [iframeFailed, setIframeFailed] = useState(false);
+
+  if (shotLoading) {
+    return (
+      <div style={{ height: 400, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
+        Loading screenshot…
+      </div>
+    );
+  }
+
+  if (shot) {
+    return (
+      <div style={{ position: "relative", background: "#060d1a", height: 400, overflow: "hidden" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={shot}
+          alt="Trade screenshot"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+        {/* subtle gradient overlays so chips stay readable */}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(6,13,26,0.55) 0%, rgba(6,13,26,0) 22%, rgba(6,13,26,0) 70%, rgba(6,13,26,0.7) 100%)", pointerEvents: "none" }} />
+      </div>
+    );
+  }
+
+  // TradingView fallback
+  const tvSym = tvSymbol(symbol);
+  const src = `https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSym)}&interval=5&theme=dark&style=1`;
+
+  if (iframeFailed || !tvSym) {
+    return (
+      <div style={{ height: 400, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
+        <div style={{ fontSize: 32 }}>📊</div>
+        <div style={{ fontSize: 12 }}>No chart available for {symbol || "this symbol"}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "relative", background: "#060d1a", height: 400, overflow: "hidden" }}>
+      <iframe
+        src={src}
+        width="100%"
+        height="400"
+        frameBorder="0"
+        onError={() => setIframeFailed(true)}
+        style={{ display: "block", border: 0 }}
+        title={`Chart ${symbol}`}
+      />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(6,13,26,0.45) 0%, rgba(6,13,26,0) 18%, rgba(6,13,26,0) 75%, rgba(6,13,26,0.65) 100%)", pointerEvents: "none" }} />
+    </div>
+  );
+}
+
+function ProgressBar({
+  idx, total, pct, sessionGrade, done,
+}: { idx: number; total: number; pct: number; sessionGrade: Grade | null; done?: boolean }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <a
-            href="/dashboard"
-            style={{
-              fontSize: 11,
-              color: "#4a5a7a",
-              textDecoration: "none",
-              fontWeight: 600,
-            }}
-          >
+          <a href="/dashboard" style={{ fontSize: 11, color: "#4a5a7a", textDecoration: "none", fontWeight: 600 }}>
             ← Dashboard
           </a>
           <div style={{ fontSize: 12, fontWeight: 800, color: "#f0f4ff", letterSpacing: "0.04em" }}>
             📽️ Trade Replay
           </div>
         </div>
-        <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, fontFamily: "monospace" }}>
-          {showing} / {total} <span style={{ color: "#4a5a7a" }}>· {reviewed} reviewed</span>
+        <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, fontFamily: "monospace", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>Trade {done ? total : idx + 1} of {total}</span>
+          {sessionGrade && (
+            <>
+              <span style={{ color: "#1e2540" }}>·</span>
+              <span>Session Grade:{" "}
+                <span style={{ color: GRADE_COLOR[sessionGrade], fontWeight: 900 }}>{sessionGrade}</span>
+              </span>
+            </>
+          )}
         </div>
       </div>
       <div style={{
@@ -771,22 +818,92 @@ function ProgressBar({ reviewed, total, pct, idx }: { reviewed: number; total: n
           width: `${pct}%`,
           height: "100%",
           background: "linear-gradient(90deg,#22d3a5,#38bdf8)",
-          transition: "width 0.35s ease",
+          transition: "width 0.4s ease",
         }} />
       </div>
     </div>
   );
 }
 
-function PriceCell({ label, value }: { label: string; value: string }) {
+function TriadRow({ value, onChange }: { value: Triad | null; onChange: (v: Triad) => void }) {
   return (
-    <div style={{ background: "#0b1120", border: "1px solid #1a2540", borderRadius: 10, padding: "10px 12px" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 800, color: "#f0f4ff", fontFamily: "ui-monospace, SFMono-Regular, monospace" }}>
-        {value}
-      </div>
+    <div style={{ display: "flex", gap: 8 }}>
+      <TriadBtn label="✅ Yes"     active={value === "yes"}     color="#22d3a5" onClick={() => onChange("yes")} />
+      <TriadBtn label="⚠️ Partial" active={value === "partial"} color="#fbbf24" onClick={() => onChange("partial")} />
+      <TriadBtn label="❌ No"      active={value === "no"}      color="#f43f5e" onClick={() => onChange("no")} />
+    </div>
+  );
+}
+
+function TriadBtn({
+  label, active, color, onClick,
+}: { label: string; active: boolean; color: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: "11px 10px",
+        borderRadius: 10,
+        border: `1px solid ${active ? color : "#1e2540"}`,
+        background: active ? `${color}22` : "transparent",
+        color: active ? color : "#94a3b8",
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: "pointer",
+        transition: "all 0.15s",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ConfidenceDots({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+        const filled = n <= value;
+        return (
+          <button
+            key={n}
+            onClick={() => onChange(n)}
+            aria-label={`Set confidence to ${n}`}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              aspectRatio: "1 / 1",
+              borderRadius: "50%",
+              border: `1px solid ${filled ? "#38bdf8" : "#1e2540"}`,
+              background: filled ? "#38bdf8" : "transparent",
+              cursor: "pointer",
+              padding: 0,
+              transition: "all 0.12s",
+              boxShadow: filled && n === value ? "0 0 0 3px #38bdf833" : "none",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function PriceLine({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "5px 9px",
+      borderRadius: 6,
+      background: "rgba(6,13,26,0.7)",
+      border: `1px solid ${color}66`,
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+      fontFamily: "ui-monospace, SFMono-Regular, monospace",
+    }}>
+      <span style={{ fontSize: 9, fontWeight: 800, color, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#f0f4ff" }}>{value}</span>
     </div>
   );
 }
@@ -816,7 +933,7 @@ function SummaryStat({
         {label}
       </div>
       <div style={{
-        fontSize: big ? 36 : 26,
+        fontSize: big ? 38 : 26,
         fontWeight: 900,
         color,
         fontFamily: "ui-monospace, SFMono-Regular, monospace",
@@ -826,6 +943,46 @@ function SummaryStat({
       </div>
     </div>
   );
+}
+
+function BestWorstCard({ label, trade, positive }: { label: string; trade: Trade | null; positive: boolean }) {
+  const color = positive ? "#22d3a5" : "#f43f5e";
+  if (!trade) {
+    return (
+      <div style={{ background: "#0b1120", border: `1px solid ${color}22`, borderRadius: 14, padding: "16px 18px" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 13, color: "#4a5a7a" }}>—</div>
+      </div>
+    );
+  }
+  const pnl = Number(trade.pnl ?? 0);
+  return (
+    <div style={{ background: "#0b1120", border: `1px solid ${color}44`, borderRadius: 14, padding: "16px 18px" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 16, fontWeight: 900, color: "#f0f4ff", letterSpacing: "-0.01em" }}>
+          {trade.pair || trade.symbol || "—"}
+        </div>
+        <div style={{
+          fontSize: 16, fontWeight: 900, color,
+          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        }}>
+          {pnl > 0 ? "+" : ""}{fmtMoney(pnl)}
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: "#4a5a7a", marginTop: 4 }}>
+        {fmtDate(trade.date)} · {(trade.type || "").toString().toUpperCase()}
+      </div>
+    </div>
+  );
+}
+
+function pctColor(p: number) {
+  return p >= 70 ? "#22d3a5" : p >= 40 ? "#fbbf24" : "#f43f5e";
 }
 
 // ───────────────────── styles ─────────────────────
@@ -850,7 +1007,7 @@ const cardStyle: React.CSSProperties = {
 
 const primaryBtnStyle: React.CSSProperties = {
   display: "inline-block",
-  padding: "12px 18px",
+  padding: "13px 18px",
   borderRadius: 12,
   border: "none",
   background: "linear-gradient(135deg,#0ea5a0,#22d3a5)",
@@ -863,7 +1020,7 @@ const primaryBtnStyle: React.CSSProperties = {
 };
 
 const secondaryBtnStyle: React.CSSProperties = {
-  padding: "12px 18px",
+  padding: "13px 18px",
   borderRadius: 12,
   border: "1px solid #1e2f4a",
   background: "transparent",
@@ -873,3 +1030,33 @@ const secondaryBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   textDecoration: "none",
 };
+
+const overlayChip: React.CSSProperties = {
+  padding: "5px 10px",
+  borderRadius: 6,
+  background: "rgba(6,13,26,0.72)",
+  border: "1px solid #1e2f4a",
+  color: "#f0f4ff",
+  fontWeight: 700,
+  backdropFilter: "blur(8px)",
+  WebkitBackdropFilter: "blur(8px)",
+};
+
+const overlayChipStrong: React.CSSProperties = {
+  ...overlayChip,
+  fontSize: 14,
+  fontWeight: 900,
+  letterSpacing: "-0.01em",
+  padding: "6px 12px",
+};
+
+const slideAnimCSS = `
+@keyframes slideInNext {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideInPrev {
+  from { transform: translateX(-24px); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+`;
