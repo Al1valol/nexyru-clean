@@ -146,38 +146,29 @@ function fmtPrice(n: number | string | undefined) {
 
 type Interval = "1m" | "5m" | "15m" | "1h";
 
-const CRYPTO_MAP: Record<string, string> = {
-  BTC: "bitcoin",
-  ETH: "ethereum",
-  SOL: "solana",
-  DOGE: "dogecoin",
-  ADA: "cardano",
-  XRP: "ripple",
-  AVAX: "avalanche-2",
-  MATIC: "matic-network",
-  DOT: "polkadot",
-  LINK: "chainlink",
-  UNI: "uniswap",
-  ATOM: "cosmos",
-  LTC: "litecoin",
-  BCH: "bitcoin-cash",
-  NEAR: "near",
-  SHIB: "shiba-inu",
-  TRX: "tron",
-  XLM: "stellar",
-  FIL: "filecoin",
-  ALGO: "algorand",
-  APT: "aptos",
-  ARB: "arbitrum",
-  OP: "optimism",
-  INJ: "injective-protocol",
-  TIA: "celestia",
-  SUI: "sui",
-  PEPE: "pepe",
-  WIF: "dogwifcoin",
-  BONK: "bonk",
-  HYPE: "hyperliquid",
+// Symbols we recognize as crypto (routed to Binance). Values unused — Set semantics.
+const CRYPTO_BASES = new Set<string>([
+  "BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "MATIC", "DOT", "LINK",
+  "UNI", "ATOM", "LTC", "BCH", "NEAR", "SHIB", "TRX", "XLM", "FIL", "ALGO",
+  "APT", "ARB", "OP", "INJ", "TIA", "SUI", "PEPE", "WIF", "BONK", "HYPE",
+]);
+
+const BINANCE_SYMBOL_MAP: Record<string, string> = {
+  "SOL/USD": "SOLUSDT",
+  "BTC/USD": "BTCUSDT",
+  "ETH/USD": "ETHUSDT",
+  "DOGE/USD": "DOGEUSDT",
+  "XRP/USD": "XRPUSDT",
+  "SOL-USD": "SOLUSDT",
+  "BTC-USD": "BTCUSDT",
+  "ETH-USD": "ETHUSDT",
 };
+
+function formatBinanceSymbol(raw: string): string {
+  const pair = (raw || "").toUpperCase().trim();
+  if (BINANCE_SYMBOL_MAP[pair]) return BINANCE_SYMBOL_MAP[pair];
+  return pair.replace("/USD", "USDT").replace("-USD", "USDT").replace("/", "");
+}
 
 const YAHOO_MAP: Record<string, string> = {
   "ES1!": "ES=F",
@@ -199,6 +190,7 @@ const YAHOO_MAP: Record<string, string> = {
   "GOLD/USD": "GC=F",
   "SILVER/USD": "SI=F",
   "OIL/USD": "CL=F",
+  "USOIL/USD": "CL=F",
   "COPPER/USD": "HG=F",
 };
 
@@ -209,15 +201,19 @@ const YAHOO_INTERVAL: Record<Interval, string> = {
   "1h": "60m",
 };
 
-const YAHOO_RANGE: Record<Interval, string> = {
-  "1m": "1d",
-  "5m": "5d",
-  "15m": "5d",
-  "1h": "1mo",
+const INTERVAL_MS: Record<Interval, number> = {
+  "1m": 60 * 1000,
+  "5m": 5 * 60 * 1000,
+  "15m": 15 * 60 * 1000,
+  "1h": 60 * 60 * 1000,
 };
 
+// 50 candles before entry, 20 after — full lead-up context.
+const CANDLES_BEFORE = 50;
+const CANDLES_AFTER = 20;
+
 type Instrument =
-  | { kind: "crypto"; coinId: string }
+  | { kind: "crypto"; binanceSymbol: string }
   | { kind: "yahoo"; yahooSymbol: string }
   | { kind: "unknown" };
 
@@ -225,9 +221,13 @@ function classifySymbol(raw: string): Instrument {
   const symbol = (raw || "").toUpperCase().trim();
   if (!symbol) return { kind: "unknown" };
 
-  const base = symbol.split("/")[0];
-  if (CRYPTO_MAP[base]) return { kind: "crypto", coinId: CRYPTO_MAP[base] };
+  // Specific Yahoo mappings (futures, metals, oil) take precedence over crypto routing.
   if (YAHOO_MAP[symbol]) return { kind: "yahoo", yahooSymbol: YAHOO_MAP[symbol] };
+
+  const base = symbol.split("/")[0].split("-")[0];
+  if (CRYPTO_BASES.has(base)) {
+    return { kind: "crypto", binanceSymbol: formatBinanceSymbol(symbol) };
+  }
 
   // Plain equity ticker (AAPL, TSLA…) or anything else — let Yahoo try
   const yahooFallback = symbol.replace(/\/USD$/i, "").replace(/\//g, "-");
@@ -235,67 +235,55 @@ function classifySymbol(raw: string): Instrument {
   return { kind: "yahoo", yahooSymbol: yahooFallback };
 }
 
-async function fetchCryptoCandles(coinId: string): Promise<ChartRow[]> {
-  const ohlcUrl = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=1`;
-  const volUrl = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1`;
+async function fetchBinanceCandles(
+  binanceSymbol: string,
+  interval: Interval,
+  tradeTime: number,
+): Promise<ChartRow[]> {
+  const ms = INTERVAL_MS[interval];
+  const startTime = tradeTime - CANDLES_BEFORE * ms;
+  const endTime = tradeTime + CANDLES_AFTER * ms;
+  const limit = CANDLES_BEFORE + CANDLES_AFTER + 10;
+  const url = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(
+    binanceSymbol,
+  )}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=${limit}`;
 
-  const [ohlcRes, volRes] = await Promise.all([
-    fetch(ohlcUrl),
-    fetch(volUrl).catch(() => null),
-  ]);
-  if (!ohlcRes.ok) throw new Error(`CoinGecko ${ohlcRes.status}`);
-  const rows = await ohlcRes.json();
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error("No OHLC rows");
-
-  let volSeries: [number, number][] = [];
-  if (volRes && volRes.ok) {
-    try {
-      const vd = await volRes.json();
-      volSeries = Array.isArray(vd?.total_volumes) ? vd.total_volumes : [];
-    } catch {}
-  }
-  const volAt = (ms: number): number | undefined => {
-    if (!volSeries.length) return undefined;
-    let best: number | undefined;
-    let bestDiff = Infinity;
-    for (const [t, v] of volSeries) {
-      const d = Math.abs(t - ms);
-      if (d < bestDiff) {
-        best = v;
-        bestDiff = d;
-      }
-    }
-    return best;
-  };
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Binance ${res.status}`);
+  const rows = await res.json();
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error("Binance: no klines");
 
   return rows
-    .map((row: number[]): ChartRow => ({
-      time: Math.floor(row[0] / 1000) as UTCTimestamp,
-      open: row[1],
-      high: row[2],
-      low: row[3],
-      close: row[4],
-      volume: volAt(row[0]),
+    .map((row: any[]): ChartRow => ({
+      time: Math.floor(Number(row[0]) / 1000) as UTCTimestamp,
+      open: Number(row[1]),
+      high: Number(row[2]),
+      low: Number(row[3]),
+      close: Number(row[4]),
+      volume: Number(row[5]),
     }))
     .filter(
       (c: ChartRow) =>
         Number.isFinite(c.open) &&
         Number.isFinite(c.high) &&
         Number.isFinite(c.low) &&
-        Number.isFinite(c.close)
+        Number.isFinite(c.close),
     )
     .sort((a: ChartRow, b: ChartRow) => (a.time as number) - (b.time as number));
 }
 
 async function fetchYahooCandles(
   yahooSymbol: string,
-  interval: Interval
+  interval: Interval,
+  tradeTime: number,
 ): Promise<ChartRow[]> {
+  const ms = INTERVAL_MS[interval];
+  const period1 = Math.floor((tradeTime - CANDLES_BEFORE * ms) / 1000);
+  const period2 = Math.floor((tradeTime + CANDLES_AFTER * ms) / 1000);
   const ivl = YAHOO_INTERVAL[interval];
-  const range = YAHOO_RANGE[interval];
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    yahooSymbol
-  )}?interval=${ivl}&range=${range}`;
+    yahooSymbol,
+  )}?interval=${ivl}&period1=${period1}&period2=${period2}`;
   const url = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
 
   const res = await fetch(url);
@@ -350,6 +338,8 @@ function useTradeChart(trade: Trade | undefined, interval: Interval) {
     }
     const symbol = (trade.symbol || trade.pair || "").toString();
     const info = classifySymbol(symbol);
+    const tradeTime =
+      typeof trade.date === "number" ? trade.date : new Date(trade.date || 0).getTime();
 
     let cancelled = false;
     setLoading(true);
@@ -358,11 +348,14 @@ function useTradeChart(trade: Trade | undefined, interval: Interval) {
 
     (async () => {
       try {
+        if (!Number.isFinite(tradeTime) || tradeTime <= 0) {
+          throw new Error("Missing trade timestamp");
+        }
         let data: ChartRow[];
         if (info.kind === "crypto") {
-          data = await fetchCryptoCandles(info.coinId);
+          data = await fetchBinanceCandles(info.binanceSymbol, interval, tradeTime);
         } else if (info.kind === "yahoo") {
-          data = await fetchYahooCandles(info.yahooSymbol, interval);
+          data = await fetchYahooCandles(info.yahooSymbol, interval, tradeTime);
         } else {
           throw new Error("Unsupported symbol");
         }
