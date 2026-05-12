@@ -5555,6 +5555,7 @@ function PlatformDropdown() {
 
   const items = [
       { href:"/planner",     emoji:"⚡", label:"Trade Planner",   color:"#38bdf8" },
+      { href:"/challenge",   emoji:"🏆", label:"Challenge",      color:"#a78bfa" },
       { href:"/leaderboard", emoji:"🏆", label:"Leaderboard",   color:"#818cf8" },
       { href:"/earnings",    emoji:"💰", label:"Earnings",       color:"#22d3a5" },
       { href:"/replay",      emoji:"📽️", label:"Trade Replay",    color:"#38bdf8" },
