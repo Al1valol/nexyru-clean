@@ -1913,6 +1913,46 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
   const [sortD,   setSortD]   = useState("desc");
   const [viewing, setViewing] = useState(null);
   const [reviewMap, setReviewMap] = useState({}); // { tradeId: { emotion, confidence, followed_rules, notes } }
+  const [sharedSet, setSharedSet] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("nexyru_shared_trades") || "[]")); } catch { return new Set(); }
+  });
+  const [unsharing, setUnsharing] = useState(null);
+
+  useEffect(() => {
+    const h = () => {
+      try { setSharedSet(new Set(JSON.parse(localStorage.getItem("nexyru_shared_trades") || "[]"))); } catch {}
+    };
+    window.addEventListener("nexyruSharedUpdate", h);
+    return () => window.removeEventListener("nexyruSharedUpdate", h);
+  }, []);
+
+  const handleUnshare = async (tradeId) => {
+    if (!window.confirm("Remove from feed?")) return;
+    setUnsharing(String(tradeId));
+    try {
+      const SUPA = "https://xsrcaceydyqytbipvrok.supabase.co";
+      const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A";
+      const u = JSON.parse(localStorage.getItem("tradedesk_session_v1") || "{}").username;
+      if (!u) throw new Error("Not signed in");
+      const r = await fetch(`${SUPA}/rest/v1/profiles?username=eq.${encodeURIComponent(u)}&select=id`, { headers: { apikey: KEY, Authorization: "Bearer " + KEY } });
+      const p = await r.json();
+      if (!p?.length) throw new Error("Profile not found");
+      const userId = p[0].id;
+      const del = await fetch(`${SUPA}/rest/v1/trade_posts?trade_id=eq.${encodeURIComponent(String(tradeId))}&user_id=eq.${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+        headers: { apikey: KEY, Authorization: "Bearer " + KEY },
+      });
+      if (!del.ok) { const e = await del.text(); throw new Error(e || "Delete failed"); }
+      const arr = JSON.parse(localStorage.getItem("nexyru_shared_trades") || "[]").filter(id => id !== String(tradeId));
+      localStorage.setItem("nexyru_shared_trades", JSON.stringify(arr));
+      setSharedSet(new Set(arr));
+      window.dispatchEvent(new CustomEvent("nexyruSharedUpdate"));
+    } catch (e) {
+      alert("Failed to remove from feed: " + e.message);
+    } finally {
+      setUnsharing(null);
+    }
+  };
 
   // Load review notes for all visible trades
   useEffect(() => {
@@ -2051,7 +2091,23 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       </td>
 
                       <td style={{ ...td, color:"#64748b", whiteSpace:"nowrap" }} onClick={()=>setViewing(t)}>{new Date(t.date).toLocaleDateString()}</td>
-                      <td style={{...td, padding:"4px 8px"}}><button onClick={(e)=>{e.stopPropagation(); window.__pendingShare=t; window.dispatchEvent(new CustomEvent('nexyruShare'));}} style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",cursor:"pointer",background:"rgba(56,189,248,0.08)",color:"#38bdf8",fontSize:10,fontWeight:700}}>📡 Share</button></td>
+                      <td style={{...td, padding:"4px 8px"}}>
+                        {sharedSet.has(String(t.id)) ? (
+                          <button
+                            onClick={(e)=>{e.stopPropagation(); handleUnshare(t.id);}}
+                            disabled={unsharing===String(t.id)}
+                            title="Click to remove from feed"
+                            style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(52,211,153,0.3)",cursor:unsharing===String(t.id)?"wait":"pointer",background:"rgba(52,211,153,0.1)",color:"#34d399",fontSize:10,fontWeight:700}}>
+                            {unsharing===String(t.id) ? "…" : "✓ Posted"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e)=>{e.stopPropagation(); window.__pendingShare=t; window.dispatchEvent(new CustomEvent('nexyruShare'));}}
+                            style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",cursor:"pointer",background:"rgba(56,189,248,0.08)",color:"#38bdf8",fontSize:10,fontWeight:700}}>
+                            📡 Share
+                          </button>
+                        )}
+                      </td>
                       <td style={td}>
                         <div style={{ display:"flex", gap:4 }}>
                           <button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.06)", color:"#818cf8", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600 }}><span>🤖</span></button>
@@ -7943,6 +7999,7 @@ function ShareTradeModal({trade,onClose}){
   const SUPA='https://xsrcaceydyqytbipvrok.supabase.co';
   const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A';
   const pnl=trade.pnl??0; const pos=pnl>=0;
+  const username=(()=>{try{return JSON.parse(localStorage.getItem('tradedesk_session_v1')||'{}').username||'';}catch{return '';}})();
   const share=async()=>{
     setStatus('sharing');
     try{
@@ -7951,16 +8008,27 @@ function ShareTradeModal({trade,onClose}){
       const p=await r.json(); if(!p?.length)throw new Error('Profile not found');
       const res=await fetch(SUPA+'/rest/v1/trade_posts',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({user_id:p[0].id,trade_id:String(trade.id),symbol:trade.symbol||trade.pair||'Unknown',side:trade.type==='long'?'long':'short',entry_price:trade.entryPrice??null,exit_price:trade.exitPrice??null,pnl,contracts:trade.contracts??trade.quantity??null,setup_name:trade.strategy||null,notes:notes||null,status:'closed',visibility:vis})});
       if(!res.ok){const e=await res.json();throw new Error(e.message);}
+      try{
+        const arr=JSON.parse(localStorage.getItem('nexyru_shared_trades')||'[]');
+        const next=Array.from(new Set([...arr,String(trade.id)]));
+        localStorage.setItem('nexyru_shared_trades',JSON.stringify(next));
+        window.dispatchEvent(new CustomEvent('nexyruSharedUpdate'));
+      }catch{}
       setStatus('done'); setTimeout(onClose,1500);
     }catch(e){setStatus('error'+e.message);}
   };
   return(
     <div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(4,8,20,0.92)',backdropFilter:'blur(16px)',fontFamily:'system-ui'}}>
       <div style={{background:'linear-gradient(135deg,#0d1628,#0f1e30)',border:'1px solid #1a2540',borderRadius:24,padding:28,maxWidth:440,width:'90%',boxShadow:'0 40px 120px rgba(0,0,0,0.9)'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
           <h3 style={{fontSize:18,fontWeight:900,color:'#f0f4ff',margin:0}}>Share Trade 📡</h3>
           <button onClick={onClose} style={{background:'none',border:'none',color:'#475569',cursor:'pointer',fontSize:18}}>✕</button>
         </div>
+        {username && (
+          <div style={{fontSize:11,color:'#64748b',marginBottom:16}}>
+            Sharing as <a href={`/trader/@${username}`} style={{color:'#38bdf8',textDecoration:'none',fontWeight:700}}>@{username}</a>
+          </div>
+        )}
         <div style={{padding:'14px 16px',borderRadius:14,background:pos?'rgba(52,211,153,0.08)':'rgba(248,113,113,0.08)',border:'1px solid '+(pos?'rgba(52,211,153,0.2)':'rgba(248,113,113,0.2)'),marginBottom:16}}>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
             <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:4,background:trade.type==='long'?'rgba(52,211,153,0.15)':'rgba(248,113,113,0.15)',color:trade.type==='long'?'#34d399':'#f87171'}}>{trade.type==='long'?'▲ LONG':'▼ SHORT'}</span>

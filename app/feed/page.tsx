@@ -142,12 +142,12 @@ export default function FeedPage() {
             return (
               <div key={post.id} style={{ borderRadius: 18, background: "#0b1120", border: "1px solid #1a2540", padding: "16px 20px", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 12, background: ac + "22", border: `1.5px solid ${ac}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: ac, flexShrink: 0 }}>
+                  <a href={`/trader/@${post.username}`} style={{ width: 40, height: 40, borderRadius: 12, background: ac + "22", border: `1.5px solid ${ac}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: ac, flexShrink: 0, textDecoration: "none" }}>
                     {post.username?.slice(0, 2).toUpperCase()}
-                  </div>
+                  </a>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: "#f0f4ff" }}>@{post.username}</span>
+                      <a href={`/trader/@${post.username}`} style={{ fontSize: 13, fontWeight: 800, color: "#f0f4ff", textDecoration: "none" }}>@{post.username}</a>
                       <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: post.side === "long" ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)", color: post.side === "long" ? "#34d399" : "#f87171" }}>
                         {post.side === "long" ? "▲ LONG" : "▼ SHORT"}
                       </span>
@@ -182,11 +182,11 @@ export default function FeedPage() {
             {trending.length === 0 ? <div style={{ fontSize: 11, color: "#2e3f5a" }}>No activity yet</div> : trending.map(([u, c]: any, i) => {
               const ac = getAC(u);
               return (
-                <div key={u} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <a key={u} href={`/trader/@${u}`} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, textDecoration: "none" }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#2e3f5a", width: 16 }}>#{i + 1}</span>
                   <div style={{ width: 32, height: 32, borderRadius: 10, background: ac + "22", border: `1.5px solid ${ac}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: ac }}>{u.slice(0, 2).toUpperCase()}</div>
                   <div><div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>@{u}</div><div style={{ fontSize: 10, color: "#3a4a6a" }}>{c} posts</div></div>
-                </div>
+                </a>
               );
             })}
           </div>
