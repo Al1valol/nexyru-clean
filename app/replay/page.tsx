@@ -5,15 +5,25 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   createChart,
   CandlestickSeries,
+  HistogramSeries,
   LineStyle,
+  CrosshairMode,
   ColorType,
   createSeriesMarkers,
+  createTextWatermark,
   type IChartApi,
   type ISeriesApi,
   type UTCTimestamp,
   type SeriesMarker,
   type CandlestickData,
+  type HistogramData,
+  type MouseEventParams,
+  type Time,
 } from "lightweight-charts";
+
+interface ChartRow extends CandlestickData<UTCTimestamp> {
+  volume?: number;
+}
 
 // ───────────────────────── types ─────────────────────────
 
@@ -225,36 +235,62 @@ function classifySymbol(raw: string): Instrument {
   return { kind: "yahoo", yahooSymbol: yahooFallback };
 }
 
-async function fetchCryptoCandles(
-  coinId: string
-): Promise<CandlestickData<UTCTimestamp>[]> {
-  const url = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=1`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
-  const data = await res.json();
-  if (!Array.isArray(data) || data.length === 0) throw new Error("No OHLC rows");
-  return data
-    .map((row: number[]) => ({
+async function fetchCryptoCandles(coinId: string): Promise<ChartRow[]> {
+  const ohlcUrl = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=usd&days=1`;
+  const volUrl = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1`;
+
+  const [ohlcRes, volRes] = await Promise.all([
+    fetch(ohlcUrl),
+    fetch(volUrl).catch(() => null),
+  ]);
+  if (!ohlcRes.ok) throw new Error(`CoinGecko ${ohlcRes.status}`);
+  const rows = await ohlcRes.json();
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error("No OHLC rows");
+
+  let volSeries: [number, number][] = [];
+  if (volRes && volRes.ok) {
+    try {
+      const vd = await volRes.json();
+      volSeries = Array.isArray(vd?.total_volumes) ? vd.total_volumes : [];
+    } catch {}
+  }
+  const volAt = (ms: number): number | undefined => {
+    if (!volSeries.length) return undefined;
+    let best: number | undefined;
+    let bestDiff = Infinity;
+    for (const [t, v] of volSeries) {
+      const d = Math.abs(t - ms);
+      if (d < bestDiff) {
+        best = v;
+        bestDiff = d;
+      }
+    }
+    return best;
+  };
+
+  return rows
+    .map((row: number[]): ChartRow => ({
       time: Math.floor(row[0] / 1000) as UTCTimestamp,
       open: row[1],
       high: row[2],
       low: row[3],
       close: row[4],
+      volume: volAt(row[0]),
     }))
     .filter(
-      (c) =>
+      (c: ChartRow) =>
         Number.isFinite(c.open) &&
         Number.isFinite(c.high) &&
         Number.isFinite(c.low) &&
         Number.isFinite(c.close)
     )
-    .sort((a, b) => (a.time as number) - (b.time as number));
+    .sort((a: ChartRow, b: ChartRow) => (a.time as number) - (b.time as number));
 }
 
 async function fetchYahooCandles(
   yahooSymbol: string,
   interval: Interval
-): Promise<CandlestickData<UTCTimestamp>[]> {
+): Promise<ChartRow[]> {
   const ivl = YAHOO_INTERVAL[interval];
   const range = YAHOO_RANGE[interval];
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
@@ -273,12 +309,13 @@ async function fetchYahooCandles(
   const quote = result.indicators?.quote?.[0];
   if (!quote || !timestamps.length) throw new Error("Yahoo: empty quote");
 
-  const candles: CandlestickData<UTCTimestamp>[] = [];
+  const candles: ChartRow[] = [];
   for (let i = 0; i < timestamps.length; i++) {
     const o = quote.open?.[i];
     const h = quote.high?.[i];
     const l = quote.low?.[i];
     const c = quote.close?.[i];
+    const v = quote.volume?.[i];
     if (
       Number.isFinite(o) &&
       Number.isFinite(h) &&
@@ -291,6 +328,7 @@ async function fetchYahooCandles(
         high: h,
         low: l,
         close: c,
+        volume: Number.isFinite(v) ? v : undefined,
       });
     }
   }
@@ -299,7 +337,7 @@ async function fetchYahooCandles(
 }
 
 function useTradeChart(trade: Trade | undefined, interval: Interval) {
-  const [candles, setCandles] = useState<CandlestickData<UTCTimestamp>[] | null>(null);
+  const [candles, setCandles] = useState<ChartRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -320,7 +358,7 @@ function useTradeChart(trade: Trade | undefined, interval: Interval) {
 
     (async () => {
       try {
-        let data: CandlestickData<UTCTimestamp>[];
+        let data: ChartRow[];
         if (info.kind === "crypto") {
           data = await fetchCryptoCandles(info.coinId);
         } else if (info.kind === "yahoo") {
@@ -398,6 +436,7 @@ export default function ReplayPage() {
   const [slideKey, setSlideKey] = useState(0);
   const [viewMode, setViewMode] = useState<"chart" | "screenshot">("chart");
   const [interval, setInterval] = useState<Interval>("5m");
+  const [hoverCandle, setHoverCandle] = useState<ChartRow | null>(null);
 
   // draft form state
   const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
@@ -449,6 +488,7 @@ export default function ReplayPage() {
     setDifferently(existing?.differently ?? "");
     setGrade(existing?.grade ?? null);
     setSlideKey((k) => k + 1);
+    setHoverCandle(null);
   }, [current?.id]);
 
   // load screenshot for current trade
@@ -699,20 +739,20 @@ export default function ReplayPage() {
             animation: `${slideDir === "next" ? "slideInNext" : "slideInPrev"} 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both`,
           }}
         >
-          {/* Symbol header */}
+          {/* Unified chart header: symbol+pills | OHLC | date */}
           <div style={{
             ...cardStyle,
             marginTop: 18,
-            padding: "12px 16px",
-            display: "flex",
+            padding: "11px 14px",
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
             alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
+            gap: 14,
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Left: symbol, side, interval pills, screenshot */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: 900,
                 color: "#f0f4ff",
                 letterSpacing: "-0.01em",
@@ -721,62 +761,48 @@ export default function ReplayPage() {
                 {sym || "—"}
               </span>
               <span style={{
-                padding: "3px 9px",
+                padding: "3px 8px",
                 borderRadius: 6,
                 background: isLong ? "rgba(34,211,165,0.18)" : "rgba(244,63,94,0.18)",
                 color: isLong ? "#22d3a5" : "#f43f5e",
                 border: `1px solid ${isLong ? "#22d3a566" : "#f43f5e66"}`,
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: 800,
                 letterSpacing: "0.1em",
+                fontFamily: "ui-monospace, SFMono-Regular, monospace",
               }}>
                 {isLong ? "▲" : "▼"} {sideUpper || "—"}
               </span>
+              <div style={{ width: 1, height: 18, background: "#1a2540", margin: "0 2px" }} />
+              <div style={{ display: "flex", gap: 3 }}>
+                {(["1m", "5m", "15m", "1h"] as Interval[]).map((iv) => (
+                  <IntervalBtn
+                    key={iv}
+                    label={iv}
+                    active={viewMode === "chart" && interval === iv}
+                    disabled={viewMode !== "chart"}
+                    onClick={() => { setInterval(iv); setViewMode("chart"); }}
+                  />
+                ))}
+              </div>
+              <IntervalBtn
+                label="📸"
+                active={viewMode === "screenshot"}
+                disabled={!shot && !shotLoading}
+                onClick={() => setViewMode(viewMode === "screenshot" ? "chart" : "screenshot")}
+              />
             </div>
+
+            {/* Center: OHLC on hover */}
+            <OhlcRow candle={viewMode === "chart" ? hoverCandle : null} />
+
+            {/* Right: trade datetime */}
             <span style={{
               fontSize: 11,
               color: "#94a3b8",
               fontFamily: "ui-monospace, SFMono-Regular, monospace",
-            }}>
-              {fmtTradeDateTime(t.date)}
-            </span>
-          </div>
-
-          {/* Chart controls bar */}
-          <div style={{
-            ...cardStyle,
-            marginTop: 10,
-            padding: "8px 10px",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flexWrap: "wrap",
-          }}>
-            <div style={{ display: "flex", gap: 4 }}>
-              {(["1m", "5m", "15m", "1h"] as Interval[]).map((iv) => (
-                <IntervalBtn
-                  key={iv}
-                  label={iv}
-                  active={viewMode === "chart" && interval === iv}
-                  disabled={viewMode !== "chart"}
-                  onClick={() => { setInterval(iv); setViewMode("chart"); }}
-                />
-              ))}
-            </div>
-            <div style={{ width: 1, height: 22, background: "#1a2540", margin: "0 4px" }} />
-            <IntervalBtn
-              label="📸 Screenshot"
-              active={viewMode === "screenshot"}
-              disabled={!shot && !shotLoading}
-              onClick={() => setViewMode(viewMode === "screenshot" ? "chart" : "screenshot")}
-            />
-            <div style={{ flex: 1 }} />
-            <span style={{
-              fontSize: 11,
-              color: "#4a5a7a",
-              fontFamily: "ui-monospace, SFMono-Regular, monospace",
-              fontWeight: 600,
-              paddingRight: 6,
+              whiteSpace: "nowrap",
+              textAlign: "right",
             }}>
               {fmtTradeDateTime(t.date)}
             </span>
@@ -796,6 +822,7 @@ export default function ReplayPage() {
               shotLoading={shotLoading}
               viewMode={viewMode}
               interval={interval}
+              onHover={setHoverCandle}
             />
           </div>
 
@@ -972,140 +999,394 @@ export default function ReplayPage() {
 // ───────────────────── sub-components ─────────────────────
 
 function ChartArea({
-  trade, shot, shotLoading, viewMode, interval,
-}: { trade: Trade; shot: string | null; shotLoading: boolean; viewMode: "chart" | "screenshot"; interval: Interval }) {
+  trade, shot, shotLoading, viewMode, interval, onHover,
+}: {
+  trade: Trade;
+  shot: string | null;
+  shotLoading: boolean;
+  viewMode: "chart" | "screenshot";
+  interval: Interval;
+  onHover: (c: ChartRow | null) => void;
+}) {
   const HEIGHT = 500;
+  const { candles, loading, error } = useTradeChart(trade, interval);
 
-  if (viewMode === "screenshot") {
-    const screenshotEl = shotLoading ? (
-      <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
-        Loading screenshot…
-      </div>
-    ) : shot ? (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={shot}
-        alt="Trade screenshot"
-        style={{ width: "100%", height: HEIGHT, objectFit: "contain", background: "#060d1a", display: "block" }}
-      />
-    ) : (
+  // Reset hover state if we leave chart view
+  useEffect(() => {
+    if (viewMode !== "chart") onHover(null);
+  }, [viewMode, onHover]);
+
+  // Fall back to screenshot if chart errored AND a screenshot exists
+  const autoFallbackToShot =
+    viewMode === "chart" && !!error && !loading && (shot != null || shotLoading);
+  const showScreenshot = viewMode === "screenshot" || autoFallbackToShot;
+
+  if (showScreenshot) {
+    if (shotLoading) {
+      return (
+        <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
+          Loading screenshot…
+        </div>
+      );
+    }
+    if (shot) {
+      return (
+        <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={shot}
+            alt="Trade screenshot"
+            style={{ width: "100%", height: HEIGHT, objectFit: "contain", background: "#060d1a", display: "block" }}
+          />
+          {autoFallbackToShot && (
+            <div style={{
+              position: "absolute", top: 10, left: 10,
+              padding: "5px 9px", borderRadius: 8,
+              background: "rgba(248, 113, 113, 0.12)",
+              border: "1px solid rgba(248, 113, 113, 0.32)",
+              color: "#fca5a5", fontSize: 10, fontWeight: 700,
+              letterSpacing: "0.08em", textTransform: "uppercase",
+              fontFamily: "ui-monospace, SFMono-Regular, monospace",
+            }}>
+              Live chart unavailable · showing screenshot
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
       <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
         <div style={{ fontSize: 28 }}>📸</div>
         <div style={{ fontSize: 12 }}>No screenshot attached</div>
       </div>
     );
-    return <div style={{ background: "#060d1a", height: HEIGHT }}>{screenshotEl}</div>;
   }
 
-  return <CandleChart trade={trade} interval={interval} height={HEIGHT} />;
+  if (loading) return <ChartSkeleton height={HEIGHT} />;
+
+  if (error || !candles || candles.length === 0) {
+    return (
+      <div style={{
+        height: HEIGHT, background: "#060d1a",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        color: "#4a5a7a", fontSize: 12, gap: 10, padding: 16, textAlign: "center",
+      }}>
+        <div style={{ fontSize: 36, opacity: 0.6 }}>📊</div>
+        <div style={{ fontWeight: 700, color: "#94a3b8" }}>Chart data unavailable</div>
+        <div style={{ fontSize: 10, color: "#3a4a6a", fontFamily: "ui-monospace, monospace" }}>
+          {error || "No candles returned"}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <CandleChart
+      trade={trade}
+      candles={candles}
+      height={HEIGHT}
+      onHover={onHover}
+    />
+  );
+}
+
+function ChartSkeleton({ height }: { height: number }) {
+  return (
+    <div style={{
+      height,
+      background: "#060d1a",
+      position: "relative",
+      overflow: "hidden",
+    }}>
+      <style>{`
+        @keyframes nexyruPulse {
+          0%, 100% { opacity: 0.35; }
+          50%      { opacity: 0.85; }
+        }
+        .nx-skel-bar {
+          background: linear-gradient(180deg, #0d1628 0%, #0a1320 100%);
+          border-radius: 2px;
+          animation: nexyruPulse 1.4s ease-in-out infinite;
+        }
+      `}</style>
+      {/* faux grid */}
+      <div style={{ position: "absolute", inset: 0, opacity: 0.5 }}>
+        {[20, 40, 60, 80].map((p) => (
+          <div key={p} style={{
+            position: "absolute", left: 0, right: 0, top: `${p}%`,
+            height: 1, background: "rgba(26, 37, 64, 0.6)",
+          }} />
+        ))}
+      </div>
+      {/* faux candles */}
+      <div style={{
+        position: "absolute", inset: 0,
+        padding: "30px 70px 110px 20px",
+        display: "flex", alignItems: "flex-end", gap: 4,
+      }}>
+        {Array.from({ length: 40 }).map((_, i) => {
+          const h = 30 + ((i * 37) % 60);
+          const delay = (i * 0.04) % 1.4;
+          return (
+            <div
+              key={i}
+              className="nx-skel-bar"
+              style={{
+                flex: 1,
+                height: `${h}%`,
+                minWidth: 4,
+                animationDelay: `${delay}s`,
+              }}
+            />
+          );
+        })}
+      </div>
+      {/* faux volume */}
+      <div style={{
+        position: "absolute", left: 20, right: 70, bottom: 30,
+        height: 70,
+        display: "flex", alignItems: "flex-end", gap: 4,
+      }}>
+        {Array.from({ length: 40 }).map((_, i) => {
+          const h = 20 + ((i * 53) % 70);
+          const delay = (i * 0.05) % 1.4;
+          return (
+            <div
+              key={i}
+              className="nx-skel-bar"
+              style={{
+                flex: 1,
+                height: `${h}%`,
+                minWidth: 4,
+                opacity: 0.45,
+                animationDelay: `${delay}s`,
+              }}
+            />
+          );
+        })}
+      </div>
+      <div style={{
+        position: "absolute",
+        top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        color: "#1e3a5f",
+        fontSize: 38,
+        fontWeight: 900,
+        letterSpacing: "0.4em",
+        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        animation: "nexyruPulse 1.6s ease-in-out infinite",
+        pointerEvents: "none",
+      }}>
+        NEXYRU
+      </div>
+    </div>
+  );
 }
 
 function CandleChart({
-  trade, interval, height,
-}: { trade: Trade; interval: Interval; height: number }) {
+  trade, candles, height, onHover,
+}: {
+  trade: Trade;
+  candles: ChartRow[];
+  height: number;
+  onHover: (c: ChartRow | null) => void;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { candles, loading, error } = useTradeChart(trade, interval);
+
+  // entry/exit times computed once for shading + scroll
+  const tradeMs =
+    typeof trade.date === "number" ? trade.date : new Date(trade.date || 0).getTime();
+  const tradeSec = isFinite(tradeMs) ? Math.floor(tradeMs / 1000) : 0;
+  const entryPrice = Number(trade.entryPrice ?? 0);
+  const exitPrice = Number(trade.exitPrice ?? 0);
+  const pnl = Number(trade.pnl ?? 0);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !candles || candles.length === 0) return;
+    if (!container || candles.length === 0) return;
 
     const chart: IChartApi = createChart(container, {
       layout: {
-        background: { type: ColorType.Solid, color: "#0b1120" },
-        textColor: "#94a3b8",
+        background: { type: ColorType.Solid, color: "#060d1a" },
+        textColor: "#64748b",
         fontSize: 11,
         fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "#1a2540" },
-        horzLines: { color: "#1a2540" },
+        vertLines: { color: "rgba(26, 37, 64, 0.8)", style: LineStyle.Solid },
+        horzLines: { color: "rgba(26, 37, 64, 0.8)", style: LineStyle.Solid },
       },
       timeScale: {
-        borderColor: "#1a2540",
+        borderVisible: false,
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 6,
+        barSpacing: 9,
       },
-      rightPriceScale: { borderColor: "#1a2540" },
-      crosshair: { mode: 1 },
+      rightPriceScale: {
+        borderVisible: false,
+        scaleMargins: { top: 0.08, bottom: 0.28 },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: {
+          color: "#38bdf8",
+          width: 1,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: "#0ea5e9",
+        },
+        horzLine: {
+          color: "#38bdf8",
+          width: 1,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: "#0ea5e9",
+        },
+      },
       width: container.clientWidth,
       height,
+      autoSize: false,
     });
 
+    // Watermark
+    const panes = chart.panes();
+    if (panes.length > 0) {
+      createTextWatermark(panes[0], {
+        horzAlign: "center",
+        vertAlign: "center",
+        lines: [
+          {
+            text: "NEXYRU",
+            color: "rgba(56, 189, 248, 0.06)",
+            fontSize: 92,
+            fontStyle: "bold",
+            fontFamily: "ui-monospace, SFMono-Regular, monospace",
+          },
+        ],
+      });
+    }
+
+    // Candles
     const series: ISeriesApi<"Candlestick"> = chart.addSeries(CandlestickSeries, {
-      upColor: "#34d399",
-      downColor: "#f87171",
+      upColor: "#34d39930",
+      downColor: "#f8717130",
       borderUpColor: "#34d399",
       borderDownColor: "#f87171",
       wickUpColor: "#34d399",
       wickDownColor: "#f87171",
+      borderVisible: true,
+      wickVisible: true,
+      priceLineVisible: false,
+      lastValueVisible: false,
     });
-
     series.setData(candles);
 
-    const entryPrice = Number(trade.entryPrice ?? 0);
-    const exitPrice = Number(trade.exitPrice ?? 0);
-    const tradeMs = typeof trade.date === "number"
-      ? trade.date
-      : new Date(trade.date || 0).getTime();
-    const tradeSec = isNaN(tradeMs) ? 0 : Math.floor(tradeMs / 1000);
+    // Volume bottom 20%
+    const hasVolume = candles.some(
+      (c) => Number.isFinite(c.volume) && (c.volume ?? 0) > 0
+    );
+    if (hasVolume) {
+      const volSeries = chart.addSeries(HistogramSeries, {
+        priceFormat: { type: "volume" },
+        priceScaleId: "vol",
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      chart.priceScale("vol").applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+        borderVisible: false,
+      });
+      const volData: HistogramData<UTCTimestamp>[] = candles.map((c) => ({
+        time: c.time,
+        value: Number.isFinite(c.volume) ? Number(c.volume) : 0,
+        color:
+          c.close >= c.open
+            ? "rgba(52, 211, 153, 0.4)"
+            : "rgba(248, 113, 113, 0.4)",
+      }));
+      volSeries.setData(volData);
+    }
 
-    const findClosestTime = (t: number): UTCTimestamp => {
-      let best = candles[0].time as number;
-      let bestDiff = Math.abs(best - t);
-      for (const c of candles) {
-        const diff = Math.abs((c.time as number) - t);
-        if (diff < bestDiff) {
-          best = c.time as number;
-          bestDiff = diff;
-        }
+    // Find entry index
+    let entryIdx = 0;
+    let bestDiff = Infinity;
+    for (let i = 0; i < candles.length; i++) {
+      const d = Math.abs((candles[i].time as number) - tradeSec);
+      if (d < bestDiff) {
+        bestDiff = d;
+        entryIdx = i;
       }
-      return best as UTCTimestamp;
-    };
+    }
+    const entryTime = candles[entryIdx].time;
 
+    // Markers
     const markers: SeriesMarker<UTCTimestamp>[] = [];
     if (entryPrice > 0 && tradeSec > 0) {
       markers.push({
-        time: findClosestTime(tradeSec),
+        time: entryTime,
         position: "belowBar",
         color: "#34d399",
         shape: "arrowUp",
-        text: `▲ Entry $${entryPrice.toFixed(2)}`,
+        size: 2,
+        text: `▲ ENTRY $${entryPrice.toFixed(2)}`,
       });
     }
     if (exitPrice > 0 && tradeSec > 0) {
       markers.push({
-        time: findClosestTime(tradeSec),
+        time: entryTime,
         position: "aboveBar",
         color: "#f87171",
         shape: "arrowDown",
-        text: `▼ Exit $${exitPrice.toFixed(2)}`,
+        size: 2,
+        text: `▼ EXIT $${exitPrice.toFixed(2)}`,
       });
     }
     if (markers.length) createSeriesMarkers(series, markers);
 
+    // Price lines
     if (entryPrice > 0) {
       series.createPriceLine({
         price: entryPrice,
         color: "#34d399",
-        lineWidth: 2,
+        lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: "Entry",
+        title: "ENTRY",
+        axisLabelColor: "#34d399",
+        axisLabelTextColor: "#0a1f17",
       });
     }
     if (exitPrice > 0) {
       series.createPriceLine({
         price: exitPrice,
         color: "#f87171",
-        lineWidth: 2,
+        lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: "Exit",
+        title: "EXIT",
+        axisLabelColor: "#f87171",
+        axisLabelTextColor: "#2a0e0e",
       });
     }
 
-    chart.timeScale().fitContent();
+    // Auto-scroll: entry at ~60% from left
+    const visibleSize = Math.min(60, candles.length);
+    const fromIdx = entryIdx - Math.round(visibleSize * 0.6);
+    const toIdx = entryIdx + Math.round(visibleSize * 0.4);
+    chart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: toIdx });
+
+    // Crosshair → hover candle
+    const moveHandler = (param: MouseEventParams<Time>) => {
+      if (!param.time) {
+        onHover(null);
+        return;
+      }
+      const t = param.time as number;
+      const row = candles.find((c) => c.time === t);
+      onHover(row || null);
+    };
+    chart.subscribeCrosshairMove(moveHandler);
 
     const resizeObs = new ResizeObserver(() => {
       chart.applyOptions({ width: container.clientWidth, height });
@@ -1113,35 +1394,15 @@ function CandleChart({
     resizeObs.observe(container);
 
     return () => {
+      chart.unsubscribeCrosshairMove(moveHandler);
       resizeObs.disconnect();
       chart.remove();
     };
-  }, [candles, trade.entryPrice, trade.exitPrice, trade.date, height]);
+  }, [candles, entryPrice, exitPrice, tradeSec, height, onHover, pnl]);
 
   return (
-    <div style={{ position: "relative", height, background: "#0b1120" }}>
+    <div style={{ position: "relative", height, background: "#060d1a" }}>
       <div ref={containerRef} style={{ width: "100%", height }} />
-      {loading && (
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#4a5a7a", fontSize: 12, pointerEvents: "none",
-        }}>
-          Loading chart data…
-        </div>
-      )}
-      {!loading && error && (
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          color: "#4a5a7a", fontSize: 12, gap: 8, pointerEvents: "none",
-          padding: 16, textAlign: "center",
-        }}>
-          <div style={{ fontSize: 32 }}>📊</div>
-          <div>Chart data unavailable for this symbol</div>
-          <div style={{ fontSize: 10, color: "#3a4a6a" }}>{error}</div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1169,6 +1430,57 @@ function IntervalBtn({
     >
       {label}
     </button>
+  );
+}
+
+function OhlcRow({ candle }: { candle: ChartRow | null }) {
+  const wrap: React.CSSProperties = {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 14,
+    fontFamily: "ui-monospace, SFMono-Regular, monospace",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#64748b",
+    letterSpacing: "0.02em",
+    minHeight: 18,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  if (!candle) {
+    return (
+      <div style={{ ...wrap, color: "#3a4a6a", fontSize: 10, fontWeight: 600 }}>
+        ↕ hover for OHLC
+      </div>
+    );
+  }
+
+  const up = candle.close >= candle.open;
+  const cColor = up ? "#34d399" : "#f87171";
+  const change = candle.close - candle.open;
+  const changePct = candle.open !== 0 ? (change / candle.open) * 100 : 0;
+  const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+  const pair = (k: string, v: string, c?: string) => (
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
+      <span style={{ color: "#4a5a7a" }}>{k}</span>
+      <span style={{ color: c || "#cbd5e1" }}>{v}</span>
+    </span>
+  );
+
+  return (
+    <div style={wrap}>
+      {pair("O", fmt(candle.open))}
+      {pair("H", fmt(candle.high), "#34d399")}
+      {pair("L", fmt(candle.low), "#f87171")}
+      {pair("C", fmt(candle.close), cColor)}
+      <span style={{ color: cColor, fontSize: 10 }}>
+        {change >= 0 ? "+" : ""}{fmt(change)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
+      </span>
+    </div>
   );
 }
 
