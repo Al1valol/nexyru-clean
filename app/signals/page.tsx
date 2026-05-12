@@ -1,431 +1,494 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState } from "react";
 
-interface Signal {
-  id:           string;
-  trader_id:    string;
-  trader_name:  string;
-  pair:         string;
-  direction:    "long" | "short";
-  entry:        number;
-  stop_loss:    number | null;
-  take_profit:  number | null;
-  notes:        string | null;
-  risk_pct:     number;
-  status:       "open" | "hit_tp" | "hit_sl" | "cancelled";
-  created_at:   string;
+// ── Instrument specs ──────────────────────────────────────────────
+type InstrumentKey = "ES" | "NQ" | "CL" | "GC" | "CRYPTO";
+interface Instrument {
+  key:       InstrumentKey;
+  label:     string;
+  emoji:     string;
+  perPoint:  number;
+  tickSize:  number;
+  unit:      string;
+  custom?:   boolean;
+}
+const INSTRUMENTS: Instrument[] = [
+  { key:"ES",     label:"ES — S&P 500 Futures",   emoji:"📈", perPoint:50,    tickSize:0.25, unit:"pts" },
+  { key:"NQ",     label:"NQ — Nasdaq Futures",    emoji:"💻", perPoint:20,    tickSize:0.25, unit:"pts" },
+  { key:"CL",     label:"CL — Crude Oil",         emoji:"🛢", perPoint:1000,  tickSize:0.01, unit:"pts" },
+  { key:"GC",     label:"Gold (GC)",              emoji:"🥇", perPoint:100,   tickSize:0.10, unit:"pts" },
+  { key:"CRYPTO", label:"Crypto (custom size)",   emoji:"₿",  perPoint:1,     tickSize:0.01, unit:"$",  custom:true },
+];
+
+// ── Strategy options ──────────────────────────────────────────────
+const WATCH_LIST = ["ES","NQ","CL","Gold","SOL","BTC","ETH"] as const;
+const DAYS       = ["Mon","Tue","Wed","Thu","Fri"] as const;
+const RR_OPTIONS = [1.5, 2, 2.5, 3] as const;
+const SETUP_TYPES = ["EMA Crossover","VWAP Bounce","Opening Range","Support/Resistance","Custom"] as const;
+
+interface StrategySettings {
+  startTime:      string;
+  endTime:        string;
+  maxTrades:      number;
+  maxDailyLoss:   number;
+  maxDailyLossPct:number;
+  useDailyLossPct:boolean;
+  days:           Record<string,boolean>;
+  watch:          Record<string,boolean>;
+  minRR:          number;
+  setupType:      string;
+  checklist:      string[];
 }
 
-function getUser() {
-  try { return JSON.parse(localStorage.getItem("tradedesk_session_v1") ?? "{}"); }
-  catch { return {}; }
+const DEFAULT_SETTINGS: StrategySettings = {
+  startTime:       "09:30",
+  endTime:         "11:00",
+  maxTrades:       3,
+  maxDailyLoss:    1500,
+  maxDailyLossPct: 3,
+  useDailyLossPct: false,
+  days:            { Mon:true, Tue:true, Wed:true, Thu:true, Fri:true },
+  watch:           { NQ:true, ES:true, CL:false, Gold:false, SOL:false, BTC:false, ETH:false },
+  minRR:           2,
+  setupType:       "EMA Crossover",
+  checklist:       ["Price above VWAP", "EMA 9 crossed above EMA 21", "Volume above average", "Market not in news time"],
+};
+
+// ── helpers ──────────────────────────────────────────────────────
+function getUsername(): string {
+  try { return JSON.parse(localStorage.getItem("tradedesk_session_v1") ?? "{}").username || "guest"; }
+  catch { return "guest"; }
 }
+const fmtMoney = (n: number) => (n < 0 ? "-" : "") + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const clamp    = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  const h = Math.floor(diff / 3600000);
-  const d = Math.floor(diff / 86400000);
-  if (m < 1)  return "just now";
-  if (m < 60) return `${m}m ago`;
-  if (h < 24) return `${h}h ago`;
-  return `${d}d ago`;
-}
+// ── Position Size Calculator ─────────────────────────────────────
+function PositionCalculator({ accountSize, setAccountSize }: { accountSize: number; setAccountSize: (n:number)=>void }) {
+  const [riskPct,  setRiskPct]   = useState(1);
+  const [entry,    setEntry]     = useState("");
+  const [stop,     setStop]      = useState("");
+  const [target,   setTarget]    = useState("");
+  const [instKey,  setInstKey]   = useState<InstrumentKey>("NQ");
+  const [cryptoSize, setCryptoSize] = useState("1");
 
-// ── Post Signal Modal ──────────────────────────────────────────
-function PostSignalModal({ onClose, onPost }: { onClose: () => void; onPost: (s: Partial<Signal>) => Promise<void> }) {
-  const [pair,      setPair]      = useState("");
-  const [direction, setDirection] = useState<"long"|"short">("long");
-  const [entry,     setEntry]     = useState("");
-  const [sl,        setSl]        = useState("");
-  const [tp,        setTp]        = useState("");
-  const [notes,     setNotes]     = useState("");
-  const [riskPct,   setRiskPct]   = useState("1");
-  const [posting,   setPosting]   = useState(false);
-  const [error,     setError]     = useState("");
+  const inst = INSTRUMENTS.find(i => i.key === instKey)!;
 
-  const rr = sl && tp && entry
-    ? Math.abs((parseFloat(tp) - parseFloat(entry)) / (parseFloat(entry) - parseFloat(sl))).toFixed(2)
-    : null;
+  const entryN  = parseFloat(entry);
+  const stopN   = parseFloat(stop);
+  const targetN = parseFloat(target);
+  const cryptoN = parseFloat(cryptoSize) || 1;
 
-  const submit = async () => {
-    if (!pair || !entry) { setError("Pair and entry are required"); return; }
-    setPosting(true); setError("");
-    try {
-      await onPost({ pair, direction, entry: parseFloat(entry), stop_loss: sl ? parseFloat(sl) : null, take_profit: tp ? parseFloat(tp) : null, notes: notes || null, risk_pct: parseFloat(riskPct) || 1 });
-      onClose();
-    } catch (e: unknown) {
-      setError(String(e));
-    } finally { setPosting(false); }
-  };
+  const perPoint = inst.custom ? cryptoN : inst.perPoint;
 
-  const inp: React.CSSProperties = { width:"100%", padding:"9px 12px", borderRadius:9, border:"1px solid #1a2540", background:"#0d1628", color:"#f0f4ff", fontSize:13, fontFamily:"monospace", outline:"none", boxSizing:"border-box" };
-  const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:5 };
+  const dollarRisk = accountSize * (riskPct / 100);
+  const pointsToStop = entryN && stopN ? Math.abs(entryN - stopN) : 0;
+  const ticksToStop  = pointsToStop && inst.tickSize ? pointsToStop / inst.tickSize : 0;
+  const riskPerContract = pointsToStop * perPoint;
+  const contracts = riskPerContract > 0 ? Math.floor(dollarRisk / riskPerContract) : 0;
+  const positionValue = entryN && contracts ? entryN * perPoint * contracts : 0;
+  const maxLoss = contracts > 0 ? -(pointsToStop * perPoint * contracts) : 0;
+
+  const rewardPoints = targetN && entryN ? Math.abs(targetN - entryN) : 0;
+  const rr = pointsToStop > 0 && rewardPoints > 0 ? rewardPoints / pointsToStop : 0;
+
+  // Risk meter colors
+  let meterColor = "#34d399"; // green
+  let meterLabel = "Conservative";
+  if (riskPct > 1 && riskPct <= 2) { meterColor = "#fbbf24"; meterLabel = "Moderate"; }
+  if (riskPct > 2)                 { meterColor = "#f87171"; meterLabel = "Aggressive"; }
+
+  // Losses to blow 10%
+  const lossesToTenPct = riskPct > 0 ? Math.ceil(10 / riskPct) : 0;
+
+  const inp: React.CSSProperties = { width:"100%", padding:"11px 13px", borderRadius:10, border:"1px solid #1a2540", background:"#0d1628", color:"#f0f4ff", fontSize:14, fontFamily:"monospace", outline:"none", boxSizing:"border-box", fontWeight:600 };
+  const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:6 };
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.75)", backdropFilter:"blur(6px)" }}/>
-      <div style={{ position:"relative", zIndex:10, background:"#0d1628", border:"1px solid #1e2f4a", borderRadius:20, padding:28, width:"100%", maxWidth:420, boxShadow:"0 30px 80px rgba(0,0,0,0.8)" }}>
-        <div style={{ fontSize:16, fontWeight:800, color:"#f0f4ff", marginBottom:20 }}>📡 Post Signal</div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-          <div>
-            <label style={lbl}>Pair</label>
-            <input value={pair} onChange={e => setPair(e.target.value.toUpperCase())} placeholder="BTC-USD" style={inp}/>
-          </div>
-          <div>
-            <label style={lbl}>Direction</label>
-            <div style={{ display:"flex", gap:6 }}>
-              {(["long","short"] as const).map(d => (
-                <button key={d} onClick={() => setDirection(d)} style={{ flex:1, padding:"9px 0", borderRadius:9, border:`1px solid ${direction===d ? (d==="long"?"rgba(52,211,153,0.4)":"rgba(248,113,113,0.4)") : "#1a2540"}`, background: direction===d ? (d==="long"?"rgba(52,211,153,0.12)":"rgba(248,113,113,0.12)") : "#0d1628", color: direction===d ? (d==="long"?"#34d399":"#f87171") : "#4a5a7a", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                  {d === "long" ? "▲ Long" : "▼ Short"}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:14 }}>
-          <div><label style={lbl}>Entry</label><input value={entry} onChange={e=>setEntry(e.target.value)} type="number" placeholder="0.00" style={inp}/></div>
-          <div><label style={lbl}>Stop Loss</label><input value={sl} onChange={e=>setSl(e.target.value)} type="number" placeholder="0.00" style={inp}/></div>
-          <div><label style={lbl}>Take Profit</label><input value={tp} onChange={e=>setTp(e.target.value)} type="number" placeholder="0.00" style={inp}/></div>
-        </div>
-
-        {rr && (
-          <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(56,189,248,0.06)", border:"1px solid rgba(56,189,248,0.15)", fontSize:11, color:"#38bdf8", marginBottom:14 }}>
-            R:R Ratio — {rr}:1
-          </div>
-        )}
-
-        <div style={{ marginBottom:14 }}>
-          <label style={lbl}>Risk % (suggested)</label>
-          <input value={riskPct} onChange={e=>setRiskPct(e.target.value)} type="number" min="0.1" max="5" step="0.1" style={inp}/>
-        </div>
-
-        <div style={{ marginBottom:20 }}>
-          <label style={lbl}>Notes (optional)</label>
-          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Setup rationale, key levels, context…" rows={3} style={{ ...inp, resize:"vertical", fontFamily:"system-ui", fontSize:12 }}/>
-        </div>
-
-        {error && <div style={{ fontSize:11, color:"#f87171", marginBottom:12 }}>⚠ {error}</div>}
-
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onClose} style={{ flex:1, padding:10, borderRadius:10, border:"1px solid #1e2f4a", background:"transparent", color:"#4a5a7a", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-          <button onClick={submit} disabled={posting} style={{ flex:2, padding:10, borderRadius:10, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:13, fontWeight:800, cursor:posting?"not-allowed":"pointer" }}>
-            {posting ? "Posting…" : "📡 Post Signal"}
-          </button>
-        </div>
+    <section style={{ background:"#0b1120", border:"1px solid #1a2540", borderRadius:18, padding:24 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4 }}>
+        <span style={{ fontSize:20 }}>🧮</span>
+        <h2 style={{ fontSize:18, fontWeight:900, color:"#f0f4ff", margin:0, letterSpacing:"-0.01em" }}>Position Size Calculator</h2>
       </div>
-    </div>
-  );
-}
+      <p style={{ fontSize:12, color:"#3a4a6a", margin:"0 0 20px" }}>Math-first sizing. No external data needed.</p>
 
-// ── Copy Modal ─────────────────────────────────────────────────
-function CopyModal({ signal, onClose, onCopy }: { signal: Signal; onClose: () => void; onCopy: (accountSize: number, riskPct: number) => Promise<void> }) {
-  const [acctSize, setAcctSize] = useState("10000");
-  const [riskPct,  setRiskPct]  = useState(String(signal.risk_pct ?? 1));
-  const [copying,  setCopying]  = useState(false);
-
-  const riskAmt  = (parseFloat(acctSize)||10000) * ((parseFloat(riskPct)||1) / 100);
-  const slDist   = signal.stop_loss && signal.entry ? Math.abs(signal.entry - signal.stop_loss) : null;
-  const posSize  = slDist && slDist > 0 ? (riskAmt / slDist).toFixed(4) : null;
-
-  const submit = async () => {
-    setCopying(true);
-    await onCopy(parseFloat(acctSize)||10000, parseFloat(riskPct)||1);
-    setCopying(false);
-    onClose();
-  };
-
-  const inp: React.CSSProperties = { width:"100%", padding:"9px 12px", borderRadius:9, border:"1px solid #1a2540", background:"#0d1628", color:"#f0f4ff", fontSize:14, fontWeight:700, fontFamily:"monospace", outline:"none", boxSizing:"border-box" };
-  const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:5 };
-  const dirColor = signal.direction === "long" ? "#34d399" : "#f87171";
-
-  return (
-    <div style={{ position:"fixed", inset:0, zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.75)", backdropFilter:"blur(6px)" }}/>
-      <div style={{ position:"relative", zIndex:10, background:"#0d1628", border:"1px solid #1e2f4a", borderRadius:20, padding:28, width:"100%", maxWidth:380, boxShadow:"0 30px 80px rgba(0,0,0,0.8)" }}>
-        <div style={{ fontSize:16, fontWeight:800, color:"#f0f4ff", marginBottom:4 }}>Copy Trade</div>
-        <div style={{ fontSize:12, color:"#3a4a6a", marginBottom:20 }}>
-          <span style={{ color:dirColor, fontWeight:700 }}>{signal.direction === "long" ? "▲ Long" : "▼ Short"}</span> {signal.pair} @ {signal.entry}
-        </div>
-
-        {/* Signal summary */}
-        <div style={{ padding:"12px 14px", borderRadius:10, background:"#111d30", border:"1px solid #1a2540", marginBottom:16, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:3 }}>ENTRY</div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#f0f4ff", fontFamily:"monospace" }}>{signal.entry}</div>
-          </div>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:3 }}>STOP</div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#f87171", fontFamily:"monospace" }}>{signal.stop_loss ?? "—"}</div>
-          </div>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:3 }}>TARGET</div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#34d399", fontFamily:"monospace" }}>{signal.take_profit ?? "—"}</div>
-          </div>
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-          <div><label style={lbl}>Account Size ($)</label><input value={acctSize} onChange={e=>setAcctSize(e.target.value)} type="number" style={inp}/></div>
-          <div><label style={lbl}>Risk %</label><input value={riskPct} onChange={e=>setRiskPct(e.target.value)} type="number" min="0.1" max="5" step="0.1" style={inp}/></div>
-        </div>
-
-        {/* Calculated position */}
-        <div style={{ padding:"12px 14px", borderRadius:10, background:"rgba(56,189,248,0.06)", border:"1px solid rgba(56,189,248,0.15)", marginBottom:20 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-            <span style={{ fontSize:11, color:"#3a6a8a" }}>Risk Amount</span>
-            <span style={{ fontSize:13, fontWeight:700, color:"#38bdf8", fontFamily:"monospace" }}>${riskAmt.toFixed(2)}</span>
-          </div>
-          {posSize && (
-            <div style={{ display:"flex", justifyContent:"space-between" }}>
-              <span style={{ fontSize:11, color:"#3a6a8a" }}>Suggested Size</span>
-              <span style={{ fontSize:13, fontWeight:700, color:"#38bdf8", fontFamily:"monospace" }}>{posSize} units</span>
-            </div>
-          )}
-        </div>
-
-        <div style={{ fontSize:10, color:"#2e3f5a", marginBottom:16, lineHeight:1.5 }}>
-          ⚠ This is a manual copy — you need to place this trade yourself in your broker. Nexyru tracks that you copied it.
-        </div>
-
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onClose} style={{ flex:1, padding:10, borderRadius:10, border:"1px solid #1e2f4a", background:"transparent", color:"#4a5a7a", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-          <button onClick={submit} disabled={copying} style={{ flex:2, padding:10, borderRadius:10, border:"none", background:"linear-gradient(135deg,#0ea5a0,#34d399)", color:"#000", fontSize:13, fontWeight:800, cursor:copying?"not-allowed":"pointer" }}>
-            {copying ? "Saving…" : "✓ I Copied This"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Signal card ────────────────────────────────────────────────
-function SignalCard({ signal, userId, onCopy }: { signal: Signal; userId: string; onCopy: (s: Signal) => void }) {
-  const [copied, setCopied] = useState(false);
-  const isOwn    = signal.trader_id === userId;
-  const dirColor = signal.direction === "long" ? "#34d399" : "#f87171";
-  const dirIcon  = signal.direction === "long" ? "▲" : "▼";
-
-  const STATUS_STYLE: Record<string, { color:string; bg:string; label:string }> = {
-    open:      { color:"#38bdf8", bg:"rgba(56,189,248,0.1)",  label:"🟢 Open"     },
-    hit_tp:    { color:"#34d399", bg:"rgba(52,211,153,0.1)",  label:"✅ Hit TP"   },
-    hit_sl:    { color:"#f87171", bg:"rgba(248,113,113,0.1)", label:"❌ Hit SL"   },
-    cancelled: { color:"#64748b", bg:"rgba(100,116,139,0.1)", label:"⏹ Cancelled" },
-  };
-  const ss = STATUS_STYLE[signal.status] ?? STATUS_STYLE.open;
-
-  const rr = signal.stop_loss && signal.take_profit && signal.entry
-    ? Math.abs((signal.take_profit - signal.entry) / (signal.entry - signal.stop_loss)).toFixed(1)
-    : null;
-
-  useEffect(() => {
-    if (!userId || !signal.id) return;
-    fetch(`/api/signal-copies?signal_id=${signal.id}&user_id=${userId}`)
-      .then(r => r.json())
-      .then(d => { if (d) setCopied(true); })
-      .catch(() => {});
-  }, [signal.id, userId]);
-
-  const avatarColor = ["#38bdf8","#a78bfa","#34d399","#f97316","#f59e0b"][signal.trader_name.charCodeAt(0) % 5];
-
-  return (
-    <div style={{ background:"#0b1120", border:`1px solid ${signal.status==="open"?"#1a2540":"#111827"}`, borderRadius:18, overflow:"hidden", opacity: signal.status !== "open" ? 0.75 : 1 }}>
-
-      {/* Header */}
-      <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", gap:12, borderBottom:"1px solid #111827" }}>
-        <a href={`/trader/@${signal.trader_id}`} style={{ width:36, height:36, borderRadius:10, background:`${avatarColor}22`, border:`1px solid ${avatarColor}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:900, color:avatarColor, flexShrink:0, fontFamily:"monospace", textDecoration:"none" }}>
-          {signal.trader_name.slice(0,2).toUpperCase()}
-        </a>
-        <div style={{ flex:1, minWidth:0 }}>
-          <a href={`/trader/@${signal.trader_id}`} style={{ fontSize:13, fontWeight:700, color:"#e2e8f0", textDecoration:"none" }}>@{signal.trader_name}</a>
-          <div style={{ fontSize:10, color:"#3a4a6a", marginTop:1 }}>{timeAgo(signal.created_at)}</div>
-        </div>
-        <span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:10, background:ss.bg, color:ss.color }}>{ss.label}</span>
-      </div>
-
-      {/* Signal body */}
-      <div style={{ padding:"14px 16px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-          <span style={{ fontSize:22, fontWeight:900, color:"#f0f4ff", fontFamily:"monospace" }}>{signal.pair}</span>
-          <span style={{ fontSize:13, fontWeight:800, padding:"4px 10px", borderRadius:8, background:`${dirColor}15`, border:`1px solid ${dirColor}30`, color:dirColor }}>
-            {dirIcon} {signal.direction.toUpperCase()}
-          </span>
-          {rr && <span style={{ fontSize:11, fontWeight:700, color:"#38bdf8", marginLeft:"auto" }}>R:R {rr}:1</span>}
-        </div>
-
-        {/* Price levels */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
-          <div style={{ padding:"8px 10px", borderRadius:9, background:"#0d1628", border:"1px solid #1a2540", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:3 }}>ENTRY</div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#f0f4ff", fontFamily:"monospace" }}>{signal.entry}</div>
-          </div>
-          <div style={{ padding:"8px 10px", borderRadius:9, background:"#0d1628", border:"1px solid rgba(248,113,113,0.2)", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:3 }}>STOP</div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#f87171", fontFamily:"monospace" }}>{signal.stop_loss ?? "—"}</div>
-          </div>
-          <div style={{ padding:"8px 10px", borderRadius:9, background:"#0d1628", border:"1px solid rgba(52,211,153,0.2)", textAlign:"center" }}>
-            <div style={{ fontSize:9, color:"#3a4a6a", marginBottom:3 }}>TARGET</div>
-            <div style={{ fontSize:13, fontWeight:800, color:"#34d399", fontFamily:"monospace" }}>{signal.take_profit ?? "—"}</div>
-          </div>
-        </div>
-
-        {signal.notes && (
-          <div style={{ fontSize:11, color:"#64748b", lineHeight:1.6, padding:"8px 10px", borderRadius:8, background:"#0d1628", marginBottom:12 }}>
-            {signal.notes}
-          </div>
-        )}
-
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <span style={{ fontSize:10, color:"#2e3f5a" }}>Suggested risk: {signal.risk_pct}%</span>
-          {!isOwn && signal.status === "open" && (
-            copied ? (
-              <span style={{ fontSize:11, fontWeight:700, color:"#34d399", display:"flex", alignItems:"center", gap:5 }}>✓ Copied</span>
-            ) : (
-              <button onClick={() => onCopy(signal)} style={{ padding:"7px 16px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                Copy Trade →
-              </button>
-            )
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main page ──────────────────────────────────────────────────
-export default function SignalsPage() {
-  const [signals,     setSignals]     = useState<Signal[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [showPost,    setShowPost]    = useState(false);
-  const [copyTarget,  setCopyTarget]  = useState<Signal | null>(null);
-  const [filter,      setFilter]      = useState<"all"|"open"|"closed">("open");
-  const [userId,      setUserId]      = useState("");
-  const [userName,    setUserName]    = useState("");
-  const [error,       setError]       = useState("");
-
-  useEffect(() => {
-    const user = getUser();
-    setUserId(user.username ?? "");
-    setUserName(user.displayName ?? user.username ?? "");
-    loadSignals();
-  }, []);
-
-  const loadSignals = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res  = await fetch("/api/signals?limit=50");
-      const data = await res.json();
-      if (Array.isArray(data)) setSignals(data);
-      else setError("Failed to load signals");
-    } catch { setError("Network error"); }
-    finally { setLoading(false); }
-  }, []);
-
-  const postSignal = async (s: Partial<Signal>) => {
-    const res = await fetch("/api/signals", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ ...s, trader_id: userId, trader_name: userName }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    await loadSignals();
-  };
-
-  const copySignal = async (accountSize: number, riskPct: number) => {
-    if (!copyTarget) return;
-    await fetch("/api/signal-copies", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ signal_id: copyTarget.id, user_id: userId, account_size: accountSize, risk_pct: riskPct }),
-    });
-  };
-
-  const filtered = signals.filter(s => {
-    if (filter === "open")   return s.status === "open";
-    if (filter === "closed") return s.status !== "open";
-    return true;
-  });
-
-  return (
-    <div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,sans-serif" }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-
-      {/* Nav */}
-      <div style={{ borderBottom:"1px solid #0d1628", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}>
-        <a href="/dashboard" style={{ fontSize:12, color:"#3a4a6a", textDecoration:"none" }}>← Dashboard</a>
-        <span style={{ fontSize:14, fontWeight:800, color:"#f0f4ff" }}>📡 Signal Feed</span>
-        <div style={{ flex:1 }}/>
-        <button onClick={() => loadSignals()} style={{ padding:"5px 11px", borderRadius:8, border:"1px solid #1a2540", background:"#0b1120", color:"#4a5a7a", fontSize:11, fontWeight:600, cursor:"pointer" }}>🔄</button>
-        <button onClick={() => setShowPost(true)} style={{ padding:"7px 16px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-          📡 Post Signal
-        </button>
-      </div>
-
-      <div style={{ maxWidth:800, margin:"0 auto", padding:"28px 20px" }}>
-
-        {/* Header */}
-        <div style={{ marginBottom:24 }}>
-          <h1 style={{ fontSize:24, fontWeight:900, color:"#f0f4ff", margin:"0 0 6px", letterSpacing:"-0.02em" }}>Signal Feed</h1>
-          <p style={{ fontSize:13, color:"#3a4a6a", margin:0 }}>
-            Verified traders post signals · Copy manually with suggested sizing · Track outcomes
-          </p>
-        </div>
-
-        {/* Filter tabs */}
-        <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:"1px solid #1a2540", paddingBottom:1 }}>
-          {(["open","closed","all"] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)} style={{ padding:"7px 16px", border:"none", background:"transparent", fontSize:12, fontWeight:600, cursor:"pointer", color: filter===f?"#38bdf8":"#4a5a7a", borderBottom: filter===f?"2px solid #38bdf8":"2px solid transparent", marginBottom:-1, textTransform:"capitalize" }}>
-              {f === "open" ? "🟢 Open" : f === "closed" ? "⬜ Closed" : "All"}
-              {f === "open" && signals.filter(s=>s.status==="open").length > 0 && (
-                <span style={{ marginLeft:6, fontSize:10, background:"rgba(56,189,248,0.15)", color:"#38bdf8", padding:"1px 6px", borderRadius:10 }}>
-                  {signals.filter(s=>s.status==="open").length}
-                </span>
-              )}
+      {/* Instrument picker */}
+      <div style={{ marginBottom:16 }}>
+        <label style={lbl}>Instrument</label>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))", gap:8 }}>
+          {INSTRUMENTS.map(i => (
+            <button key={i.key} onClick={() => setInstKey(i.key)} style={{
+              padding:"10px 8px", borderRadius:10,
+              border:`1px solid ${instKey===i.key ? "#38bdf8" : "#1a2540"}`,
+              background: instKey===i.key ? "rgba(56,189,248,0.08)" : "#0d1628",
+              color: instKey===i.key ? "#38bdf8" : "#94a3b8",
+              fontSize:11, fontWeight:700, cursor:"pointer", textAlign:"center", lineHeight:1.3
+            }}>
+              <div style={{ fontSize:16, marginBottom:3 }}>{i.emoji}</div>
+              {i.key}
+              <div style={{ fontSize:9, color:"#3a4a6a", marginTop:2, fontWeight:500 }}>
+                {i.custom ? "custom" : `$${i.perPoint}/pt`}
+              </div>
             </button>
           ))}
         </div>
+      </div>
 
-        {/* Error */}
-        {error && <div style={{ padding:"12px 16px", borderRadius:10, background:"rgba(248,113,113,0.08)", border:"1px solid rgba(248,113,113,0.2)", color:"#f87171", fontSize:12, marginBottom:16 }}>⚠ {error}</div>}
+      {/* Crypto contract size */}
+      {inst.custom && (
+        <div style={{ marginBottom:16 }}>
+          <label style={lbl}>Contract Size ($ per $1 move)</label>
+          <input type="number" value={cryptoSize} onChange={e => setCryptoSize(e.target.value)} placeholder="1" style={inp}/>
+          <div style={{ fontSize:10, color:"#3a4a6a", marginTop:5 }}>E.g. BTC perp 1.0 = $1 per $1 move per contract.</div>
+        </div>
+      )}
 
-        {/* Loading */}
-        {loading && (
-          <div style={{ display:"flex", justifyContent:"center", padding:"48px 0", gap:10, color:"#3a4a6a", fontSize:13 }}>
-            <span style={{ display:"inline-block", width:16, height:16, border:"2px solid #1a2540", borderTopColor:"#38bdf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>
-            Loading signals…
-          </div>
-        )}
-
-        {/* Empty */}
-        {!loading && filtered.length === 0 && (
-          <div style={{ textAlign:"center", padding:"60px 0" }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>📡</div>
-            <div style={{ fontSize:15, fontWeight:700, color:"#f0f4ff", marginBottom:6 }}>
-              {filter === "open" ? "No open signals right now" : "No signals yet"}
+      {/* Account & risk */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+        <div>
+          <label style={lbl}>Account Size ($)</label>
+          <input type="number" value={accountSize} onChange={e => setAccountSize(parseFloat(e.target.value) || 0)} style={inp}/>
+        </div>
+        <div>
+          <label style={lbl}>Risk % per trade</label>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <input type="range" min="0.1" max="5" step="0.1" value={riskPct} onChange={e => setRiskPct(parseFloat(e.target.value))} style={{ flex:1, accentColor:meterColor }}/>
+            <div style={{ width:54, padding:"7px 0", borderRadius:8, background:`${meterColor}15`, border:`1px solid ${meterColor}30`, color:meterColor, fontSize:13, fontWeight:800, fontFamily:"monospace", textAlign:"center" }}>
+              {riskPct.toFixed(1)}%
             </div>
-            <div style={{ fontSize:12, color:"#3a4a6a", marginBottom:20 }}>
-              {filter === "open" ? "Check back soon or switch to All to see past signals" : "Be the first to post a signal"}
-            </div>
-            <button onClick={() => setShowPost(true)} style={{ padding:"9px 20px", borderRadius:10, background:"rgba(56,189,248,0.1)", border:"1px solid rgba(56,189,248,0.2)", color:"#38bdf8", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-              📡 Post First Signal
-            </button>
           </div>
-        )}
+        </div>
+      </div>
 
-        {/* Signals */}
-        {!loading && filtered.length > 0 && (
-          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            {filtered.map(s => (
-              <SignalCard key={s.id} signal={s} userId={userId} onCopy={sig => setCopyTarget(sig)}/>
-            ))}
+      {/* Risk meter */}
+      <div style={{ marginBottom:18, padding:"10px 12px", borderRadius:10, background:`${meterColor}10`, border:`1px solid ${meterColor}30`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:8, height:8, borderRadius:"50%", background:meterColor, boxShadow:`0 0 12px ${meterColor}` }}/>
+          <span style={{ fontSize:12, fontWeight:700, color:meterColor }}>{meterLabel}</span>
+        </div>
+        <div style={{ display:"flex", gap:3 }}>
+          {[0,1,2,3,4].map(i => {
+            const filled = riskPct >= (i+1);
+            const col = i < 2 ? "#34d399" : i < 4 ? "#fbbf24" : "#f87171";
+            return <div key={i} style={{ width:18, height:6, borderRadius:3, background: filled ? col : "#1a2540" }}/>;
+          })}
+        </div>
+      </div>
+
+      {/* Prices */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:18 }}>
+        <div>
+          <label style={lbl}>Entry</label>
+          <input type="number" value={entry} onChange={e=>setEntry(e.target.value)} placeholder="0.00" style={inp}/>
+        </div>
+        <div>
+          <label style={lbl}>Stop Loss</label>
+          <input type="number" value={stop} onChange={e=>setStop(e.target.value)} placeholder="0.00" style={{ ...inp, borderColor:"rgba(248,113,113,0.25)" }}/>
+        </div>
+        <div>
+          <label style={lbl}>Target (opt.)</label>
+          <input type="number" value={target} onChange={e=>setTarget(e.target.value)} placeholder="0.00" style={{ ...inp, borderColor:"rgba(52,211,153,0.25)" }}/>
+        </div>
+      </div>
+
+      {/* Output */}
+      <div style={{ background:"#060d1a", border:"1px solid #1a2540", borderRadius:14, padding:18 }}>
+        <div style={{ fontSize:10, fontWeight:800, color:"#3a4a6a", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14 }}>
+          Calculated Position
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+          <Stat label="Dollar Risk"            value={fmtMoney(dollarRisk)} accent="#38bdf8"/>
+          <Stat label={`${inst.unit} to Stop`} value={pointsToStop ? pointsToStop.toFixed(2) + (inst.unit === "pts" ? ` (${ticksToStop.toFixed(0)} ticks)` : "") : "—"} accent="#f0f4ff"/>
+          <Stat label="Contracts to Trade"     value={contracts > 0 ? `${contracts}` : "—"} accent={contracts > 0 ? "#34d399" : "#3a4a6a"} big/>
+          <Stat label="Position Value"         value={positionValue ? fmtMoney(positionValue) : "—"} accent="#f0f4ff"/>
+          <Stat label="Risk/Reward"            value={rr > 0 ? `${rr.toFixed(2)}R` : "—"} accent={rr >= 2 ? "#34d399" : rr > 0 ? "#fbbf24" : "#3a4a6a"}/>
+          <Stat label="Max Loss if Stopped"    value={maxLoss ? `${fmtMoney(maxLoss)} (${riskPct.toFixed(1)}%)` : "—"} accent="#f87171"/>
+        </div>
+
+        {/* Warning */}
+        <div style={{ padding:"11px 13px", borderRadius:10, background:"rgba(251,191,36,0.06)", border:"1px solid rgba(251,191,36,0.2)", fontSize:12, color:"#fbbf24", display:"flex", gap:8, alignItems:"flex-start" }}>
+          <span style={{ fontSize:14 }}>⚠</span>
+          <span>
+            At <strong>{riskPct.toFixed(1)}%</strong> per trade, <strong>{lossesToTenPct}</strong> losses in a row would blow <strong>10%</strong> of your account.
+          </span>
+        </div>
+
+        {contracts === 0 && entryN > 0 && stopN > 0 && (
+          <div style={{ marginTop:10, padding:"10px 12px", borderRadius:10, background:"rgba(248,113,113,0.07)", border:"1px solid rgba(248,113,113,0.2)", fontSize:11, color:"#f87171" }}>
+            ⚠ Stop is too wide for this risk %. Reduce position or widen risk to take this trade.
           </div>
         )}
       </div>
+    </section>
+  );
+}
 
-      {showPost  && <PostSignalModal onClose={() => setShowPost(false)} onPost={postSignal}/>}
-      {copyTarget && <CopyModal signal={copyTarget} onClose={() => setCopyTarget(null)} onCopy={copySignal}/>}
+function Stat({ label, value, accent, big = false }: { label: string; value: string; accent: string; big?: boolean }) {
+  return (
+    <div>
+      <div style={{ fontSize:10, color:"#3a4a6a", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:4 }}>{label}</div>
+      <div style={{ fontSize: big ? 22 : 16, fontWeight:800, color:accent, fontFamily:"monospace" }}>{value}</div>
+    </div>
+  );
+}
+
+// ── Strategy Settings ────────────────────────────────────────────
+function StrategySettingsPanel({ accountSize, settings, setSettings }: { accountSize: number; settings: StrategySettings; setSettings: (s: StrategySettings) => void }) {
+  const [newChecklist, setNewChecklist] = useState("");
+
+  const addItem = () => {
+    if (!newChecklist.trim()) return;
+    setSettings({ ...settings, checklist: [...settings.checklist, newChecklist.trim()] });
+    setNewChecklist("");
+  };
+  const removeItem = (idx: number) => setSettings({ ...settings, checklist: settings.checklist.filter((_,i) => i !== idx) });
+
+  const inp: React.CSSProperties = { padding:"9px 11px", borderRadius:9, border:"1px solid #1a2540", background:"#0d1628", color:"#f0f4ff", fontSize:13, fontFamily:"monospace", outline:"none", boxSizing:"border-box", fontWeight:600 };
+  const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:6 };
+
+  const dailyLossDollar = settings.useDailyLossPct ? Math.round(accountSize * settings.maxDailyLossPct / 100) : settings.maxDailyLoss;
+
+  // Build trade plan
+  const watchList = Object.keys(settings.watch).filter(k => settings.watch[k]);
+  const dayList   = Object.keys(settings.days).filter(k => settings.days[k]);
+  const riskPerTrade = Math.round(accountSize * 0.01); // 1% reference
+
+  // Expected signals — rough heuristic
+  let signalsPerWeek = "2-3";
+  const watchCount = watchList.length;
+  if (watchCount === 0) signalsPerWeek = "0";
+  else if (watchCount === 1 && settings.maxTrades <= 2) signalsPerWeek = "1-2";
+  else if (watchCount >= 4 || settings.maxTrades >= 5) signalsPerWeek = "5-8";
+  else if (watchCount >= 2) signalsPerWeek = "3-5";
+
+  return (
+    <section style={{ background:"#0b1120", border:"1px solid #1a2540", borderRadius:18, padding:24 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4 }}>
+        <span style={{ fontSize:20 }}>⚙️</span>
+        <h2 style={{ fontSize:18, fontWeight:900, color:"#f0f4ff", margin:0, letterSpacing:"-0.01em" }}>Strategy Signal Settings</h2>
+      </div>
+      <p style={{ fontSize:12, color:"#3a4a6a", margin:"0 0 20px" }}>Define your rules. Saved automatically.</p>
+
+      {/* Setup Rules */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:"#38bdf8", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:12 }}>Setup Rules</div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+          <div>
+            <label style={lbl}>Start time</label>
+            <input type="time" value={settings.startTime} onChange={e => setSettings({ ...settings, startTime: e.target.value })} style={{ ...inp, width:"100%" }}/>
+          </div>
+          <div>
+            <label style={lbl}>End time</label>
+            <input type="time" value={settings.endTime} onChange={e => setSettings({ ...settings, endTime: e.target.value })} style={{ ...inp, width:"100%" }}/>
+          </div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+          <div>
+            <label style={lbl}>Max trades / day</label>
+            <input type="number" min="1" max="20" value={settings.maxTrades} onChange={e => setSettings({ ...settings, maxTrades: clamp(parseInt(e.target.value)||1, 1, 50) })} style={{ ...inp, width:"100%" }}/>
+          </div>
+          <div>
+            <label style={lbl}>
+              Max daily loss
+              <button onClick={() => setSettings({ ...settings, useDailyLossPct: !settings.useDailyLossPct })} style={{ marginLeft:8, background:"transparent", border:"none", color:"#38bdf8", fontSize:10, cursor:"pointer", textTransform:"none", letterSpacing:0, fontWeight:600 }}>
+                use {settings.useDailyLossPct ? "$" : "%"}
+              </button>
+            </label>
+            {settings.useDailyLossPct ? (
+              <input type="number" min="0.5" max="20" step="0.5" value={settings.maxDailyLossPct} onChange={e => setSettings({ ...settings, maxDailyLossPct: parseFloat(e.target.value)||3 })} style={{ ...inp, width:"100%" }}/>
+            ) : (
+              <input type="number" min="50" step="50" value={settings.maxDailyLoss} onChange={e => setSettings({ ...settings, maxDailyLoss: parseFloat(e.target.value)||0 })} style={{ ...inp, width:"100%" }}/>
+            )}
+          </div>
+        </div>
+
+        {/* Days */}
+        <div style={{ marginBottom:14 }}>
+          <label style={lbl}>Trading days</label>
+          <div style={{ display:"flex", gap:6 }}>
+            {DAYS.map(d => (
+              <button key={d} onClick={() => setSettings({ ...settings, days: { ...settings.days, [d]: !settings.days[d] } })} style={{
+                flex:1, padding:"9px 0", borderRadius:8,
+                border:`1px solid ${settings.days[d] ? "#38bdf8" : "#1a2540"}`,
+                background: settings.days[d] ? "rgba(56,189,248,0.08)" : "#0d1628",
+                color: settings.days[d] ? "#38bdf8" : "#3a4a6a",
+                fontSize:11, fontWeight:700, cursor:"pointer"
+              }}>
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Instruments */}
+        <div style={{ marginBottom:14 }}>
+          <label style={lbl}>Instruments to watch</label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {WATCH_LIST.map(w => (
+              <button key={w} onClick={() => setSettings({ ...settings, watch: { ...settings.watch, [w]: !settings.watch[w] } })} style={{
+                padding:"7px 13px", borderRadius:8,
+                border:`1px solid ${settings.watch[w] ? "#38bdf8" : "#1a2540"}`,
+                background: settings.watch[w] ? "rgba(56,189,248,0.08)" : "#0d1628",
+                color: settings.watch[w] ? "#38bdf8" : "#3a4a6a",
+                fontSize:11, fontWeight:700, cursor:"pointer"
+              }}>
+                {w}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Min RR */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          <div>
+            <label style={lbl}>Min R:R required</label>
+            <div style={{ display:"flex", gap:4 }}>
+              {RR_OPTIONS.map(rr => (
+                <button key={rr} onClick={() => setSettings({ ...settings, minRR: rr })} style={{
+                  flex:1, padding:"9px 0", borderRadius:8,
+                  border:`1px solid ${settings.minRR===rr ? "#38bdf8" : "#1a2540"}`,
+                  background: settings.minRR===rr ? "rgba(56,189,248,0.08)" : "#0d1628",
+                  color: settings.minRR===rr ? "#38bdf8" : "#3a4a6a",
+                  fontSize:11, fontWeight:700, cursor:"pointer"
+                }}>{rr}R</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Setup type</label>
+            <select value={settings.setupType} onChange={e => setSettings({ ...settings, setupType: e.target.value })} style={{ ...inp, width:"100%", appearance:"none", WebkitAppearance:"none", cursor:"pointer" }}>
+              {SETUP_TYPES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Signal Checklist */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:"#a78bfa", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:12 }}>Signal Checklist</div>
+        <p style={{ fontSize:11, color:"#3a4a6a", margin:"0 0 12px" }}>Conditions that must be true before entering.</p>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
+          {settings.checklist.map((item, idx) => (
+            <div key={idx} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 12px", borderRadius:9, background:"#0d1628", border:"1px solid #1a2540" }}>
+              <span style={{ fontSize:11, color:"#a78bfa" }}>☐</span>
+              <span style={{ flex:1, fontSize:12, color:"#c8d8f0" }}>{item}</span>
+              <button onClick={() => removeItem(idx)} style={{ background:"transparent", border:"none", color:"#3a4a6a", cursor:"pointer", fontSize:14, padding:"0 4px" }} title="Remove">✕</button>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:"flex", gap:8 }}>
+          <input value={newChecklist} onChange={e => setNewChecklist(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addItem(); }} placeholder="Add a checklist item…" style={{ ...inp, flex:1, fontFamily:"system-ui" }}/>
+          <button onClick={addItem} style={{ padding:"9px 16px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#7c3aed,#a78bfa)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>+ Add</button>
+        </div>
+      </div>
+
+      {/* Trade Plan */}
+      <div style={{ background:"linear-gradient(135deg, rgba(56,189,248,0.08), rgba(167,139,250,0.08))", border:"1px solid rgba(56,189,248,0.2)", borderRadius:14, padding:18 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <span style={{ fontSize:18 }}>📋</span>
+          <span style={{ fontSize:13, fontWeight:800, color:"#f0f4ff" }}>Your Trade Plan</span>
+        </div>
+        <div style={{ display:"grid", gap:8, fontSize:12, color:"#94a3b8", lineHeight:1.6 }}>
+          <PlanRow k="Instrument" v={watchList.length ? watchList.join(", ") : "—"}/>
+          <PlanRow k="Session"    v={`${settings.startTime} – ${settings.endTime} · ${dayList.join(", ") || "no days"}`}/>
+          <PlanRow k="Max trades" v={`${settings.maxTrades}/day · stop after ${fmtMoney(dailyLossDollar)} daily loss`}/>
+          <PlanRow k="Risk/trade" v={`${fmtMoney(riskPerTrade)} (1% of ${fmtMoney(accountSize)})`}/>
+          <PlanRow k="Min setup"  v={`${settings.minRR}R or better · ${settings.setupType}`}/>
+          <PlanRow k="Checklist"  v={`${settings.checklist.length} item${settings.checklist.length===1?"":"s"}`}/>
+        </div>
+        <div style={{ marginTop:14, paddingTop:14, borderTop:"1px solid rgba(56,189,248,0.15)", fontSize:12, color:"#38bdf8", fontWeight:700 }}>
+          → Expected: {signalsPerWeek} signals per week
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PlanRow({ k, v }: { k: string; v: string }) {
+  return (
+    <div style={{ display:"flex", gap:12 }}>
+      <span style={{ minWidth:90, color:"#3a4a6a", fontWeight:700, textTransform:"uppercase", fontSize:10, letterSpacing:"0.08em", paddingTop:2 }}>{k}</span>
+      <span style={{ flex:1, color:"#e2e8f0", fontFamily:"monospace" }}>{v}</span>
+    </div>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────
+export default function SignalsPage() {
+  const [username,    setUsername]    = useState("");
+  const [accountSize, setAccountSize] = useState(50000);
+  const [settings,    setSettings]    = useState<StrategySettings>(DEFAULT_SETTINGS);
+  const [loaded,      setLoaded]      = useState(false);
+  const [savedFlash,  setSavedFlash]  = useState(false);
+
+  // Load
+  useEffect(() => {
+    const u = getUsername();
+    setUsername(u);
+    try {
+      const raw = localStorage.getItem(`nexyru_strategy_settings_${u}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.settings) setSettings({ ...DEFAULT_SETTINGS, ...parsed.settings });
+        if (typeof parsed.accountSize === "number") setAccountSize(parsed.accountSize);
+      }
+    } catch {}
+    setLoaded(true);
+  }, []);
+
+  // Save
+  useEffect(() => {
+    if (!loaded || !username) return;
+    try {
+      localStorage.setItem(`nexyru_strategy_settings_${username}`, JSON.stringify({ accountSize, settings }));
+      setSavedFlash(true);
+      const t = setTimeout(() => setSavedFlash(false), 1200);
+      return () => clearTimeout(t);
+    } catch {}
+  }, [accountSize, settings, loaded, username]);
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,sans-serif" }}>
+
+      {/* Top nav */}
+      <div style={{ borderBottom:"1px solid #0d1628", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}>
+        <a href="/dashboard" style={{ fontSize:12, color:"#3a4a6a", textDecoration:"none" }}>← Dashboard</a>
+        <span style={{ fontSize:14, fontWeight:800, color:"#f0f4ff" }}>⚡ Signal Generator</span>
+        <div style={{ flex:1 }}/>
+        <span style={{ fontSize:10, color: savedFlash ? "#34d399" : "#2e3f5a", fontWeight:700, transition:"color 0.3s" }}>
+          {savedFlash ? "✓ Saved" : "Auto-save on"}
+        </span>
+      </div>
+
+      <div style={{ maxWidth:1200, margin:"0 auto", padding:"32px 20px" }}>
+
+        {/* Header */}
+        <div style={{ marginBottom:28 }}>
+          <h1 style={{ fontSize:28, fontWeight:900, color:"#f0f4ff", margin:"0 0 6px", letterSpacing:"-0.02em" }}>Strategy Signal Generator</h1>
+          <p style={{ fontSize:13, color:"#3a4a6a", margin:0 }}>
+            Build your trading edge: sizing math + rule-based setup definition. Everything saves locally to your profile.
+          </p>
+        </div>
+
+        {/* Two-column on desktop */}
+        <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)", gap:20 }} className="signals-grid">
+          <PositionCalculator accountSize={accountSize} setAccountSize={setAccountSize}/>
+          <StrategySettingsPanel accountSize={accountSize} settings={settings} setSettings={setSettings}/>
+        </div>
+      </div>
+
+      <style>{`
+        @media (max-width: 900px) {
+          .signals-grid { grid-template-columns: 1fr !important; }
+        }
+        input[type="range"] {
+          height: 4px; border-radius: 4px; background: #1a2540;
+        }
+      `}</style>
     </div>
   );
 }
