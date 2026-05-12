@@ -1,32 +1,44 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────
 type FirmKey = "apex" | "topstep" | "ftmo" | "mff" | "bulenox" | "custom";
-type Phase   = "eval" | "phase2" | "funded_pa" | "express";
+type PhaseKey =
+  | "eval"          // Apex / MFF / Bulenox / Custom evaluation
+  | "pa"            // Apex Performance Account
+  | "combine"       // Topstep Trading Combine
+  | "express"       // Topstep Express Funded
+  | "phase1"        // FTMO Phase 1
+  | "phase2"        // FTMO Phase 2
+  | "ftmo_funded"   // FTMO Funded
+  | "funded";       // Generic funded for MFF/Bulenox/Custom
 
 interface ChallengeAccount {
   id:              string;
   name:            string;
   firm:            FirmKey;
   accountSize:     number;
-  phase:           Phase;
+  phase:           PhaseKey;
   startingBalance: number;
   peakBalance:     number;
-  startDate:       string;   // YYYY-MM-DD
-  dailyLoss:       number;   // 0 means "no daily limit" (Apex 4.0)
+  startDate:       string;
+  dailyLoss:       number;     // 0 = no daily limit
   maxDrawdown:     number;
-  profitTarget:    number;
-  minTradingDays:  number;   // 0 means "no minimum" (Apex 4.0)
-  consistencyMax:  number;   // % cap. 0 means "no consistency rule" (FTMO)
+  profitTarget:    number;     // 0 = no target (funded)
+  minTradingDays:  number;
+  consistencyMax:  number;     // 0 = no consistency rule
   trailingType:    "eod" | "intraday";
+  maxContracts:    number;     // 0 = not tracked
+  trailingLocksAt: number;     // 0 = no lock. Positive $ offset from starting balance (e.g. 100 = locks at start+$100)
+  benchmarkDays:   number;     // 0 = not required. e.g. 5 for Topstep
+  profitableDays:  number;     // 0 = not required. e.g. 5 of 8 for Apex PA
   createdAt:       number;
 }
 
 interface Trade { id?:string; date:string; pnl:number; symbol?:string; pair?:string; side?:string; }
 
-// ── 2026 Firm Presets ─────────────────────────────────────────────
+// ── Firms + phase definitions ─────────────────────────────────────
 const FIRMS: Record<FirmKey, { label:string; color:string; accent:string; sizes:number[]; tagline:string; }> = {
   apex:    { label:"Apex Trader Funding", color:"#22c55e", accent:"rgba(34,197,94,0.10)",  sizes:[25000,50000,100000,150000,250000], tagline:"4.0 — March 2026" },
   topstep: { label:"Topstep",             color:"#f97316", accent:"rgba(249,115,22,0.10)", sizes:[50000,100000,150000],               tagline:"2026 ruleset" },
@@ -36,95 +48,259 @@ const FIRMS: Record<FirmKey, { label:string; color:string; accent:string; sizes:
   custom:  { label:"Custom",              color:"#64748b", accent:"rgba(100,116,139,0.10)",sizes:[10000,25000,50000,100000,150000,200000,250000], tagline:"Manual rules" },
 };
 
-interface PresetRule { dailyLoss:number; maxDrawdown:number; profitTarget:number; profitTargetP2?:number; minTradingDays:number; consistencyMax:number; trailingType:"eod"|"intraday"; }
+const FIRM_PHASES: Record<FirmKey, Array<{ key:PhaseKey; label:string; sub?:string }>> = {
+  apex: [
+    { key:"eval", label:"Evaluation",                sub:"Pass the challenge" },
+    { key:"pa",   label:"Performance Account (PA)",  sub:"Live funded — payout phase" },
+  ],
+  topstep: [
+    { key:"combine", label:"Trading Combine", sub:"Evaluation" },
+    { key:"express", label:"Express Funded",  sub:"Live funded — payout phase" },
+  ],
+  ftmo: [
+    { key:"phase1",      label:"Phase 1 (Challenge)",   sub:"10% target" },
+    { key:"phase2",      label:"Phase 2 (Verification)", sub:"5% target" },
+    { key:"ftmo_funded", label:"FTMO Funded",           sub:"Live profit split" },
+  ],
+  mff: [
+    { key:"eval",   label:"Evaluation", sub:"Pass the challenge" },
+    { key:"funded", label:"Funded",     sub:"Live account" },
+  ],
+  bulenox: [
+    { key:"eval",   label:"Evaluation", sub:"Pass the challenge" },
+    { key:"funded", label:"Funded",     sub:"Live account" },
+  ],
+  custom: [
+    { key:"eval",   label:"Evaluation", sub:"Pre-funded" },
+    { key:"funded", label:"Funded",     sub:"Live account" },
+  ],
+};
 
-// Accurate 2026 rules per spec
-const PRESETS: Record<FirmKey, Record<number, PresetRule>> = {
+// ── Phase Rules (2026 accurate) ───────────────────────────────────
+interface PhaseRule {
+  dailyLoss:       number;
+  maxDrawdown:     number;
+  profitTarget:    number;
+  minTradingDays:  number;
+  consistencyMax:  number;
+  trailingType:    "eod" | "intraday";
+  maxContracts:    number;
+  trailingLocksAt: number;
+  benchmarkDays:   number;
+  profitableDays:  number;
+}
+
+const blank: PhaseRule = { dailyLoss:0, maxDrawdown:0, profitTarget:0, minTradingDays:0, consistencyMax:0, trailingType:"eod", maxContracts:0, trailingLocksAt:0, benchmarkDays:0, profitableDays:0 };
+
+const RULES: Record<FirmKey, Partial<Record<PhaseKey, Record<number, PhaseRule>>>> = {
   apex: {
-    25000:  { dailyLoss:0, maxDrawdown:1500, profitTarget:1500,  minTradingDays:0, consistencyMax:50, trailingType:"eod" },
-    50000:  { dailyLoss:0, maxDrawdown:2500, profitTarget:3000,  minTradingDays:0, consistencyMax:50, trailingType:"eod" },
-    100000: { dailyLoss:0, maxDrawdown:3000, profitTarget:6000,  minTradingDays:0, consistencyMax:50, trailingType:"eod" },
-    150000: { dailyLoss:0, maxDrawdown:4500, profitTarget:9000,  minTradingDays:0, consistencyMax:50, trailingType:"eod" },
-    250000: { dailyLoss:0, maxDrawdown:6500, profitTarget:15000, minTradingDays:0, consistencyMax:50, trailingType:"eod" },
+    eval: {
+      25000:  { ...blank, maxDrawdown:1500, profitTarget:1500,  trailingType:"eod", maxContracts:10 },
+      50000:  { ...blank, maxDrawdown:2500, profitTarget:3000,  trailingType:"eod", maxContracts:14 },
+      100000: { ...blank, maxDrawdown:3000, profitTarget:6000,  trailingType:"eod", maxContracts:20 },
+      150000: { ...blank, maxDrawdown:4500, profitTarget:9000,  trailingType:"eod", maxContracts:25 },
+      250000: { ...blank, maxDrawdown:6500, profitTarget:15000, trailingType:"eod", maxContracts:35 },
+    },
+    pa: {
+      25000:  { ...blank, maxDrawdown:1500, consistencyMax:50, trailingLocksAt:100, maxContracts:6,  profitableDays:5, minTradingDays:8 },
+      50000:  { ...blank, maxDrawdown:2500, consistencyMax:50, trailingLocksAt:100, maxContracts:8,  profitableDays:5, minTradingDays:8 },
+      100000: { ...blank, maxDrawdown:3000, consistencyMax:50, trailingLocksAt:100, maxContracts:12, profitableDays:5, minTradingDays:8 },
+      150000: { ...blank, maxDrawdown:4500, consistencyMax:50, trailingLocksAt:100, maxContracts:16, profitableDays:5, minTradingDays:8 },
+      250000: { ...blank, maxDrawdown:6500, consistencyMax:50, trailingLocksAt:100, maxContracts:20, profitableDays:5, minTradingDays:8 },
+    },
   },
   topstep: {
-    50000:  { dailyLoss:1000, maxDrawdown:2000, profitTarget:3000, minTradingDays:5, consistencyMax:30, trailingType:"eod" },
-    100000: { dailyLoss:2000, maxDrawdown:3000, profitTarget:6000, minTradingDays:5, consistencyMax:30, trailingType:"eod" },
-    150000: { dailyLoss:3000, maxDrawdown:4500, profitTarget:9000, minTradingDays:5, consistencyMax:30, trailingType:"eod" },
+    combine: {
+      50000:  { ...blank, dailyLoss:1000, maxDrawdown:2000, profitTarget:3000, benchmarkDays:5 },
+      100000: { ...blank, dailyLoss:2000, maxDrawdown:3000, profitTarget:6000, benchmarkDays:5 },
+      150000: { ...blank, dailyLoss:3000, maxDrawdown:4500, profitTarget:9000, benchmarkDays:5 },
+    },
+    express: {
+      50000:  { ...blank, dailyLoss:1000, maxDrawdown:2000, consistencyMax:40, benchmarkDays:5 },
+      100000: { ...blank, dailyLoss:2000, maxDrawdown:3000, consistencyMax:40, benchmarkDays:5 },
+      150000: { ...blank, dailyLoss:3000, maxDrawdown:4500, consistencyMax:40, benchmarkDays:5 },
+    },
   },
   ftmo: {
-    10000:  { dailyLoss:500,   maxDrawdown:1000,  profitTarget:1000,  profitTargetP2:500,   minTradingDays:4, consistencyMax:0, trailingType:"eod" },
-    25000:  { dailyLoss:1250,  maxDrawdown:2500,  profitTarget:2500,  profitTargetP2:1250,  minTradingDays:4, consistencyMax:0, trailingType:"eod" },
-    50000:  { dailyLoss:2500,  maxDrawdown:5000,  profitTarget:5000,  profitTargetP2:2500,  minTradingDays:4, consistencyMax:0, trailingType:"eod" },
-    100000: { dailyLoss:5000,  maxDrawdown:10000, profitTarget:10000, profitTargetP2:5000,  minTradingDays:4, consistencyMax:0, trailingType:"eod" },
-    200000: { dailyLoss:10000, maxDrawdown:20000, profitTarget:20000, profitTargetP2:10000, minTradingDays:4, consistencyMax:0, trailingType:"eod" },
+    phase1: {
+      10000:  { ...blank, dailyLoss:500,   maxDrawdown:1000,  profitTarget:1000,  minTradingDays:4 },
+      25000:  { ...blank, dailyLoss:1250,  maxDrawdown:2500,  profitTarget:2500,  minTradingDays:4 },
+      50000:  { ...blank, dailyLoss:2500,  maxDrawdown:5000,  profitTarget:5000,  minTradingDays:4 },
+      100000: { ...blank, dailyLoss:5000,  maxDrawdown:10000, profitTarget:10000, minTradingDays:4 },
+      200000: { ...blank, dailyLoss:10000, maxDrawdown:20000, profitTarget:20000, minTradingDays:4 },
+    },
+    phase2: {
+      10000:  { ...blank, dailyLoss:500,   maxDrawdown:1000,  profitTarget:500,   minTradingDays:4 },
+      25000:  { ...blank, dailyLoss:1250,  maxDrawdown:2500,  profitTarget:1250,  minTradingDays:4 },
+      50000:  { ...blank, dailyLoss:2500,  maxDrawdown:5000,  profitTarget:2500,  minTradingDays:4 },
+      100000: { ...blank, dailyLoss:5000,  maxDrawdown:10000, profitTarget:5000,  minTradingDays:4 },
+      200000: { ...blank, dailyLoss:10000, maxDrawdown:20000, profitTarget:10000, minTradingDays:4 },
+    },
+    ftmo_funded: {
+      10000:  { ...blank, dailyLoss:500,   maxDrawdown:1000  },
+      25000:  { ...blank, dailyLoss:1250,  maxDrawdown:2500  },
+      50000:  { ...blank, dailyLoss:2500,  maxDrawdown:5000  },
+      100000: { ...blank, dailyLoss:5000,  maxDrawdown:10000 },
+      200000: { ...blank, dailyLoss:10000, maxDrawdown:20000 },
+    },
   },
   mff: {
-    50000:  { dailyLoss:2000, maxDrawdown:2500, profitTarget:3000, minTradingDays:1, consistencyMax:0, trailingType:"eod" },
-    100000: { dailyLoss:3500, maxDrawdown:5000, profitTarget:6000, minTradingDays:1, consistencyMax:0, trailingType:"eod" },
-    150000: { dailyLoss:5000, maxDrawdown:7500, profitTarget:9000, minTradingDays:1, consistencyMax:0, trailingType:"eod" },
+    eval: {
+      50000:  { ...blank, dailyLoss:2000, maxDrawdown:2500, profitTarget:3000, minTradingDays:1 },
+      100000: { ...blank, dailyLoss:3500, maxDrawdown:5000, profitTarget:6000, minTradingDays:1 },
+      150000: { ...blank, dailyLoss:5000, maxDrawdown:7500, profitTarget:9000, minTradingDays:1 },
+    },
+    funded: {
+      50000:  { ...blank, dailyLoss:2000, maxDrawdown:2500 },
+      100000: { ...blank, dailyLoss:3500, maxDrawdown:5000 },
+      150000: { ...blank, dailyLoss:5000, maxDrawdown:7500 },
+    },
   },
   bulenox: {
-    25000:  { dailyLoss:1500, maxDrawdown:1500, profitTarget:1500, minTradingDays:1, consistencyMax:0, trailingType:"eod" },
-    50000:  { dailyLoss:2000, maxDrawdown:2500, profitTarget:3000, minTradingDays:1, consistencyMax:0, trailingType:"eod" },
-    100000: { dailyLoss:3500, maxDrawdown:5000, profitTarget:5000, minTradingDays:1, consistencyMax:0, trailingType:"eod" },
+    eval: {
+      25000:  { ...blank, dailyLoss:1500, maxDrawdown:1500, profitTarget:1500, minTradingDays:1 },
+      50000:  { ...blank, dailyLoss:2000, maxDrawdown:2500, profitTarget:3000, minTradingDays:1 },
+      100000: { ...blank, dailyLoss:3500, maxDrawdown:5000, profitTarget:5000, minTradingDays:1 },
+    },
+    funded: {
+      25000:  { ...blank, dailyLoss:1500, maxDrawdown:1500 },
+      50000:  { ...blank, dailyLoss:2000, maxDrawdown:2500 },
+      100000: { ...blank, dailyLoss:3500, maxDrawdown:5000 },
+    },
   },
   custom: {
-    10000:  { dailyLoss:500,   maxDrawdown:1000,  profitTarget:1000,  minTradingDays:0, consistencyMax:0, trailingType:"eod" },
-    25000:  { dailyLoss:1250,  maxDrawdown:2500,  profitTarget:2500,  minTradingDays:0, consistencyMax:0, trailingType:"eod" },
-    50000:  { dailyLoss:2500,  maxDrawdown:5000,  profitTarget:5000,  minTradingDays:0, consistencyMax:0, trailingType:"eod" },
-    100000: { dailyLoss:5000,  maxDrawdown:10000, profitTarget:10000, minTradingDays:0, consistencyMax:0, trailingType:"eod" },
-    150000: { dailyLoss:7500,  maxDrawdown:15000, profitTarget:15000, minTradingDays:0, consistencyMax:0, trailingType:"eod" },
-    200000: { dailyLoss:10000, maxDrawdown:20000, profitTarget:20000, minTradingDays:0, consistencyMax:0, trailingType:"eod" },
-    250000: { dailyLoss:12500, maxDrawdown:25000, profitTarget:25000, minTradingDays:0, consistencyMax:0, trailingType:"eod" },
+    eval: {
+      10000:  { ...blank, dailyLoss:500,   maxDrawdown:1000,  profitTarget:1000  },
+      25000:  { ...blank, dailyLoss:1250,  maxDrawdown:2500,  profitTarget:2500  },
+      50000:  { ...blank, dailyLoss:2500,  maxDrawdown:5000,  profitTarget:5000  },
+      100000: { ...blank, dailyLoss:5000,  maxDrawdown:10000, profitTarget:10000 },
+      150000: { ...blank, dailyLoss:7500,  maxDrawdown:15000, profitTarget:15000 },
+      200000: { ...blank, dailyLoss:10000, maxDrawdown:20000, profitTarget:20000 },
+      250000: { ...blank, dailyLoss:12500, maxDrawdown:25000, profitTarget:25000 },
+    },
+    funded: {
+      10000:  { ...blank, dailyLoss:500,   maxDrawdown:1000  },
+      25000:  { ...blank, dailyLoss:1250,  maxDrawdown:2500  },
+      50000:  { ...blank, dailyLoss:2500,  maxDrawdown:5000  },
+      100000: { ...blank, dailyLoss:5000,  maxDrawdown:10000 },
+      150000: { ...blank, dailyLoss:7500,  maxDrawdown:15000 },
+      200000: { ...blank, dailyLoss:10000, maxDrawdown:20000 },
+      250000: { ...blank, dailyLoss:12500, maxDrawdown:25000 },
+    },
   },
 };
 
-const PHASES: Record<Phase, string> = {
-  eval:      "Evaluation",
-  phase2:    "Phase 2",
-  funded_pa: "Funded PA",
-  express:   "Express Funded",
-};
+function getRule(firm:FirmKey, phase:PhaseKey, size:number): PhaseRule {
+  const firmRules = RULES[firm];
+  const phaseRules = firmRules?.[phase];
+  if (phaseRules && phaseRules[size]) return phaseRules[size];
+  // Fall back to closest size in custom
+  return RULES.custom.eval?.[size] ?? blank;
+}
 
-// Firm-specific warning messages
-function firmWarnings(firm:FirmKey, phase:Phase): string[] {
-  switch (firm) {
-    case "apex":
+// Normalize phase when firm changes — pick first valid phase
+function normalizePhase(firm:FirmKey, phase:PhaseKey): PhaseKey {
+  const phases = FIRM_PHASES[firm].map(p => p.key);
+  if (phases.includes(phase)) return phase;
+  return phases[0];
+}
+
+// Backwards-compat: legacy phase strings ("funded_pa", etc.) → new
+function migratePhase(firm:FirmKey, raw:string): PhaseKey {
+  const phases = FIRM_PHASES[firm].map(p => p.key);
+  if (phases.includes(raw as PhaseKey)) return raw as PhaseKey;
+  // Map legacy
+  if (firm === "apex"    && (raw === "funded_pa" || raw === "express")) return "pa";
+  if (firm === "topstep" && raw === "funded_pa") return "express";
+  if (firm === "ftmo"    && raw === "eval")       return "phase1";
+  if (firm === "ftmo"    && raw === "funded_pa")  return "ftmo_funded";
+  if (raw === "funded_pa" || raw === "express")   return "funded";
+  return phases[0];
+}
+
+// ── Phase warnings ────────────────────────────────────────────────
+function getPhaseWarnings(firm:FirmKey, phase:PhaseKey): string[] {
+  const k = `${firm}.${phase}`;
+  switch (k) {
+    case "apex.eval":
       return [
-        "No trading within 8 minutes of NFP / CPI / FOMC releases",
+        "No trading 8 mins before/after NFP, CPI, FOMC",
         "No overnight positions — flat by session close",
-        phase === "funded_pa"
-          ? "50% consistency rule applies to PA payouts (largest day ≤ 50% of total)"
-          : "Trailing drawdown applies — protect your peak balance",
+        "Trailing drawdown applies — protect your peak balance",
+        "No consistency rule during evaluation",
+        "No minimum trading days (removed in Apex 4.0)",
       ];
-    case "topstep":
+    case "apex.pa":
+      return [
+        "⚠️ Contract limits drop significantly in PA vs Eval — adjust your strategy",
+        "Trailing drawdown locks at starting balance + $100 (becomes fixed floor)",
+        "50% consistency rule on payouts: no single day > 50% of total profits",
+        "Need 8 trading days, 5 must be profitable, for first payout",
+        "100% of first $25K profit, then 90/10 split",
+        "No overnight positions still applies",
+        "No trading 8 mins before/after NFP, CPI, FOMC",
+      ];
+    case "topstep.combine":
       return [
         "Must be flat by 3:10 PM CT — no overnight positions",
-        "30% consistency rule — no single day > 30% of total combine profits",
-        "5 benchmark days ($150+ each) required before first payout",
-        "For payouts: 40% consistency rule applies to payout window",
+        "Minimum 5 benchmark days ($150+ profit each)",
+        "No consistency rule for passing — only for payouts",
+        "End-of-day trailing drawdown",
       ];
-    case "ftmo":
+    case "topstep.express":
       return [
-        "Minimum 4 trading days per phase",
-        "Daily loss limit 5% / Max drawdown 10% of account",
-        "Phase 1 target 10%, Phase 2 target 5% — no consistency rule",
+        "Must be flat by 3:10 PM CT — no overnight positions",
+        "40% consistency rule for payouts (stricter than combine's 30%)",
+        "Need 5 benchmark days ($150+) before first payout",
+        "Payout requires 3+ days after hitting 40% consistency target",
+        "Payout capped at 50% of balance or $5,000 max",
+        "90/10 split (legacy traders 100% first $10K)",
       ];
-    case "mff":
+    case "ftmo.phase1":
       return [
-        "Trailing drawdown until target hit — then locks at starting balance",
-        "No overnight positions on evaluation accounts",
+        "Profit target: 10% of account",
+        "Daily loss: 5% of account · Max drawdown: 10% of account",
+        "Minimum 4 trading days",
+        "No consistency rule",
       ];
-    case "bulenox":
+    case "ftmo.phase2":
       return [
-        "End-of-day drawdown — calculated on closed equity at session close",
-        "No overnight positions during evaluation",
+        "Profit target: 5% of account (HALF of Phase 1)",
+        "Daily loss: 5% of account · Max drawdown: 10% of account",
+        "Minimum 4 trading days",
+        "No consistency rule",
       ];
+    case "ftmo.ftmo_funded":
+      return [
+        "No profit target — you're live",
+        "Daily loss: 5% · Max drawdown: 10%",
+        "80/20 profit split (scaling to 90/10)",
+        "Scaling plan available",
+      ];
+    case "mff.eval":
+      return ["Trailing drawdown until target hit", "No overnight positions on evaluation"];
+    case "mff.funded":
+      return ["Drawdown locks at starting balance", "Live account — payout phase"];
+    case "bulenox.eval":
+      return ["End-of-day drawdown", "No overnight positions during evaluation"];
+    case "bulenox.funded":
+      return ["End-of-day drawdown", "Live account — payout phase"];
     default:
       return ["Custom rules — verify against your firm's current ruleset"];
   }
 }
+
+// ── Rule tooltips (plain-English explanations) ────────────────────
+const TOOLTIPS = {
+  dailyLoss:      "The maximum you can lose in a single trading day. Hit this and your account is breached. Resets at midnight CT.",
+  maxDrawdown:    "How far below your peak balance you can go before failing. Most firms trail this up with your profits.",
+  profitTarget:   "Profit you need to reach to pass to the next phase, get funded, or qualify for a payout.",
+  minTradingDays: "Minimum number of days you must place at least one trade before passing or requesting a payout.",
+  consistencyMax: "No single day's profit can exceed this percentage of your total profits. Prevents one lucky day from passing you.",
+  maxContracts:   "Maximum number of contracts you can hold open at once. Hitting this limit is a hard rule breach.",
+  trailingLocks:  "After your peak reaches a certain level, the drawdown floor locks in place and stops trailing up.",
+  benchmarkDays:  "Trading days where you made at least $150 in profit. Required by Topstep before your first payout.",
+};
 
 // ── Storage ───────────────────────────────────────────────────────
 function getUsername(): string {
@@ -135,8 +311,21 @@ function challengeKey(u:string) { return `nexyru_challenge_${u}`; }
 function tradesKey(u:string)    { return `tradedesk_trades_${u}_v1`; }
 
 function loadAccounts(u:string): ChallengeAccount[] {
-  try { const r = localStorage.getItem(challengeKey(u)); if(!r) return []; const j = JSON.parse(r); return Array.isArray(j) ? j : []; }
-  catch { return []; }
+  try {
+    const r = localStorage.getItem(challengeKey(u));
+    if (!r) return [];
+    const j = JSON.parse(r);
+    if (!Array.isArray(j)) return [];
+    // Migrate legacy phases
+    return j.map((a:ChallengeAccount) => ({
+      ...a,
+      phase: migratePhase(a.firm, a.phase as string),
+      maxContracts:    a.maxContracts    ?? 0,
+      trailingLocksAt: a.trailingLocksAt ?? 0,
+      benchmarkDays:   a.benchmarkDays   ?? 0,
+      profitableDays:  a.profitableDays  ?? 0,
+    }));
+  } catch { return []; }
 }
 function saveAccounts(u:string, accs:ChallengeAccount[]) {
   try { localStorage.setItem(challengeKey(u), JSON.stringify(accs)); } catch {}
@@ -145,12 +334,11 @@ function loadTrades(u:string): Trade[] {
   try { const r = localStorage.getItem(tradesKey(u)); return r ? JSON.parse(r) : []; } catch { return []; }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
+// ── Math ─────────────────────────────────────────────────────────
 function isSameDay(a:Date, b:Date) { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
 function dayKey(d:Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 
 interface DayStat { dateKey:string; date:Date; pnl:number; trades:Trade[]; }
-
 function groupByDay(trades:Trade[]): Record<string, DayStat> {
   const out:Record<string,DayStat> = {};
   for (const t of trades) {
@@ -170,18 +358,20 @@ interface Computed {
   dailyLossUsed:    number;
   currentBalance:   number;
   peakBalance:      number;
+  effectivePeak:    number;     // capped if trailing locks
   drawdownUsed:     number;
   totalProfit:      number;
   tradingDaysDone:  number;
-  benchmarkDaysDone:number;     // Topstep: days with $150+ profit
+  benchmarkDaysDone:number;
+  profitableDaysDone:number;
   bestDayPnl:       number;
   consistencyScore: number;
-  consistencyRatio: number;     // best day / total profit, as %
+  consistencyRatio: number;
+  trailingIsLocked: boolean;
   byDay:            Record<string, DayStat>;
 }
 
 function computeStats(acc:ChallengeAccount, allTrades:Trade[]): Computed {
-  // Filter trades to those on/after the start date
   const start = new Date(acc.startDate + "T00:00:00");
   const trades = allTrades.filter(t => {
     const d = new Date(t.date);
@@ -203,14 +393,21 @@ function computeStats(acc:ChallengeAccount, allTrades:Trade[]): Computed {
     bal += t.pnl ?? 0;
     if (bal > peak) peak = bal;
   }
-  const drawdownUsed = Math.max(0, peak - currentBalance);
+
+  // Trailing lock: once peak reaches startingBalance + maxDrawdown + trailingLocksAt, peak caps there
+  const lockThreshold = acc.trailingLocksAt > 0
+    ? acc.startingBalance + acc.maxDrawdown + acc.trailingLocksAt
+    : Infinity;
+  const trailingIsLocked = peak >= lockThreshold;
+  const effectivePeak = trailingIsLocked ? lockThreshold : peak;
+  const drawdownUsed = Math.max(0, effectivePeak - currentBalance);
 
   const byDay = groupByDay(sorted);
   const allDays = Object.values(byDay);
-  const profitableDays = allDays.filter(d => d.trades.length > 0);
-  const tradingDaysDone = profitableDays.length;
+  const profitableDaysDone = allDays.filter(d => d.pnl > 0).length;
+  const tradingDaysDone = allDays.filter(d => d.trades.length > 0).length;
   const benchmarkDaysDone = allDays.filter(d => d.pnl >= 150).length;
-  const bestDayPnl = profitableDays.reduce((m,d) => Math.max(m, d.pnl), 0);
+  const bestDayPnl = allDays.reduce((m,d) => Math.max(m, d.pnl), 0);
 
   let consistencyScore = 100;
   let consistencyRatio = 0;
@@ -221,23 +418,15 @@ function computeStats(acc:ChallengeAccount, allTrades:Trade[]): Computed {
       : Math.max(0, Math.round(100 - (consistencyRatio - acc.consistencyMax) * 2));
   }
 
-  return { todayPnl, todayTrades, dailyLossUsed, currentBalance, peakBalance:peak, drawdownUsed, totalProfit, tradingDaysDone, benchmarkDaysDone, bestDayPnl, consistencyScore, consistencyRatio, byDay };
+  return { todayPnl, todayTrades, dailyLossUsed, currentBalance, peakBalance:peak, effectivePeak, drawdownUsed, totalProfit, tradingDaysDone, benchmarkDaysDone, profitableDaysDone, bestDayPnl, consistencyScore, consistencyRatio, trailingIsLocked, byDay };
 }
 
-// ── SVG Ring ─────────────────────────────────────────────────────
-interface RingProps {
-  value:    number;
-  max:      number;
-  size?:    number;
-  thickness?: number;
-  centerTop?: string;
-  centerBig?: string;
-  centerSub?: string;
-  mode?: "loss" | "fill";
-  forceColor?: string;
-}
-
-function Ring({ value, max, size=170, thickness=13, centerTop, centerBig, centerSub, mode="loss", forceColor }: RingProps) {
+// ── Ring ─────────────────────────────────────────────────────────
+function Ring({ value, max, size=170, thickness=13, centerBig, centerSub, mode="loss", forceColor }:{
+  value:number; max:number; size?:number; thickness?:number;
+  centerBig?:string; centerSub?:string;
+  mode?:"loss"|"fill"; forceColor?:string;
+}) {
   const pct = Math.min(100, Math.max(0, max > 0 ? (value / max) * 100 : 0));
   const r = (size - thickness) / 2;
   const circ = 2 * Math.PI * r;
@@ -246,9 +435,9 @@ function Ring({ value, max, size=170, thickness=13, centerTop, centerBig, center
   let color = "#22c55e";
   if (forceColor) color = forceColor;
   else if (mode === "loss") {
-    if (pct >= 80)      color = "#ef4444";
+    if (pct >= 80) color = "#ef4444";
     else if (pct >= 50) color = "#f59e0b";
-    else                color = "#22c55e";
+    else color = "#22c55e";
   } else {
     color = pct >= 100 ? "#22c55e" : "#3b82f6";
   }
@@ -266,11 +455,23 @@ function Ring({ value, max, size=170, thickness=13, centerTop, centerBig, center
         />
       </svg>
       <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"0 8px" }}>
-        {centerTop && <div style={{ fontSize:10, fontWeight:700, color:"#5a6a8a", textTransform:"uppercase", letterSpacing:"0.08em" }}>{centerTop}</div>}
-        {centerBig && <div style={{ fontSize:17, fontWeight:900, color:"#f0f4ff", fontFamily:"monospace", marginTop:4, lineHeight:1.2 }}>{centerBig}</div>}
+        {centerBig && <div style={{ fontSize:17, fontWeight:900, color:"#f0f4ff", fontFamily:"monospace", lineHeight:1.2 }}>{centerBig}</div>}
         {centerSub && <div style={{ fontSize:10, fontWeight:600, color:"#4a5a7a", marginTop:4 }}>{centerSub}</div>}
       </div>
     </div>
+  );
+}
+
+// ── Tooltip icon ─────────────────────────────────────────────────
+function Info({ text }:{ text:string }) {
+  return (
+    <span title={text} style={{
+      display:"inline-flex", alignItems:"center", justifyContent:"center",
+      width:14, height:14, borderRadius:"50%",
+      background:"#1a2540", color:"#7a8aa8",
+      fontSize:9, fontWeight:800, cursor:"help", marginLeft:6, flexShrink:0,
+      fontStyle:"italic", fontFamily:"serif",
+    }}>i</span>
   );
 }
 
@@ -279,64 +480,74 @@ const inp:React.CSSProperties = { width:"100%", padding:"10px 12px", borderRadiu
 const lbl:React.CSSProperties = { fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:6 };
 const card:React.CSSProperties = { background:"#0b1120", border:"1px solid #1a2540", borderRadius:18 };
 
-function fmtUSD(n:number) {
-  const sign = n < 0 ? "-" : "";
-  return sign + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
-function fmtUSDsigned(n:number) {
-  return (n >= 0 ? "+" : "-") + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
+function fmtUSD(n:number) { return (n < 0 ? "-" : "") + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
+function fmtUSDsigned(n:number) { return (n >= 0 ? "+" : "-") + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
 
 // ── Setup Form ────────────────────────────────────────────────────
 function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; onSave:(a:ChallengeAccount)=>void; onCancel?:()=>void; }) {
-  const [firm, setFirm]         = useState<FirmKey>(initial?.firm ?? "apex");
+  const [firm, setFirm]     = useState<FirmKey>(initial?.firm ?? "apex");
   const sizes = FIRMS[firm].sizes;
-  const [size, setSize]         = useState<number>(initial?.accountSize ?? sizes[0]);
-  const [name, setName]         = useState<string>(initial?.name ?? "");
-  const [phase, setPhase]       = useState<Phase>(initial?.phase ?? "eval");
+  const [size, setSize]     = useState<number>(initial?.accountSize ?? sizes[0]);
+  const [phase, setPhase]   = useState<PhaseKey>(initial?.phase ?? FIRM_PHASES[firm][0].key);
+  const [name, setName]     = useState<string>(initial?.name ?? "");
   const [starting, setStarting] = useState<string>(String(initial?.startingBalance ?? sizes[0]));
   const [startDate, setStartDate] = useState<string>(initial?.startDate ?? new Date().toISOString().slice(0,10));
 
-  const presetForCurrent = () => PRESETS[firm][size] ?? PRESETS.custom[size] ?? PRESETS.custom[50000];
+  // Track current rule snapshot
+  const rule = useMemo(() => getRule(firm, phase, size), [firm, phase, size]);
 
-  // Pull active target depending on FTMO phase
-  const activeTarget = (p:PresetRule) => (firm === "ftmo" && phase === "phase2" && p.profitTargetP2 != null) ? p.profitTargetP2 : p.profitTarget;
+  // Editable rule values
+  const [dailyLoss,       setDailyLoss]       = useState<string>(String(initial?.dailyLoss       ?? rule.dailyLoss));
+  const [maxDrawdown,     setMaxDrawdown]     = useState<string>(String(initial?.maxDrawdown     ?? rule.maxDrawdown));
+  const [profitTarget,    setProfitTarget]    = useState<string>(String(initial?.profitTarget    ?? rule.profitTarget));
+  const [minTradingDays,  setMinTradingDays]  = useState<string>(String(initial?.minTradingDays  ?? rule.minTradingDays));
+  const [consistencyMax,  setConsistencyMax]  = useState<string>(String(initial?.consistencyMax  ?? rule.consistencyMax));
+  const [maxContracts,    setMaxContracts]    = useState<string>(String(initial?.maxContracts    ?? rule.maxContracts));
+  const [trailingLocksAt, setTrailingLocksAt] = useState<string>(String(initial?.trailingLocksAt ?? rule.trailingLocksAt));
+  const [benchmarkDays,   setBenchmarkDays]   = useState<string>(String(initial?.benchmarkDays   ?? rule.benchmarkDays));
+  const [trailingType,    setTrailingType]    = useState<"eod"|"intraday">(initial?.trailingType ?? rule.trailingType);
 
-  const [overrides, setOverrides] = useState({
-    dailyLoss:      false,
-    maxDrawdown:    false,
-    profitTarget:   false,
-    minTradingDays: false,
-    consistencyMax: false,
-  });
-  const initialPreset = PRESETS[firm][size] ?? PRESETS.custom[size] ?? PRESETS.custom[50000];
-  const [dailyLoss,      setDailyLoss]      = useState<string>(String(initial?.dailyLoss      ?? initialPreset.dailyLoss));
-  const [maxDrawdown,    setMaxDrawdown]    = useState<string>(String(initial?.maxDrawdown    ?? initialPreset.maxDrawdown));
-  const [profitTarget,   setProfitTarget]   = useState<string>(String(initial?.profitTarget   ?? activeTarget(initialPreset)));
-  const [minTradingDays, setMinTradingDays] = useState<string>(String(initial?.minTradingDays ?? initialPreset.minTradingDays));
-  const [consistencyMax, setConsistencyMax] = useState<string>(String(initial?.consistencyMax ?? initialPreset.consistencyMax));
-  const [trailingType,   setTrailingType]   = useState<"eod"|"intraday">(initial?.trailingType ?? initialPreset.trailingType);
+  // Phase-changed banner
+  const [phaseChanged, setPhaseChanged] = useState(false);
+  const prevPhase = useRef<PhaseKey>(phase);
+  const prevFirm  = useRef<FirmKey>(firm);
+  const isFirstRender = useRef(true);
 
-  // When firm or size changes, snap size to a valid one and re-apply preset
+  // When firm changes, snap phase + size
   useEffect(() => {
     if (!FIRMS[firm].sizes.includes(size)) setSize(FIRMS[firm].sizes[0]);
+    setPhase(prev => normalizePhase(firm, prev));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firm]);
 
+  // When firm/phase/size changes — replace ALL rule fields with new preset
   useEffect(() => {
-    const p = presetForCurrent();
-    if (!overrides.dailyLoss)      setDailyLoss(String(p.dailyLoss));
-    if (!overrides.maxDrawdown)    setMaxDrawdown(String(p.maxDrawdown));
-    if (!overrides.profitTarget)   setProfitTarget(String(activeTarget(p)));
-    if (!overrides.minTradingDays) setMinTradingDays(String(p.minTradingDays));
-    if (!overrides.consistencyMax) setConsistencyMax(String(p.consistencyMax));
-    setTrailingType(p.trailingType);
+    const r = getRule(firm, phase, size);
+    setDailyLoss(String(r.dailyLoss));
+    setMaxDrawdown(String(r.maxDrawdown));
+    setProfitTarget(String(r.profitTarget));
+    setMinTradingDays(String(r.minTradingDays));
+    setConsistencyMax(String(r.consistencyMax));
+    setMaxContracts(String(r.maxContracts));
+    setTrailingLocksAt(String(r.trailingLocksAt));
+    setBenchmarkDays(String(r.benchmarkDays));
+    setTrailingType(r.trailingType);
     if (!initial) setStarting(String(size));
+
+    // Banner when phase changes (skip on first render)
+    if (!isFirstRender.current && (prevPhase.current !== phase || prevFirm.current !== firm)) {
+      setPhaseChanged(true);
+      const t = setTimeout(() => setPhaseChanged(false), 5000);
+      return () => clearTimeout(t);
+    }
+    isFirstRender.current = false;
+    prevPhase.current = phase;
+    prevFirm.current = firm;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firm, size, phase]);
+  }, [firm, phase, size]);
 
   const save = () => {
-    const p = presetForCurrent();
+    const r = getRule(firm, phase, size);
     const acc:ChallengeAccount = {
       id:              initial?.id ?? `ch_${Date.now()}`,
       name:            name.trim() || `${FIRMS[firm].label} ${size/1000}K`,
@@ -346,25 +557,33 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
       startingBalance: parseFloat(starting) || size,
       peakBalance:     initial?.peakBalance ?? (parseFloat(starting) || size),
       startDate:       startDate,
-      dailyLoss:       parseFloat(dailyLoss),
-      maxDrawdown:     parseFloat(maxDrawdown)  || p.maxDrawdown,
-      profitTarget:    parseFloat(profitTarget) || activeTarget(p),
+      dailyLoss:       parseFloat(dailyLoss)       || 0,
+      maxDrawdown:     parseFloat(maxDrawdown)     || r.maxDrawdown,
+      profitTarget:    parseFloat(profitTarget)    || 0,
       minTradingDays:  parseInt(minTradingDays, 10) || 0,
-      consistencyMax:  parseFloat(consistencyMax) || 0,
+      consistencyMax:  parseFloat(consistencyMax)  || 0,
+      maxContracts:    parseInt(maxContracts, 10)  || 0,
+      trailingLocksAt: parseFloat(trailingLocksAt) || 0,
+      benchmarkDays:   parseInt(benchmarkDays, 10) || 0,
+      profitableDays:  initial?.profitableDays    ?? r.profitableDays,
       trailingType,
       createdAt:       initial?.createdAt ?? Date.now(),
     };
     onSave(acc);
   };
 
-  const showPhase2Target = firm === "ftmo";
+  const phases = FIRM_PHASES[firm];
+  const currentPhaseDef = phases.find(p => p.key === phase) ?? phases[0];
+
+  // Rules to show (some hidden per phase)
+  const isFundedPhase = phase === "pa" || phase === "express" || phase === "ftmo_funded" || phase === "funded";
 
   return (
     <div style={{ maxWidth:720, margin:"0 auto" }}>
       <div style={{ textAlign:"center", marginBottom:24 }}>
         <div style={{ fontSize:42, marginBottom:8 }}>🏆</div>
         <h2 style={{ fontSize:22, fontWeight:900, color:"#f0f4ff", margin:"0 0 6px" }}>{initial ? "Edit Challenge Account" : "Set Up Your Challenge"}</h2>
-        <p style={{ fontSize:12, color:"#4a5a7a", margin:0 }}>2026 prop firm rules. Pick a firm — sizes and rules auto-fill. Override anything.</p>
+        <p style={{ fontSize:12, color:"#4a5a7a", margin:0 }}>2026 prop firm rules — each phase has its own ruleset.</p>
       </div>
 
       <div style={{ ...card, padding:24 }}>
@@ -397,7 +616,7 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
         {/* Account size */}
         <div style={{ marginBottom:18 }}>
           <label style={lbl}>Account Size</label>
-          <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(sizes.length,6)},1fr)`, gap:8 }}>
+          <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(sizes.length,7)},1fr)`, gap:8 }}>
             {sizes.map(s => {
               const active = size === s;
               return (
@@ -413,21 +632,45 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
           </div>
         </div>
 
-        {/* Name + phase */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:18 }}>
-          <div>
-            <label style={lbl}>Account Nickname</label>
-            <input value={name} onChange={e=>setName(e.target.value)} placeholder={`${FIRMS[firm].label} ${size/1000}K`} style={inp}/>
+        {/* Phase picker */}
+        <div style={{ marginBottom:18 }}>
+          <label style={lbl}>Challenge Phase</label>
+          <div style={{ display:"grid", gridTemplateColumns:`repeat(${phases.length},1fr)`, gap:8 }}>
+            {phases.map(p => {
+              const active = phase === p.key;
+              return (
+                <button key={p.key} onClick={()=>setPhase(p.key)} style={{
+                  padding:"10px 12px", borderRadius:10,
+                  border:`1px solid ${active ? FIRMS[firm].color : "#1a2540"}`,
+                  background: active ? FIRMS[firm].accent : "#0d1628",
+                  color: active ? FIRMS[firm].color : "#7a8aa8",
+                  fontSize:12, fontWeight:800, cursor:"pointer", textAlign:"left",
+                }}>
+                  <div>{p.label}</div>
+                  {p.sub && <div style={{ fontSize:9, fontWeight:600, opacity:0.75, marginTop:2 }}>{p.sub}</div>}
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <label style={lbl}>Challenge Phase</label>
-            <select value={phase} onChange={e=>setPhase(e.target.value as Phase)} style={inp}>
-              <option value="eval">Evaluation</option>
-              {showPhase2Target && <option value="phase2">Phase 2</option>}
-              <option value="funded_pa">Funded PA</option>
-              <option value="express">Express Funded</option>
-            </select>
+        </div>
+
+        {/* Phase Rules Changed banner */}
+        {phaseChanged && (
+          <div style={{
+            padding:"10px 14px", borderRadius:10,
+            background:"rgba(245,158,11,0.10)", border:"1px solid rgba(245,158,11,0.4)",
+            color:"#f59e0b", fontSize:12, fontWeight:800, marginBottom:14,
+            display:"flex", alignItems:"center", gap:8,
+          }}>
+            <span>⚠️</span>
+            <span>Phase Rules Changed — rules below have been reset to {currentPhaseDef.label}.</span>
           </div>
+        )}
+
+        {/* Name */}
+        <div style={{ marginBottom:18 }}>
+          <label style={lbl}>Account Nickname</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder={`${FIRMS[firm].label} ${size/1000}K`} style={inp}/>
         </div>
 
         {/* Start date + starting balance */}
@@ -446,39 +689,32 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
         <div style={{ padding:14, background:"#0d1628", borderRadius:12, border:"1px solid #1a2540", marginBottom:18 }}>
           <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", marginBottom:12, display:"flex", alignItems:"center", gap:6 }}>
             <span style={{ width:6, height:6, borderRadius:"50%", background:FIRMS[firm].color }}/>
-            {FIRMS[firm].label} ${size/1000}K — {PHASES[phase]} Rules
+            {FIRMS[firm].label} ${size/1000}K — {currentPhaseDef.label} Rules
           </div>
 
-          {([
-            { key:"dailyLoss",      label: firm === "apex" ? "Daily Loss (Apex 4.0: none)" : "Daily Loss Limit", value:dailyLoss,      set:setDailyLoss,      prefix:"$", noteWhenZero: firm === "apex" ? "No daily loss limit on Apex 4.0" : "Set 0 for no limit" },
-            { key:"maxDrawdown",    label: `Max Drawdown (${trailingType === "intraday" ? "intraday" : "EOD"} trailing)`, value:maxDrawdown, set:setMaxDrawdown, prefix:"$" },
-            { key:"profitTarget",   label: firm === "ftmo" ? (phase === "phase2" ? "Profit Target (Phase 2)" : "Profit Target (Phase 1)") : "Profit Target", value:profitTarget, set:setProfitTarget, prefix:"$" },
-            { key:"minTradingDays", label: firm === "apex" ? "Min Trading Days (Apex 4.0: 0)" : "Min Trading Days", value:minTradingDays, set:setMinTradingDays, prefix:"", noteWhenZero: firm === "apex" ? "No minimum on Apex 4.0" : undefined },
-            { key:"consistencyMax", label: firm === "ftmo" ? "Consistency % (FTMO: none)" : firm === "topstep" ? (phase === "funded_pa" ? "Consistency % (Topstep payout: 40)" : "Consistency % (Topstep combine: 30)") : firm === "apex" && phase === "funded_pa" ? "Consistency % (Apex PA: 50)" : "Consistency Max %", value:consistencyMax, set:setConsistencyMax, prefix:"" },
-          ] as const).map((row) => {
-            const labelText = row.label;
-            const isZero = parseFloat(row.value) === 0;
-            return (
-              <div key={row.key} style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr auto", gap:10, alignItems:"center", marginBottom:8 }}>
-                <div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600 }}>{labelText}</div>
-                <div style={{ position:"relative" }}>
-                  {row.prefix && <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#3a4a6a", pointerEvents:"none" }}>{row.prefix}</span>}
-                  <input
-                    value={row.value}
-                    onChange={e => { row.set(e.target.value); setOverrides(o => ({ ...o, [row.key]:true })); }}
-                    style={{ ...inp, paddingLeft: row.prefix ? 22 : 12 }}
-                  />
-                </div>
-                <div style={{ fontSize:9, color:"#3a4a6a", whiteSpace:"nowrap", minWidth:130 }}>
-                  {isZero && "noteWhenZero" in row && row.noteWhenZero ? row.noteWhenZero : ""}
-                </div>
-              </div>
-            );
-          })}
+          <RuleRow label="Daily Loss Limit"   tip={TOOLTIPS.dailyLoss}      value={dailyLoss}      set={setDailyLoss}      prefix="$" zeroNote="No daily limit"/>
+          <RuleRow label="Max Drawdown"       tip={TOOLTIPS.maxDrawdown}    value={maxDrawdown}    set={setMaxDrawdown}    prefix="$" />
+          {!isFundedPhase && (
+            <RuleRow label="Profit Target"    tip={TOOLTIPS.profitTarget}   value={profitTarget}   set={setProfitTarget}   prefix="$" />
+          )}
+          <RuleRow label="Min Trading Days"   tip={TOOLTIPS.minTradingDays} value={minTradingDays} set={setMinTradingDays} prefix=""  zeroNote="No minimum"/>
+          <RuleRow label="Consistency Max %"  tip={TOOLTIPS.consistencyMax} value={consistencyMax} set={setConsistencyMax} prefix=""  zeroNote="No consistency rule"/>
+          {firm === "apex" && (
+            <RuleRow label="Max Contracts"    tip={TOOLTIPS.maxContracts}   value={maxContracts}   set={setMaxContracts}   prefix=""  zeroNote="Not tracked"/>
+          )}
+          {firm === "apex" && phase === "pa" && (
+            <RuleRow label="Trailing Locks At (+$)" tip={TOOLTIPS.trailingLocks} value={trailingLocksAt} set={setTrailingLocksAt} prefix="$" zeroNote="No lock"/>
+          )}
+          {firm === "topstep" && (
+            <RuleRow label="Benchmark Days ($150+)" tip={TOOLTIPS.benchmarkDays} value={benchmarkDays} set={setBenchmarkDays} prefix="" zeroNote="Not required"/>
+          )}
 
           {/* Trailing type */}
           <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr auto", gap:10, alignItems:"center", marginTop:8 }}>
-            <div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600 }}>Trailing Drawdown Type</div>
+            <div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600, display:"flex", alignItems:"center" }}>
+              Trailing Drawdown Type
+              <Info text="EOD (end of day) trails based on closing balance. Intraday trails on live unrealized PnL — much riskier."/>
+            </div>
             <div style={{ display:"flex", gap:6 }}>
               {(["eod","intraday"] as const).map(t => (
                 <button key={t} onClick={()=>setTrailingType(t)} style={{
@@ -505,13 +741,38 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
   );
 }
 
+function RuleRow({ label, tip, value, set, prefix, zeroNote }:{
+  label:string; tip:string; value:string; set:(v:string)=>void; prefix:string; zeroNote?:string;
+}) {
+  const isZero = parseFloat(value) === 0;
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr auto", gap:10, alignItems:"center", marginBottom:8 }}>
+      <div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600, display:"flex", alignItems:"center" }}>
+        {label}
+        <Info text={tip}/>
+      </div>
+      <div style={{ position:"relative" }}>
+        {prefix && <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#3a4a6a", pointerEvents:"none" }}>{prefix}</span>}
+        <input value={value} onChange={e=>set(e.target.value)} style={{ ...inp, paddingLeft: prefix ? 22 : 12 }}/>
+      </div>
+      <div style={{ fontSize:9, color:"#3a4a6a", whiteSpace:"nowrap", minWidth:130 }}>
+        {isZero && zeroNote ? zeroNote : ""}
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ────────────────────────────────────────────────────
 function Dashboard({ account, stats, onEdit, onDelete }:{
   account:ChallengeAccount; stats:Computed; onEdit:()=>void; onDelete:()=>void;
 }) {
   const firm = FIRMS[account.firm];
+  const phaseDef = FIRM_PHASES[account.firm].find(p => p.key === account.phase) ?? FIRM_PHASES[account.firm][0];
 
   const hasDailyLimit = account.dailyLoss > 0;
+  const hasTarget     = account.profitTarget > 0;
+  const hasConsistency = account.consistencyMax > 0;
+
   const dailyPct = hasDailyLimit ? (stats.dailyLossUsed / account.dailyLoss) * 100 : 0;
   const ddPct    = account.maxDrawdown > 0 ? (stats.drawdownUsed / account.maxDrawdown) * 100 : 0;
   const dangerPct = Math.max(dailyPct, ddPct);
@@ -524,34 +785,22 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
   const dailyRemaining = hasDailyLimit ? Math.max(0, account.dailyLoss - stats.dailyLossUsed) : 0;
   const ddRemaining    = Math.max(0, account.maxDrawdown - stats.drawdownUsed);
 
-  // Session countdown — 16:00 CT (assume user local clock differs but display CT-relative)
   const [now, setNow] = useState(new Date());
-  useEffect(()=>{ const t = setInterval(()=>setNow(new Date()), 30000); return ()=>clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(()=>setNow(new Date()), 30000); return ()=>clearInterval(t); }, []);
   const sessionEnd = new Date(now); sessionEnd.setHours(16,0,0,0);
   const sessionMs = Math.max(0, sessionEnd.getTime() - now.getTime());
   const sessionH = Math.floor(sessionMs / 3600000);
   const sessionM = Math.floor((sessionMs % 3600000) / 60000);
 
-  // Topstep-specific consistency label depending on phase
-  const consistencyContextLabel = (() => {
-    if (account.firm === "ftmo") return "FTMO — no consistency rule";
-    if (account.firm === "topstep") return account.phase === "funded_pa" ? "Topstep payout — 40% rule" : "Topstep combine — 30% rule";
-    if (account.firm === "apex")    return account.phase === "funded_pa" ? "Apex PA payouts — 50% rule" : "Apex eval — no consistency rule";
-    return `${account.consistencyMax}% rule`;
-  })();
-  const consistencyApplies = account.consistencyMax > 0;
+  const warnings = getPhaseWarnings(account.firm, account.phase);
 
-  // FTMO phase label
-  const ftmoPhaseLabel = account.firm === "ftmo"
-    ? (account.phase === "phase2" ? "Phase 2 target 5%" : account.phase === "eval" ? "Phase 1 target 10%" : null)
-    : null;
+  // Topstep payout eligibility heuristic
+  const topstepPayoutReady = account.firm === "topstep" && account.phase === "express"
+    && stats.benchmarkDaysDone >= account.benchmarkDays && stats.consistencyScore >= 50;
 
-  // Topstep benchmark days
-  const isTopstep = account.firm === "topstep";
-  const isApex    = account.firm === "apex";
-  const isFTMO    = account.firm === "ftmo";
-
-  const warnings = firmWarnings(account.firm, account.phase);
+  // Apex PA payout eligibility
+  const apexPaPayoutReady = account.firm === "apex" && account.phase === "pa"
+    && stats.tradingDaysDone >= account.minTradingDays && stats.profitableDaysDone >= account.profitableDays;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
@@ -562,13 +811,14 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
             <span style={{ width:12, height:12, borderRadius:3, background:firm.color }}/>
             <span style={{ fontSize:18, fontWeight:900, color:"#f0f4ff" }}>{account.name}</span>
             <span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:firm.accent, color:firm.color, border:`1px solid ${firm.color}44` }}>{firm.label}</span>
-            <span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:"#0d1628", color:"#7a8aa8", border:"1px solid #1a2540" }}>{PHASES[account.phase]}</span>
-            {ftmoPhaseLabel && <span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:"rgba(59,130,246,0.15)", color:"#3b82f6", border:"1px solid rgba(59,130,246,0.35)" }}>{ftmoPhaseLabel}</span>}
+            <span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:"#0d1628", color:"#7a8aa8", border:"1px solid #1a2540" }}>{phaseDef.label}</span>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:14, fontSize:11, color:"#5a6a8a", flexWrap:"wrap" }}>
             <span>Size <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>${(account.accountSize/1000).toFixed(0)}K</strong></span>
             <span>Started <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>{account.startDate}</strong></span>
             <span>Peak <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>{fmtUSD(stats.peakBalance)}</strong></span>
+            {account.maxContracts > 0 && <span>Max contracts <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>{account.maxContracts}</strong></span>}
+            {stats.trailingIsLocked && <span style={{ color:"#22c55e", fontWeight:700 }}>🔒 Trailing locked</span>}
           </div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -586,17 +836,15 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
 
       {/* 4 rings */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:14 }}>
-        {/* Ring 1 — Daily Loss */}
+        {/* Daily Loss */}
         <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em" }}>Daily Loss</div>
+          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
+            Daily Loss<Info text={TOOLTIPS.dailyLoss}/>
+          </div>
           {hasDailyLimit ? (
             <>
-              <Ring
-                value={stats.dailyLossUsed} max={account.dailyLoss}
-                centerBig={fmtUSD(stats.dailyLossUsed)}
-                centerSub={`of ${fmtUSD(account.dailyLoss)}`}
-                mode="loss"
-              />
+              <Ring value={stats.dailyLossUsed} max={account.dailyLoss}
+                centerBig={fmtUSD(stats.dailyLossUsed)} centerSub={`of ${fmtUSD(account.dailyLoss)}`} mode="loss"/>
               <div style={{ fontSize:12, fontWeight:700, color: dailyPct >= 80 ? "#ef4444" : dailyPct >= 50 ? "#f59e0b" : "#22c55e", textAlign:"center" }}>
                 Can lose <span style={{ fontFamily:"monospace" }}>{fmtUSD(dailyRemaining)}</span> more today
               </div>
@@ -604,129 +852,92 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
             </>
           ) : (
             <>
-              <Ring
-                value={stats.drawdownUsed} max={account.maxDrawdown}
-                centerBig="N/A"
-                centerSub="No daily limit"
-                mode="loss"
-                forceColor="#22c55e"
-              />
-              <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>
-                No daily limit — Apex 4.0
-              </div>
+              <Ring value={0} max={100} centerBig="N/A" centerSub="No daily limit" mode="loss" forceColor="#22c55e"/>
+              <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>No daily limit — Apex 4.0</div>
               <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>Trailing drawdown applies instead</div>
             </>
           )}
         </div>
 
-        {/* Ring 2 — Max Drawdown */}
+        {/* Max Drawdown */}
         <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em" }}>Max Drawdown</div>
-          <Ring
-            value={stats.drawdownUsed} max={account.maxDrawdown}
-            centerBig={fmtUSD(stats.drawdownUsed)}
-            centerSub={`of ${fmtUSD(account.maxDrawdown)}`}
-            mode="loss"
-          />
+          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
+            Max Drawdown<Info text={TOOLTIPS.maxDrawdown}/>
+          </div>
+          <Ring value={stats.drawdownUsed} max={account.maxDrawdown}
+            centerBig={fmtUSD(stats.drawdownUsed)} centerSub={`of ${fmtUSD(account.maxDrawdown)}`} mode="loss"/>
           <div style={{ fontSize:12, fontWeight:700, color: ddPct >= 80 ? "#ef4444" : ddPct >= 50 ? "#f59e0b" : "#22c55e", textAlign:"center" }}>
             <span style={{ fontFamily:"monospace" }}>{fmtUSD(ddRemaining)}</span> buffer to breach
           </div>
           <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
-            {account.trailingType === "intraday" ? "Intraday trailing" : "End-of-day trailing"} · peak {fmtUSD(stats.peakBalance)}
+            {stats.trailingIsLocked
+              ? `🔒 Locked at ${fmtUSD(account.startingBalance + account.trailingLocksAt)}`
+              : `${account.trailingType === "intraday" ? "Intraday" : "EOD"} trailing · peak ${fmtUSD(stats.peakBalance)}`}
           </div>
         </div>
 
-        {/* Ring 3 — Profit Target */}
-        <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em" }}>Profit Target</div>
-          <Ring
-            value={Math.max(0, stats.totalProfit)} max={account.profitTarget}
-            centerBig={fmtUSD(Math.max(0, stats.totalProfit))}
-            centerSub={`of ${fmtUSD(account.profitTarget)}`}
-            mode="fill"
-          />
-          <div style={{ fontSize:12, fontWeight:700, color: profitNeeded === 0 ? "#22c55e" : "#3b82f6", textAlign:"center" }}>
-            {profitNeeded === 0 ? "🏆 Target hit!" : <><span style={{ fontFamily:"monospace" }}>{fmtUSD(profitNeeded)}</span> more to pass</>}
+        {/* Profit Target — replaced with phase-specific card on funded phases */}
+        {hasTarget ? (
+          <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
+              Profit Target<Info text={TOOLTIPS.profitTarget}/>
+            </div>
+            <Ring value={Math.max(0, stats.totalProfit)} max={account.profitTarget}
+              centerBig={fmtUSD(Math.max(0, stats.totalProfit))} centerSub={`of ${fmtUSD(account.profitTarget)}`} mode="fill"/>
+            <div style={{ fontSize:12, fontWeight:700, color: profitNeeded === 0 ? "#22c55e" : "#3b82f6", textAlign:"center" }}>
+              {profitNeeded === 0 ? "🏆 Target hit!" : <><span style={{ fontFamily:"monospace" }}>{fmtUSD(profitNeeded)}</span> more to pass</>}
+            </div>
+            <div style={{ fontSize:10, color:"#4a5a7a" }}>{phaseDef.label}</div>
           </div>
-          <div style={{ fontSize:10, color:"#4a5a7a" }}>
-            {isFTMO ? (account.phase === "phase2" ? "Phase 2 · 5% target" : "Phase 1 · 10% target") : `${PHASES[account.phase]} phase`}
+        ) : (
+          <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em" }}>Total Profit</div>
+            <Ring value={Math.max(0, stats.totalProfit)} max={Math.max(stats.totalProfit, account.accountSize * 0.05)}
+              centerBig={fmtUSDsigned(stats.totalProfit)} centerSub="live funded" mode="fill"/>
+            <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>
+              {phaseDef.label} — no profit target
+            </div>
+            <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
+              {account.firm === "apex"    ? "100% first $25K, then 90/10"
+                : account.firm === "topstep" ? "90/10 split (legacy 100% first $10K)"
+                : account.firm === "ftmo"    ? "80/20 split (scaling to 90/10)"
+                : "Live profit split"}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Ring 4 — Consistency */}
+        {/* Consistency */}
         <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em" }}>Consistency Score</div>
-          {consistencyApplies ? (
+          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
+            Consistency<Info text={TOOLTIPS.consistencyMax}/>
+          </div>
+          {hasConsistency ? (
             <>
-              <Ring
-                value={stats.consistencyScore} max={100}
-                centerBig={`${stats.consistencyScore}%`}
-                mode="fill"
-              />
+              <Ring value={stats.consistencyScore} max={100}
+                centerBig={`${stats.consistencyScore}%`} centerSub={`max ${account.consistencyMax}%/day`} mode="fill"/>
               <div style={{ fontSize:12, fontWeight:700, color: stats.consistencyScore >= 70 ? "#22c55e" : stats.consistencyScore >= 40 ? "#f59e0b" : "#ef4444", textAlign:"center" }}>
                 Best day {stats.consistencyRatio.toFixed(0)}% of total
               </div>
-              <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>{consistencyContextLabel}</div>
+              <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
+                {fmtUSD(stats.bestDayPnl)} of {fmtUSD(Math.max(0, stats.totalProfit))}
+              </div>
             </>
           ) : (
             <>
-              <Ring
-                value={100} max={100}
-                centerBig="✓"
-                centerSub="No rule"
-                mode="fill"
-                forceColor="#22c55e"
-              />
-              <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>
-                No consistency rule
-              </div>
-              <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>{consistencyContextLabel}</div>
+              <Ring value={100} max={100} centerBig="✓" centerSub="No rule" mode="fill" forceColor="#22c55e"/>
+              <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>No consistency rule</div>
+              <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>{phaseDef.label}</div>
             </>
           )}
         </div>
       </div>
 
-      {/* Trading day counter */}
+      {/* Trading day counter — phase-specific */}
       <div style={{ ...card, padding:"18px 22px" }}>
-        <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:10, flexWrap:"wrap", gap:8 }}>
-          <div>
-            <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>
-              {isTopstep ? "Benchmark Days ($150+ profit)" : "Trading Days"}
-            </div>
-            <div style={{ fontSize:20, fontWeight:900, color:"#f0f4ff", fontFamily:"monospace", marginTop:2 }}>
-              {isTopstep
-                ? `${stats.benchmarkDaysDone} of 5 benchmark days`
-                : isApex
-                  ? `${stats.tradingDaysDone} days traded`
-                  : `Day ${stats.tradingDaysDone} of ${account.minTradingDays || 0} minimum`}
-            </div>
-          </div>
-          <div style={{ fontSize:12, fontWeight:700, color: (() => {
-              if (isApex) return "#22c55e";
-              if (isTopstep) return stats.benchmarkDaysDone >= 5 ? "#22c55e" : "#94a3b8";
-              return stats.tradingDaysDone >= account.minTradingDays ? "#22c55e" : "#94a3b8";
-            })() }}>
-            {isApex ? "✅ No minimum — Apex 4.0"
-              : isTopstep ? (stats.benchmarkDaysDone >= 5 ? "✅ Eligible for payout" : `${5 - stats.benchmarkDaysDone} more needed`)
-              : (stats.tradingDaysDone >= account.minTradingDays ? "✅ Met" : `${Math.max(0, account.minTradingDays - stats.tradingDaysDone)} more needed`)}
-          </div>
-        </div>
-        <div style={{ height:8, borderRadius:4, background:"#0f1a2e", overflow:"hidden" }}>
-          <div style={{
-            width: isApex ? "100%"
-              : isTopstep ? `${Math.min(100, (stats.benchmarkDaysDone/5)*100)}%`
-              : account.minTradingDays > 0
-                ? `${Math.min(100, (stats.tradingDaysDone/account.minTradingDays)*100)}%`
-                : "100%",
-            height:"100%",
-            background:"linear-gradient(90deg,#3b82f6,#22c55e)",
-            borderRadius:4,
-            transition:"width 0.7s",
-          }}/>
-        </div>
+        <TradingDaysPanel account={account} stats={stats} payoutReady={apexPaPayoutReady || topstepPayoutReady}/>
       </div>
 
-      {/* Today + status */}
+      {/* Today panel */}
       <div style={{ ...card, padding:"20px 22px", borderColor: status.color + "44", background:`linear-gradient(135deg, #0b1120, ${status.bg})` }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, marginBottom:14 }}>
           <div>
@@ -770,12 +981,12 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
         )}
       </div>
 
-      {/* Important rules reminder */}
+      {/* Phase rules / warnings */}
       <div style={{ ...card, padding:"18px 22px", borderColor:"rgba(245,158,11,0.25)", background:"linear-gradient(135deg, #0b1120, rgba(245,158,11,0.04))" }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
           <span style={{ fontSize:14 }}>⚠️</span>
           <div style={{ fontSize:11, fontWeight:800, color:"#f59e0b", textTransform:"uppercase", letterSpacing:"0.08em" }}>
-            {firm.label} — Important Rules
+            {firm.label} — {phaseDef.label} Rules
           </div>
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -788,8 +999,83 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
         </div>
       </div>
 
-      {/* Calendar */}
       <HistoryCalendar account={account} stats={stats}/>
+    </div>
+  );
+}
+
+// ── Trading days panel (phase-aware) ─────────────────────────────
+function TradingDaysPanel({ account, stats, payoutReady }:{ account:ChallengeAccount; stats:Computed; payoutReady:boolean; }) {
+  const isApexPa = account.firm === "apex" && account.phase === "pa";
+  const isTopstep = account.firm === "topstep";
+
+  if (isApexPa) {
+    const daysOk = stats.tradingDaysDone >= account.minTradingDays;
+    const profOk = stats.profitableDaysDone >= account.profitableDays;
+    return (
+      <>
+        <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>
+          Apex PA Payout Eligibility
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+          <ProgressBar label="Trading days" current={stats.tradingDaysDone} required={account.minTradingDays} ok={daysOk}/>
+          <ProgressBar label="Profitable days" current={stats.profitableDaysDone} required={account.profitableDays} ok={profOk}/>
+        </div>
+        <div style={{ fontSize:11, fontWeight:700, color: payoutReady ? "#22c55e" : "#94a3b8", marginTop:12 }}>
+          {payoutReady ? "✅ Eligible to request payout" : "Both criteria needed for first payout"}
+        </div>
+      </>
+    );
+  }
+
+  if (isTopstep) {
+    const benchOk = stats.benchmarkDaysDone >= account.benchmarkDays;
+    return (
+      <>
+        <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, display:"flex", alignItems:"center" }}>
+          Benchmark Days ($150+ profit)<Info text={TOOLTIPS.benchmarkDays}/>
+        </div>
+        <ProgressBar label={`${stats.benchmarkDaysDone} of ${account.benchmarkDays} benchmark days`} current={stats.benchmarkDaysDone} required={account.benchmarkDays} ok={benchOk}/>
+        <div style={{ fontSize:11, fontWeight:700, color: benchOk ? "#22c55e" : "#94a3b8", marginTop:10 }}>
+          {benchOk ? (account.phase === "express" ? "✅ Eligible for payout requests" : "✅ Benchmark days met") : `${account.benchmarkDays - stats.benchmarkDaysDone} more benchmark days needed`}
+        </div>
+      </>
+    );
+  }
+
+  // Generic min trading days
+  return (
+    <>
+      <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, display:"flex", alignItems:"center" }}>
+        Trading Days<Info text={TOOLTIPS.minTradingDays}/>
+      </div>
+      {account.minTradingDays > 0 ? (
+        <ProgressBar label={`Day ${stats.tradingDaysDone} of ${account.minTradingDays} minimum`}
+          current={stats.tradingDaysDone} required={account.minTradingDays} ok={stats.tradingDaysDone >= account.minTradingDays}/>
+      ) : (
+        <div style={{ fontSize:13, fontWeight:800, color:"#22c55e" }}>
+          ✅ No minimum trading days {account.firm === "apex" ? "(Apex 4.0)" : ""}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ProgressBar({ label, current, required, ok }:{ label:string; current:number; required:number; ok:boolean; }) {
+  const pct = required > 0 ? Math.min(100, (current/required)*100) : 100;
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+        <span style={{ fontSize:11, color:"#94a3b8", fontWeight:700 }}>{label}</span>
+        <span style={{ fontSize:11, color: ok ? "#22c55e" : "#5a6a8a", fontWeight:800, fontFamily:"monospace" }}>{current}/{required}</span>
+      </div>
+      <div style={{ height:7, borderRadius:4, background:"#0f1a2e", overflow:"hidden" }}>
+        <div style={{
+          width:`${pct}%`, height:"100%",
+          background: ok ? "linear-gradient(90deg,#22c55e,#86efac)" : "linear-gradient(90deg,#3b82f6,#22c55e)",
+          borderRadius:4, transition:"width 0.7s",
+        }}/>
+      </div>
     </div>
   );
 }
@@ -942,7 +1228,6 @@ export default function ChallengePage() {
   const active = useMemo(() => accounts.find(a => a.id === activeId) ?? null, [accounts, activeId]);
   const stats  = useMemo(() => active ? computeStats(active, trades) : null, [active, trades]);
 
-  // Persist peak balance growth
   useEffect(() => {
     if (!active || !stats) return;
     if (stats.peakBalance > active.peakBalance) {
@@ -988,7 +1273,7 @@ export default function ChallengePage() {
       <div style={{ maxWidth:1100, margin:"0 auto", padding:"28px 24px 12px" }}>
         <div style={{ marginBottom:18 }}>
           <h1 style={{ fontSize:28, fontWeight:900, color:"#f0f4ff", margin:0, letterSpacing:"-0.01em" }}>🏆 Challenge Tracker</h1>
-          <p style={{ fontSize:13, color:"#5a6a8a", margin:"6px 0 0" }}>2026 prop firm rules. Track your funded account in real time.</p>
+          <p style={{ fontSize:13, color:"#5a6a8a", margin:"6px 0 0" }}>2026 prop firm rules — each phase has its own ruleset.</p>
         </div>
 
         {accounts.length > 1 && mode === "view" && (
@@ -1016,25 +1301,13 @@ export default function ChallengePage() {
 
       <div style={{ maxWidth:1100, margin:"0 auto", padding:"0 24px 48px" }}>
         {mode === "new" && (
-          <SetupForm
-            onSave={upsertAccount}
-            onCancel={accounts.length > 0 ? ()=>setMode("view") : undefined}
-          />
+          <SetupForm onSave={upsertAccount} onCancel={accounts.length > 0 ? ()=>setMode("view") : undefined}/>
         )}
         {mode === "edit" && active && (
-          <SetupForm
-            initial={active}
-            onSave={upsertAccount}
-            onCancel={()=>setMode("view")}
-          />
+          <SetupForm initial={active} onSave={upsertAccount} onCancel={()=>setMode("view")}/>
         )}
         {mode === "view" && active && stats && (
-          <Dashboard
-            account={active}
-            stats={stats}
-            onEdit={()=>setMode("edit")}
-            onDelete={()=>deleteAccount(active.id)}
-          />
+          <Dashboard account={active} stats={stats} onEdit={()=>setMode("edit")} onDelete={()=>deleteAccount(active.id)}/>
         )}
       </div>
     </div>
