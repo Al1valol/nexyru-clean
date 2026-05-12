@@ -2,6 +2,18 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import {
+  createChart,
+  CandlestickSeries,
+  LineStyle,
+  ColorType,
+  createSeriesMarkers,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+  type SeriesMarker,
+  type CandlestickData,
+} from "lightweight-charts";
 
 // ───────────────────────── types ─────────────────────────
 
@@ -122,35 +134,94 @@ function fmtPrice(n: number | string | undefined) {
   return v.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
-function formatSymbol(trade: Trade): string {
+function formatTwelveDataSymbol(trade: Trade): string {
   const raw = (trade.symbol || trade.pair || "").toString().trim();
   if (!raw) return "";
-  if (raw.includes(":")) return raw.toUpperCase();
-  const norm = raw.toUpperCase().replace(/[\/\-\s]/g, "");
-  const map: Record<string, string> = {
-    SOLUSD: "COINBASE:SOLUSD",
-    BTCUSD: "COINBASE:BTCUSD",
-    ETHUSD: "COINBASE:ETHUSD",
-    GOLDUSD: "OANDA:XAUUSD",
-    XAUUSD: "OANDA:XAUUSD",
-    SILVERUSD: "OANDA:XAGUSD",
-    XAGUSD: "OANDA:XAGUSD",
-    USOILUSD: "NYMEX:CL1!",
-    "CL1!": "NYMEX:CL1!",
-    "CL1!USD": "NYMEX:CL1!",
-    "ES1!": "CME_MINI:ES1!",
-    "ES1!USD": "CME_MINI:ES1!",
-    "NQ1!": "CME_MINI:NQ1!",
-    "NQ1!USD": "CME_MINI:NQ1!",
-  };
-  return map[norm] || raw.toUpperCase();
+  // Twelve Data accepts: AAPL, SOL/USD, BTC/USD, ES1!, NQ1!, etc.
+  return raw.toUpperCase();
 }
 
-function fmtInfoDate(v: number | string | undefined): string {
+type Interval = "1min" | "5min" | "15min" | "1h";
+
+const INTERVAL_MINUTES: Record<Interval, number> = {
+  "1min": 1,
+  "5min": 5,
+  "15min": 15,
+  "1h": 60,
+};
+
+const TWELVE_INTERVAL: Record<Interval, string> = {
+  "1min": "1min",
+  "5min": "5min",
+  "15min": "15min",
+  "1h": "1h",
+};
+
+async function fetchCandles(
+  trade: Trade,
+  interval: Interval
+): Promise<CandlestickData<UTCTimestamp>[] | null> {
+  const symbol = formatTwelveDataSymbol(trade);
+  if (!symbol) return null;
+  const tradeMs = typeof trade.date === "number" ? trade.date : new Date(trade.date || "").getTime();
+  if (isNaN(tradeMs)) return null;
+
+  const mins = INTERVAL_MINUTES[interval];
+  const halfWindow = mins * 60 * 1000 * 50;
+  const startD = new Date(tradeMs - halfWindow);
+  const endD = new Date(tradeMs + halfWindow);
+  const fmt = (d: Date) =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
+
+  const url =
+    `https://api.twelvedata.com/time_series` +
+    `?symbol=${encodeURIComponent(symbol)}` +
+    `&interval=${TWELVE_INTERVAL[interval]}` +
+    `&outputsize=100` +
+    `&start_date=${encodeURIComponent(fmt(startD))}` +
+    `&end_date=${encodeURIComponent(fmt(endD))}` +
+    `&timezone=UTC` +
+    `&apikey=demo`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || data.status === "error" || !Array.isArray(data.values) || data.values.length === 0) {
+      return null;
+    }
+    const rows = data.values
+      .map((v: any) => ({
+        time: Math.floor(new Date(v.datetime.replace(" ", "T") + "Z").getTime() / 1000) as UTCTimestamp,
+        open: parseFloat(v.open),
+        high: parseFloat(v.high),
+        low: parseFloat(v.low),
+        close: parseFloat(v.close),
+      }))
+      .filter((c: CandlestickData<UTCTimestamp>) =>
+        Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close)
+      )
+      .sort((a: CandlestickData<UTCTimestamp>, b: CandlestickData<UTCTimestamp>) =>
+        (a.time as number) - (b.time as number)
+      );
+    return rows.length ? rows : null;
+  } catch {
+    return null;
+  }
+}
+
+function fmtTradeDateTime(v: number | string | undefined): string {
   if (!v) return "—";
   const d = new Date(typeof v === "number" ? v : v);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 }
 
 function topTheme(reviews: Review[]): string | null {
@@ -188,7 +259,8 @@ export default function ReplayPage() {
   const [done, setDone] = useState(false);
   const [slideDir, setSlideDir] = useState<"next" | "prev">("next");
   const [slideKey, setSlideKey] = useState(0);
-  const [viewMode, setViewMode] = useState<"chart" | "screenshot" | "both">("chart");
+  const [viewMode, setViewMode] = useState<"chart" | "screenshot">("chart");
+  const [interval, setInterval] = useState<Interval>("5min");
 
   // draft form state
   const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
@@ -490,40 +562,87 @@ export default function ReplayPage() {
             animation: `${slideDir === "next" ? "slideInNext" : "slideInPrev"} 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both`,
           }}
         >
-          {/* Info bar */}
+          {/* Symbol header */}
           <div style={{
             ...cardStyle,
             marginTop: 18,
-            padding: "10px 14px",
+            padding: "12px 16px",
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            justifyContent: "space-between",
+            gap: 12,
             flexWrap: "wrap",
-            fontSize: 12,
-            color: "#cbd5e1",
-            fontFamily: "ui-monospace, SFMono-Regular, monospace",
           }}>
-            <span style={{ color: "#4a5a7a", fontWeight: 700, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-              Viewing
-            </span>
-            <span style={{ color: "#f0f4ff", fontWeight: 800 }}>{sym || "—"}</span>
-            <span style={{ color: "#1e2540" }}>·</span>
-            <span>{fmtInfoDate(t.date)}</span>
-            <span style={{ color: "#1e2540" }}>·</span>
-            <span>5min chart</span>
-            <span style={{ color: "#1e2540" }}>·</span>
-            <span>
-              Entry <span style={{ color: "#22d3a5", fontWeight: 700 }}>{fmtPrice(entry)}</span>
-              <span style={{ color: "#4a5a7a", margin: "0 4px" }}>→</span>
-              Exit <span style={{ color: "#f43f5e", fontWeight: 700 }}>{fmtPrice(exit)}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{
+                fontSize: 16,
+                fontWeight: 900,
+                color: "#f0f4ff",
+                letterSpacing: "-0.01em",
+                fontFamily: "ui-monospace, SFMono-Regular, monospace",
+              }}>
+                {sym || "—"}
+              </span>
+              <span style={{
+                padding: "3px 9px",
+                borderRadius: 6,
+                background: isLong ? "rgba(34,211,165,0.18)" : "rgba(244,63,94,0.18)",
+                color: isLong ? "#22d3a5" : "#f43f5e",
+                border: `1px solid ${isLong ? "#22d3a566" : "#f43f5e66"}`,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.1em",
+              }}>
+                {isLong ? "▲" : "▼"} {sideUpper || "—"}
+              </span>
+            </div>
+            <span style={{
+              fontSize: 11,
+              color: "#94a3b8",
+              fontFamily: "ui-monospace, SFMono-Regular, monospace",
+            }}>
+              {fmtTradeDateTime(t.date)}
             </span>
           </div>
 
-          {/* View toggle */}
-          <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-            <ToggleBtn label="📈 Live Chart" active={viewMode === "chart"} onClick={() => setViewMode("chart")} />
-            <ToggleBtn label="📸 Screenshot" active={viewMode === "screenshot"} onClick={() => setViewMode("screenshot")} disabled={!shot && !shotLoading} />
-            <ToggleBtn label="📊 Both" active={viewMode === "both"} onClick={() => setViewMode("both")} disabled={!shot && !shotLoading} />
+          {/* Chart controls bar */}
+          <div style={{
+            ...cardStyle,
+            marginTop: 10,
+            padding: "8px 10px",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+          }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["1min", "5min", "15min", "1h"] as Interval[]).map((iv) => (
+                <IntervalBtn
+                  key={iv}
+                  label={iv === "1min" ? "1m" : iv === "5min" ? "5m" : iv === "15min" ? "15m" : "1h"}
+                  active={viewMode === "chart" && interval === iv}
+                  disabled={viewMode !== "chart"}
+                  onClick={() => { setInterval(iv); setViewMode("chart"); }}
+                />
+              ))}
+            </div>
+            <div style={{ width: 1, height: 22, background: "#1a2540", margin: "0 4px" }} />
+            <IntervalBtn
+              label="📸 Screenshot"
+              active={viewMode === "screenshot"}
+              disabled={!shot && !shotLoading}
+              onClick={() => setViewMode(viewMode === "screenshot" ? "chart" : "screenshot")}
+            />
+            <div style={{ flex: 1 }} />
+            <span style={{
+              fontSize: 11,
+              color: "#4a5a7a",
+              fontFamily: "ui-monospace, SFMono-Regular, monospace",
+              fontWeight: 600,
+              paddingRight: 6,
+            }}>
+              {fmtTradeDateTime(t.date)}
+            </span>
           </div>
 
           {/* Chart card */}
@@ -539,91 +658,32 @@ export default function ReplayPage() {
               shot={shot}
               shotLoading={shotLoading}
               viewMode={viewMode}
+              interval={interval}
             />
+          </div>
 
-            {/* Top overlay: symbol + side + date */}
-            <div style={{
-              position: "absolute",
-              top: 14, left: 14, right: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              pointerEvents: "none",
-              zIndex: 3,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={overlayChipStrong}>
-                  {sym || "—"}
-                </div>
-                <div style={{
-                  ...overlayChip,
-                  background: isLong ? "rgba(34,211,165,0.22)" : "rgba(244,63,94,0.22)",
-                  color: isLong ? "#22d3a5" : "#f43f5e",
-                  border: `1px solid ${isLong ? "#22d3a566" : "#f43f5e66"}`,
-                  fontSize: 10,
-                  letterSpacing: "0.1em",
-                }}>
-                  {sideUpper || "—"}
-                </div>
-              </div>
-              <div style={{ ...overlayChip, fontSize: 10, color: "#cbd5e1" }}>
-                {fmtDate(t.date)}
-              </div>
-            </div>
-
-            {/* Horizontal entry/exit reference lines (chart visible only) */}
-            {(viewMode === "chart" || viewMode === "both") && entry > 0 && (
-              <ReferenceLine label="ENTRY" value={fmtPrice(entry)} color="#22d3a5" top="42%" half={viewMode === "both"} />
-            )}
-            {(viewMode === "chart" || viewMode === "both") && exit > 0 && (
-              <ReferenceLine label="EXIT" value={fmtPrice(exit)} color="#f43f5e" top="58%" half={viewMode === "both"} />
-            )}
-
-            {/* Bottom-left: contracts */}
-            <div style={{
-              position: "absolute",
-              bottom: 14,
-              left: 14,
-              pointerEvents: "none",
-              zIndex: 3,
-            }}>
-              <div style={{ ...overlayChip, fontSize: 11, color: "#cbd5e1" }}>
-                <span style={{ color: "#4a5a7a", marginRight: 6, fontWeight: 700 }}>SIZE</span>
-                {contracts ? `${contracts} ${contracts === 1 ? "contract" : "contracts"}` : "—"}
-              </div>
-            </div>
-
-            {/* Bottom-right: PnL badge */}
-            <div style={{
-              position: "absolute",
-              bottom: 14,
-              right: 14,
-              pointerEvents: "none",
-              zIndex: 3,
-            }}>
-              <div style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                background: `${pnlColor}22`,
-                border: `1px solid ${pnlColor}88`,
-                color: pnlColor,
-                fontFamily: "ui-monospace, SFMono-Regular, monospace",
-                fontWeight: 900,
-                fontSize: 17,
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                letterSpacing: "-0.01em",
-                boxShadow: `0 6px 18px ${pnlColor}33`,
-              }}>
-                {pnl > 0 ? "+" : ""}{fmtMoney(pnl)}
-                {t.pnlPct !== undefined && t.pnlPct !== null && (
-                  <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.85 }}>
-                    ({Number(t.pnlPct) > 0 ? "+" : ""}{Number(t.pnlPct).toFixed(2)}%)
-                  </span>
-                )}
-              </div>
-            </div>
+          {/* Stats row */}
+          <div style={{
+            ...cardStyle,
+            marginTop: 10,
+            padding: "14px 16px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+            gap: 14,
+          }}>
+            <StatCell label="Entry" value={fmtPrice(entry)} color="#22d3a5" />
+            <StatCell label="Exit" value={fmtPrice(exit)} color="#f43f5e" />
+            <StatCell
+              label="PnL"
+              value={`${pnl > 0 ? "+" : ""}${fmtMoney(pnl)}`}
+              color={pnlColor}
+            />
+            <StatCell label="Duration" value="—" color="#94a3b8" />
+            <StatCell
+              label="Side"
+              value={`${isLong ? "▲" : "▼"} ${sideUpper || "—"}`}
+              color={isLong ? "#22d3a5" : "#f43f5e"}
+            />
           </div>
 
           {/* strategy + notes (below chart) */}
@@ -775,63 +835,259 @@ export default function ReplayPage() {
 // ───────────────────── sub-components ─────────────────────
 
 function ChartArea({
-  trade, shot, shotLoading, viewMode,
-}: { trade: Trade; shot: string | null; shotLoading: boolean; viewMode: "chart" | "screenshot" | "both" }) {
+  trade, shot, shotLoading, viewMode, interval,
+}: { trade: Trade; shot: string | null; shotLoading: boolean; viewMode: "chart" | "screenshot"; interval: Interval }) {
   const HEIGHT = 500;
-  const tvSym = formatSymbol(trade);
-  const src = tvSym
-    ? `https://www.tradingview.com/widgetembed/?frameElementId=tv_chart&symbol=${encodeURIComponent(tvSym)}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=131722&studies=RSI@tv-basicstudies,MACD@tv-basicstudies&theme=dark&style=1&timezone=America%2FNew_York&withdateranges=1&showpopupbutton=1`
-    : "";
-
-  const chartEl = tvSym ? (
-    <iframe
-      key={trade.id}
-      src={src}
-      width="100%"
-      height={String(HEIGHT)}
-      frameBorder="0"
-      style={{ display: "block", border: 0, height: HEIGHT, borderRadius: 12 }}
-      title={`Chart ${tvSym}`}
-    />
-  ) : (
-    <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
-      <div style={{ fontSize: 32 }}>📊</div>
-      <div style={{ fontSize: 12 }}>No chart available for this symbol</div>
-    </div>
-  );
-
-  const screenshotEl = shotLoading ? (
-    <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
-      Loading screenshot…
-    </div>
-  ) : shot ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={shot}
-      alt="Trade screenshot"
-      style={{ width: "100%", height: HEIGHT, objectFit: "cover", display: "block" }}
-    />
-  ) : (
-    <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
-      <div style={{ fontSize: 28 }}>📸</div>
-      <div style={{ fontSize: 12 }}>No screenshot attached</div>
-    </div>
-  );
 
   if (viewMode === "screenshot") {
+    const screenshotEl = shotLoading ? (
+      <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
+        Loading screenshot…
+      </div>
+    ) : shot ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={shot}
+        alt="Trade screenshot"
+        style={{ width: "100%", height: HEIGHT, objectFit: "contain", background: "#060d1a", display: "block" }}
+      />
+    ) : (
+      <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
+        <div style={{ fontSize: 28 }}>📸</div>
+        <div style={{ fontSize: 12 }}>No screenshot attached</div>
+      </div>
+    );
     return <div style={{ background: "#060d1a", height: HEIGHT }}>{screenshotEl}</div>;
   }
 
-  if (viewMode === "both") {
-    return (
-      <div style={{ display: "flex", background: "#060d1a", height: HEIGHT }}>
-        <div style={{ width: "50%", borderRight: "1px solid #1a2540", overflow: "hidden" }}>{screenshotEl}</div>
-        <div style={{ width: "50%", overflow: "hidden" }}>{chartEl}</div>
-      </div>
-    );
-  }
+  return <CandleChart trade={trade} interval={interval} height={HEIGHT} />;
+}
 
-  return <div style={{ background: "#060d1a", height: HEIGHT }}>{chartEl}</div>;
+function CandleChart({
+  trade, interval, height,
+}: { trade: Trade; interval: Interval; height: number }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let disposed = false;
+    let chart: IChartApi | null = null;
+    let resizeObs: ResizeObserver | null = null;
+
+    setStatus("loading");
+
+    const init = async () => {
+      const candles = await fetchCandles(trade, interval);
+      if (disposed || !container) return;
+      if (!candles || candles.length === 0) {
+        setStatus("error");
+        return;
+      }
+
+      chart = createChart(container, {
+        layout: {
+          background: { type: ColorType.Solid, color: "#060d1a" },
+          textColor: "#94a3b8",
+          fontSize: 11,
+          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        },
+        grid: {
+          vertLines: { color: "#1a2540" },
+          horzLines: { color: "#1a2540" },
+        },
+        timeScale: {
+          borderColor: "#1a2540",
+          timeVisible: true,
+          secondsVisible: false,
+        },
+        rightPriceScale: {
+          borderColor: "#1a2540",
+        },
+        crosshair: { mode: 1 },
+        width: container.clientWidth,
+        height,
+      });
+
+      const series: ISeriesApi<"Candlestick"> = chart.addSeries(CandlestickSeries, {
+        upColor: "#22d3a5",
+        downColor: "#f43f5e",
+        borderUpColor: "#22d3a5",
+        borderDownColor: "#f43f5e",
+        wickUpColor: "#22d3a5",
+        wickDownColor: "#f43f5e",
+      });
+
+      series.setData(candles);
+
+      const tradeSec = Math.floor(
+        (typeof trade.date === "number" ? trade.date : new Date(trade.date || 0).getTime()) / 1000
+      );
+      const entryPrice = Number(trade.entryPrice ?? 0);
+      const exitPrice = Number(trade.exitPrice ?? 0);
+
+      const findClosestTime = (t: number): UTCTimestamp => {
+        let best = candles[0].time as number;
+        let bestDiff = Math.abs(best - t);
+        for (const c of candles) {
+          const diff = Math.abs((c.time as number) - t);
+          if (diff < bestDiff) {
+            best = c.time as number;
+            bestDiff = diff;
+          }
+        }
+        return best as UTCTimestamp;
+      };
+
+      const markerTime = findClosestTime(tradeSec);
+      const markers: SeriesMarker<UTCTimestamp>[] = [];
+      if (entryPrice > 0) {
+        markers.push({
+          time: markerTime,
+          position: "belowBar",
+          color: "#22d3a5",
+          shape: "arrowUp",
+          text: `▲ Entry $${entryPrice.toFixed(2)}`,
+        });
+      }
+      if (exitPrice > 0) {
+        markers.push({
+          time: markerTime,
+          position: "aboveBar",
+          color: "#f43f5e",
+          shape: "arrowDown",
+          text: `▼ Exit $${exitPrice.toFixed(2)}`,
+        });
+      }
+      if (markers.length) createSeriesMarkers(series, markers);
+
+      if (entryPrice > 0) {
+        series.createPriceLine({
+          price: entryPrice,
+          color: "#22d3a5",
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: "Entry",
+        });
+      }
+      if (exitPrice > 0) {
+        series.createPriceLine({
+          price: exitPrice,
+          color: "#f43f5e",
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: "Exit",
+        });
+      }
+
+      chart.timeScale().fitContent();
+      setStatus("ready");
+
+      resizeObs = new ResizeObserver(() => {
+        if (chart && container) {
+          chart.applyOptions({ width: container.clientWidth, height });
+        }
+      });
+      resizeObs.observe(container);
+    };
+
+    init().catch(() => {
+      if (!disposed) setStatus("error");
+    });
+
+    return () => {
+      disposed = true;
+      if (resizeObs) resizeObs.disconnect();
+      if (chart) {
+        chart.remove();
+        chart = null;
+      }
+    };
+  }, [trade.id, interval, height]);
+
+  return (
+    <div style={{ position: "relative", height, background: "#060d1a" }}>
+      <div ref={containerRef} style={{ width: "100%", height }} />
+      {status === "loading" && (
+        <div style={{
+          position: "absolute", inset: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#4a5a7a", fontSize: 12, pointerEvents: "none",
+        }}>
+          Loading chart data…
+        </div>
+      )}
+      {status === "error" && (
+        <div style={{
+          position: "absolute", inset: 0,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          color: "#4a5a7a", fontSize: 12, gap: 8, pointerEvents: "none",
+        }}>
+          <div style={{ fontSize: 32 }}>📊</div>
+          <div>Chart data unavailable for this symbol</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntervalBtn({
+  label, active, onClick, disabled,
+}: { label: string; active: boolean; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: "7px 12px",
+        borderRadius: 8,
+        border: `1px solid ${active ? "#38bdf8" : "#1e2540"}`,
+        background: active ? "rgba(56,189,248,0.15)" : "transparent",
+        color: active ? "#38bdf8" : disabled ? "#3a4a6a" : "#94a3b8",
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        transition: "all 0.15s",
+        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function StatCell({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{
+        fontSize: 9,
+        fontWeight: 700,
+        color: "#4a5a7a",
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        marginBottom: 4,
+      }}>
+        {label}
+      </div>
+      <div style={{
+        fontSize: 15,
+        fontWeight: 900,
+        color,
+        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        letterSpacing: "-0.01em",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}>
+        {value}
+      </div>
+    </div>
+  );
 }
 
 function ProgressBar({
@@ -938,67 +1194,6 @@ function ConfidenceDots({ value, onChange }: { value: number; onChange: (v: numb
         );
       })}
     </div>
-  );
-}
-
-function ReferenceLine({
-  label, value, color, top, half,
-}: { label: string; value: string; color: string; top: string; half?: boolean }) {
-  return (
-    <div style={{
-      position: "absolute",
-      top,
-      right: 0,
-      width: half ? "50%" : "100%",
-      height: 1,
-      background: `linear-gradient(90deg, transparent 0%, ${color}66 25%, ${color} 100%)`,
-      pointerEvents: "none",
-      zIndex: 2,
-    }}>
-      <div style={{
-        position: "absolute",
-        right: 10,
-        top: -10,
-        padding: "3px 8px",
-        background: color,
-        color: "#000",
-        fontSize: 9,
-        fontWeight: 900,
-        borderRadius: 4,
-        fontFamily: "ui-monospace, SFMono-Regular, monospace",
-        letterSpacing: "0.06em",
-        boxShadow: `0 2px 8px ${color}55`,
-        whiteSpace: "nowrap",
-      }}>
-        {label} {value}
-      </div>
-    </div>
-  );
-}
-
-function ToggleBtn({
-  label, active, onClick, disabled,
-}: { label: string; active: boolean; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        flex: 1,
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: `1px solid ${active ? "#38bdf8" : "#1e2540"}`,
-        background: active ? "rgba(56,189,248,0.15)" : "#0d1628",
-        color: active ? "#38bdf8" : disabled ? "#3a4a6a" : "#94a3b8",
-        fontSize: 12,
-        fontWeight: 700,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-        transition: "all 0.15s",
-      }}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -1123,25 +1318,6 @@ const secondaryBtnStyle: React.CSSProperties = {
   fontWeight: 700,
   cursor: "pointer",
   textDecoration: "none",
-};
-
-const overlayChip: React.CSSProperties = {
-  padding: "5px 10px",
-  borderRadius: 6,
-  background: "rgba(6,13,26,0.72)",
-  border: "1px solid #1e2f4a",
-  color: "#f0f4ff",
-  fontWeight: 700,
-  backdropFilter: "blur(8px)",
-  WebkitBackdropFilter: "blur(8px)",
-};
-
-const overlayChipStrong: React.CSSProperties = {
-  ...overlayChip,
-  fontSize: 14,
-  fontWeight: 900,
-  letterSpacing: "-0.01em",
-  padding: "6px 12px",
 };
 
 const slideAnimCSS = `
