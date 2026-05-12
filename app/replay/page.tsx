@@ -427,9 +427,8 @@ export default function ReplayPage() {
   const [done, setDone] = useState(false);
   const [slideDir, setSlideDir] = useState<"next" | "prev">("next");
   const [slideKey, setSlideKey] = useState(0);
-  const [viewMode, setViewMode] = useState<"chart" | "screenshot">("chart");
   const [interval, setInterval] = useState<Interval>("5m");
-  const [hoverCandle, setHoverCandle] = useState<ChartRow | null>(null);
+  const [zoomOpen, setZoomOpen] = useState(false);
 
   // draft form state
   const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
@@ -481,7 +480,7 @@ export default function ReplayPage() {
     setDifferently(existing?.differently ?? "");
     setGrade(existing?.grade ?? null);
     setSlideKey((k) => k + 1);
-    setHoverCandle(null);
+    setZoomOpen(false);
   }, [current?.id]);
 
   // load screenshot for current trade
@@ -772,22 +771,30 @@ export default function ReplayPage() {
                   <IntervalBtn
                     key={iv}
                     label={iv}
-                    active={viewMode === "chart" && interval === iv}
-                    disabled={viewMode !== "chart"}
-                    onClick={() => { setInterval(iv); setViewMode("chart"); }}
+                    active={interval === iv}
+                    onClick={() => setInterval(iv)}
                   />
                 ))}
               </div>
-              <IntervalBtn
-                label="📸"
-                active={viewMode === "screenshot"}
-                disabled={!shot && !shotLoading}
-                onClick={() => setViewMode(viewMode === "screenshot" ? "chart" : "screenshot")}
-              />
             </div>
 
-            {/* Center: OHLC on hover */}
-            <OhlcRow candle={viewMode === "chart" ? hoverCandle : null} />
+            {/* Center: capture-time note */}
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              fontSize: 10,
+              fontWeight: 700,
+              color: "#4a5a7a",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              fontFamily: "ui-monospace, SFMono-Regular, monospace",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}>
+              📸 Chart captured at time of trade
+            </div>
 
             {/* Right: trade datetime */}
             <span style={{
@@ -801,21 +808,39 @@ export default function ReplayPage() {
             </span>
           </div>
 
-          {/* Chart card */}
+          {/* Chart card — premium screenshot frame */}
           <div style={{
             ...cardStyle,
             marginTop: 10,
             padding: 0,
             overflow: "hidden",
             position: "relative",
+            border: `1px solid ${
+              shot
+                ? isWin ? "rgba(34,211,165,0.45)"
+                : isLoss ? "rgba(244,63,94,0.45)"
+                : "#1e2f4a"
+                : "#1e2f4a"
+            }`,
+            boxShadow: shot
+              ? isWin
+                ? "0 0 0 1px rgba(34,211,165,0.18), 0 0 60px rgba(34,211,165,0.18), 0 12px 40px rgba(0,0,0,0.5)"
+                : isLoss
+                ? "0 0 0 1px rgba(244,63,94,0.18), 0 0 60px rgba(244,63,94,0.18), 0 12px 40px rgba(0,0,0,0.5)"
+                : "0 12px 40px rgba(0,0,0,0.4)"
+              : "0 12px 40px rgba(0,0,0,0.4)",
+            transition: "border-color 0.3s, box-shadow 0.3s",
           }}>
             <ChartArea
               trade={t}
               shot={shot}
               shotLoading={shotLoading}
-              viewMode={viewMode}
-              interval={interval}
-              onHover={setHoverCandle}
+              entry={entry}
+              exit={exit}
+              pnl={pnl}
+              isWin={isWin}
+              isLoss={isLoss}
+              onZoom={() => setZoomOpen(true)}
             />
           </div>
 
@@ -985,6 +1010,10 @@ export default function ReplayPage() {
           </div>
         </div>
       </div>
+
+      {zoomOpen && shot && (
+        <ZoomModal src={shot} onClose={() => setZoomOpen(false)} />
+      )}
     </div>
   );
 }
@@ -992,95 +1021,245 @@ export default function ReplayPage() {
 // ───────────────────── sub-components ─────────────────────
 
 function ChartArea({
-  trade, shot, shotLoading, viewMode, interval, onHover,
+  trade, shot, shotLoading, entry, exit, pnl, isWin, isLoss, onZoom,
 }: {
   trade: Trade;
   shot: string | null;
   shotLoading: boolean;
-  viewMode: "chart" | "screenshot";
-  interval: Interval;
-  onHover: (c: ChartRow | null) => void;
+  entry: number;
+  exit: number;
+  pnl: number;
+  isWin: boolean;
+  isLoss: boolean;
+  onZoom: () => void;
 }) {
   const HEIGHT = 500;
-  const { candles, loading, error } = useTradeChart(trade, interval);
 
-  // Reset hover state if we leave chart view
-  useEffect(() => {
-    if (viewMode !== "chart") onHover(null);
-  }, [viewMode, onHover]);
-
-  // Fall back to screenshot if chart errored AND a screenshot exists
-  const autoFallbackToShot =
-    viewMode === "chart" && !!error && !loading && (shot != null || shotLoading);
-  const showScreenshot = viewMode === "screenshot" || autoFallbackToShot;
-
-  if (showScreenshot) {
-    if (shotLoading) {
-      return (
-        <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
-          Loading screenshot…
-        </div>
-      );
-    }
-    if (shot) {
-      return (
-        <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={shot}
-            alt="Trade screenshot"
-            style={{ width: "100%", height: HEIGHT, objectFit: "contain", background: "#060d1a", display: "block" }}
-          />
-          {autoFallbackToShot && (
-            <div style={{
-              position: "absolute", top: 10, left: 10,
-              padding: "5px 9px", borderRadius: 8,
-              background: "rgba(248, 113, 113, 0.12)",
-              border: "1px solid rgba(248, 113, 113, 0.32)",
-              color: "#fca5a5", fontSize: 10, fontWeight: 700,
-              letterSpacing: "0.08em", textTransform: "uppercase",
-              fontFamily: "ui-monospace, SFMono-Regular, monospace",
-            }}>
-              Live chart unavailable · showing screenshot
-            </div>
-          )}
-        </div>
-      );
-    }
+  if (shotLoading) {
     return (
-      <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#3a4a6a", gap: 8 }}>
-        <div style={{ fontSize: 28 }}>📸</div>
-        <div style={{ fontSize: 12 }}>No screenshot attached</div>
+      <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
+        Loading screenshot…
       </div>
     );
   }
 
-  if (loading) return <ChartSkeleton height={HEIGHT} />;
-
-  if (error || !candles || candles.length === 0) {
+  if (!shot) {
     return (
       <div style={{
         height: HEIGHT, background: "#060d1a",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
-        color: "#4a5a7a", fontSize: 12, gap: 10, padding: 16, textAlign: "center",
+        color: "#3a4a6a", gap: 10, padding: 16, textAlign: "center",
       }}>
-        <div style={{ fontSize: 36, opacity: 0.6 }}>📊</div>
-        <div style={{ fontWeight: 700, color: "#94a3b8" }}>Chart data unavailable</div>
-        <div style={{ fontSize: 10, color: "#3a4a6a", fontFamily: "ui-monospace, monospace" }}>
-          {error || "No candles returned"}
+        <div style={{ fontSize: 36, opacity: 0.5 }}>📸</div>
+        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 13 }}>No screenshot attached</div>
+        <div style={{ fontSize: 11, color: "#3a4a6a" }}>
+          Attach a chart screenshot when logging trades to see it here.
         </div>
       </div>
     );
   }
 
+  const pnlPositive = pnl > 0;
+  const pnlBg = pnlPositive
+    ? "linear-gradient(135deg, #22d3a5, #0ea5a0)"
+    : pnl < 0
+    ? "linear-gradient(135deg, #f43f5e, #be123c)"
+    : "linear-gradient(135deg, #475569, #334155)";
+  const pnlGlow = pnlPositive
+    ? "0 6px 24px rgba(34,211,165,0.45)"
+    : pnl < 0
+    ? "0 6px 24px rgba(244,63,94,0.45)"
+    : "0 6px 24px rgba(0,0,0,0.4)";
+
   return (
-    <CandleChart
-      trade={trade}
-      candles={candles}
-      height={HEIGHT}
-      onHover={onHover}
-    />
+    <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={shot}
+        alt="Trade screenshot"
+        style={{ width: "100%", height: HEIGHT, objectFit: "contain", background: "#060d1a", display: "block" }}
+      />
+
+      {/* Top fade — for PnL badge legibility */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0, height: 110,
+        background: "linear-gradient(180deg, rgba(6,13,26,0.78) 0%, rgba(6,13,26,0.35) 55%, rgba(6,13,26,0) 100%)",
+        pointerEvents: "none",
+      }} />
+
+      {/* Bottom fade — for entry/exit badge legibility */}
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0, height: 130,
+        background: "linear-gradient(0deg, rgba(6,13,26,0.85) 0%, rgba(6,13,26,0.4) 55%, rgba(6,13,26,0) 100%)",
+        pointerEvents: "none",
+      }} />
+
+      {/* PnL badge — top center */}
+      <div style={{
+        position: "absolute", top: 18, left: "50%", transform: "translateX(-50%)",
+        padding: "10px 20px",
+        borderRadius: 999,
+        background: pnlBg,
+        color: "#04121e",
+        fontSize: 17,
+        fontWeight: 900,
+        letterSpacing: "-0.01em",
+        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        boxShadow: `${pnlGlow}, inset 0 1px 0 rgba(255,255,255,0.25)`,
+        whiteSpace: "nowrap",
+        border: "1px solid rgba(255,255,255,0.18)",
+      }}>
+        {pnlPositive ? "+" : ""}{fmtMoney(pnl)}
+      </div>
+
+      {/* Zoom button — top right */}
+      <button
+        onClick={onZoom}
+        aria-label="Zoom screenshot"
+        style={{
+          position: "absolute", top: 18, right: 18,
+          padding: "8px 12px",
+          borderRadius: 10,
+          background: "rgba(13,22,40,0.78)",
+          color: "#cbd5e1",
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: "0.06em",
+          border: "1px solid rgba(56,189,248,0.35)",
+          cursor: "pointer",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+          textTransform: "uppercase",
+          transition: "all 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(56,189,248,0.18)";
+          e.currentTarget.style.color = "#38bdf8";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "rgba(13,22,40,0.78)";
+          e.currentTarget.style.color = "#cbd5e1";
+        }}
+      >
+        🔍 Zoom
+      </button>
+
+      {/* Entry badge — bottom left */}
+      {entry > 0 && (
+        <div style={{
+          position: "absolute", bottom: 18, left: 18,
+          padding: "9px 14px",
+          borderRadius: 10,
+          background: "linear-gradient(135deg, #22d3a5, #10b981)",
+          color: "#04121e",
+          fontSize: 13,
+          fontWeight: 900,
+          letterSpacing: "0.02em",
+          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+          boxShadow: "0 6px 20px rgba(34,211,165,0.5), inset 0 1px 0 rgba(255,255,255,0.25)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          whiteSpace: "nowrap",
+        }}>
+          ▲ ENTRY ${entry.toFixed(2)}
+        </div>
+      )}
+
+      {/* Exit badge — bottom right */}
+      {exit > 0 && (
+        <div style={{
+          position: "absolute", bottom: 18, right: 18,
+          padding: "9px 14px",
+          borderRadius: 10,
+          background: "linear-gradient(135deg, #f43f5e, #be123c)",
+          color: "#1a0008",
+          fontSize: 13,
+          fontWeight: 900,
+          letterSpacing: "0.02em",
+          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+          boxShadow: "0 6px 20px rgba(244,63,94,0.5), inset 0 1px 0 rgba(255,255,255,0.25)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          whiteSpace: "nowrap",
+        }}>
+          ▼ EXIT ${exit.toFixed(2)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ZoomModal({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Trade screenshot zoom view"
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(2, 6, 14, 0.92)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 32,
+        cursor: "zoom-out",
+        animation: "nexyruZoomFade 0.22s ease-out both",
+      }}
+    >
+      <style>{`
+        @keyframes nexyruZoomFade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+      `}</style>
+      <button
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        style={{
+          position: "fixed", top: 22, right: 24,
+          padding: "10px 16px",
+          borderRadius: 10,
+          background: "rgba(13,22,40,0.85)",
+          color: "#f0f4ff",
+          fontSize: 12,
+          fontWeight: 800,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          border: "1px solid #1e2f4a",
+          cursor: "pointer",
+          backdropFilter: "blur(8px)",
+          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+        }}
+      >
+        ✕ Close · Esc
+      </button>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Trade screenshot — full size"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: "100%", maxHeight: "100%",
+          objectFit: "contain",
+          borderRadius: 14,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08)",
+          cursor: "default",
+        }}
+      />
+    </div>
   );
 }
 
