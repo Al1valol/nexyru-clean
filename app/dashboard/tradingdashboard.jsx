@@ -2092,39 +2092,6 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       </td>
 
                       <td style={{ ...td, color:"#64748b", whiteSpace:"nowrap" }} onClick={()=>setViewing(t)}>{new Date(t.date).toLocaleDateString()}</td>
-                      <td style={{...td, padding:"4px 8px"}}>
-                        {sharedSet.has(String(t.id)) ? (
-                          confirmUnshare===String(t.id) ? (
-                            <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 8px",borderRadius:8,border:"1px solid #1e2d3e",background:"rgba(10,15,30,0.9)"}} onClick={(e)=>e.stopPropagation()}>
-                              <span style={{fontSize:10,fontWeight:600,color:"#94a3b8"}}>Remove from feed?</span>
-                              <button
-                                onClick={(e)=>{e.stopPropagation(); handleUnshare(t.id);}}
-                                style={{padding:"3px 9px",borderRadius:6,border:"1px solid rgba(239,68,68,0.45)",cursor:"pointer",background:"rgba(239,68,68,0.15)",color:"#f87171",fontSize:10,fontWeight:700}}>
-                                Yes
-                              </button>
-                              <button
-                                onClick={(e)=>{e.stopPropagation(); setConfirmUnshare(null);}}
-                                style={{padding:"3px 9px",borderRadius:6,border:"1px solid #334155",cursor:"pointer",background:"transparent",color:"#94a3b8",fontSize:10,fontWeight:700}}>
-                                No
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={(e)=>{e.stopPropagation(); setConfirmUnshare(String(t.id));}}
-                              disabled={unsharing===String(t.id)}
-                              title="Click to remove from feed"
-                              style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(52,211,153,0.3)",cursor:unsharing===String(t.id)?"wait":"pointer",background:"rgba(52,211,153,0.1)",color:"#34d399",fontSize:10,fontWeight:700}}>
-                              {unsharing===String(t.id) ? "…" : "✓ Posted"}
-                            </button>
-                          )
-                        ) : (
-                          <button
-                            onClick={(e)=>{e.stopPropagation(); window.__pendingShare=t; window.dispatchEvent(new CustomEvent('nexyruShare'));}}
-                            style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(56,189,248,0.25)",cursor:"pointer",background:"rgba(56,189,248,0.08)",color:"#38bdf8",fontSize:10,fontWeight:700}}>
-                            📡 Share
-                          </button>
-                        )}
-                      </td>
                       <td style={td}>
                         <div style={{ display:"flex", gap:4 }}>
                           <button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.06)", color:"#818cf8", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600 }}><span>🤖</span></button>
@@ -7228,13 +7195,10 @@ function TradingDashboard({ session, onLogout }) {
   const [showAddAcct,   setShowAddAcct]   = useState(false);
   const [showShot,      setShowShot]      = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
-  const [shareModalTrade, setShareModalTrade] = useState(null);
   const [editTrade,     setEditTrade]     = useState(null);
 
   const copyTrading  = useCopyTrading(session.username);
   const paperAccts   = usePaperAccounts(session.username);
-
-  useEffect(()=>{ const h=()=>setShareModalTrade(window.__pendingShare||null); window.addEventListener('nexyruShare',h); return()=>window.removeEventListener('nexyruShare',h); },[]);
 
   // Seed demo data AFTER accounts are initialized
   useEffect(() => {
@@ -7372,8 +7336,6 @@ function TradingDashboard({ session, onLogout }) {
 
       {/* Modals */}
       {(showForm || editTrade) && <TradeForm initial={editTrade} strategies={strategies} onSave={saveTrade} onClose={() => { setShowForm(false); setEditTrade(null); }}/>}
-      
-      {shareModalTrade && <ShareTradeModal trade={shareModalTrade} onClose={()=>setShareModalTrade(null)} />}
 
       {showAccountSetup && (
         <AccountSetupModal
