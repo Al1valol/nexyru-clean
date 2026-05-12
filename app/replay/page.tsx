@@ -208,8 +208,8 @@ const INTERVAL_MS: Record<Interval, number> = {
   "1h": 60 * 60 * 1000,
 };
 
-// 50 candles before entry, 20 after — full lead-up context.
-const CANDLES_BEFORE = 50;
+// 60 candles before entry, 20 after — full lead-up context.
+const CANDLES_BEFORE = 60;
 const CANDLES_AFTER = 20;
 
 type Instrument =
@@ -235,93 +235,46 @@ function classifySymbol(raw: string): Instrument {
   return { kind: "yahoo", yahooSymbol: yahooFallback };
 }
 
-async function fetchBinanceCandles(
-  binanceSymbol: string,
+async function fetchCandlesFromApi(
+  apiSymbol: string,
   interval: Interval,
   tradeTime: number,
 ): Promise<ChartRow[]> {
   const ms = INTERVAL_MS[interval];
   const startTime = tradeTime - CANDLES_BEFORE * ms;
   const endTime = tradeTime + CANDLES_AFTER * ms;
-  const limit = CANDLES_BEFORE + CANDLES_AFTER + 10;
-  const url = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(
-    binanceSymbol,
-  )}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=${limit}`;
+  const url =
+    `/api/candles?symbol=${encodeURIComponent(apiSymbol)}` +
+    `&interval=${encodeURIComponent(interval)}` +
+    `&startTime=${startTime}&endTime=${endTime}`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Binance ${res.status}`);
-  const rows = await res.json();
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error("Binance: no klines");
-
-  return rows
-    .map((row: any[]): ChartRow => ({
-      time: Math.floor(Number(row[0]) / 1000) as UTCTimestamp,
-      open: Number(row[1]),
-      high: Number(row[2]),
-      low: Number(row[3]),
-      close: Number(row[4]),
-      volume: Number(row[5]),
+  if (!res.ok) throw new Error(`Candles API ${res.status}`);
+  const body = (await res.json()) as {
+    candles?: Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>;
+    error?: string;
+  };
+  if (body.error && (!body.candles || body.candles.length === 0)) {
+    throw new Error(body.error);
+  }
+  const rows = (body.candles || [])
+    .map((c): ChartRow => ({
+      time: c.time as UTCTimestamp,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: typeof c.volume === "number" ? c.volume : undefined,
     }))
     .filter(
-      (c: ChartRow) =>
+      (c) =>
         Number.isFinite(c.open) &&
         Number.isFinite(c.high) &&
         Number.isFinite(c.low) &&
         Number.isFinite(c.close),
     )
-    .sort((a: ChartRow, b: ChartRow) => (a.time as number) - (b.time as number));
-}
-
-async function fetchYahooCandles(
-  yahooSymbol: string,
-  interval: Interval,
-  tradeTime: number,
-): Promise<ChartRow[]> {
-  const ms = INTERVAL_MS[interval];
-  const period1 = Math.floor((tradeTime - CANDLES_BEFORE * ms) / 1000);
-  const period2 = Math.floor((tradeTime + CANDLES_AFTER * ms) / 1000);
-  const ivl = YAHOO_INTERVAL[interval];
-  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    yahooSymbol,
-  )}?interval=${ivl}&period1=${period1}&period2=${period2}`;
-  const url = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
-
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Proxy ${res.status}`);
-  const wrapped = await res.json();
-  const inner = wrapped?.contents ? JSON.parse(wrapped.contents) : null;
-  const result = inner?.chart?.result?.[0];
-  if (!result) throw new Error("Yahoo: no result");
-
-  const timestamps: number[] = result.timestamp || [];
-  const quote = result.indicators?.quote?.[0];
-  if (!quote || !timestamps.length) throw new Error("Yahoo: empty quote");
-
-  const candles: ChartRow[] = [];
-  for (let i = 0; i < timestamps.length; i++) {
-    const o = quote.open?.[i];
-    const h = quote.high?.[i];
-    const l = quote.low?.[i];
-    const c = quote.close?.[i];
-    const v = quote.volume?.[i];
-    if (
-      Number.isFinite(o) &&
-      Number.isFinite(h) &&
-      Number.isFinite(l) &&
-      Number.isFinite(c)
-    ) {
-      candles.push({
-        time: timestamps[i] as UTCTimestamp,
-        open: o,
-        high: h,
-        low: l,
-        close: c,
-        volume: Number.isFinite(v) ? v : undefined,
-      });
-    }
-  }
-  if (!candles.length) throw new Error("Yahoo: all rows missing");
-  return candles;
+    .sort((a, b) => (a.time as number) - (b.time as number));
+  return rows;
 }
 
 function useTradeChart(trade: Trade | undefined, interval: Interval) {
@@ -353,9 +306,9 @@ function useTradeChart(trade: Trade | undefined, interval: Interval) {
         }
         let data: ChartRow[];
         if (info.kind === "crypto") {
-          data = await fetchBinanceCandles(info.binanceSymbol, interval, tradeTime);
+          data = await fetchCandlesFromApi(info.binanceSymbol, interval, tradeTime);
         } else if (info.kind === "yahoo") {
-          data = await fetchYahooCandles(info.yahooSymbol, interval, tradeTime);
+          data = await fetchCandlesFromApi(info.yahooSymbol, interval, tradeTime);
         } else {
           throw new Error("Unsupported symbol");
         }
@@ -469,6 +422,10 @@ export default function ReplayPage() {
   }, []);
 
   const current = trades[idx];
+
+  const { candles, loading: chartLoading, error: chartError } = useTradeChart(current, interval);
+  const [hoverCandle, setHoverCandle] = useState<ChartRow | null>(null);
+  useEffect(() => { setHoverCandle(null); }, [current?.id, interval]);
 
   // hydrate form when current trade changes
   useEffect(() => {
@@ -778,22 +735,30 @@ export default function ReplayPage() {
               </div>
             </div>
 
-            {/* Center: capture-time note */}
+            {/* Center: live OHLC on hover (or capture-time note when no candles) */}
             <div style={{
               display: "flex",
               justifyContent: "center",
               alignItems: "center",
-              fontSize: 10,
-              fontWeight: 700,
-              color: "#4a5a7a",
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              fontFamily: "ui-monospace, SFMono-Regular, monospace",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
+              minWidth: 0,
             }}>
-              📸 Chart captured at time of trade
+              {candles && candles.length > 0 ? (
+                <OhlcRow candle={hoverCandle ?? candles[candles.length - 1]} />
+              ) : (
+                <div style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#4a5a7a",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  fontFamily: "ui-monospace, SFMono-Regular, monospace",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}>
+                  📸 Chart captured at time of trade
+                </div>
+              )}
             </div>
 
             {/* Right: trade datetime */}
@@ -835,6 +800,10 @@ export default function ReplayPage() {
               trade={t}
               shot={shot}
               shotLoading={shotLoading}
+              candles={candles}
+              chartLoading={chartLoading}
+              chartError={chartError}
+              onHover={setHoverCandle}
               entry={entry}
               exit={exit}
               pnl={pnl}
@@ -1021,11 +990,16 @@ export default function ReplayPage() {
 // ───────────────────── sub-components ─────────────────────
 
 function ChartArea({
-  trade, shot, shotLoading, entry, exit, pnl, isWin, isLoss, onZoom,
+  trade, shot, shotLoading, candles, chartLoading, chartError, onHover,
+  entry, exit, pnl, isWin, isLoss, onZoom,
 }: {
   trade: Trade;
   shot: string | null;
   shotLoading: boolean;
+  candles: ChartRow[] | null;
+  chartLoading: boolean;
+  chartError: string | null;
+  onHover: (c: ChartRow | null) => void;
   entry: number;
   exit: number;
   pnl: number;
@@ -1035,6 +1009,20 @@ function ChartArea({
 }) {
   const HEIGHT = 500;
 
+  // Chart is the primary experience when we have candles
+  if (chartLoading) {
+    return <ChartSkeleton height={HEIGHT} />;
+  }
+
+  if (candles && candles.length > 0) {
+    return (
+      <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}>
+        <CandleChart trade={trade} candles={candles} height={HEIGHT} onHover={onHover} />
+      </div>
+    );
+  }
+
+  // Fallback: screenshot
   if (shotLoading) {
     return (
       <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
@@ -1051,10 +1039,14 @@ function ChartArea({
         alignItems: "center", justifyContent: "center",
         color: "#3a4a6a", gap: 10, padding: 16, textAlign: "center",
       }}>
-        <div style={{ fontSize: 36, opacity: 0.5 }}>📸</div>
-        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 13 }}>No screenshot attached</div>
-        <div style={{ fontSize: 11, color: "#3a4a6a" }}>
-          Attach a chart screenshot when logging trades to see it here.
+        <div style={{ fontSize: 36, opacity: 0.5 }}>📊</div>
+        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 13 }}>
+          {chartError ? "No chart data available" : "No chart or screenshot"}
+        </div>
+        <div style={{ fontSize: 11, color: "#3a4a6a", maxWidth: 360 }}>
+          {chartError
+            ? `Could not load candles (${chartError}). Attach a chart screenshot to see it here.`
+            : "Attach a chart screenshot when logging trades to see it here."}
         </div>
       </div>
     );
