@@ -5560,6 +5560,7 @@ function PlatformDropdown() {
       { href:"/earnings",    emoji:"💰", label:"Earnings",       color:"#22d3a5" },
       { href:"/replay",      emoji:"📽️", label:"Trade Replay",    color:"#38bdf8" },
       { href:"/psychology",  emoji:"🧠", label:"Psychology",     color:"#ec4899" },
+      { href:"/setups",      emoji:"🎯", label:"Best Setups",    color:"#22c55e" },
       { href:"/import",      emoji:"📥", label:"Import",         color:"#34d399" },
     ];
 
