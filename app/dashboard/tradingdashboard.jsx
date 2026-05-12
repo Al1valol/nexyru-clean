@@ -1917,6 +1917,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
     try { return new Set(JSON.parse(localStorage.getItem("nexyru_shared_trades") || "[]")); } catch { return new Set(); }
   });
   const [unsharing, setUnsharing] = useState(null);
+  const [confirmUnshare, setConfirmUnshare] = useState(null);
 
   useEffect(() => {
     const h = () => {
@@ -1927,7 +1928,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
   }, []);
 
   const handleUnshare = async (tradeId) => {
-    if (!window.confirm("Remove from feed?")) return;
+    setConfirmUnshare(null);
     setUnsharing(String(tradeId));
     try {
       const SUPA = "https://xsrcaceydyqytbipvrok.supabase.co";
@@ -2093,13 +2094,29 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       <td style={{ ...td, color:"#64748b", whiteSpace:"nowrap" }} onClick={()=>setViewing(t)}>{new Date(t.date).toLocaleDateString()}</td>
                       <td style={{...td, padding:"4px 8px"}}>
                         {sharedSet.has(String(t.id)) ? (
-                          <button
-                            onClick={(e)=>{e.stopPropagation(); handleUnshare(t.id);}}
-                            disabled={unsharing===String(t.id)}
-                            title="Click to remove from feed"
-                            style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(52,211,153,0.3)",cursor:unsharing===String(t.id)?"wait":"pointer",background:"rgba(52,211,153,0.1)",color:"#34d399",fontSize:10,fontWeight:700}}>
-                            {unsharing===String(t.id) ? "…" : "✓ Posted"}
-                          </button>
+                          confirmUnshare===String(t.id) ? (
+                            <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 8px",borderRadius:8,border:"1px solid #1e2d3e",background:"rgba(10,15,30,0.9)"}} onClick={(e)=>e.stopPropagation()}>
+                              <span style={{fontSize:10,fontWeight:600,color:"#94a3b8"}}>Remove from feed?</span>
+                              <button
+                                onClick={(e)=>{e.stopPropagation(); handleUnshare(t.id);}}
+                                style={{padding:"3px 9px",borderRadius:6,border:"1px solid rgba(239,68,68,0.45)",cursor:"pointer",background:"rgba(239,68,68,0.15)",color:"#f87171",fontSize:10,fontWeight:700}}>
+                                Yes
+                              </button>
+                              <button
+                                onClick={(e)=>{e.stopPropagation(); setConfirmUnshare(null);}}
+                                style={{padding:"3px 9px",borderRadius:6,border:"1px solid #334155",cursor:"pointer",background:"transparent",color:"#94a3b8",fontSize:10,fontWeight:700}}>
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e)=>{e.stopPropagation(); setConfirmUnshare(String(t.id));}}
+                              disabled={unsharing===String(t.id)}
+                              title="Click to remove from feed"
+                              style={{padding:"3px 10px",borderRadius:8,border:"1px solid rgba(52,211,153,0.3)",cursor:unsharing===String(t.id)?"wait":"pointer",background:"rgba(52,211,153,0.1)",color:"#34d399",fontSize:10,fontWeight:700}}>
+                              {unsharing===String(t.id) ? "…" : "✓ Posted"}
+                            </button>
+                          )
                         ) : (
                           <button
                             onClick={(e)=>{e.stopPropagation(); window.__pendingShare=t; window.dispatchEvent(new CustomEvent('nexyruShare'));}}

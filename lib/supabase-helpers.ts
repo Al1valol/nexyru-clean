@@ -130,7 +130,13 @@ export async function getGlobalFeed(limit = 20, offset = 0): Promise<FeedPost[]>
     .eq('visibility', 'public')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
-  return (data ?? []) as FeedPost[]
+  return ((data ?? []) as any[]).map((p: any) => ({
+    ...p,
+    username:        p.profile?.username        ?? null,
+    display_name:    p.profile?.display_name    ?? null,
+    avatar_url:      p.profile?.avatar_url      ?? null,
+    verified_trader: p.profile?.verified_trader ?? false,
+  })) as FeedPost[]
 }
 
 export async function getFollowingFeed(userId: string, limit = 20, offset = 0): Promise<PostWithProfile[]> {
@@ -156,7 +162,13 @@ export async function getBigWinsFeed(minPnl = 500, limit = 20): Promise<FeedPost
     .gte('pnl', minPnl)
     .order('pnl', { ascending: false })
     .limit(limit)
-  return (data ?? []) as FeedPost[]
+  return ((data ?? []) as any[]).map((p: any) => ({
+    ...p,
+    username:        p.profile?.username        ?? null,
+    display_name:    p.profile?.display_name    ?? null,
+    avatar_url:      p.profile?.avatar_url      ?? null,
+    verified_trader: p.profile?.verified_trader ?? false,
+  })) as FeedPost[]
 }
 
 export async function getUserPosts(userId: string, limit = 20, offset = 0): Promise<TradePost[]> {
