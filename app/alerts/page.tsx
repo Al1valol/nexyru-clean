@@ -13,38 +13,26 @@ interface InstrumentSpec {
   tickValue:number;   // $ per tick
   perPoint: number;   // $ per point
   unit:     string;
+  base:     number;   // estimated mid-price (used for position-size preview + sim feed)
 }
 
 const INSTRUMENTS: InstrumentSpec[] = [
-  { key:"ES",  label:"ES — S&P 500",     emoji:"📈", tickSize:0.25, tickValue:12.50, perPoint:50,   unit:"pts" },
-  { key:"NQ",  label:"NQ — Nasdaq 100",  emoji:"💻", tickSize:0.25, tickValue:5.00,  perPoint:20,   unit:"pts" },
-  { key:"CL",  label:"CL — Crude Oil",   emoji:"🛢",  tickSize:0.01, tickValue:10.00, perPoint:1000, unit:"pts" },
-  { key:"GC",  label:"GC — Gold",        emoji:"🥇", tickSize:0.10, tickValue:10.00, perPoint:100,  unit:"pts" },
-  { key:"SI",  label:"SI — Silver",      emoji:"🥈", tickSize:0.005,tickValue:25.00, perPoint:5000, unit:"pts" },
-  { key:"BTC", label:"BTC — Bitcoin",    emoji:"₿",  tickSize:1,    tickValue:1,     perPoint:1,    unit:"$" },
-  { key:"ETH", label:"ETH — Ethereum",   emoji:"Ξ",  tickSize:0.01, tickValue:0.01,  perPoint:1,    unit:"$" },
-  { key:"SOL", label:"SOL — Solana",     emoji:"◎",  tickSize:0.01, tickValue:0.01,  perPoint:1,    unit:"$" },
+  { key:"ES",  label:"ES — S&P 500",     emoji:"📈", tickSize:0.25, tickValue:12.50, perPoint:50,   unit:"pts", base:5300  },
+  { key:"NQ",  label:"NQ — Nasdaq 100",  emoji:"💻", tickSize:0.25, tickValue:5.00,  perPoint:20,   unit:"pts", base:18500 },
+  { key:"CL",  label:"CL — Crude Oil",   emoji:"🛢",  tickSize:0.01, tickValue:10.00, perPoint:1000, unit:"pts", base:78.50 },
+  { key:"GC",  label:"GC — Gold",        emoji:"🥇", tickSize:0.10, tickValue:10.00, perPoint:100,  unit:"pts", base:2350  },
+  { key:"SI",  label:"SI — Silver",      emoji:"🥈", tickSize:0.005,tickValue:25.00, perPoint:5000, unit:"pts", base:30.50 },
+  { key:"BTC", label:"BTC — Bitcoin",    emoji:"₿",  tickSize:1,    tickValue:1,     perPoint:1,    unit:"$",   base:67500 },
+  { key:"ETH", label:"ETH — Ethereum",   emoji:"Ξ",  tickSize:0.01, tickValue:0.01,  perPoint:1,    unit:"$",   base:3400  },
+  { key:"SOL", label:"SOL — Solana",     emoji:"◎",  tickSize:0.01, tickValue:0.01,  perPoint:1,    unit:"$",   base:165   },
 ];
 
-const DAYS      = ["Mon","Tue","Wed","Thu","Fri"] as const;
-const TIMEZONES = ["ET","CT","MT","PT"] as const;
-const TIMEFRAMES= ["1m","2m","5m","15m","30m","1h"] as const;
-const RR_OPTS   = ["1:1","1.5:1","2:1","2.5:1","3:1"] as const;
-const NO_TRADE_ZONES = ["News events", "Market open first 15min", "Last 30min of session"] as const;
-
-const CONDITION_TYPES = [
-  { id:"price_above",       label:"Price above [value]",          needsValue:true  },
-  { id:"price_below",       label:"Price below [value]",          needsValue:true  },
-  { id:"price_crosses",     label:"Price crosses [value]",        needsValue:true  },
-  { id:"ema_crossover",     label:"EMA crossover (9/21)",         needsValue:false },
-  { id:"rsi_above",         label:"RSI above [value]",            needsValue:true  },
-  { id:"rsi_below",         label:"RSI below [value]",            needsValue:true  },
-  { id:"new_session_high",  label:"New session high",             needsValue:false },
-  { id:"new_session_low",   label:"New session low",              needsValue:false },
-  { id:"approaching_dll",   label:"Approaching daily loss limit", needsValue:false },
-  { id:"max_trades_reached",label:"Max trades reached",           needsValue:false },
-] as const;
-type ConditionId = typeof CONDITION_TYPES[number]["id"];
+const DAYS            = ["Mon","Tue","Wed","Thu","Fri"] as const;
+const TIMEZONES       = ["ET","CT","MT","PT"] as const;
+const TIMEFRAMES      = ["1m","2m","5m","15m","30m","1h"] as const;
+const ALERT_TIMEFRAMES= ["1m","2m","5m","15m","1h"] as const;
+const RR_OPTS         = ["1:1","1.5:1","2:1","2.5:1","3:1"] as const;
+const NO_TRADE_ZONES  = ["News events", "Market open first 15min", "Last 30min of session"] as const;
 
 interface TradingSettings {
   accountSize:        number;
@@ -82,36 +70,75 @@ const DEFAULT_SETTINGS: TradingSettings = {
   maxConcurrent:      1,
 };
 
-interface AlertItem {
+// ── Strategy shape (mirrors Strategy Lab) ─────────────────────────
+interface StrategyCond { id: string; params?: Record<string, unknown> }
+interface SavedStrategy {
   id:           string;
   name:         string;
-  instrument:   InstrumentKey;
-  condition:    ConditionId;
-  value:        string;
+  description?: string;
+  rules?: {
+    entryConds?:  StrategyCond[];
+    exitConds?:   StrategyCond[];
+    filterConds?: StrategyCond[];
+    slPct?:       number;
+    tpPct?:       number;
+    riskPct?:     number;
+  };
+}
+
+// ── Alert shape (discriminated by `type`) ─────────────────────────
+type AlertType = "strategy" | "risk" | "session" | "price_level";
+
+interface AlertItem {
+  id:           string;
+  type:         AlertType;
+  name:         string;
   method:       "browser" | "email" | "both";
   repeating:    boolean;
   notes:        string;
   enabled:      boolean;
   lastTriggered:number | null;
   createdAt:    number;
+
+  // Strategy Signal
+  strategyId?:        string;
+  timeframe?:         string;
+  useDefaultInstrument?: boolean;
+  instrument?:        InstrumentKey;
+
+  // Risk Alert
+  dailyLossPct?:      number;  // warn when daily P&L hits this % of the configured daily max
+
+  // Session Alert
+  sessionTime?:       string;  // HH:MM, local
+
+  // Price Level
+  priceLevel?:        string;  // numeric string
+  direction?:         "above" | "below" | "crosses";
 }
 
-interface SavedStrategy { id: string; name: string }
+const ALERT_TYPE_META: Record<AlertType, { icon: string; label: string; tone: string }> = {
+  strategy:    { icon:"📋", label:"Strategy Signal", tone:"#38bdf8" },
+  risk:        { icon:"⚠️", label:"Risk Alert",      tone:"#f87171" },
+  session:     { icon:"📊", label:"Session Alert",   tone:"#a78bfa" },
+  price_level: { icon:"🎯", label:"Price Level",     tone:"#34d399" },
+};
 
 // ── helpers ──────────────────────────────────────────────────────
 function getUsername(): string {
   try { return JSON.parse(localStorage.getItem("tradedesk_session_v1") ?? "{}").username || "guest"; }
   catch { return "guest"; }
 }
-function readStrategies(): SavedStrategy[] {
+
+function readStrategies(username: string): SavedStrategy[] {
+  if (!username) return [];
   try {
-    const raw = JSON.parse(localStorage.getItem("tradedesk_strategies_v8") || "[]");
+    const raw = JSON.parse(localStorage.getItem(`tradedesk_stratlab_${username}_v1`) || "[]");
     if (!Array.isArray(raw)) return [];
-    return raw
-      .filter((s: { id?: unknown; name?: unknown }) => s && typeof s.id === "string" && typeof s.name === "string")
-      .map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }));
+    return raw.filter((s: { id?: unknown; name?: unknown }) => s && typeof s.id === "string" && typeof s.name === "string") as SavedStrategy[];
   } catch { return []; }
 }
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 const fmtMoney = (n: number) => (n < 0 ? "-" : "") + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
@@ -125,29 +152,99 @@ function timeAgo(ms: number | null): string {
   return `Last triggered: ${Math.floor(diff/86_400_000)} days ago`;
 }
 
-function conditionDescription(a: AlertItem): string {
-  switch (a.condition) {
-    case "price_above":        return `${a.instrument} price above ${a.value}`;
-    case "price_below":        return `${a.instrument} price below ${a.value}`;
-    case "price_crosses":      return `${a.instrument} price crosses ${a.value}`;
-    case "ema_crossover":      return `${a.instrument} EMA(9) crosses EMA(21)`;
-    case "rsi_above":          return `${a.instrument} RSI above ${a.value}`;
-    case "rsi_below":          return `${a.instrument} RSI below ${a.value}`;
-    case "new_session_high":   return `${a.instrument} makes new session high`;
-    case "new_session_low":    return `${a.instrument} makes new session low`;
-    case "approaching_dll":    return `Within 80% of daily loss limit`;
-    case "max_trades_reached": return `Daily max trade count reached`;
+function humanizeCondId(id: string): string {
+  return id.split("_").map(w => {
+    if (w === "ema" || w === "sma" || w === "rsi" || w === "macd" || w === "vwap" || w === "atr" || w === "bb" || w === "orb" || w === "ny") return w.toUpperCase();
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(" ");
+}
+
+function describeCond(cond: StrategyCond): string {
+  const base = humanizeCondId(cond.id);
+  const p = cond.params ?? {};
+  const parts = Object.entries(p)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => `${k}=${v}`);
+  return parts.length ? `${base} · ${parts.join(", ")}` : base;
+}
+
+function alertDescription(a: AlertItem, strategies: SavedStrategy[]): string {
+  switch (a.type) {
+    case "strategy": {
+      const s = strategies.find(x => x.id === a.strategyId);
+      const inst = a.useDefaultInstrument ? "default instrument" : (a.instrument ?? "—");
+      return `${s?.name ?? "Strategy"} · ${a.timeframe ?? "—"} · ${inst}`;
+    }
+    case "risk":
+      return `Warn at ${a.dailyLossPct ?? 80}% of daily loss limit`;
+    case "session":
+      return `Session start at ${a.sessionTime ?? "—"}`;
+    case "price_level": {
+      const dir = a.direction === "above" ? "above" : a.direction === "below" ? "below" : "crosses";
+      return `${a.instrument ?? "—"} price ${dir} ${a.priceLevel ?? "—"}`;
+    }
   }
 }
 
+// Estimate position size for a strategy alert preview.
+function estimatePositionSize(
+  strategy: SavedStrategy | undefined,
+  instKey: InstrumentKey,
+  settings: TradingSettings,
+): { contracts: number; dollarRisk: number; stopDistance: number; perContract: number } {
+  const inst = INSTRUMENTS.find(i => i.key === instKey)!;
+  const slPct = strategy?.rules?.slPct ?? 2;
+  const dollarRisk = settings.accountSize * (settings.maxRiskPct / 100);
+  const stopDistance = inst.base * (slPct / 100);
+  const ticks = inst.tickSize ? stopDistance / inst.tickSize : 0;
+  const perContract = ticks * inst.tickValue;
+  const contracts = perContract > 0 ? Math.floor(dollarRisk / perContract) : 0;
+  return { contracts, dollarRisk, stopDistance, perContract };
+}
+
+// Migrate legacy alerts (pre-type field) to the new shape so existing localStorage doesn't break.
+function migrateAlert(raw: unknown): AlertItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || typeof r.name !== "string") return null;
+
+  const base = {
+    id:            r.id,
+    name:          r.name,
+    method:        (r.method === "email" || r.method === "both") ? r.method : "browser",
+    repeating:     !!r.repeating,
+    notes:         typeof r.notes === "string" ? r.notes : "",
+    enabled:       r.enabled !== false,
+    lastTriggered: typeof r.lastTriggered === "number" ? r.lastTriggered : null,
+    createdAt:     typeof r.createdAt === "number" ? r.createdAt : Date.now(),
+  } as const;
+
+  if (typeof r.type === "string" && ["strategy","risk","session","price_level"].includes(r.type)) {
+    return { ...r, ...base } as AlertItem;
+  }
+
+  // Legacy migration: condition + value → closest new type.
+  const cond = typeof r.condition === "string" ? r.condition : "";
+  const value = typeof r.value === "string" ? r.value : "";
+  const inst: InstrumentKey = (typeof r.instrument === "string" && (INSTRUMENTS.find(i => i.key === r.instrument))) ? r.instrument as InstrumentKey : "ES";
+
+  if (cond === "price_above" || cond === "price_below" || cond === "price_crosses") {
+    return {
+      ...base, type:"price_level", instrument: inst,
+      direction: cond === "price_above" ? "above" : cond === "price_below" ? "below" : "crosses",
+      priceLevel: value,
+    };
+  }
+  if (cond === "approaching_dll" || cond === "max_trades_reached") {
+    return { ...base, type:"risk", dailyLossPct: 80 };
+  }
+  // EMA / RSI / session hi/lo — drop into price_level "above" at value 0 so the user can re-edit.
+  return { ...base, type:"price_level", instrument: inst, direction:"above", priceLevel: value || "0" };
+}
+
 // ── Cheap simulated price feed (no external API).
-// Stable per-instrument seed so multiple alerts watching the same symbol see the same tick.
 function nextPrice(prev: number | null, inst: InstrumentKey): number {
-  const base: Record<InstrumentKey, number> = {
-    ES:5300, NQ:18500, CL:78.50, GC:2350, SI:30.50,
-    BTC:67500, ETH:3400, SOL:165,
-  };
-  const start = prev ?? base[inst];
+  const start = prev ?? (INSTRUMENTS.find(i => i.key === inst)?.base ?? 100);
   const drift = (Math.random() - 0.5) * 0.0015;
   return Math.max(0.01, start * (1 + drift));
 }
@@ -384,27 +481,105 @@ function TradingSettingsPanel({
 // Alert Modal
 // ─────────────────────────────────────────────────────────────────
 function AlertModal({
-  initial, allowedInstruments, onClose, onSave,
+  initial, allowedInstruments, settings, strategies, onClose, onSave,
 }: {
   initial: AlertItem | null;
   allowedInstruments: InstrumentKey[];
+  settings: TradingSettings;
+  strategies: SavedStrategy[];
   onClose: () => void;
   onSave: (a: AlertItem) => void;
 }) {
   const fallbackInst = allowedInstruments[0] ?? "ES";
-  const [name,       setName]       = useState(initial?.name       ?? "");
-  const [instrument, setInstrument] = useState<InstrumentKey>(initial?.instrument ?? fallbackInst);
-  const [condition,  setCondition]  = useState<ConditionId>(initial?.condition ?? "price_above");
-  const [value,      setValue]      = useState(initial?.value      ?? "");
-  const [method,     setMethod]     = useState<AlertItem["method"]>(initial?.method ?? "browser");
-  const [repeating,  setRepeating]  = useState(initial?.repeating  ?? false);
-  const [notes,      setNotes]      = useState(initial?.notes      ?? "");
 
-  const cond = CONDITION_TYPES.find(c => c.id === condition)!;
-  const canSave = name.trim().length > 0 && (!cond.needsValue || value.trim().length > 0);
+  const [type,       setType]       = useState<AlertType>(initial?.type ?? "strategy");
+  const [name,       setName]       = useState(initial?.name ?? "");
+  const [method,     setMethod]     = useState<AlertItem["method"]>(initial?.method ?? "browser");
+  const [repeating,  setRepeating]  = useState(initial?.repeating ?? false);
+  const [notes,      setNotes]      = useState(initial?.notes ?? "");
+
+  // strategy
+  const [strategyId,           setStrategyId]           = useState(initial?.strategyId ?? settings.linkedStrategyId ?? "");
+  const [timeframe,            setTimeframe]            = useState<string>(initial?.timeframe ?? "5m");
+  const [useDefaultInstrument, setUseDefaultInstrument] = useState<boolean>(initial?.useDefaultInstrument ?? true);
+  const [instrument,           setInstrument]          = useState<InstrumentKey>(initial?.instrument ?? fallbackInst);
+  const [checked,              setChecked]              = useState<Record<number, boolean>>({});
+
+  // risk
+  const [dailyLossPct, setDailyLossPct] = useState<number>(initial?.dailyLossPct ?? 80);
+
+  // session
+  const [sessionTime, setSessionTime] = useState<string>(initial?.sessionTime ?? settings.sessionStart ?? "09:30");
+
+  // price level
+  const [priceLevel, setPriceLevel] = useState<string>(initial?.priceLevel ?? "");
+  const [direction,  setDirection]  = useState<"above"|"below"|"crosses">(initial?.direction ?? "above");
+
+  const selectedStrategy = useMemo(
+    () => strategies.find(s => s.id === strategyId),
+    [strategies, strategyId],
+  );
+
+  // Effective instrument used for previewing position size
+  const effectiveInstrument: InstrumentKey =
+    type === "strategy" && useDefaultInstrument ? fallbackInst : instrument;
+
+  const entryConds = selectedStrategy?.rules?.entryConds ?? [];
+  const sizePreview = useMemo(
+    () => estimatePositionSize(selectedStrategy, effectiveInstrument, settings),
+    [selectedStrategy, effectiveInstrument, settings],
+  );
+
+  // ── validation ─────────────────────────────────────
+  const canSave = useMemo(() => {
+    if (!name.trim()) return false;
+    if (type === "strategy")    return !!strategyId;
+    if (type === "risk")        return dailyLossPct >= 1 && dailyLossPct <= 100;
+    if (type === "session")     return /^\d{2}:\d{2}$/.test(sessionTime);
+    if (type === "price_level") return !!priceLevel.trim() && !isNaN(parseFloat(priceLevel));
+    return false;
+  }, [name, type, strategyId, dailyLossPct, sessionTime, priceLevel]);
 
   const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:6 };
   const inp: React.CSSProperties = { padding:"10px 12px", borderRadius:9, border:"1px solid #1a2540", background:"#0d1628", color:"#f0f4ff", fontSize:13, outline:"none", boxSizing:"border-box", fontWeight:600, width:"100%", fontFamily:"system-ui" };
+  const monoInp: React.CSSProperties = { ...inp, fontFamily:"monospace" };
+
+  const TYPE_TABS: { id: AlertType; label: string }[] = [
+    { id:"strategy",    label:"📋 Strategy" },
+    { id:"risk",        label:"⚠️ Risk" },
+    { id:"session",     label:"📊 Session" },
+    { id:"price_level", label:"🎯 Price" },
+  ];
+
+  const dailyLossDollar = Math.round(settings.accountSize * settings.maxDailyLossPct / 100);
+  const warnDollar      = Math.round(dailyLossDollar * (dailyLossPct / 100));
+
+  // ── build and save ─────────────────────────────────
+  const submit = () => {
+    const base: AlertItem = {
+      id:            initial?.id ?? uid(),
+      type,
+      name:          name.trim(),
+      method,
+      repeating,
+      notes:         notes.trim(),
+      enabled:       initial?.enabled ?? true,
+      lastTriggered: initial?.lastTriggered ?? null,
+      createdAt:     initial?.createdAt ?? Date.now(),
+    };
+    let saved: AlertItem = base;
+    if (type === "strategy") {
+      saved = { ...base, strategyId, timeframe, useDefaultInstrument,
+                instrument: useDefaultInstrument ? fallbackInst : instrument };
+    } else if (type === "risk") {
+      saved = { ...base, dailyLossPct };
+    } else if (type === "session") {
+      saved = { ...base, sessionTime };
+    } else if (type === "price_level") {
+      saved = { ...base, instrument, direction, priceLevel: priceLevel.trim() };
+    }
+    onSave(saved);
+  };
 
   return (
     <div onClick={onClose} style={{
@@ -413,7 +588,7 @@ function AlertModal({
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         background:"#0b1120", border:"1px solid #1a2540", borderRadius:18, padding:24,
-        maxWidth:520, width:"100%", maxHeight:"90vh", overflowY:"auto",
+        maxWidth:560, width:"100%", maxHeight:"92vh", overflowY:"auto",
         boxShadow:"0 24px 60px rgba(0,0,0,0.6)"
       }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
@@ -423,37 +598,248 @@ function AlertModal({
           <button onClick={onClose} style={{ background:"transparent", border:"none", color:"#3a4a6a", fontSize:22, cursor:"pointer", padding:0, lineHeight:1 }}>×</button>
         </div>
 
+        {/* Type tabs */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:6, marginBottom:18 }}>
+          {TYPE_TABS.map(t => {
+            const on = type === t.id;
+            const tone = ALERT_TYPE_META[t.id].tone;
+            return (
+              <button key={t.id} onClick={() => setType(t.id)}
+                style={{
+                  padding:"10px 6px", borderRadius:9,
+                  border:`1px solid ${on ? tone : "#1a2540"}`,
+                  background: on ? `${tone}14` : "#0d1628",
+                  color: on ? tone : "#5a6a8a",
+                  fontSize:11, fontWeight:800, cursor:"pointer", letterSpacing:"0.02em",
+                }}>{t.label}</button>
+            );
+          })}
+        </div>
+
+        {/* Name */}
         <div style={{ marginBottom:14 }}>
           <label style={lbl}>Alert name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. NQ break of 18,500" style={inp}/>
+          <input value={name} onChange={e => setName(e.target.value)}
+            placeholder={
+              type === "strategy"    ? "e.g. NQ breakout signal" :
+              type === "risk"        ? "e.g. Daily loss warning" :
+              type === "session"     ? "e.g. NY open reminder"   :
+                                       "e.g. NQ break of 18,500"
+            }
+            style={inp}/>
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-          <div>
-            <label style={lbl}>Instrument</label>
-            <select value={instrument} onChange={e => setInstrument(e.target.value as InstrumentKey)} style={{ ...inp, appearance:"none", WebkitAppearance:"none", cursor:"pointer", fontFamily:"monospace" }}>
-              {INSTRUMENTS.map(i => (
-                <option key={i.key} value={i.key} disabled={allowedInstruments.length > 0 && !allowedInstruments.includes(i.key)}>
-                  {i.emoji} {i.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={lbl}>Condition</label>
-            <select value={condition} onChange={e => setCondition(e.target.value as ConditionId)} style={{ ...inp, appearance:"none", WebkitAppearance:"none", cursor:"pointer" }}>
-              {CONDITION_TYPES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
-          </div>
-        </div>
+        {/* ── Strategy Signal ──────────────────────── */}
+        {type === "strategy" && (
+          <>
+            <div style={{ marginBottom:14 }}>
+              <label style={lbl}>Strategy</label>
+              <select value={strategyId} onChange={e => setStrategyId(e.target.value)}
+                style={{ ...inp, appearance:"none", WebkitAppearance:"none", cursor:"pointer" }}>
+                <option value="">— Pick a saved strategy —</option>
+                {strategies.length === 0 && <option value="" disabled>No saved strategies. Build one in Strategy Lab first.</option>}
+                {strategies.map(s => {
+                  const cs = s.rules?.entryConds ?? [];
+                  const summary = cs.length
+                    ? cs.slice(0, 2).map(c => humanizeCondId(c.id)).join(" + ") + (cs.length > 2 ? ` +${cs.length - 2}` : "")
+                    : "no entry conditions";
+                  return <option key={s.id} value={s.id}>{s.name} — {summary}</option>;
+                })}
+              </select>
+            </div>
 
-        {cond.needsValue && (
-          <div style={{ marginBottom:14 }}>
-            <label style={lbl}>Value</label>
-            <input type="number" value={value} onChange={e => setValue(e.target.value)} placeholder="0.00" style={{ ...inp, fontFamily:"monospace" }}/>
-          </div>
+            {selectedStrategy && (
+              <div style={{
+                marginBottom:14, padding:"12px 14px", borderRadius:11,
+                background:"rgba(56,189,248,0.06)", border:"1px solid rgba(56,189,248,0.25)"
+              }}>
+                <div style={{ fontSize:11, color:"#94a3b8", marginBottom:6 }}>
+                  Alert will fire when all entry conditions for <strong style={{ color:"#38bdf8" }}>{selectedStrategy.name}</strong> are met.
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:8 }}>
+                  {entryConds.length === 0 && (
+                    <div style={{ fontSize:11, color:"#5a6a8a", fontStyle:"italic" }}>No entry conditions saved.</div>
+                  )}
+                  {entryConds.map((c, i) => {
+                    const on = !!checked[i];
+                    return (
+                      <button key={i}
+                        onClick={() => setChecked(prev => ({ ...prev, [i]: !on }))}
+                        style={{
+                          display:"flex", alignItems:"center", gap:10, padding:"7px 10px", borderRadius:8,
+                          border:`1px solid ${on ? "#34d399" : "#1a2540"}`,
+                          background: on ? "rgba(52,211,153,0.08)" : "#0d1628",
+                          color: on ? "#34d399" : "#94a3b8",
+                          fontSize:11, fontWeight:600, cursor:"pointer", textAlign:"left", fontFamily:"monospace"
+                        }}>
+                        <span style={{ fontSize:13 }}>{on ? "☑" : "☐"}</span>
+                        {describeCond(c)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginBottom:14 }}>
+              <label style={lbl}>Timeframe</label>
+              <div style={{ display:"flex", gap:6 }}>
+                {ALERT_TIMEFRAMES.map(t => {
+                  const on = timeframe === t;
+                  return (
+                    <button key={t} onClick={() => setTimeframe(t)}
+                      style={{
+                        flex:1, padding:"9px 0", borderRadius:8,
+                        border:`1px solid ${on ? "#38bdf8" : "#1a2540"}`,
+                        background: on ? "rgba(56,189,248,0.08)" : "#0d1628",
+                        color: on ? "#38bdf8" : "#5a6a8a",
+                        fontSize:11, fontWeight:700, fontFamily:"monospace", cursor:"pointer"
+                      }}>{t}</button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ marginBottom:14 }}>
+              <label style={lbl}>Instrument</label>
+              <div style={{ display:"flex", gap:6, marginBottom:8 }}>
+                <button onClick={() => setUseDefaultInstrument(true)} style={{
+                  flex:1, padding:"9px 0", borderRadius:8,
+                  border:`1px solid ${useDefaultInstrument ? "#38bdf8" : "#1a2540"}`,
+                  background: useDefaultInstrument ? "rgba(56,189,248,0.08)" : "#0d1628",
+                  color: useDefaultInstrument ? "#38bdf8" : "#5a6a8a",
+                  fontSize:11, fontWeight:700, cursor:"pointer"
+                }}>Use default ({fallbackInst})</button>
+                <button onClick={() => setUseDefaultInstrument(false)} style={{
+                  flex:1, padding:"9px 0", borderRadius:8,
+                  border:`1px solid ${!useDefaultInstrument ? "#38bdf8" : "#1a2540"}`,
+                  background: !useDefaultInstrument ? "rgba(56,189,248,0.08)" : "#0d1628",
+                  color: !useDefaultInstrument ? "#38bdf8" : "#5a6a8a",
+                  fontSize:11, fontWeight:700, cursor:"pointer"
+                }}>Pick custom</button>
+              </div>
+              {!useDefaultInstrument && (
+                <select value={instrument} onChange={e => setInstrument(e.target.value as InstrumentKey)}
+                  style={{ ...monoInp, appearance:"none", WebkitAppearance:"none", cursor:"pointer" }}>
+                  {INSTRUMENTS.map(i => (
+                    <option key={i.key} value={i.key}>
+                      {i.emoji} {i.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Position size preview */}
+            <div style={{
+              marginBottom:18, padding:"12px 14px", borderRadius:11,
+              background:"rgba(52,211,153,0.06)", border:"1px solid rgba(52,211,153,0.25)"
+            }}>
+              <div style={{ fontSize:10, color:"#94a3b8", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>
+                Position size preview
+              </div>
+              <div style={{ fontSize:13, color:"#f0f4ff", fontWeight:700 }}>
+                Based on your settings: trade <span style={{ color:"#34d399", fontFamily:"monospace" }}>{sizePreview.contracts > 0 ? sizePreview.contracts : "—"}</span> {effectiveInstrument} contract{sizePreview.contracts === 1 ? "" : "s"}, risk <span style={{ color:"#34d399", fontFamily:"monospace" }}>{fmtMoney(sizePreview.dollarRisk)}</span>
+              </div>
+              <div style={{ fontSize:10, color:"#3a4a6a", marginTop:6, fontFamily:"monospace" }}>
+                est. stop {sizePreview.stopDistance.toFixed(2)} {INSTRUMENTS.find(i=>i.key===effectiveInstrument)?.unit ?? ""} · SL {(selectedStrategy?.rules?.slPct ?? 2).toFixed(1)}% · {settings.maxRiskPct.toFixed(1)}% of {fmtMoney(settings.accountSize)}
+              </div>
+            </div>
+          </>
         )}
 
+        {/* ── Risk Alert ──────────────────────────── */}
+        {type === "risk" && (
+          <>
+            <div style={{ marginBottom:14 }}>
+              <label style={lbl}>Warn at <span style={{ color:"#f87171", fontFamily:"monospace" }}>{dailyLossPct}%</span> of daily loss limit</label>
+              <input type="range" min={50} max={100} step={5} value={dailyLossPct}
+                onChange={e => setDailyLossPct(parseInt(e.target.value, 10))}
+                style={{ width:"100%", accentColor:"#f87171" }}/>
+            </div>
+            <div style={{
+              marginBottom:18, padding:"12px 14px", borderRadius:11,
+              background:"rgba(248,113,113,0.06)", border:"1px solid rgba(248,113,113,0.25)"
+            }}>
+              <div style={{ fontSize:13, color:"#f0f4ff", fontWeight:700 }}>
+                You&apos;ll be notified at <span style={{ color:"#f87171", fontFamily:"monospace" }}>{fmtMoney(warnDollar)}</span> loss ({dailyLossPct}% of your {fmtMoney(dailyLossDollar)} max).
+              </div>
+              <div style={{ fontSize:10, color:"#3a4a6a", marginTop:6 }}>
+                Configure your daily max loss in Trading Settings → Account.
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Session Alert ───────────────────────── */}
+        {type === "session" && (
+          <>
+            <div style={{ marginBottom:14 }}>
+              <label style={lbl}>Notify at (local time)</label>
+              <input type="time" value={sessionTime} onChange={e => setSessionTime(e.target.value)}
+                style={{ ...monoInp }}/>
+            </div>
+            <div style={{
+              marginBottom:18, padding:"12px 14px", borderRadius:11,
+              background:"rgba(167,139,250,0.06)", border:"1px solid rgba(167,139,250,0.25)"
+            }}>
+              <div style={{ fontSize:13, color:"#f0f4ff", fontWeight:700 }}>
+                Daily reminder at <span style={{ color:"#a78bfa", fontFamily:"monospace" }}>{sessionTime}</span>.
+              </div>
+              <div style={{ fontSize:10, color:"#3a4a6a", marginTop:6 }}>
+                Tip: leave this tab open in the background so the browser can fire the notification.
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Price Level ─────────────────────────── */}
+        {type === "price_level" && (
+          <>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+              <div>
+                <label style={lbl}>Instrument</label>
+                <select value={instrument} onChange={e => setInstrument(e.target.value as InstrumentKey)}
+                  style={{ ...monoInp, appearance:"none", WebkitAppearance:"none", cursor:"pointer" }}>
+                  {INSTRUMENTS.map(i => (
+                    <option key={i.key} value={i.key} disabled={allowedInstruments.length > 0 && !allowedInstruments.includes(i.key)}>
+                      {i.emoji} {i.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Direction</label>
+                <div style={{ display:"flex", gap:4 }}>
+                  {([
+                    { v:"above",   label:"Above"   },
+                    { v:"below",   label:"Below"   },
+                    { v:"crosses", label:"Crosses" },
+                  ] as const).map(d => {
+                    const on = direction === d.v;
+                    return (
+                      <button key={d.v} onClick={() => setDirection(d.v)}
+                        style={{
+                          flex:1, padding:"10px 0", borderRadius:8,
+                          border:`1px solid ${on ? "#34d399" : "#1a2540"}`,
+                          background: on ? "rgba(52,211,153,0.08)" : "#0d1628",
+                          color: on ? "#34d399" : "#5a6a8a",
+                          fontSize:11, fontWeight:700, cursor:"pointer"
+                        }}>{d.label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <label style={lbl}>Price level</label>
+              <input type="number" value={priceLevel} onChange={e => setPriceLevel(e.target.value)}
+                placeholder="0.00" style={monoInp}/>
+            </div>
+          </>
+        )}
+
+        {/* ── Shared: method / frequency / notes ─── */}
         <div style={{ marginBottom:14 }}>
           <label style={lbl}>Alert method</label>
           <div style={{ display:"flex", gap:6 }}>
@@ -508,22 +894,7 @@ function AlertModal({
           }}>Cancel</button>
           <button
             disabled={!canSave}
-            onClick={() => {
-              const saved: AlertItem = {
-                id:            initial?.id ?? uid(),
-                name:          name.trim(),
-                instrument,
-                condition,
-                value:         cond.needsValue ? value.trim() : "",
-                method,
-                repeating,
-                notes:         notes.trim(),
-                enabled:       initial?.enabled ?? true,
-                lastTriggered: initial?.lastTriggered ?? null,
-                createdAt:     initial?.createdAt ?? Date.now(),
-              };
-              onSave(saved);
-            }}
+            onClick={submit}
             style={{
               flex:2, padding:"12px 16px", borderRadius:10, border:"none",
               background: canSave ? "linear-gradient(135deg,#38bdf8,#818cf8)" : "#1a2540",
@@ -543,27 +914,26 @@ function AlertModal({
 // Alert Card
 // ─────────────────────────────────────────────────────────────────
 function AlertCard({
-  alert, onToggle, onEdit, onDelete, tick,
+  alert, strategies, onToggle, onEdit, onDelete, tick,
 }: {
   alert: AlertItem;
+  strategies: SavedStrategy[];
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
   tick: number; // forces re-render so "X mins ago" stays fresh
 }) {
-  // tick is intentionally referenced to keep relative time labels fresh
   void tick;
-  const inst = INSTRUMENTS.find(i => i.key === alert.instrument);
-  const accent = alert.enabled ? "#34d399" : "#3a4a6a";
+  const meta = ALERT_TYPE_META[alert.type];
 
   return (
     <div style={{
-      background:"#0d1628", border:`1px solid ${alert.enabled ? "rgba(52,211,153,0.25)" : "#1a2540"}`,
+      background:"#0d1628", border:`1px solid ${alert.enabled ? `${meta.tone}40` : "#1a2540"}`,
       borderRadius:14, padding:16
     }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8, gap:10 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0, flex:1 }}>
-          <span style={{ fontSize:16 }}>{inst?.emoji ?? "📈"}</span>
+          <span style={{ fontSize:16 }}>{meta.icon}</span>
           <span style={{ fontSize:13, fontWeight:800, color:"#f0f4ff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{alert.name}</span>
         </div>
         <button onClick={onToggle} title={alert.enabled ? "Disable" : "Enable"} style={{
@@ -579,8 +949,12 @@ function AlertCard({
         </button>
       </div>
 
+      <div style={{ fontSize:10, color: meta.tone, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>
+        {meta.label}
+      </div>
+
       <div style={{ fontSize:11, color:"#94a3b8", marginBottom:4, fontFamily:"monospace" }}>
-        {conditionDescription(alert)}
+        {alertDescription(alert, strategies)}
       </div>
 
       {alert.notes && (
@@ -604,8 +978,6 @@ function AlertCard({
           <button onClick={onDelete} title="Delete" style={{ background:"transparent", border:"1px solid rgba(248,113,113,0.3)", color:"#f87171", borderRadius:6, padding:"3px 8px", fontSize:10, fontWeight:700, cursor:"pointer" }}>Delete</button>
         </div>
       </div>
-
-      <div style={{ position:"absolute", width:0, height:0, color:accent }}/>
     </div>
   );
 }
@@ -622,7 +994,6 @@ function PositionSizeCalc({ settings }: { settings: TradingSettings }) {
   const [entry,   setEntry]   = useState("");
   const [stop,    setStop]    = useState("");
 
-  // Keep selected instrument valid if user changes allowed set
   useEffect(() => {
     if (allowed.length === 0) return;
     if (!allowed.includes(instKey)) setInstKey(allowed[0]);
@@ -736,10 +1107,13 @@ export default function AlertsPage() {
       const a = localStorage.getItem(`nexyru_alerts_${u}`);
       if (a) {
         const parsed = JSON.parse(a);
-        if (Array.isArray(parsed)) setAlerts(parsed);
+        if (Array.isArray(parsed)) {
+          const migrated = parsed.map(migrateAlert).filter((x): x is AlertItem => x !== null);
+          setAlerts(migrated);
+        }
       }
     } catch {}
-    setStrategies(readStrategies());
+    setStrategies(readStrategies(u));
     setLoaded(true);
 
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -758,6 +1132,17 @@ export default function AlertsPage() {
     try { localStorage.setItem(`nexyru_alerts_${username}`, JSON.stringify(alerts)); } catch {}
   }, [alerts, loaded, username]);
 
+  const openCreate = () => {
+    if (username) setStrategies(readStrategies(username));
+    setEditing(null);
+    setShowModal(true);
+  };
+  const openEdit = (a: AlertItem) => {
+    if (username) setStrategies(readStrategies(username));
+    setEditing(a);
+    setShowModal(true);
+  };
+
   // ── Manual save for settings ───────────────────────
   const saveSettings = () => {
     if (!username) return;
@@ -774,71 +1159,68 @@ export default function AlertsPage() {
     return () => clearInterval(id);
   }, []);
 
-  // ── Simulated price feed + condition check every 30s ──────
-  const pricesRef = useRef<Partial<Record<InstrumentKey, number>>>({});
+  // ── Evaluator: simulated price feed + session-time check every 30s ──
+  const pricesRef     = useRef<Partial<Record<InstrumentKey, number>>>({});
   const prevPricesRef = useRef<Partial<Record<InstrumentKey, number>>>({});
-  const sessionExtremesRef = useRef<Partial<Record<InstrumentKey, { hi:number; lo:number }>>>({});
 
   useEffect(() => {
     if (!loaded) return;
+
     const evaluate = () => {
-      const symbols = new Set(alerts.filter(a => a.enabled).map(a => a.instrument));
+      // Update prices only for symbols any price-level alert is watching
+      const symbols = new Set(
+        alerts
+          .filter(a => a.enabled && a.type === "price_level" && a.instrument)
+          .map(a => a.instrument as InstrumentKey),
+      );
       symbols.forEach(sym => {
         const prev = pricesRef.current[sym] ?? null;
         const next = nextPrice(prev, sym);
         prevPricesRef.current[sym] = prev ?? next;
         pricesRef.current[sym] = next;
-        const ext = sessionExtremesRef.current[sym] ?? { hi: next, lo: next };
-        sessionExtremesRef.current[sym] = { hi: Math.max(ext.hi, next), lo: Math.min(ext.lo, next) };
       });
+
+      const now = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
 
       let mutated = false;
       const updated = alerts.map(a => {
         if (!a.enabled) return a;
         if (!a.repeating && a.lastTriggered) return a;
 
-        const p     = pricesRef.current[a.instrument];
-        const pPrev = prevPricesRef.current[a.instrument];
-        if (typeof p !== "number") return a;
-
-        const numericVal = parseFloat(a.value);
-        const ext = sessionExtremesRef.current[a.instrument];
-
         let triggered = false;
-        switch (a.condition) {
-          case "price_above":
-            triggered = !isNaN(numericVal) && p > numericVal;
-            break;
-          case "price_below":
-            triggered = !isNaN(numericVal) && p < numericVal;
-            break;
-          case "price_crosses":
-            triggered = !isNaN(numericVal) && typeof pPrev === "number" &&
-                        ((pPrev < numericVal && p >= numericVal) || (pPrev > numericVal && p <= numericVal));
-            break;
-          case "new_session_high":
-            triggered = !!ext && p >= ext.hi;
-            break;
-          case "new_session_low":
-            triggered = !!ext && p <= ext.lo;
-            break;
-          // EMA / RSI / risk-state conditions need real data feeds.
-          // We don't fake-fire them — they stay armed but quiet.
-          default:
-            triggered = false;
+        let body = "";
+
+        if (a.type === "price_level" && a.instrument) {
+          const p     = pricesRef.current[a.instrument];
+          const pPrev = prevPricesRef.current[a.instrument];
+          const numericVal = parseFloat(a.priceLevel ?? "");
+          if (typeof p === "number" && !isNaN(numericVal)) {
+            if (a.direction === "above")        triggered = p > numericVal;
+            else if (a.direction === "below")   triggered = p < numericVal;
+            else if (a.direction === "crosses") {
+              triggered = typeof pPrev === "number" &&
+                ((pPrev < numericVal && p >= numericVal) || (pPrev > numericVal && p <= numericVal));
+            }
+            if (triggered) body = `${a.instrument} ${a.direction ?? ""} ${numericVal} — current ${p.toFixed(2)}`;
+          }
+        } else if (a.type === "session" && a.sessionTime) {
+          // Don't double-fire within the same minute window
+          const withinMinute = a.lastTriggered && (Date.now() - a.lastTriggered) < 60_000;
+          if (!withinMinute && a.sessionTime === hhmm) {
+            triggered = true;
+            body = `Session start reminder · ${a.sessionTime}`;
+          }
         }
+        // Strategy + Risk alerts stay armed but do not auto-fire here (require real data feeds).
 
         if (!triggered) return a;
         mutated = true;
 
-        // Browser notification (if permitted)
         if ((a.method === "browser" || a.method === "both") &&
             typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
           try {
-            new Notification(`🔔 ${a.name}`, {
-              body: conditionDescription(a) + ` — current ${p.toFixed(2)}`,
-              tag:  a.id,
-            });
+            new Notification(`${ALERT_TYPE_META[a.type].icon} ${a.name}`, { body, tag: a.id });
           } catch {}
         }
         return { ...a, lastTriggered: Date.now() };
@@ -928,9 +1310,9 @@ export default function AlertsPage() {
                     <span style={{ fontSize:20 }}>🔔</span>
                     <h2 style={{ fontSize:18, fontWeight:900, color:"#f0f4ff", margin:0, letterSpacing:"-0.01em" }}>Active Alerts</h2>
                   </div>
-                  <p style={{ fontSize:12, color:"#3a4a6a", margin:"4px 0 0" }}>Price alerts evaluate every 30s.</p>
+                  <p style={{ fontSize:12, color:"#3a4a6a", margin:"4px 0 0" }}>Price &amp; session alerts evaluate every 30s.</p>
                 </div>
-                <button onClick={() => { setEditing(null); setShowModal(true); }} style={{
+                <button onClick={openCreate} style={{
                   padding:"11px 18px", borderRadius:10, border:"none",
                   background:"linear-gradient(135deg, #38bdf8, #818cf8)",
                   color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer",
@@ -955,9 +1337,10 @@ export default function AlertsPage() {
                     <AlertCard
                       key={a.id}
                       alert={a}
+                      strategies={strategies}
                       tick={tick}
                       onToggle={() => toggleAlert(a.id)}
-                      onEdit={() => { setEditing(a); setShowModal(true); }}
+                      onEdit={() => openEdit(a)}
                       onDelete={() => deleteAlert(a.id)}
                     />
                   ))}
@@ -974,6 +1357,8 @@ export default function AlertsPage() {
         <AlertModal
           initial={editing}
           allowedInstruments={allowedInstruments}
+          settings={settings}
+          strategies={strategies}
           onClose={() => { setShowModal(false); setEditing(null); }}
           onSave={upsertAlert}
         />
