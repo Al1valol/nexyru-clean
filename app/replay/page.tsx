@@ -153,21 +153,26 @@ const CRYPTO_BASES = new Set<string>([
   "APT", "ARB", "OP", "INJ", "TIA", "SUI", "PEPE", "WIF", "BONK", "HYPE",
 ]);
 
-const BINANCE_SYMBOL_MAP: Record<string, string> = {
-  "SOL/USD": "SOLUSDT",
-  "BTC/USD": "BTCUSDT",
-  "ETH/USD": "ETHUSDT",
-  "DOGE/USD": "DOGEUSDT",
-  "XRP/USD": "XRPUSDT",
-  "SOL-USD": "SOLUSDT",
-  "BTC-USD": "BTCUSDT",
-  "ETH-USD": "ETHUSDT",
+// Kraken uses XBT for Bitcoin and combined USD pairs without separators.
+const KRAKEN_SYMBOL_MAP: Record<string, string> = {
+  "SOL/USD": "SOLUSD",
+  "BTC/USD": "XBTUSD",
+  "ETH/USD": "ETHUSD",
+  "DOGE/USD": "DOGEUSD",
+  "XRP/USD": "XRPUSD",
+  "SOL-USD": "SOLUSD",
+  "BTC-USD": "XBTUSD",
+  "ETH-USD": "ETHUSD",
+  "DOGE-USD": "DOGEUSD",
+  "XRP-USD": "XRPUSD",
 };
 
-function formatBinanceSymbol(raw: string): string {
+function formatKrakenPair(raw: string): string {
   const pair = (raw || "").toUpperCase().trim();
-  if (BINANCE_SYMBOL_MAP[pair]) return BINANCE_SYMBOL_MAP[pair];
-  return pair.replace("/USD", "USDT").replace("-USD", "USDT").replace("/", "");
+  if (KRAKEN_SYMBOL_MAP[pair]) return KRAKEN_SYMBOL_MAP[pair];
+  // Generic: strip separators, swap BTC→XBT (Kraken convention).
+  const flat = pair.replace(/[\/\-]/g, "");
+  return flat.replace(/^BTC/, "XBT");
 }
 
 const YAHOO_MAP: Record<string, string> = {
@@ -201,6 +206,14 @@ const YAHOO_INTERVAL: Record<Interval, string> = {
   "1h": "60m",
 };
 
+// Kraken expects interval in minutes.
+const KRAKEN_INTERVAL: Record<Interval, string> = {
+  "1m": "1",
+  "5m": "5",
+  "15m": "15",
+  "1h": "60",
+};
+
 const INTERVAL_MS: Record<Interval, number> = {
   "1m": 60 * 1000,
   "5m": 5 * 60 * 1000,
@@ -213,7 +226,7 @@ const CANDLES_BEFORE = 60;
 const CANDLES_AFTER = 20;
 
 type Instrument =
-  | { kind: "crypto"; binanceSymbol: string }
+  | { kind: "crypto"; krakenPair: string }
   | { kind: "yahoo"; yahooSymbol: string }
   | { kind: "unknown" };
 
@@ -226,7 +239,7 @@ function classifySymbol(raw: string): Instrument {
 
   const base = symbol.split("/")[0].split("-")[0];
   if (CRYPTO_BASES.has(base)) {
-    return { kind: "crypto", binanceSymbol: formatBinanceSymbol(symbol) };
+    return { kind: "crypto", krakenPair: formatKrakenPair(symbol) };
   }
 
   // Plain equity ticker (AAPL, TSLA…) or anything else — let Yahoo try
@@ -236,17 +249,18 @@ function classifySymbol(raw: string): Instrument {
 }
 
 async function fetchCandlesFromApi(
-  apiSymbol: string,
+  krakenPair: string,
   interval: Interval,
   tradeTime: number,
 ): Promise<ChartRow[]> {
-  const ms = INTERVAL_MS[interval];
-  const startTime = tradeTime - CANDLES_BEFORE * ms;
-  const endTime = tradeTime + CANDLES_AFTER * ms;
+  // Kraken's `since` is in seconds. Anchor 60 candles before entry so the
+  // window covers the lead-up plus the following bars (Kraken returns up to 720).
+  const intervalMinutes = Number(KRAKEN_INTERVAL[interval]);
+  const since = Math.floor(tradeTime / 1000) - CANDLES_BEFORE * intervalMinutes * 60;
   const url =
-    `/api/candles?symbol=${encodeURIComponent(apiSymbol)}` +
-    `&interval=${encodeURIComponent(interval)}` +
-    `&startTime=${startTime}&endTime=${endTime}`;
+    `/api/candles?pair=${encodeURIComponent(krakenPair)}` +
+    `&interval=${encodeURIComponent(KRAKEN_INTERVAL[interval])}` +
+    `&since=${since}`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Candles API ${res.status}`);
@@ -306,11 +320,9 @@ function useTradeChart(trade: Trade | undefined, interval: Interval) {
         }
         let data: ChartRow[];
         if (info.kind === "crypto") {
-          data = await fetchCandlesFromApi(info.binanceSymbol, interval, tradeTime);
-        } else if (info.kind === "yahoo") {
-          data = await fetchCandlesFromApi(info.yahooSymbol, interval, tradeTime);
+          data = await fetchCandlesFromApi(info.krakenPair, interval, tradeTime);
         } else {
-          throw new Error("Unsupported symbol");
+          throw new Error("Unsupported symbol — crypto only");
         }
         if (cancelled) return;
         if (!data.length) throw new Error("No candle data");
