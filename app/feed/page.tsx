@@ -57,6 +57,11 @@ export default function FeedPage() {
   const [likedComments, setLikedComments] = useState<Set<string>>(new Set());
   const [commentLikeCounts, setCommentLikeCounts] = useState<Record<string, number>>({});
   const [sharedId, setSharedId] = useState<string | null>(null);
+  const [traders, setTraders] = useState<any[]>([]);
+  const [tradersLoading, setTradersLoading] = useState(true);
+  const [traderSearch, setTraderSearch] = useState("");
+  const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
+  const [followBusy, setFollowBusy] = useState<Set<string>>(new Set());
   const supabaseRef = useRef<any>(null);
   const profileIdRef = useRef<string | null>(null);
   const currentUserRef = useRef<string | null>(null);
@@ -74,12 +79,80 @@ export default function FeedPage() {
     return null;
   }, []);
 
+  const loadTraders = useCallback(async () => {
+    if (!supabaseRef.current) return;
+    setTradersLoading(true);
+    try {
+      const { supabase } = supabaseRef.current;
+      const { data } = await supabase
+        .from("profiles")
+        .select("id,username,display_name,avatar_url,follower_count,verified_trader")
+        .order("follower_count", { ascending: false })
+        .limit(20);
+      setTraders(data || []);
+      const pid = await resolveProfileId();
+      if (pid) {
+        const ids = (data || []).map((t: any) => t.id);
+        if (ids.length) {
+          const { data: follows } = await supabase
+            .from("follows")
+            .select("following_id")
+            .eq("follower_id", pid)
+            .in("following_id", ids);
+          setFollowingSet(new Set((follows || []).map((f: any) => f.following_id)));
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      setTraders([]);
+    }
+    setTradersLoading(false);
+  }, [resolveProfileId]);
+
+  const toggleFollow = async (traderId: string) => {
+    if (followBusy.has(traderId)) return;
+    const pid = await resolveProfileId();
+    if (!pid || !supabaseRef.current) return;
+    if (pid === traderId) return;
+    setFollowBusy(prev => { const n = new Set(prev); n.add(traderId); return n; });
+    const isFollowing = followingSet.has(traderId);
+    setFollowingSet(prev => {
+      const n = new Set(prev);
+      if (isFollowing) n.delete(traderId); else n.add(traderId);
+      return n;
+    });
+    setTraders(prev => prev.map(t => t.id === traderId
+      ? { ...t, follower_count: Math.max(0, (t.follower_count || 0) + (isFollowing ? -1 : 1)) }
+      : t
+    ));
+    try {
+      const { supabase } = supabaseRef.current;
+      if (isFollowing) {
+        await supabase.from("follows").delete().eq("follower_id", pid).eq("following_id", traderId);
+      } else {
+        await supabase.from("follows").insert({ follower_id: pid, following_id: traderId });
+      }
+    } catch (e) {
+      console.error(e);
+      setFollowingSet(prev => {
+        const n = new Set(prev);
+        if (isFollowing) n.add(traderId); else n.delete(traderId);
+        return n;
+      });
+      setTraders(prev => prev.map(t => t.id === traderId
+        ? { ...t, follower_count: Math.max(0, (t.follower_count || 0) + (isFollowing ? 1 : -1)) }
+        : t
+      ));
+    }
+    setFollowBusy(prev => { const n = new Set(prev); n.delete(traderId); return n; });
+  };
+
   useEffect(() => {
     setLikedComments(readSet(LIKED_COMMENTS_KEY));
     import("@/lib/supabase-helpers").then((mod) => {
       supabaseRef.current = mod;
       loadFeed(filter, mod);
-      resolveProfileId();
+      resolveProfileId().then(() => loadTraders());
     });
   }, []);
 
@@ -228,9 +301,10 @@ export default function FeedPage() {
     } catch {}
   };
 
-  const trending = Object.entries(
-    posts.reduce((a: any, p: any) => { a[p.username] = (a[p.username] || 0) + 1; return a; }, {})
-  ).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5);
+  const filteredTraders = traderSearch.trim()
+    ? traders.filter(t => (t.username || "").toLowerCase().includes(traderSearch.trim().toLowerCase()))
+    : traders;
+  const currentUsername = currentUserRef.current;
 
   return (
     <div style={{ minHeight: "100vh", background: "#060d1a", color: "#c8d8f0", fontFamily: "system-ui,sans-serif" }}>
@@ -437,18 +511,87 @@ export default function FeedPage() {
 
         <div style={{ position: "sticky", top: 80 }}>
           <div style={{ background: "#0b1120", border: "1px solid #1a2540", borderRadius: 18, padding: "16px 18px", marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#f0f4ff", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f97316", display: "inline-block" }} />
-              Trending Traders
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#f0f4ff", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f97316", display: "inline-block" }} />
+                Discover Traders
+              </div>
+              <button
+                onClick={loadTraders}
+                disabled={tradersLoading}
+                title="Refresh"
+                style={{ background: "none", border: "1px solid #1a2540", borderRadius: 8, color: tradersLoading ? "#2e3f5a" : "#64748b", fontSize: 11, padding: "4px 8px", cursor: tradersLoading ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
+              >
+                <span style={{ display: "inline-block", animation: tradersLoading ? "spin 0.7s linear infinite" : "none" }}>↻</span>
+              </button>
             </div>
-            {trending.length === 0 ? <div style={{ fontSize: 11, color: "#2e3f5a" }}>No activity yet</div> : trending.map(([u, c]: any, i) => {
+
+            <div style={{ position: "relative", marginBottom: 12 }}>
+              <input
+                value={traderSearch}
+                onChange={(e) => setTraderSearch(e.target.value)}
+                placeholder="Search traders…"
+                className="nx-input"
+                style={{ width: "100%", background: "#0a1322", border: "1px solid #1a2540", borderRadius: 10, padding: "8px 10px 8px 28px", color: "#e2e8f0", fontSize: 12, fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 140ms, background 140ms" }}
+              />
+              <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#3a4a6a" }}>🔎</span>
+            </div>
+
+            {tradersLoading ? (
+              <div>
+                {[0,1,2,3,4].map(i => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, animation: "p2 1.5s infinite" }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: "#131e36" }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ height: 10, background: "#131e36", borderRadius: 4, marginBottom: 5, width: "60%" }} />
+                      <div style={{ height: 8, background: "#131e36", borderRadius: 4, width: "40%" }} />
+                    </div>
+                    <div style={{ width: 56, height: 22, borderRadius: 7, background: "#131e36" }} />
+                  </div>
+                ))}
+              </div>
+            ) : filteredTraders.length === 0 ? (
+              <div style={{ fontSize: 11, color: "#3a4a6a", padding: "12px 0", textAlign: "center" }}>No traders found</div>
+            ) : filteredTraders.map((t: any) => {
+              const u = t.username || "user";
               const ac = getAC(u);
+              const isMe = currentUsername && u === currentUsername;
+              const isF = followingSet.has(t.id);
+              const busy = followBusy.has(t.id);
               return (
-                <a key={u} href={`/trader/@${u}`} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, textDecoration: "none" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#2e3f5a", width: 16 }}>#{i + 1}</span>
-                  <div style={{ width: 32, height: 32, borderRadius: 10, background: ac + "22", border: `1.5px solid ${ac}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: ac }}>{u.slice(0, 2).toUpperCase()}</div>
-                  <div><div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>@{u}</div><div style={{ fontSize: 10, color: "#3a4a6a" }}>{c} posts</div></div>
-                </a>
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <a href={`/trader/@${u}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", flex: 1, minWidth: 0 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: ac + "22", border: `1.5px solid ${ac}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: ac, flexShrink: 0 }}>{u.slice(0, 2).toUpperCase()}</div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        @{u}
+                        {t.verified_trader && <span title="Verified" style={{ fontSize: 10, color: "#38bdf8" }}>✓</span>}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#3a4a6a" }}>{(t.follower_count || 0).toLocaleString()} followers</div>
+                    </div>
+                  </a>
+                  {!isMe && (
+                    <button
+                      onClick={() => toggleFollow(t.id)}
+                      disabled={busy}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 7,
+                        border: isF ? "1px solid #1a2540" : "1px solid rgba(56,189,248,0.4)",
+                        background: isF ? "transparent" : "rgba(56,189,248,0.1)",
+                        color: isF ? "#64748b" : "#38bdf8",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: busy ? "wait" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                        flexShrink: 0,
+                        transition: "all 140ms ease",
+                      }}
+                    >
+                      {busy ? "…" : isF ? "Following" : "Follow"}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
