@@ -8,45 +8,45 @@ const FEATURES = [
   {
     icon: "🏆",
     title: "Challenge Tracker",
-    desc: "Never blow another funded account. Track your daily loss, drawdown, and profit target in real time with accurate 2026 prop firm rules.",
+    desc: "Real-time daily loss, drawdown, and profit target tracking with 2026 prop firm rules",
     color: "#38bdf8",
   },
   {
     icon: "🧠",
     title: "Psychology Tracker",
-    desc: "See exactly which emotions and mistakes are costing you money. Revenge trading? FOMO? We show you the dollar cost.",
+    desc: "See exactly which emotions and mistakes cost you money",
     color: "#a78bfa",
   },
   {
     icon: "📽️",
     title: "Trade Replay",
-    desc: "Review every trade with your actual broker screenshot and entry/exit markers. Learn from your mistakes the way pro athletes watch film.",
+    desc: "Review every trade with your broker screenshot and entry/exit analysis",
     color: "#34d399",
   },
   {
     icon: "🎯",
     title: "Best Setup Finder",
-    desc: "Automatically analyzes all your trades to find your highest win rate setups, best times to trade, and which instruments you actually perform best on.",
+    desc: "Automatically finds your highest win rate setups and best trading times",
     color: "#f59e0b",
   },
   {
     icon: "✅",
     title: "Pre-Trade Checklist",
-    desc: "Run a quick mental checklist before every trade. Track which checklist items you skip — and how much it costs you.",
+    desc: "Quick mental checklist before every trade to stay disciplined",
     color: "#ec4899",
   },
   {
     icon: "⚡",
     title: "Trade Planner",
-    desc: "Set your risk per trade, daily limits, and session times once. Get the exact contract size for every trade automatically.",
+    desc: "Position sizing calculator and session alerts built for funded traders",
     color: "#f97316",
   },
 ];
 
 const STEPS = [
-  { n: "1", title: "Import your trades", desc: "Upload a CSV from your prop firm platform. Takes 30 seconds." },
-  { n: "2", title: "Set up your challenge", desc: "Pick your prop firm and account size. Rules auto-fill. We track everything." },
-  { n: "3", title: "Trade smarter", desc: "Use insights from your own data to find your edge and protect your funded account." },
+  { n: "1", title: "Import your trades", desc: "Upload a CSV from your prop firm platform. Takes 30 seconds.", visual: "📥" },
+  { n: "2", title: "Set up your challenge", desc: "Pick your prop firm and account size. Rules auto-fill.", visual: "⚙️" },
+  { n: "3", title: "Trade smarter", desc: "Use insights from your own data to find your edge.", visual: "📈" },
 ];
 
 const PLANS = [
@@ -57,6 +57,7 @@ const PLANS = [
     features: ["50 trades per month", "Journal & basic stats", "Challenge tracker (1 account)", "Pre-trade checklist"],
     cta: "Start Free",
     popular: false,
+    waitlist: false,
   },
   {
     name: "PRO",
@@ -70,16 +71,18 @@ const PLANS = [
       "Best setup finder",
       "Trade replay with charts",
     ],
-    cta: "Start Pro Trial",
+    cta: "Join Waitlist",
     popular: true,
+    waitlist: true,
   },
   {
     name: "ELITE",
     price: "$39",
     period: "/mo",
     features: ["Everything in Pro", "AI trade analysis", "Priority support", "Early access to new features"],
-    cta: "Go Elite",
+    cta: "Join Waitlist",
     popular: false,
+    waitlist: true,
   },
 ];
 
@@ -103,12 +106,29 @@ const TESTIMONIALS = [
 
 export default function HomePage() {
   const [scrolled, setScrolled] = useState(false);
+  const [waitlistOpen, setWaitlistOpen] = useState<string | null>(null);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistDone, setWaitlistDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const submitWaitlist = (plan: string) => {
+    const email = waitlistEmail.trim();
+    if (!email || !email.includes("@")) return;
+    try {
+      const raw = localStorage.getItem("nexyru_waitlist");
+      const existing = raw ? JSON.parse(raw) : [];
+      existing.push({ plan, email, ts: Date.now() });
+      localStorage.setItem("nexyru_waitlist", JSON.stringify(existing));
+    } catch {}
+    setWaitlistDone((prev) => ({ ...prev, [plan]: true }));
+    setWaitlistOpen(null);
+    setWaitlistEmail("");
+  };
 
   return (
     <div
@@ -131,7 +151,7 @@ export default function HomePage() {
         .cta-ghost { transition: all 0.2s ease; }
         .cta-ghost:hover { background: rgba(255,255,255,0.06) !important; border-color: rgba(255,255,255,0.18) !important; }
         .feature-card { transition: all 0.25s ease; }
-        .feature-card:hover { transform: translateY(-4px); border-color: rgba(56,189,248,0.25) !important; }
+        .feature-card:hover { transform: translateY(-3px); border-color: rgba(56,189,248,0.25) !important; box-shadow: 0 12px 32px rgba(56,189,248,0.08); }
         .plan-card { transition: all 0.25s ease; }
         .plan-card:hover { transform: translateY(-4px); }
         .nav-link { transition: color 0.15s ease; }
@@ -145,7 +165,7 @@ export default function HomePage() {
           .grid-2 { grid-template-columns: 1fr !important; }
           .grid-3 { grid-template-columns: 1fr !important; }
           .grid-3-features { grid-template-columns: 1fr !important; }
-          .section-padding { padding: 60px 20px !important; }
+          .section-padding { padding: 56px 20px !important; }
           .nav-container { padding: 0 20px !important; }
           .footer { flex-direction: column; text-align: center; }
         }
@@ -259,7 +279,7 @@ export default function HomePage() {
           alignItems: "center",
           justifyContent: "center",
           textAlign: "center",
-          padding: "140px 40px 80px",
+          padding: "140px 40px 60px",
           position: "relative",
           maxWidth: 1200,
           margin: "0 auto",
@@ -408,7 +428,7 @@ export default function HomePage() {
             gap: 24,
             flexWrap: "wrap",
             justifyContent: "center",
-            marginBottom: 60,
+            marginBottom: 48,
             fontSize: 13,
             color: "#64748b",
             animation: "fadeUp 0.7s ease 0.4s both",
@@ -613,7 +633,7 @@ export default function HomePage() {
         id="prop-traders"
         className="section-padding"
         style={{
-          padding: "60px 40px",
+          padding: "40px 40px",
           borderTop: "1px solid rgba(255,255,255,0.05)",
           borderBottom: "1px solid rgba(255,255,255,0.05)",
         }}
@@ -661,7 +681,7 @@ export default function HomePage() {
       </section>
 
       {/* ═══════════════════════ PROBLEM / SOLUTION ═══════════════════════ */}
-      <section className="section-padding" style={{ padding: "100px 40px" }}>
+      <section className="section-padding" style={{ padding: "80px 40px" }}>
         <div
           className="grid-2"
           style={{
@@ -798,10 +818,10 @@ export default function HomePage() {
       <section
         id="features"
         className="section-padding"
-        style={{ padding: "100px 40px", background: "rgba(255,255,255,0.015)" }}
+        style={{ padding: "80px 40px", background: "rgba(255,255,255,0.015)" }}
       >
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 64 }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
             <div
               style={{
                 fontSize: 12,
@@ -849,38 +869,31 @@ export default function HomePage() {
                 style={{
                   background: "linear-gradient(135deg, #0b1120, #0d1628)",
                   border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 20,
-                  padding: 28,
+                  borderRadius: 16,
+                  padding: 22,
                 }}
               >
                 <div
                   style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 14,
-                    background: `${f.color}15`,
-                    border: `1px solid ${f.color}30`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 26,
-                    marginBottom: 20,
+                    fontSize: 32,
+                    marginBottom: 14,
+                    lineHeight: 1,
                   }}
                 >
                   {f.icon}
                 </div>
                 <h3
                   style={{
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: 800,
                     color: "#f0f4ff",
-                    marginBottom: 10,
+                    marginBottom: 6,
                     letterSpacing: "-0.01em",
                   }}
                 >
                   {f.title}
                 </h3>
-                <p style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.65 }}>{f.desc}</p>
+                <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.55 }}>{f.desc}</p>
               </div>
             ))}
           </div>
@@ -888,9 +901,9 @@ export default function HomePage() {
       </section>
 
       {/* ═══════════════════════ HOW IT WORKS ═══════════════════════ */}
-      <section id="how-it-works" className="section-padding" style={{ padding: "100px 40px" }}>
+      <section id="how-it-works" className="section-padding" style={{ padding: "80px 40px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 64 }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
             <div
               style={{
                 fontSize: 12,
@@ -917,7 +930,7 @@ export default function HomePage() {
           </div>
           <div
             className="grid-3"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}
+            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}
           >
             {STEPS.map((step, i) => (
               <div
@@ -926,40 +939,47 @@ export default function HomePage() {
                   position: "relative",
                   background: "linear-gradient(135deg, #0b1120, #0d1628)",
                   border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 20,
-                  padding: 32,
+                  borderRadius: 16,
+                  padding: 22,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 16,
                 }}
               >
                 <div
                   style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 12,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
                     background: "linear-gradient(135deg, #0369a1, #38bdf8)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 22,
+                    fontSize: 18,
                     fontWeight: 900,
                     color: "#fff",
-                    marginBottom: 20,
-                    boxShadow: "0 4px 20px rgba(56,189,248,0.3)",
+                    boxShadow: "0 4px 16px rgba(56,189,248,0.3)",
+                    flexShrink: 0,
                   }}
                 >
                   {step.n}
                 </div>
-                <h3
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 800,
-                    color: "#f0f4ff",
-                    marginBottom: 10,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {step.title}
-                </h3>
-                <p style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.65 }}>{step.desc}</p>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 18, lineHeight: 1 }}>{step.visual}</span>
+                    <h3
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 800,
+                        color: "#f0f4ff",
+                        letterSpacing: "-0.01em",
+                      }}
+                    >
+                      {step.title}
+                    </h3>
+                  </div>
+                  <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.55 }}>{step.desc}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -970,10 +990,10 @@ export default function HomePage() {
       <section
         id="pricing"
         className="section-padding"
-        style={{ padding: "100px 40px", background: "rgba(255,255,255,0.015)" }}
+        style={{ padding: "80px 40px", background: "rgba(255,255,255,0.015)" }}
       >
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 64 }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
             <div
               style={{
                 fontSize: 12,
@@ -1083,27 +1103,115 @@ export default function HomePage() {
                     </div>
                   ))}
                 </div>
-                <Link
-                  href="/login"
-                  className="cta-primary"
-                  style={{
-                    display: "block",
-                    textAlign: "center",
-                    padding: "14px 20px",
-                    borderRadius: 12,
-                    background: plan.popular
-                      ? "linear-gradient(135deg, #0369a1, #38bdf8)"
-                      : "rgba(255,255,255,0.05)",
-                    border: plan.popular ? "none" : "1px solid rgba(255,255,255,0.1)",
-                    color: "#fff",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    textDecoration: "none",
-                    boxShadow: plan.popular ? "0 4px 20px rgba(56,189,248,0.3)" : "none",
-                  }}
-                >
-                  {plan.cta}
-                </Link>
+                {plan.waitlist ? (
+                  waitlistDone[plan.name] ? (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        padding: "14px 20px",
+                        borderRadius: 12,
+                        background: "rgba(52,211,153,0.1)",
+                        border: "1px solid rgba(52,211,153,0.3)",
+                        color: "#34d399",
+                        fontSize: 14,
+                        fontWeight: 700,
+                      }}
+                    >
+                      ✓ You're on the list
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWaitlistOpen(waitlistOpen === plan.name ? null : plan.name)
+                        }
+                        className="cta-primary"
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "center",
+                          padding: "14px 20px",
+                          borderRadius: 12,
+                          background: plan.popular
+                            ? "linear-gradient(135deg, #0369a1, #38bdf8)"
+                            : "rgba(255,255,255,0.05)",
+                          border: plan.popular ? "none" : "1px solid rgba(255,255,255,0.1)",
+                          color: "#fff",
+                          fontSize: 14,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          boxShadow: plan.popular ? "0 4px 20px rgba(56,189,248,0.3)" : "none",
+                        }}
+                      >
+                        {plan.cta}
+                      </button>
+                      {waitlistOpen === plan.name && (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            type="email"
+                            value={waitlistEmail}
+                            onChange={(e) => setWaitlistEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") submitWaitlist(plan.name);
+                            }}
+                            placeholder="you@email.com"
+                            autoFocus
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              padding: "10px 14px",
+                              borderRadius: 10,
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              background: "rgba(255,255,255,0.04)",
+                              color: "#f0f4ff",
+                              fontSize: 13,
+                              outline: "none",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => submitWaitlist(plan.name)}
+                            style={{
+                              padding: "10px 16px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: "linear-gradient(135deg, #0369a1, #38bdf8)",
+                              color: "#fff",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Join
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <Link
+                    href="/login"
+                    className="cta-primary"
+                    style={{
+                      display: "block",
+                      textAlign: "center",
+                      padding: "14px 20px",
+                      borderRadius: 12,
+                      background: plan.popular
+                        ? "linear-gradient(135deg, #0369a1, #38bdf8)"
+                        : "rgba(255,255,255,0.05)",
+                      border: plan.popular ? "none" : "1px solid rgba(255,255,255,0.1)",
+                      color: "#fff",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      textDecoration: "none",
+                      boxShadow: plan.popular ? "0 4px 20px rgba(56,189,248,0.3)" : "none",
+                    }}
+                  >
+                    {plan.cta}
+                  </Link>
+                )}
               </div>
             ))}
           </div>
@@ -1111,9 +1219,9 @@ export default function HomePage() {
       </section>
 
       {/* ═══════════════════════ TESTIMONIALS ═══════════════════════ */}
-      <section className="section-padding" style={{ padding: "100px 40px" }}>
+      <section className="section-padding" style={{ padding: "80px 40px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 64 }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
             <div
               style={{
                 fontSize: 12,
@@ -1148,60 +1256,75 @@ export default function HomePage() {
                 style={{
                   background: "linear-gradient(135deg, #0b1120, #0d1628)",
                   border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 20,
-                  padding: 28,
+                  borderRadius: 16,
+                  padding: 22,
                   display: "flex",
                   flexDirection: "column",
                 }}
               >
-                <div style={{ display: "flex", gap: 2, marginBottom: 16 }}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <span key={s} style={{ color: "#f59e0b", fontSize: 14 }}>
-                      ★
-                    </span>
-                  ))}
-                </div>
-                <p
-                  style={{
-                    fontSize: 15,
-                    color: "#cbd5e1",
-                    lineHeight: 1.65,
-                    marginBottom: 24,
-                    flex: 1,
-                  }}
-                >
-                  "{t.text}"
-                </p>
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: 12,
-                    paddingTop: 20,
-                    borderTop: "1px solid rgba(255,255,255,0.05)",
+                    marginBottom: 14,
                   }}
                 >
                   <div
                     style={{
-                      width: 40,
-                      height: 40,
+                      width: 38,
+                      height: 38,
                       borderRadius: "50%",
                       background: "linear-gradient(135deg, rgba(56,189,248,0.25), rgba(167,139,250,0.25))",
+                      border: "1px solid rgba(56,189,248,0.3)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       fontSize: 14,
                       fontWeight: 900,
                       color: "#38bdf8",
+                      flexShrink: 0,
                     }}
                   >
-                    {t.name[0]}
+                    {t.name.split(" ").map((p) => p[0]).join("")}
                   </div>
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{t.name}</div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{t.firm}</div>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        marginTop: 4,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: "#94a3b8",
+                        padding: "2px 8px",
+                        borderRadius: 100,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {t.firm}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 1 }}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <span key={s} style={{ color: "#f59e0b", fontSize: 12 }}>
+                        ★
+                      </span>
+                    ))}
                   </div>
                 </div>
+                <p
+                  style={{
+                    fontSize: 14,
+                    color: "#cbd5e1",
+                    lineHeight: 1.6,
+                    flex: 1,
+                  }}
+                >
+                  "{t.text}"
+                </p>
               </div>
             ))}
           </div>
