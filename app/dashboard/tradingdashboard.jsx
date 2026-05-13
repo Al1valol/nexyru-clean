@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
   TrendingUp, TrendingDown, Activity, X, BookOpen, AlertCircle,
   Target, Award, ChevronUp, ChevronDown, ChevronsUpDown, Search,
-  Plus, Globe, ChevronRight, Edit2, Trash, Users, UserCheck,
+  Plus, ChevronRight, Edit2, Trash, Users, UserCheck,
   UserMinus, Radio, Repeat2, Sparkles, Wand2, RefreshCw, Upload,
   FileText, Link2, Download, BarChart2, Layers,
   LogOut, User, UserPlus, Eye, EyeOff, FlaskConical,
@@ -5005,9 +5005,6 @@ function BacktestPanel() {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
 
-      {/* ── Earnings dashboard ── */}
-      <EarningsDashboard strategies={strategies} session={session}/>
-
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
         <div>
@@ -6486,167 +6483,6 @@ function StrategyCard({ name, username, return_pct, win_rate, drawdown, status =
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  EARNINGS DASHBOARD
-// ═══════════════════════════════════════════════════════════════
-
-function EarningsDashboard({ strategies, session }) {
-  const [followerCounts, setFollowerCounts] = useState({});  // { stratId: count }
-  const [loading,        setLoading]        = useState(true);
-
-  // Load follower counts for all published strategies
-  useEffect(() => {
-    const published = strategies.filter(s => s.backtests?.length > 0);
-    if (!published.length) { setLoading(false); return; }
-
-    Promise.all(
-      published.map(s =>
-        fetch(`/api/follow?strategy_id=${s.id}`)
-          .then(r => r.json())
-          .then(d => [s.id, d.count ?? 0])
-          .catch(() => [s.id, 0])
-      )
-    ).then(results => {
-      setFollowerCounts(Object.fromEntries(results));
-      setLoading(false);
-    });
-  }, [strategies]);
-
-  // Compute totals
-  const totalFollowers    = Object.values(followerCounts).reduce((s, n) => s + n, 0);
-  const monthlyEarnings   = strategies.reduce((sum, s) => {
-    const count = followerCounts[s.id] ?? 0;
-    return sum + count * (s.monthly_price ?? 0);
-  }, 0);
-  const annualEarnings    = monthlyEarnings * 12;
-  const paidStrategies    = strategies.filter(s => (s.monthly_price ?? 0) > 0);
-  const freeStrategies    = strategies.filter(s => !(s.monthly_price > 0));
-
-  // Milestone progress
-  const MILESTONES = [10, 50, 100, 500, 1000];
-  const nextMilestone = MILESTONES.find(m => m > totalFollowers) ?? null;
-  const prevMilestone = [...MILESTONES].reverse().find(m => m <= totalFollowers) ?? 0;
-  const progress = nextMilestone
-    ? Math.min(100, ((totalFollowers - prevMilestone) / (nextMilestone - prevMilestone)) * 100)
-    : 100;
-
-  if (!strategies.length) return null;
-
-  const statCard = (label, value, sub, color, icon) => (
-    <div style={{ borderRadius:12, border:"1px solid #1a2035", background:"#0d1120", padding:"16px 18px" }}>
-      <div style={{ fontSize:10, color:"#475569", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:6, display:"flex", alignItems:"center", gap:5 }}>
-        <span style={{ fontSize:14 }}>{icon}</span>{label}
-      </div>
-      <div style={{ fontSize:26, fontWeight:800, fontFamily:"monospace", color, lineHeight:1, marginBottom:4 }}>{value}</div>
-      {sub && <div style={{ fontSize:10, color:"#475569" }}>{sub}</div>}
-    </div>
-  );
-
-  return (
-    <div style={{ borderRadius:14, border:"1px solid rgba(52,211,153,0.2)", background:"linear-gradient(135deg,rgba(13,17,32,0.98),rgba(15,23,20,0.98))", overflow:"hidden" }}>
-
-      {/* Header */}
-      <div style={{ padding:"14px 18px", borderBottom:"1px solid rgba(52,211,153,0.1)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div>
-          <div style={{ fontSize:13, fontWeight:700, color:"#34d399", display:"flex", alignItems:"center", gap:7 }}>
-            💰 Earnings Dashboard
-          </div>
-          <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>
-            {paidStrategies.length} paid · {freeStrategies.length} free · mock payments
-          </div>
-        </div>
-        <a href="/earnings" style={{ fontSize:11, fontWeight:700, color:"#34d399", padding:"5px 12px", borderRadius:8, border:"1px solid rgba(52,211,153,0.3)", background:"rgba(52,211,153,0.06)", textDecoration:"none", flexShrink:0 }}>
-          Full Dashboard →
-        </a>
-        {monthlyEarnings > 0 && (
-          <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:10, color:"#475569" }}>Est. annual</div>
-            <div style={{ fontSize:16, fontWeight:800, fontFamily:"monospace", color:"#34d399" }}>${annualEarnings.toLocaleString()}</div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ padding:"16px 18px", display:"flex", flexDirection:"column", gap:14 }}>
-
-        {/* Stat cards */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
-          {statCard("Total Followers", loading ? "…" : String(totalFollowers), `across ${strategies.length} strateg${strategies.length!==1?"ies":"y"}`, "#38bdf8", "👥")}
-          {statCard("Monthly Revenue", loading ? "…" : `$${monthlyEarnings.toFixed(0)}`, monthlyEarnings===0?"Set prices to earn":"estimated mock earnings", monthlyEarnings>0?"#34d399":"#475569", "💵")}
-          {statCard("Per Follower", paidStrategies.length ? `$${(paidStrategies.reduce((s,p)=>s+(p.monthly_price??0),0)/paidStrategies.length).toFixed(0)}/mo` : "—", paidStrategies.length ? `avg across ${paidStrategies.length} paid strat${paidStrategies.length!==1?"s":""}` : "No paid strategies yet", "#fbbf24", "📊")}
-        </div>
-
-        {/* Strategy breakdown */}
-        {strategies.some(s => (s.monthly_price ?? 0) > 0 || (followerCounts[s.id] ?? 0) > 0) && (
-          <div style={{ borderRadius:10, border:"1px solid #1a2035", background:"#111827", overflow:"hidden" }}>
-            <div style={{ fontSize:9, fontWeight:700, color:"#334155", textTransform:"uppercase", letterSpacing:"0.07em", padding:"8px 12px", borderBottom:"1px solid #1a2035" }}>Strategy Breakdown</div>
-            {strategies.map(s => {
-              const count   = followerCounts[s.id] ?? 0;
-              const price   = s.monthly_price ?? 0;
-              const revenue = count * price;
-              const maxRev  = Math.max(...strategies.map(x => (followerCounts[x.id]??0)*(x.monthly_price??0)), 1);
-              return (
-                <div key={s.id} style={{ padding:"9px 12px", borderBottom:"1px solid rgba(30,41,59,0.5)", display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:11, fontWeight:700, color:"#e2e8f0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:3 }}>
-                      <div style={{ flex:1, height:4, borderRadius:2, background:"#1a2035", overflow:"hidden" }}>
-                        <div style={{ width:`${maxRev>0?(revenue/maxRev)*100:0}%`, height:"100%", background:"linear-gradient(90deg,#0369a1,#34d399)", borderRadius:2, transition:"width 0.5s" }}/>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:14, flexShrink:0 }}>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:9, color:"#334155" }}>Followers</div>
-                      <div style={{ fontSize:12, fontWeight:700, color:"#38bdf8", fontFamily:"monospace" }}>{loading?"…":count}</div>
-                    </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:9, color:"#334155" }}>Price</div>
-                      <div style={{ fontSize:12, fontWeight:700, color: price>0?"#fbbf24":"#334155", fontFamily:"monospace" }}>{price>0?`$${price}/mo`:"Free"}</div>
-                    </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:9, color:"#334155" }}>Revenue</div>
-                      <div style={{ fontSize:12, fontWeight:700, color: revenue>0?"#34d399":"#334155", fontFamily:"monospace" }}>{revenue>0?`$${revenue.toFixed(0)}/mo`:"—"}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Milestone tracker */}
-        <div style={{ borderRadius:10, border:"1px solid #1a2035", background:"#111827", padding:"10px 14px" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-            <div style={{ fontSize:10, fontWeight:700, color:"#64748b" }}>
-              🎯 Follower Milestone — {totalFollowers} / {nextMilestone ?? "1000+"}
-            </div>
-            {nextMilestone && (
-              <div style={{ fontSize:10, color:"#475569" }}>{nextMilestone - totalFollowers} more to go</div>
-            )}
-          </div>
-          <div style={{ height:6, borderRadius:3, background:"#1a2035", overflow:"hidden" }}>
-            <div style={{ width:`${progress}%`, height:"100%", background:"linear-gradient(90deg,#818cf8,#38bdf8)", borderRadius:3, transition:"width 0.6s" }}/>
-          </div>
-          <div style={{ display:"flex", justifyContent:"space-between", marginTop:6 }}>
-            {MILESTONES.map(m => (
-              <span key={m} style={{ fontSize:9, color: totalFollowers>=m ? "#38bdf8":"#334155", fontWeight: totalFollowers>=m?700:400 }}>
-                {m>=1000?`${m/1000}k`:m}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* CTA if no prices set */}
-        {monthlyEarnings === 0 && paidStrategies.length === 0 && (
-          <div style={{ padding:"10px 14px", borderRadius:9, background:"rgba(251,191,36,0.05)", border:"1px solid rgba(251,191,36,0.15)", fontSize:11, color:"#78716c", lineHeight:1.6, textAlign:"center" }}>
-            💡 <strong style={{ color:"#fbbf24" }}>Set a monthly price</strong> on your strategies to start earning. Edit any strategy and set a subscription price — followers pay to copy your signals.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
 //  STRATEGY LAB
 
 const STRAT_LAB_KEY = (u) => `tradedesk_stratlab_${u}_v1`;
@@ -6898,7 +6734,6 @@ function StrategyFormModal({ initial, onSave, onClose }) {
   const [slPct,       setSlPct]       = useState(initial?.rules?.slPct      ?? 2);
   const [tpPct,       setTpPct]       = useState(initial?.rules?.tpPct      ?? 4);
   const [riskPct,     setRiskPct]     = useState(initial?.rules?.riskPct    ?? 1);
-  const [monthlyPrice,setMonthlyPrice]= useState(initial?.monthly_price     ?? 0);
   const [err,         setErr]         = useState("");
   const [aiPrompt,    setAiPrompt]    = useState("");
   const [aiLoading,   setAiLoading]   = useState(false);
@@ -7004,7 +6839,6 @@ function StrategyFormModal({ initial, onSave, onClose }) {
       name:          name.trim(),
       description:   description.trim(),
       rules:         { entryConds, exitConds, filterConds, slPct, tpPct, riskPct },
-      monthly_price: parseFloat(monthlyPrice) || 0,
       createdAt:     initial?.createdAt ?? Date.now(),
       backtests:     initial?.backtests ?? [],
     });
@@ -7256,43 +7090,6 @@ function StrategyFormModal({ initial, onSave, onClose }) {
             </div>
           </div>
 
-          {/* ── Pricing — set BEFORE publishing ── */}
-          {(() => {
-            const hasPx = parseFloat(String(monthlyPrice)) > 0;
-            return (
-              <div style={{ borderRadius:10, border:`1px solid ${hasPx ? "rgba(52,211,153,0.35)" : "rgba(251,191,36,0.3)"}`, background: hasPx ? "rgba(52,211,153,0.04)" : "rgba(251,191,36,0.04)", padding:"12px 14px" }}>
-                <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:10, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                  <span style={{ color: hasPx ? "#34d399" : "#fbbf24", display:"flex", alignItems:"center", gap:5 }}>
-                    💰 Subscription Price <span style={{ fontWeight:400, fontSize:9 }}>— set before publishing</span>
-                  </span>
-                  {!hasPx && <span style={{ fontSize:9, color:"#fbbf24", background:"rgba(251,191,36,0.1)", border:"1px solid rgba(251,191,36,0.2)", padding:"2px 8px", borderRadius:10 }}>⚠ Not set</span>}
-                </div>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ position:"relative", flex:1 }}>
-                    <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:14, color:"#475569", fontWeight:700 }}>$</span>
-                    <input
-                      type="number" min={0} step={1} placeholder="0 = free"
-                      style={{ ...inp, paddingLeft:26, fontSize:16, fontWeight:700, fontFamily:"monospace", color: hasPx ? "#34d399" : "#e2e8f0" }}
-                      value={monthlyPrice}
-                      onChange={e => setMonthlyPrice(e.target.value)}
-                      onBlur={e => { const v = parseFloat(e.target.value); setMonthlyPrice(isNaN(v)||v < 0 ? 0 : v); }}
-                    />
-                  </div>
-                  <span style={{ fontSize:12, color:"#475569", flexShrink:0 }}>/month per subscriber</span>
-                </div>
-                {hasPx ? (
-                  <div style={{ marginTop:8, padding:"7px 10px", borderRadius:7, background:"rgba(52,211,153,0.06)", border:"1px solid rgba(52,211,153,0.2)", fontSize:11, color:"#34d399", lineHeight:1.6 }}>
-                    💰 10 followers = ${(Number(monthlyPrice)*10).toFixed(0)}/mo · 50 = ${(Number(monthlyPrice)*50).toFixed(0)}/mo · 100 = ${(Number(monthlyPrice)*100).toFixed(0)}/mo
-                  </div>
-                ) : (
-                  <div style={{ marginTop:8, fontSize:10, color:"#64748b", lineHeight:1.5 }}>
-                    Set to $0 for free — you <strong style={{ color:"#fbbf24" }}>cannot change pricing for existing followers</strong> once they subscribe.
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
           {err && <div style={{ padding:"9px 12px", borderRadius:8, background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.2)", fontSize:12, color:"#f87171", display:"flex", alignItems:"center", gap:7 }}><AlertCircle size={12}/>{err}</div>}
         </div>
 
@@ -7315,18 +7112,8 @@ function StrategyLabPage({ session, trades }) {
   const [editing,    setEditing]    = useState(null);
   const [running,    setRunning]    = useState(null);
   const [expanded,   setExpanded]   = useState(null);
-  const [publishing, setPublishing] = useState(null);
-  const [pubError,   setPubError]   = useState({});
-  const [pubDone,    setPubDone]    = useState({});
-  const [goingLive,    setGoingLive]    = useState(null);
-  const [liveError,    setLiveError]    = useState({});
-  const [liveDone,     setLiveDone]     = useState({});
-  const [makingPrivate,setMakingPrivate]= useState(null);
-  const [privateDone,  setPrivateDone]  = useState({});
   const [justCloned,   setJustCloned]   = useState(null);  // id of newly cloned card
-  const [confirmingPrivate, setConfirmingPrivate] = useState(null); // strategy.id awaiting confirm
   const [confirmingDelete,  setConfirmingDelete]  = useState(null); // strategy.id awaiting confirm
-  const [confirmingFree,    setConfirmingFree]    = useState(null); // strategy.id awaiting confirm
 
   // ── Clone — instant duplicate, auto-open editor ───────────
   const cloneStrategy = (source) => {
@@ -7335,7 +7122,6 @@ function StrategyLabPage({ session, trades }) {
       id:            `strat_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
       name:          `${source.name} (copy)`,
       backtests:     [],
-      monthly_price: source.monthly_price ?? 0,
       createdAt:     Date.now(),
     };
     const next = [...strategies, clone];
@@ -7350,138 +7136,7 @@ function StrategyLabPage({ session, trades }) {
     }, 600);
   };
 
-  // ── Make Private — delete from Supabase ───────────────────
-  const makePrivate = async (strategy) => {
-    const supabaseId = typeof pubDone[strategy.id] === "string" ? pubDone[strategy.id] : null;
-    if (!supabaseId) {
-      // No Supabase ID stored — just clear local pub state
-      setPubDone(prev => { const n={...prev}; delete n[strategy.id]; return n; });
-      return;
-    }
-    setMakingPrivate(strategy.id);
-    try {
-      const res = await fetch(`/api/publish-strategy?id=${supabaseId}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok && res.status !== 404) throw new Error(data.error ?? `Error ${res.status}`);
-      // Clear local publish state so the Publish button reappears
-      setPubDone(prev  => { const n={...prev}; delete n[strategy.id]; return n; });
-      setLiveDone(prev => { const n={...prev}; delete n[strategy.id]; return n; });
-      setPrivateDone(prev => ({ ...prev, [strategy.id]: true }));
-      setTimeout(() => setPrivateDone(prev => { const n={...prev}; delete n[strategy.id]; return n; }), 3000);
-    } catch(e) {
-      toast("Failed to remove: " + e.message, "error");
-    } finally {
-      setMakingPrivate(null);
-    }
-  };
-
-  // ── Go Live — update status in Supabase ───────────────────
-  const goLive = async (strategy) => {
-    if (!pubDone[strategy.id]) {
-      toast("Publish the strategy to the leaderboard first, then you can go live.", "warning");
-      return;
-    }
-    setGoingLive(strategy.id);
-    setLiveError(prev => ({ ...prev, [strategy.id]: null }));
-    try {
-      // Find the Supabase strategy id from the last publish response
-      // We stored it in pubDone as { strategyId: supabaseId }
-      const supabaseId = typeof pubDone[strategy.id] === "string"
-        ? pubDone[strategy.id]
-        : null;
-
-      if (!supabaseId) {
-        throw new Error("Strategy not yet published. Click Publish first.");
-      }
-
-      const res = await fetch("/api/strategy-status", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ strategy_id: supabaseId, status: "live" }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error ?? `Error ${res.status}`);
-      setLiveDone(prev => ({ ...prev, [strategy.id]: true }));
-    } catch (e) {
-      setLiveError(prev => ({ ...prev, [strategy.id]: e.message }));
-    } finally {
-      setGoingLive(null);
-    }
-  };
-
   const persist = (next) => { saveStratLab(session.username, next); setStrategies(next); };
-
-  // ── Publish latest backtest result to Supabase ─────────────
-  const publishResult = async (strategy) => {
-    const bt = strategy.backtests?.[0];
-    if (!bt) return;
-
-    // ── Verification check ────────────────────────────────
-    const isVerified = bt.trades_count > 20 && bt.return_pct > 0;
-    const status     = isVerified ? "verified" : "backtested";
-
-    setPublishing(strategy.id);
-    setPubError(prev => ({ ...prev, [strategy.id]: null }));
-    setPubDone(prev  => ({ ...prev, [strategy.id]: false }));
-
-    try {
-      let authHeader = "";
-      try {
-        const { supabase } = await import("@/lib/supabase-client");
-        const { data } = await supabase.auth.getSession();
-        if (data.session?.access_token) {
-          authHeader = `Bearer ${data.session.access_token}`;
-        }
-      } catch {}
-
-      const res = await fetch("/api/publish-strategy", {
-        method:  "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
-        body: JSON.stringify({
-          user_id:       session.username,
-          status,
-          monthly_price: strategy.monthly_price ?? 0,
-          strategy: {
-            name:        strategy.name,
-            description: strategy.description,
-            rules:       strategy.rules,
-          },
-          backtest: {
-            win_rate:     bt.win_rate,
-            return_pct:   bt.return_pct,
-            max_drawdown: bt.max_drawdown,
-            trades_count: bt.trades_count,
-            profit_factor:bt.profit_factor,
-            equity_curve: bt.equity_curve ?? [],
-          },
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        throw new Error(data.error ?? `Server error ${res.status}`);
-      }
-
-      setPubDone(prev => ({ ...prev, [strategy.id]: data.strategy_id ?? true }));
-
-      // Show verified toast if applicable
-      if (isVerified) {
-        setPubError(prev => ({ ...prev, [`${strategy.id}_verified`]: "✓ Verified" }));
-        setTimeout(() => setPubError(prev => { const n={...prev}; delete n[`${strategy.id}_verified`]; return n; }), 4000);
-      }
-
-      setTimeout(() => { window.location.href = "/leaderboard"; }, 1400);
-
-    } catch (e) {
-      setPubError(prev => ({ ...prev, [strategy.id]: e.message }));
-    } finally {
-      setPublishing(null);
-    }
-  };
 
   const saveStrategy = (s) => {
     const exists = strategies.find(x => x.id === s.id);
@@ -7697,9 +7352,7 @@ function StrategyLabPage({ session, trades }) {
               win_rate={latestBt?.win_rate ?? 0}
               drawdown={latestBt?.max_drawdown ?? 0}
               status={
-                liveDone[s.id]                                              ? "live"
-                : latestBt && latestBt.trades_count > 20 && latestBt.return_pct > 0 ? "verified"
-                : latestBt                                                  ? "backtested"
+                latestBt && latestBt.trades_count > 20 && latestBt.return_pct > 0 ? "verified"
                 : "backtested"
               }
               onView={() => setExpanded(e => e===s.id ? null : s.id)}
@@ -7730,75 +7383,6 @@ function StrategyLabPage({ session, trades }) {
               <button onClick={() => runBacktest(s)} disabled={isRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, border:"none", background:isRunning?"#1a2035":"linear-gradient(135deg,#0369a1,#38bdf8)", color:isRunning?"#334155":"#fff", fontSize:10, fontWeight:700, cursor:isRunning?"not-allowed":"pointer", flexShrink:0 }}>
                 {isRunning ? <><span style={{ display:"inline-block", width:10, height:10, border:"2px solid #334155", borderTopColor:"#38bdf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> Running…</> : <><Play size={10}/> Backtest</>}
               </button>
-              {s.backtests?.length > 0 && (
-                pubDone[s.id]
-                  ? (
-                    <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-                      <span style={{ fontSize:10, fontWeight:700, color:"#34d399", display:"flex", alignItems:"center", gap:4 }}><Check size={11}/> Published</span>
-                      {privateDone[s.id]
-                        ? <span style={{ fontSize:10, color:"#475569" }}>Removed</span>
-                        : confirmingPrivate === s.id
-                          ? <div style={{ display:"flex", gap:4 }}>
-                              <button onClick={() => { setConfirmingPrivate(null); makePrivate(s); }} style={{ display:"flex", alignItems:"center", gap:3, padding:"4px 9px", borderRadius:6, border:"1px solid #f87171", background:"rgba(239,68,68,0.15)", color:"#fca5a5", fontSize:10, fontWeight:700, cursor:"pointer" }}>✓ Remove</button>
-                              <button onClick={() => setConfirmingPrivate(null)} style={{ padding:"4px 9px", borderRadius:6, border:"1px solid #334155", background:"transparent", color:"#94a3b8", fontSize:10, fontWeight:700, cursor:"pointer" }}>✗</button>
-                            </div>
-                          : <button onClick={() => { setConfirmingPrivate(s.id); setTimeout(() => setConfirmingPrivate(curr => curr === s.id ? null : curr), 3000); }} disabled={makingPrivate===s.id} title="Remove from leaderboard" style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 9px", borderRadius:6, border:"1px solid rgba(239,68,68,0.3)", background:"rgba(239,68,68,0.07)", color:"#f87171", fontSize:10, fontWeight:700, cursor:makingPrivate===s.id?"not-allowed":"pointer" }}>
-                              {makingPrivate===s.id ? <span style={{ display:"inline-block", width:9, height:9, border:"1.5px solid #334155", borderTopColor:"#f87171", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> : <><EyeOff size={10}/> Make Private</>}
-                            </button>
-                      }
-                    </div>
-                  )
-                  : (() => {
-                      const hasPx  = (s.monthly_price ?? 0) > 0;
-                      const btnBorder = hasPx ? "1px solid rgba(129,140,248,0.35)" : "1px solid rgba(251,191,36,0.35)";
-                      const btnBg     = hasPx ? "rgba(129,140,248,0.08)" : "rgba(251,191,36,0.06)";
-                      const btnColor  = hasPx ? "#818cf8" : "#fbbf24";
-                      const btnLabel  = hasPx ? `Publish ($${s.monthly_price}/mo)` : "Publish (free)";
-                      return (
-                        <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
-                          {!hasPx && (
-                            <div style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 8px", borderRadius:6, background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)" }}>
-                              <span style={{ fontSize:9, color:"#fbbf24", fontWeight:700 }}>⚠ No price set</span>
-                              <button onClick={() => { setEditing(s); setShowForm(true); }} style={{ fontSize:9, color:"#fbbf24", background:"none", border:"none", cursor:"pointer", padding:0, textDecoration:"underline", fontWeight:700 }}>Set price first</button>
-                            </div>
-                          )}
-                          {confirmingFree === s.id ? (
-                            <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-                              <span style={{ fontSize:9, color:"#fbbf24", fontWeight:700 }}>Publish as free?</span>
-                              <button onClick={() => { setConfirmingFree(null); publishResult(s); }} style={{ padding:"4px 9px", borderRadius:6, border:"1px solid #fbbf24", background:"rgba(251,191,36,0.15)", color:"#fbbf24", fontSize:10, fontWeight:700, cursor:"pointer" }}>✓ Yes</button>
-                              <button onClick={() => setConfirmingFree(null)} style={{ padding:"4px 9px", borderRadius:6, border:"1px solid #334155", background:"transparent", color:"#94a3b8", fontSize:10, fontWeight:700, cursor:"pointer" }}>✗</button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                if (!hasPx) {
-                                  setConfirmingFree(s.id);
-                                  setTimeout(() => setConfirmingFree(curr => curr === s.id ? null : curr), 4000);
-                                  return;
-                                }
-                                publishResult(s);
-                              }}
-                              disabled={publishing===s.id}
-                              style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, border:btnBorder, background:btnBg, color:btnColor, fontSize:10, fontWeight:700, cursor:publishing===s.id?"not-allowed":"pointer" }}>
-                              {publishing===s.id
-                                ? <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #334155", borderTopColor:"#818cf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>
-                                : <><Globe size={10}/> {btnLabel}</>
-                              }
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()
-              )}
-              {/* Go Live — only available after publishing */}
-              {pubDone[s.id] && (
-                liveDone[s.id]
-                  ? <span style={{ fontSize:10, fontWeight:700, color:"#34d399", display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>🟢 Live</span>
-                  : <button onClick={() => goLive(s)} disabled={goingLive===s.id} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, border:"1px solid rgba(52,211,153,0.35)", background:"rgba(52,211,153,0.08)", color:"#34d399", fontSize:10, fontWeight:700, cursor:goingLive===s.id?"not-allowed":"pointer", flexShrink:0 }}>
-                      {goingLive===s.id ? <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #334155", borderTopColor:"#34d399", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> : <>🟢 Go Live</>}
-                    </button>
-              )}
-              {liveError[s.id] && <span style={{ fontSize:9, color:"#f87171", flexShrink:0 }}>{liveError[s.id]}</span>}
               <button onClick={() => { setEditing(s); setShowForm(true); }} style={{ padding:"5px 8px", borderRadius:7, border:"1px solid #1e2d3e", background:"transparent", color:"#475569", cursor:"pointer", flexShrink:0 }}><Edit2 size={11}/></button>
               {confirmingDelete === s.id ? (
                 <div style={{ display:"flex", gap:4, flexShrink:0 }}>
@@ -7890,46 +7474,6 @@ function StrategyLabPage({ session, trades }) {
                 {!realStats && !s.backtests?.length && (
                   <div style={{ padding:"20px 18px", textAlign:"center", fontSize:11, color:"#334155" }}>
                     No backtest runs yet — click <strong style={{ color:"#38bdf8" }}>Backtest</strong> to simulate this strategy
-                  </div>
-                )}
-
-                {/* Publish Result */}
-                {s.backtests?.length > 0 && (
-                  <div style={{ padding:"14px 18px", borderTop:"1px solid #1a2035", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
-                    <div style={{ fontSize:11, color:"#475569", lineHeight:1.5 }}>
-                      Publish your latest backtest result to the leaderboard so other traders can see your strategy.
-                    </div>
-                    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, flexShrink:0 }}>
-                      {pubDone[s.id] ? (
-                        <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, color:"#34d399" }}>
-                          <Check size={14}/> Published! Redirecting…
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => publishResult(s)}
-                          disabled={publishing === s.id}
-                          style={{
-                            display:"flex", alignItems:"center", gap:6,
-                            padding:"8px 18px", borderRadius:9, border:"none",
-                            background: publishing===s.id ? "#1a2035" : "linear-gradient(135deg,#4f46e5,#818cf8)",
-                            color: publishing===s.id ? "#334155" : "#fff",
-                            fontSize:12, fontWeight:700,
-                            cursor: publishing===s.id ? "not-allowed" : "pointer",
-                            boxShadow: publishing===s.id ? "none" : "0 4px 16px rgba(129,140,248,0.3)",
-                          }}
-                        >
-                          {publishing === s.id
-                            ? <><span style={{ display:"inline-block", width:11, height:11, border:"2px solid #334155", borderTopColor:"#818cf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> Publishing…</>
-                            : <><Globe size={13}/> Publish Result</>
-                          }
-                        </button>
-                      )}
-                      {pubError[s.id] && (
-                        <div style={{ fontSize:10, color:"#f87171", display:"flex", alignItems:"center", gap:5 }}>
-                          <AlertCircle size={11}/>{pubError[s.id]}
-                        </div>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>
