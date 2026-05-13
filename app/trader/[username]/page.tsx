@@ -27,19 +27,6 @@ interface ProfileStats {
 interface Badge { id:string; label:string; icon:string; color:string; desc:string; }
 
 // ── Helpers ────────────────────────────────────────────────────
-interface PostRow {
-  id:string; symbol:string; side:"long"|"short"; pnl:number|null;
-  notes:string|null; setup_name:string|null; created_at:string;
-  likes_count:number; comments_count:number;
-}
-function timeAgo(iso:string){
-  const d=Date.now()-new Date(iso).getTime();
-  const m=Math.floor(d/60000),h=Math.floor(d/3600000),dd=Math.floor(d/86400000);
-  if(m<1)return"just now";
-  if(m<60)return`${m}m ago`;
-  if(h<24)return`${h}h ago`;
-  return`${dd}d ago`;
-}
 function getRank(s:ProfileStats) {
   if(s.totalTrades>=200&&s.winRate>=60&&s.consistency>=80) return{label:"Funded Trader",  color:"#f59e0b",next:"Max rank",          progress:100};
   if(s.totalTrades>=100&&s.winRate>=55&&s.consistency>=70) return{label:"Verified Trader",color:"#a5b4fc",next:"Funded Trader",      progress:Math.min(100,((s.totalTrades-100)/100)*100)};
@@ -86,11 +73,9 @@ export default function TraderProfile(){
   const params=useParams();
   const username=decodeURIComponent((params?.username as string)??"").replace(/^@/,"");
 
-  const [tab,setTab]=useState<"overview"|"posts"|"trades">("overview");
+  const [tab,setTab]=useState<"overview"|"trades">("overview");
  const [strategies,setStrategies]=useState<Strategy[]>([]);
  const [trades,setTrades]=useState<Trade[]>([]);
- const [posts,setPosts]=useState<PostRow[]>([]);
- const [postsLoading,setPostsLoading]=useState(true);
  const [stats,setStats]=useState<ProfileStats|null>(null);
  const [loading,setLoading]=useState(true);
  const [notFound,setNotFound]=useState(false);
@@ -105,25 +90,8 @@ export default function TraderProfile(){
   useEffect(()=>{
     if(!username)return;
     loadProfile();
-    loadPosts();
     try{const s=JSON.parse(localStorage.getItem("tradedesk_session_v1")??"{}");setCurrentUser(s.username??"");}catch{}
   },[username]);
-
-  const loadPosts=async()=>{
-    setPostsLoading(true);
-    try{
-      const SUPA="https://xsrcaceydyqytbipvrok.supabase.co";
-      const KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A";
-      const pr=await fetch(`${SUPA}/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
-      const pj=await pr.json();
-      if(!Array.isArray(pj)||!pj.length){setPosts([]);return;}
-      const uid=pj[0].id;
-      const tr=await fetch(`${SUPA}/rest/v1/trade_posts?user_id=eq.${encodeURIComponent(uid)}&visibility=eq.public&order=created_at.desc&select=id,symbol,side,pnl,notes,setup_name,created_at,likes_count,comments_count`,{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
-      const tj=await tr.json();
-      setPosts(Array.isArray(tj)?tj as PostRow[]:[]);
-    }catch{setPosts([]);}
-    finally{setPostsLoading(false);}
-  };
 
   useEffect(()=>{
     if(!currentUser||!username||currentUser===username)return;
@@ -239,7 +207,7 @@ export default function TraderProfile(){
   const isOwn=currentUser===username;
   const recentTrades=[...trades].sort((a,b)=>b.date-a.date).slice(0,15);
   const RANKS=["Beginner","Active Trader","Consistent","Verified Trader","Funded Trader"];
-  const TABS=[{id:"overview",label:"Overview"},{id:"posts",label:`Posts (${posts.length})`},{id:"trades",label:`Trades (${trades.length})`}];
+  const TABS=[{id:"overview",label:"Overview"},{id:"trades",label:`Trades (${trades.length})`}];
 
   return(
     <div style={{minHeight:"100vh",background:"#060d1a",color:"#c8d8f0",fontFamily:"system-ui,sans-serif"}}><style>{`
@@ -351,32 +319,6 @@ export default function TraderProfile(){
                   );
                 })}
               </div></div></div>
-        )}
-
-        {/* ═══════════════ POSTS TAB ═══════════════ */}
-        {tab==="posts"&&(
-          <div style={{animation:"fadeIn 0.25s ease"}}>
-            {postsLoading?(
-              <div style={{padding:60,textAlign:"center",color:"#2a2a3a",fontSize:12}}><div style={{width:24,height:24,border:"2px solid #2a2a3a",borderTopColor:"#6366f1",borderRadius:"50%",animation:"spin 0.7s linear infinite",margin:"0 auto 12px"}}/>Loading posts…</div>):posts.length===0?(<div style={{padding:"64px",textAlign:"center",color:"#2a2a3a",fontSize:12,background:"#111118",border:"1px solid #2a2a3a",borderRadius:20}}><div style={{fontSize:36,marginBottom:12}}></div>
-                @{username} hasn&apos;t shared any trades yet
-              </div>):(<div style={{display:"flex",flexDirection:"column",gap:12}}>
-                {posts.map(p=>{
-                  const pos=(p.pnl??0)>=0;
- return(<div key={p.id} style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:18,padding:"16px 20px"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}><span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:p.side==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:p.side==="long"?"#10b981":"#ef4444"}}>
-                          {p.side==="long"?"▲ LONG":"▼ SHORT"}
-                        </span><span style={{fontSize:12,fontWeight:700,color:"#ffffff",fontFamily:"monospace"}}>{p.symbol}</span>
-                        {p.setup_name&&<span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:4,background:"rgba(99,102,241,0.1)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.2)"}}>{p.setup_name}</span>}
-                        <span style={{flex:1}}/><span style={{fontSize:11,color:"#2e3f5a"}}>{timeAgo(p.created_at)}</span></div>
-                      {p.pnl!==null&&(
-                        <div style={{display:"inline-flex",padding:"6px 12px",borderRadius:10,background:pos?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)",border:`1px solid ${pos?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`,marginBottom:8}}><span style={{fontSize:18,fontWeight:900,color:pos?"#10b981":"#ef4444",fontFamily:"monospace"}}>{pos?"+":""}{(p.pnl??0).toFixed(2)}</span></div>
-                      )}
-                      {p.notes&&<p style={{fontSize:12,color:"#6b7280",margin:"4px 0 8px",lineHeight:1.6,fontStyle:"italic"}}>&ldquo;{p.notes}&rdquo;</p>}
-                      <div style={{display:"flex",alignItems:"center",gap:16,marginTop:6,fontSize:11,color:"#2a2a3a"}}><span>️ {p.likes_count}</span><span> {p.comments_count}</span></div></div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         )}
 
         {/* ═══════════════ TRADES TAB ═══════════════ */}
