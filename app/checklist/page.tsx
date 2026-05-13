@@ -257,9 +257,10 @@ export default function ChecklistPage() {
   };
   const onDragEnd = () => { setDragId(null); setDragOverId(null); };
 
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const resetDefaults = () => {
-    if (typeof window !== "undefined" && !window.confirm("Reset checklist to default items?")) return;
     saveItems(DEFAULT_ITEMS);
+    if (typeof window !== "undefined") (window as any).showToast?.("Checklist reset to defaults", "success");
   };
 
   // ── Trade calcs
@@ -577,12 +578,27 @@ export default function ChecklistPage() {
                 style={{ flex: 1, padding: "10px 12px", borderRadius: 9, background: "rgba(56,189,248,0.10)", color: "#38bdf8", border: "1px dashed rgba(56,189,248,0.45)", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
                 + Add Item
               </button>
-              <button
-                onClick={resetDefaults}
-                title="Reset to defaults"
-                style={{ padding: "10px 12px", borderRadius: 9, background: "transparent", color: "#64748b", border: "1px solid #1a2540", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                Reset
-              </button>
+              {confirmingReset ? (
+                <div style={{ display:"flex", gap:6 }}>
+                  <button
+                    onClick={() => { setConfirmingReset(false); resetDefaults(); }}
+                    style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid #f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    ✓ Reset
+                  </button>
+                  <button
+                    onClick={() => setConfirmingReset(false)}
+                    style={{ padding: "10px 12px", borderRadius: 9, background: "transparent", color: "#94a3b8", border: "1px solid #334155", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    ✗
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setConfirmingReset(true); setTimeout(() => setConfirmingReset(curr => curr ? false : curr), 3000); }}
+                  title="Reset to defaults"
+                  style={{ padding: "10px 12px", borderRadius: 9, background: "transparent", color: "#64748b", border: "1px solid #1a2540", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  Reset
+                </button>
+              )}
             </div>
 
             <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 9, background: "#0d1120", border: "1px solid #1a2035", fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>

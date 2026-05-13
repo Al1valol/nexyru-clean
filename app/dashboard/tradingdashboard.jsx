@@ -36,6 +36,27 @@ const COMMON_PAIRS = [
 //  UTILITIES
 // ═══════════════════════════════════════════════════════════════
 
+// ── Number formatting helpers ─────────────────────────────────
+function fmtMoney(n, { signed = false } = {}) {
+  const v = Number(n) || 0;
+  const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (signed) {
+    if (v > 0) return `+$${abs}`;
+    if (v < 0) return `-$${abs}`;
+    return `$${abs}`;
+  }
+  return v < 0 ? `-$${abs}` : `$${abs}`;
+}
+function fmtPct(n, { signed = false, digits = 1 } = {}) {
+  const v = Number(n) || 0;
+  const s = v.toFixed(digits);
+  if (signed && v > 0) return `+${s}%`;
+  return `${s}%`;
+}
+function fmtNum(n) {
+  return (Number(n) || 0).toLocaleString("en-US");
+}
+
 function accountKey(u) { return `tradedesk_trades_${u}_v1`; }
 
 // ── Screenshot store — IndexedDB so base64 images don't bloat localStorage ──
@@ -624,8 +645,13 @@ function AuthScreen({ auth }) {
 function StatCard({ label, value, sub, pos, icon }) {
   const accent = pos === true ? "#34d399" : pos === false ? "#f87171" : "#38bdf8";
   const border = pos === true ? "rgba(16,185,129,0.2)" : pos === false ? "rgba(239,68,68,0.2)" : "rgba(51,65,85,0.6)";
+  const glow   = pos === true ? "rgba(52,211,153,0.15)" : pos === false ? "rgba(248,113,113,0.15)" : "rgba(56,189,248,0.15)";
   return (
-    <div style={{ borderRadius:12, border:`1px solid ${border}`, background:"rgba(15,23,42,0.85)", padding:"14px 16px" }}>
+    <div
+      style={{ borderRadius:12, border:`1px solid ${border}`, background:"rgba(15,23,42,0.85)", padding:"14px 16px", transition:"box-shadow 0.18s, transform 0.18s, border-color 0.18s" }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 8px 22px ${glow}`; e.currentTarget.style.transform = "translateY(-1px)"; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "translateY(0)"; }}
+    >
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:10 }}>
         <span style={{ fontSize:9, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em" }}>{label}</span>
         <span style={{ color:accent, opacity:0.7 }}>{icon}</span>
@@ -1897,7 +1923,7 @@ function TradeDetail({ trade, onClose }) {
   );
 }
 
-function TradeTable({ trades, onEdit, onDelete, onReview }) {
+function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
   const [err, setErr] = useState(false);
   if (err) return (
     <div style={{ padding:"24px", borderRadius:12, border:"1px dashed rgba(248,113,113,0.3)", textAlign:"center" }}>
@@ -1918,6 +1944,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
   });
   const [unsharing, setUnsharing] = useState(null);
   const [confirmUnshare, setConfirmUnshare] = useState(null);
+  const [confirmingTradeDelete, setConfirmingTradeDelete] = useState(null);
 
   useEffect(() => {
     const h = () => {
@@ -1949,7 +1976,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
       setSharedSet(new Set(arr));
       window.dispatchEvent(new CustomEvent("nexyruSharedUpdate"));
     } catch (e) {
-      alert("Failed to remove from feed: " + e.message);
+      toast("Failed to remove from feed: " + e.message, "error");
     } finally {
       setUnsharing(null);
     }
@@ -2011,9 +2038,25 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
         <span style={{ fontSize:10, color:"#334155", marginLeft:"auto" }}>{filtered.length} trades</span>
       </div>
       {filtered.length === 0 ? (
-        <div style={{ padding:"40px", textAlign:"center", color:"#334155", fontSize:12, borderRadius:12, border:"1px dashed #1a2035" }}>
-          {trades.length===0 ? "No trades yet. Log your first trade to get started." : "No trades match your filters."}
-        </div>
+        trades.length === 0 ? (
+          <div style={{ padding:"56px 24px", textAlign:"center", borderRadius:12, border:"2px dashed #1a2035" }}>
+            <div style={{ fontSize:46, marginBottom:12, lineHeight:1 }}>📒</div>
+            <div style={{ fontSize:15, fontWeight:700, color:"#cbd5e1", marginBottom:6 }}>Your journal is empty</div>
+            <div style={{ fontSize:12, color:"#64748b", marginBottom:18 }}>Import a CSV or log your first trade to get started</div>
+            <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
+              {onImport && (
+                <button onClick={onImport} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"1px solid rgba(56,189,248,0.4)", background:"transparent", color:"#38bdf8", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}><Upload size={12}/> Import CSV</button>
+              )}
+              {onAdd && (
+                <button onClick={onAdd} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(56,189,248,0.25)", transition:"all 0.15s" }}><Plus size={13}/> Log Trade</button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding:"40px", textAlign:"center", color:"#64748b", fontSize:12, borderRadius:12, border:"1px dashed #1a2035" }}>
+            No trades match your filters.
+          </div>
+        )
       ) : (
         <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
           <div style={{ overflowX:"auto" }}>
@@ -2041,9 +2084,13 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                     notes: t.notes ?? "",
                   } : null);
                   const EMOJIS = { calm:"😌", confident:"💪", fomo:"😰", fear:"😨", revenge:"😤" };
+                  const winBorder = `2px solid ${w ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`;
                   return (
-                    <tr key={t.id} style={{ cursor:"pointer" }} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
-                      <td style={{ ...td, fontWeight:700, color:"#e2e8f0", fontFamily:"monospace" }} onClick={()=>setViewing(t)}>
+                    <tr key={t.id}
+                        style={{ cursor:"pointer", minHeight:52, transition:"background 0.12s" }}
+                        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.025)"}
+                        onMouseLeave={e=>e.currentTarget.style.background=""}>
+                      <td style={{ ...td, fontWeight:700, color:"#e2e8f0", fontFamily:"monospace", borderLeft: winBorder, minHeight:52, height:52 }} onClick={()=>setViewing(t)}>
                         <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                           {t.pair}
                           {(t.screenshot || t._hasScreenshot) && <Image size={9} style={{ color:"#475569" }}/>}
@@ -2060,8 +2107,8 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{t.entryPrice}</td>
                       <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{t.exitPrice}</td>
                       <td style={{ ...td, fontFamily:"monospace", fontWeight:700, color: w?"#34d399":"#f87171" }} onClick={()=>setViewing(t)}>
-                        <div>{w?"+":""}{(t.pnl??0).toFixed(4)}</div>
-                        <div style={{ fontSize:9, opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
+                        <div>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
+                        <div style={{ fontSize:9, opacity:0.7 }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>
                       </td>
                       <td style={{ ...td, color:"#64748b" }} onClick={()=>setViewing(t)}>{t.strategy}</td>
 
@@ -2094,9 +2141,26 @@ function TradeTable({ trades, onEdit, onDelete, onReview }) {
                       <td style={{ ...td, color:"#64748b", whiteSpace:"nowrap" }} onClick={()=>setViewing(t)}>{new Date(t.date).toLocaleDateString()}</td>
                       <td style={td}>
                         <div style={{ display:"flex", gap:4 }}>
-                          <button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.06)", color:"#818cf8", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600 }}><span>🤖</span></button>
-                          <button onClick={()=>onEdit(t)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #1e2d3e", background:"transparent", color:"#475569", cursor:"pointer" }}><Edit2 size={10}/></button>
-                          <button onClick={()=>onDelete(t.id)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(239,68,68,0.2)", background:"transparent", color:"#f87171", cursor:"pointer" }}><Trash size={10}/></button>
+                          <button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.06)", color:"#818cf8", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600, transition:"all 0.15s" }}><span>🤖</span></button>
+                          <button onClick={()=>onEdit(t)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #1e2d3e", background:"transparent", color:"#475569", cursor:"pointer", transition:"all 0.15s" }}><Edit2 size={10}/></button>
+                          {confirmingTradeDelete === t.id ? (
+                            <div style={{ display:"flex", gap:3 }}>
+                              <button onClick={(e) => { e.stopPropagation(); setConfirmingTradeDelete(null); onDelete(t.id); }} title="Confirm delete" style={{ padding:"4px 7px", borderRadius:6, border:"1px solid #f87171", background:"rgba(239,68,68,0.18)", color:"#fca5a5", cursor:"pointer", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", gap:2 }}>✓ Delete</button>
+                              <button onClick={(e) => { e.stopPropagation(); setConfirmingTradeDelete(null); }} title="Cancel" style={{ padding:"4px 7px", borderRadius:6, border:"1px solid #334155", background:"transparent", color:"#94a3b8", cursor:"pointer", fontSize:10, fontWeight:700 }}>✗</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmingTradeDelete(t.id);
+                                setTimeout(() => setConfirmingTradeDelete(curr => curr === t.id ? null : curr), 3000);
+                              }}
+                              title="Delete trade"
+                              style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(239,68,68,0.2)", background:"transparent", color:"#f87171", cursor:"pointer", transition:"all 0.15s" }}
+                              onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.08)"}
+                              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                            ><Trash size={10}/></button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -3520,20 +3584,20 @@ function AccountStatsCard({ activeAccount, trades }) {
         </div>
         <div style={{ textAlign:"right" }}>
           <div style={{ fontSize:18, fontWeight:800, fontFamily:"monospace", color:"#f1f5f9" }}>
-            ${activeAccount.balance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+            {fmtMoney(activeAccount.balance)}
           </div>
           <div style={{ fontSize:10, fontFamily:"monospace", color: pnlPos?"#34d399":"#f87171" }}>
-            {pnlPos?"+":""}{pnlPct.toFixed(2)}% return
+            {fmtPct(pnlPct, { signed:true })} return
           </div>
         </div>
       </div>
       {/* Mini stats */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", padding:"10px 0" }}>
         {[
-          { label:"Balance",  val:`$${activeAccount.balance.toLocaleString("en-US",{minimumFractionDigits:2})}`, color:"#f1f5f9" },
-          { label:"PnL",      val:`${pnlPos?"+":""}${pnl.toFixed(2)}`,              color:pnlPos?"#34d399":"#f87171" },
-          { label:"Return",   val:`${pnlPos?"+":""}${pnlPct.toFixed(2)}%`,          color:pnlPos?"#34d399":"#f87171" },
-          { label:"Win Rate", val:accTrades.length ? `${wr}%` : "—",                color:wr>=50?"#34d399":"#fbbf24" },
+          { label:"Balance",  val: fmtMoney(activeAccount.balance), color:"#f1f5f9" },
+          { label:"PnL",      val: fmtMoney(pnl, { signed:true }),  color:pnlPos?"#34d399":"#f87171" },
+          { label:"Return",   val: fmtPct(pnlPct, { signed:true }), color:pnlPos?"#34d399":"#f87171" },
+          { label:"Win Rate", val: accTrades.length ? fmtPct(wr) : "—", color:wr>=50?"#34d399":"#fbbf24" },
         ].map(({ label,val,color }) => (
           <div key={label} style={{ textAlign:"center", padding:"4px 8px", borderRight:"1px solid rgba(30,41,59,0.4)" }}>
             <div style={{ fontSize:8, color:"#334155", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:3 }}>{label}</div>
@@ -5499,7 +5563,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
 
       {/* Trades */}
       <section>
-        <TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade}/>
+        <TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade} onAdd={inDemo ? undefined : onAdd} onImport={inDemo ? undefined : onCSV}/>
       </section>
 
       {/* Divider */}
@@ -5968,7 +6032,7 @@ function WeeklyChallenges({ trades }) {
   );
 }
 
-function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onAddStrat, onUpgradeAccount, username, onClearDemo }) {
+function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onAddStrat, onUpgradeAccount, username, onClearDemo, loading }) {
   const stats   = useMemo(() => computeStats(trades), [trades]);
   const recent  = useMemo(() => [...trades].sort((a,b)=>b.date-a.date).slice(0,5), [trades]);
   const pnlPos  = stats.totalPnl >= 0;
@@ -6013,20 +6077,20 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
 
       {trades.length > 0 ? (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10 }}>
-          <StatCard label="Total Trades" value={String(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
-          <StatCard label="Win Rate"     value={`${stats.winRate}%`}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/>
-          <StatCard label="Total PnL"    value={`${pnlPos?"+":""}${(stats.totalPnl??0).toFixed(2)}`} sub={`Avg W: +${(stats.avgWin??0).toFixed(2)}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/>
-          <StatCard label="Best Trade"   value={`+${(stats.bestTrade??0).toFixed(2)}`}  pos={true}  icon={<Award size={14}/>}/>
-          <StatCard label="Worst Trade"  value={(stats.worstTrade??0).toFixed(2)}        pos={false} icon={<TrendingDown size={14}/>}/>
+          <StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
+          <StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/>
+          <StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/>
+          <StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/>
+          <StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/>
         </div>
       ) : (
-        <div style={{ padding:"48px 24px", borderRadius:16, border:"2px dashed #1a2035", textAlign:"center" }}>
-          <BookOpen size={40} style={{ color:"#334155", marginBottom:16 }}/>
-          <div style={{ fontSize:16, fontWeight:700, color:"#475569", marginBottom:8 }}>Start your trading journal</div>
-          <div style={{ fontSize:12, color:"#334155", marginBottom:24, lineHeight:1.6 }}>Log trades manually, import from CSV, or connect via webhook.<br/>Nexyru analyzes your performance and gives you actionable insights.</div>
+        <div style={{ padding:"56px 24px", borderRadius:16, border:"2px dashed #1a2035", textAlign:"center" }}>
+          <div style={{ fontSize:48, marginBottom:14, lineHeight:1 }}>📒</div>
+          <div style={{ fontSize:17, fontWeight:700, color:"#cbd5e1", marginBottom:8 }}>Your journal is empty</div>
+          <div style={{ fontSize:12, color:"#64748b", marginBottom:24, lineHeight:1.6 }}>Import a CSV or log your first trade to get started.<br/>Nexyru analyzes your performance and gives you actionable insights.</div>
           <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
-            <button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}><Plus size={14}/> Log First Trade</button>
-            <button onClick={onOpenImport} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:9, border:"1px solid #1a2035", background:"#111827", color:"#94a3b8", fontSize:12, fontWeight:600, cursor:"pointer" }}><Upload size={13}/> Import CSV</button>
+            <button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", transition:"all 0.15s", boxShadow:"0 4px 14px rgba(56,189,248,0.25)" }}><Plus size={14}/> Log Trade</button>
+            <button onClick={onOpenImport} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"1px solid rgba(56,189,248,0.4)", background:"transparent", color:"#38bdf8", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}><Upload size={13}/> Import CSV</button>
           </div>
         </div>
       )}
@@ -6034,20 +6098,40 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
       {/* <WeeklyReport trades={trades}/> */}
       {/* <WeeklyChallenges trades={trades}/> */}
 
-      {recent.length > 0 && (
+      {loading ? (
+        <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #111827", fontSize:12, fontWeight:700, color:"#94a3b8" }}>Recent Trades</div>
+          <style>{`@keyframes nexyruPulse { 0%,100%{opacity:0.4} 50%{opacity:0.85} }`}</style>
+          {[0,1,2].map(i => (
+            <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:"1px solid rgba(30,41,59,0.4)", borderLeft:"2px solid rgba(51,65,85,0.4)", minHeight:52 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ width:26, height:14, borderRadius:4, background:"#1a2035", animation:`nexyruPulse 1.4s ease-in-out ${i*0.15}s infinite` }}/>
+                <div>
+                  <div style={{ width:80, height:12, borderRadius:4, background:"#1a2035", animation:`nexyruPulse 1.4s ease-in-out ${i*0.15}s infinite`, marginBottom:5 }}/>
+                  <div style={{ width:120, height:9, borderRadius:4, background:"#0f172a", animation:`nexyruPulse 1.4s ease-in-out ${i*0.15+0.05}s infinite` }}/>
+                </div>
+              </div>
+              <div style={{ width:70, height:14, borderRadius:4, background:"#1a2035", animation:`nexyruPulse 1.4s ease-in-out ${i*0.15+0.1}s infinite` }}/>
+            </div>
+          ))}
+        </div>
+      ) : recent.length > 0 && (
         <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
           <div style={{ padding:"12px 16px", borderBottom:"1px solid #111827", fontSize:12, fontWeight:700, color:"#94a3b8" }}>Recent Trades</div>
           {recent.map(t => {
             const w = (t.pnl??0)>=0;
             return (
-              <div key={t.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 16px", borderBottom:"1px solid rgba(30,41,59,0.4)" }}>
+              <div key={t.id}
+                   style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:"1px solid rgba(30,41,59,0.4)", borderLeft:`2px solid ${w ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`, cursor:"pointer", transition:"background 0.12s", minHeight:52 }}
+                   onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.025)"}
+                   onMouseLeave={e=>e.currentTarget.style.background=""}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.type==="long"?"rgba(16,185,129,0.1)":"rgba(239,68,68,0.1)", color:t.type==="long"?"#34d399":"#f87171" }}>{t.type==="long"?"▲":"▼"}</span>
                   <div><div style={{ fontSize:12, fontWeight:700, color:"#e2e8f0" }}>{t.pair}</div><div style={{ fontSize:10, color:"#475569" }}>{t.strategy} · {new Date(t.date).toLocaleDateString()}</div></div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{w?"+":""}{(t.pnl??0).toFixed(4)}</div>
-                  <div style={{ fontSize:9, color:w?"#34d399":"#f87171", opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
+                  <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
+                  <div style={{ fontSize:10, color:w?"#34d399":"#f87171", opacity:0.7, fontFamily:"monospace" }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>
                 </div>
               </div>
             );
@@ -6969,6 +7053,9 @@ function StrategyLabPage({ session, trades }) {
   const [makingPrivate,setMakingPrivate]= useState(null);
   const [privateDone,  setPrivateDone]  = useState({});
   const [justCloned,   setJustCloned]   = useState(null);  // id of newly cloned card
+  const [confirmingPrivate, setConfirmingPrivate] = useState(null); // strategy.id awaiting confirm
+  const [confirmingDelete,  setConfirmingDelete]  = useState(null); // strategy.id awaiting confirm
+  const [confirmingFree,    setConfirmingFree]    = useState(null); // strategy.id awaiting confirm
 
   // ── Clone — instant duplicate, auto-open editor ───────────
   const cloneStrategy = (source) => {
@@ -6994,7 +7081,6 @@ function StrategyLabPage({ session, trades }) {
 
   // ── Make Private — delete from Supabase ───────────────────
   const makePrivate = async (strategy) => {
-    if (!window.confirm("Remove this strategy from the public leaderboard?")) return;
     const supabaseId = typeof pubDone[strategy.id] === "string" ? pubDone[strategy.id] : null;
     if (!supabaseId) {
       // No Supabase ID stored — just clear local pub state
@@ -7012,7 +7098,7 @@ function StrategyLabPage({ session, trades }) {
       setPrivateDone(prev => ({ ...prev, [strategy.id]: true }));
       setTimeout(() => setPrivateDone(prev => { const n={...prev}; delete n[strategy.id]; return n; }), 3000);
     } catch(e) {
-      alert("Failed to remove: " + e.message);
+      toast("Failed to remove: " + e.message, "error");
     } finally {
       setMakingPrivate(null);
     }
@@ -7021,7 +7107,7 @@ function StrategyLabPage({ session, trades }) {
   // ── Go Live — update status in Supabase ───────────────────
   const goLive = async (strategy) => {
     if (!pubDone[strategy.id]) {
-      alert("Publish the strategy to the leaderboard first, then you can go live.");
+      toast("Publish the strategy to the leaderboard first, then you can go live.", "warning");
       return;
     }
     setGoingLive(strategy.id);
@@ -7133,8 +7219,8 @@ function StrategyLabPage({ session, trades }) {
   };
 
   const deleteStrategy = (id) => {
-    if (!window.confirm("Delete this strategy?")) return;
     persist(strategies.filter(s => s.id !== id));
+    toast("Strategy deleted", "success");
   };
 
   // ── Symbol / timeframe picker for Strategy Lab backtests ──
@@ -7208,7 +7294,7 @@ function StrategyLabPage({ session, trades }) {
       persist(updated);
       setExpanded(strategy.id);
     } else {
-      alert("No trades generated on this data.\n\nTips:\n• Try a single condition (e.g. RSI < 30 only)\n• Use 1h or 4h timeframe for more signal frequency\n• Widen RSI thresholds (e.g. RSI < 40 instead of 30)\n• EMA9 > EMA21 and Price > SMA200 work well together on daily charts");
+      toast("No trades generated. Try widening conditions or using a different timeframe.", "warning");
     }
     setRunning(null);
     setTimeout(() => setFetchStatus(""), 3000);
@@ -7380,9 +7466,14 @@ function StrategyLabPage({ session, trades }) {
                       <span style={{ fontSize:10, fontWeight:700, color:"#34d399", display:"flex", alignItems:"center", gap:4 }}><Check size={11}/> Published</span>
                       {privateDone[s.id]
                         ? <span style={{ fontSize:10, color:"#475569" }}>Removed</span>
-                        : <button onClick={() => makePrivate(s)} disabled={makingPrivate===s.id} title="Remove from leaderboard" style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 9px", borderRadius:6, border:"1px solid rgba(239,68,68,0.3)", background:"rgba(239,68,68,0.07)", color:"#f87171", fontSize:10, fontWeight:700, cursor:makingPrivate===s.id?"not-allowed":"pointer" }}>
-                            {makingPrivate===s.id ? <span style={{ display:"inline-block", width:9, height:9, border:"1.5px solid #334155", borderTopColor:"#f87171", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> : <><EyeOff size={10}/> Make Private</>}
-                          </button>
+                        : confirmingPrivate === s.id
+                          ? <div style={{ display:"flex", gap:4 }}>
+                              <button onClick={() => { setConfirmingPrivate(null); makePrivate(s); }} style={{ display:"flex", alignItems:"center", gap:3, padding:"4px 9px", borderRadius:6, border:"1px solid #f87171", background:"rgba(239,68,68,0.15)", color:"#fca5a5", fontSize:10, fontWeight:700, cursor:"pointer" }}>✓ Remove</button>
+                              <button onClick={() => setConfirmingPrivate(null)} style={{ padding:"4px 9px", borderRadius:6, border:"1px solid #334155", background:"transparent", color:"#94a3b8", fontSize:10, fontWeight:700, cursor:"pointer" }}>✗</button>
+                            </div>
+                          : <button onClick={() => { setConfirmingPrivate(s.id); setTimeout(() => setConfirmingPrivate(curr => curr === s.id ? null : curr), 3000); }} disabled={makingPrivate===s.id} title="Remove from leaderboard" style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 9px", borderRadius:6, border:"1px solid rgba(239,68,68,0.3)", background:"rgba(239,68,68,0.07)", color:"#f87171", fontSize:10, fontWeight:700, cursor:makingPrivate===s.id?"not-allowed":"pointer" }}>
+                              {makingPrivate===s.id ? <span style={{ display:"inline-block", width:9, height:9, border:"1.5px solid #334155", borderTopColor:"#f87171", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> : <><EyeOff size={10}/> Make Private</>}
+                            </button>
                       }
                     </div>
                   )
@@ -7400,20 +7491,30 @@ function StrategyLabPage({ session, trades }) {
                               <button onClick={() => { setEditing(s); setShowForm(true); }} style={{ fontSize:9, color:"#fbbf24", background:"none", border:"none", cursor:"pointer", padding:0, textDecoration:"underline", fontWeight:700 }}>Set price first</button>
                             </div>
                           )}
-                          <button
-                            onClick={() => {
-                              if (!hasPx) {
-                                if (!window.confirm("⚠️ No price set — this strategy will be free forever.\n\nYou cannot charge existing followers later.\n\nPublish as free?")) return;
+                          {confirmingFree === s.id ? (
+                            <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+                              <span style={{ fontSize:9, color:"#fbbf24", fontWeight:700 }}>Publish as free?</span>
+                              <button onClick={() => { setConfirmingFree(null); publishResult(s); }} style={{ padding:"4px 9px", borderRadius:6, border:"1px solid #fbbf24", background:"rgba(251,191,36,0.15)", color:"#fbbf24", fontSize:10, fontWeight:700, cursor:"pointer" }}>✓ Yes</button>
+                              <button onClick={() => setConfirmingFree(null)} style={{ padding:"4px 9px", borderRadius:6, border:"1px solid #334155", background:"transparent", color:"#94a3b8", fontSize:10, fontWeight:700, cursor:"pointer" }}>✗</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                if (!hasPx) {
+                                  setConfirmingFree(s.id);
+                                  setTimeout(() => setConfirmingFree(curr => curr === s.id ? null : curr), 4000);
+                                  return;
+                                }
+                                publishResult(s);
+                              }}
+                              disabled={publishing===s.id}
+                              style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, border:btnBorder, background:btnBg, color:btnColor, fontSize:10, fontWeight:700, cursor:publishing===s.id?"not-allowed":"pointer" }}>
+                              {publishing===s.id
+                                ? <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #334155", borderTopColor:"#818cf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>
+                                : <><Globe size={10}/> {btnLabel}</>
                               }
-                              publishResult(s);
-                            }}
-                            disabled={publishing===s.id}
-                            style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, border:btnBorder, background:btnBg, color:btnColor, fontSize:10, fontWeight:700, cursor:publishing===s.id?"not-allowed":"pointer" }}>
-                            {publishing===s.id
-                              ? <span style={{ display:"inline-block", width:10, height:10, border:"2px solid #334155", borderTopColor:"#818cf8", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>
-                              : <><Globe size={10}/> {btnLabel}</>
-                            }
-                          </button>
+                            </button>
+                          )}
                         </div>
                       );
                     })()
@@ -7428,7 +7529,14 @@ function StrategyLabPage({ session, trades }) {
               )}
               {liveError[s.id] && <span style={{ fontSize:9, color:"#f87171", flexShrink:0 }}>{liveError[s.id]}</span>}
               <button onClick={() => { setEditing(s); setShowForm(true); }} style={{ padding:"5px 8px", borderRadius:7, border:"1px solid #1e2d3e", background:"transparent", color:"#475569", cursor:"pointer", flexShrink:0 }}><Edit2 size={11}/></button>
-              <button onClick={() => deleteStrategy(s.id)} style={{ padding:"5px 8px", borderRadius:7, border:"1px solid rgba(239,68,68,0.2)", background:"transparent", color:"#f87171", cursor:"pointer", flexShrink:0 }}><Trash size={11}/></button>
+              {confirmingDelete === s.id ? (
+                <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+                  <button onClick={() => { setConfirmingDelete(null); deleteStrategy(s.id); }} style={{ padding:"5px 9px", borderRadius:7, border:"1px solid #f87171", background:"rgba(239,68,68,0.15)", color:"#fca5a5", fontSize:10, fontWeight:700, cursor:"pointer" }}>✓ Delete</button>
+                  <button onClick={() => setConfirmingDelete(null)} style={{ padding:"5px 9px", borderRadius:7, border:"1px solid #334155", background:"transparent", color:"#94a3b8", fontSize:10, fontWeight:700, cursor:"pointer" }}>✗</button>
+                </div>
+              ) : (
+                <button onClick={() => { setConfirmingDelete(s.id); setTimeout(() => setConfirmingDelete(curr => curr === s.id ? null : curr), 3000); }} style={{ padding:"5px 8px", borderRadius:7, border:"1px solid rgba(239,68,68,0.2)", background:"transparent", color:"#f87171", cursor:"pointer", flexShrink:0 }}><Trash size={11}/></button>
+              )}
             </div>
 
             {/* Expanded detail */}
@@ -7569,6 +7677,7 @@ function StrategyLabPage({ session, trades }) {
 function TradingDashboard({ session, onLogout }) {
   const [tab,           setTab]           = useState("dashboard");
   const [trades,        setTrades]        = useState([]);
+  const [tradesLoading, setTradesLoading] = useState(true);
   const [showForm,      setShowForm]      = useState(false);
   const [showCSV,       setShowCSV]       = useState(false);
   const [showHub,       setShowHub]       = useState(false);
@@ -7619,13 +7728,16 @@ function TradingDashboard({ session, onLogout }) {
 
   // Load trades on mount — rehydrate screenshots from IDB
   useEffect(() => {
+    setTradesLoading(true);
     const saved = loadUserTrades(session.username);
     if (!saved) {
       setTrades([]);
       saveUserTrades(session.username, []);
+      setTradesLoading(false);
       return;
     }
     setTrades(saved);
+    setTradesLoading(false);
     // Rehydrate screenshots in the background
     Promise.all(saved.map(rehydrateScreenshot)).then(hydrated => {
       setTrades(hydrated);
@@ -7689,9 +7801,9 @@ function TradingDashboard({ session, onLogout }) {
   }, [copyTrading, paperAccts.activeAccount, session?.username]);
 
   const deleteTrade = useCallback((id) => {
-    if (!window.confirm("Delete this trade?")) return;
     deleteScreenshot(id);
     setTrades(prev => prev.filter(t => t.id !== id));
+    toast("Trade deleted", "success");
   }, []);
 
   const strategies = useMemo(() => Array.from(new Set(trades.map(t=>t.strategy).filter(Boolean))).sort(), [trades]);
@@ -7840,7 +7952,7 @@ function TradingDashboard({ session, onLogout }) {
           <span style={{ fontSize:18 }}>➕</span>Add
         </button>
       </div>
-          {tab==="dashboard"  && <DashboardHome trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
+          {tab==="dashboard"  && <DashboardHome loading={tradesLoading} trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
               setDemoMode(session.username, false);
               saveUserTrades(session.username, []);
               setTrades([]);
@@ -8414,6 +8526,19 @@ function ShareTradeModal({trade,onClose}){
       </div>
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TOAST HELPER — calls window.showToast (container mounted in root layout)
+// ═══════════════════════════════════════════════════════════════
+
+function toast(message, type = "info") {
+  if (typeof window !== "undefined" && typeof window.showToast === "function") {
+    window.showToast(message, type);
+  } else if (typeof window !== "undefined") {
+    // Container not yet mounted — retry shortly.
+    setTimeout(() => { try { window.showToast?.(message, type); } catch {} }, 50);
+  }
 }
 
 // ── App ────────────────────────────────────────────────────────

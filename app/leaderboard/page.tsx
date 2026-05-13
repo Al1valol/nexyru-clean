@@ -156,7 +156,7 @@ function StrategyCard({
         setTimeout(() => { window.location.href = "/dashboard?tab=stratlab&clone=1"; }, 900);
       }
     } catch {
-      alert("Could not copy strategy. Please try again.");
+      if (typeof window !== "undefined" && window.showToast) window.showToast("Could not copy strategy. Please try again.", "error");
     } finally {
       setCopying(false);
     }

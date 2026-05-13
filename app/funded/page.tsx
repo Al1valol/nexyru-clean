@@ -85,6 +85,7 @@ function ActiveView({challenge,onReset}:{challenge:Challenge;onReset:()=>void}) 
   const username=useMemo(()=>getUser(),[]);
   const trades=useMemo(()=>getTrades(username),[username]);
   const ev=useMemo(()=>evalChallenge(challenge,trades),[challenge,trades]);
+  const [confirmingAbandon,setConfirmingAbandon]=useState(false);
 
   useEffect(()=>{
     if(ev.isPassed&&challenge.status==="active") saveC({...challenge,status:"passed"});
@@ -156,7 +157,16 @@ function ActiveView({challenge,onReset}:{challenge:Challenge;onReset:()=>void}) 
 
       {challenge.status==="passed"&&<div style={{padding:24,borderRadius:16,background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.4)",textAlign:"center"}}><div style={{fontSize:48,marginBottom:8}}>🏆</div><div style={{fontSize:20,fontWeight:900,color:"#34d399",marginBottom:6}}>Challenge Passed!</div><div style={{fontSize:13,color:"#3a6a8a",marginBottom:16}}>You've met all requirements. Funded Trader rank unlocked.</div><a href="/dashboard" style={{display:"inline-block",padding:"10px 24px",borderRadius:10,background:"linear-gradient(135deg,#0ea5a0,#34d399)",color:"#000",fontSize:13,fontWeight:800,textDecoration:"none"}}>View Dashboard →</a></div>}
       {challenge.status==="failed"&&<div style={{padding:24,borderRadius:16,background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.35)",textAlign:"center"}}><div style={{fontSize:48,marginBottom:8}}>💀</div><div style={{fontSize:20,fontWeight:900,color:"#f87171",marginBottom:6}}>Challenge Failed</div><div style={{fontSize:13,color:"#7a3a3a",marginBottom:4}}>Reason: {challenge.failReason}</div><div style={{fontSize:12,color:"#3a4a6a",marginBottom:20}}>Study what went wrong, then try again.</div><button onClick={onReset} style={{padding:"10px 24px",borderRadius:10,background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",color:"#f87171",fontSize:13,fontWeight:800,cursor:"pointer"}}>Start New Challenge</button></div>}
-      {challenge.status==="active"&&<div style={{textAlign:"center"}}><button onClick={()=>{if(window.confirm("Abandon this challenge?"))onReset();}} style={{padding:"8px 18px",borderRadius:9,border:"1px solid rgba(239,68,68,0.2)",background:"transparent",color:"#475569",fontSize:11,fontWeight:600,cursor:"pointer"}}>Abandon Challenge</button></div>}
+      {challenge.status==="active"&&<div style={{textAlign:"center"}}>
+        {confirmingAbandon ? (
+          <div style={{display:"inline-flex",gap:6}}>
+            <button onClick={()=>{setConfirmingAbandon(false);onReset();}} style={{padding:"8px 16px",borderRadius:9,border:"1px solid #f87171",background:"rgba(239,68,68,0.15)",color:"#fca5a5",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Abandon</button>
+            <button onClick={()=>setConfirmingAbandon(false)} style={{padding:"8px 16px",borderRadius:9,border:"1px solid #334155",background:"transparent",color:"#94a3b8",fontSize:11,fontWeight:700,cursor:"pointer"}}>✗ Cancel</button>
+          </div>
+        ) : (
+          <button onClick={()=>{setConfirmingAbandon(true);setTimeout(()=>setConfirmingAbandon(curr=>curr?false:curr),3000);}} style={{padding:"8px 18px",borderRadius:9,border:"1px solid rgba(239,68,68,0.2)",background:"transparent",color:"#475569",fontSize:11,fontWeight:600,cursor:"pointer"}}>Abandon Challenge</button>
+        )}
+      </div>}
     </div>
   );
 }
