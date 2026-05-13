@@ -33,16 +33,23 @@ const PROP_FIRMS = [
 
 const HERO_FIRM_TAGS = ["Apex", "TopstepX", "FTMO", "MyFundedFutures", "Bulenox"];
 
-const FEATURES = [
+const FEATURES: {
+  dot: string;
+  title: string;
+  desc: string;
+  cta?: { label: string; href: string };
+}[] = [
   {
     dot: COLORS.accent,
     title: "Challenge Tracker",
     desc: "Track your daily loss limit, max drawdown, and profit target in real time. Accurate 2026 rules for Apex, TopstepX, FTMO, and more.",
+    cta: { label: "Set up Challenge Tracker →", href: "/challenge" },
   },
   {
     dot: "#a855f7",
     title: "Psychology Tracker",
     desc: "See exactly which emotions and mistakes are costing you money. Tag every trade with your mental state and watch the patterns emerge.",
+    cta: { label: "Set up Psychology Tracker →", href: "/psychology" },
   },
   {
     dot: COLORS.green,
@@ -58,6 +65,7 @@ const FEATURES = [
     dot: "#ec4899",
     title: "Pre-Trade Checklist",
     desc: "A quick mental checklist before every trade. Track which items you skip — and exactly how much it costs you.",
+    cta: { label: "Open Checklist →", href: "/checklist" },
   },
   {
     dot: "#06b6d4",
@@ -1042,6 +1050,9 @@ export default function LandingPage() {
         :global(.nx-ghost-link:hover) {
           color: #fff !important;
         }
+        :global(.nx-feature-cta:hover) {
+          text-decoration: underline !important;
+        }
         :global(a[style*="color: rgb(136, 136, 136)"]:hover) {
           color: #fff;
         }
@@ -1155,7 +1166,12 @@ const sectionLabel: React.CSSProperties = {
 function FeatureCard({
   f,
 }: {
-  f: { dot: string; title: string; desc: string };
+  f: {
+    dot: string;
+    title: string;
+    desc: string;
+    cta?: { label: string; href: string };
+  };
 }) {
   const [hover, setHover] = useState(false);
   return (
@@ -1169,6 +1185,8 @@ function FeatureCard({
         padding: 24,
         transition: "border-color 200ms ease, transform 200ms ease",
         transform: hover ? "translateY(-2px)" : "translateY(0)",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <div
@@ -1202,6 +1220,22 @@ function FeatureCard({
       >
         {f.desc}
       </p>
+      {f.cta && (
+        <Link
+          href={f.cta.href}
+          className="nx-feature-cta"
+          style={{
+            marginTop: 12,
+            color: COLORS.accent,
+            fontSize: 13,
+            textDecoration: "none",
+            fontWeight: 500,
+            alignSelf: "flex-start",
+          }}
+        >
+          {f.cta.label}
+        </Link>
+      )}
     </div>
   );
 }
