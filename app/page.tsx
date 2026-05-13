@@ -69,8 +69,9 @@ const FEATURES: {
   },
   {
     dot: "#06b6d4",
-    title: "Trade Planner",
-    desc: "Set your risk per trade once. Get the exact position size for every trade automatically, based on your account and stop distance.",
+    title: "Alerts",
+    desc: "Get notified when your trading conditions are met — daily loss limits, session start, price levels, max trades, and profit targets.",
+    cta: { label: "Open Alerts →", href: "/alerts" },
   },
 ];
 

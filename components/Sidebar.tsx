@@ -62,6 +62,12 @@ const ICONS = {
       <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
   ),
+  bell: (
+    <svg {...ICON_PROPS}>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  ),
   play: (
     <svg {...ICON_PROPS}>
       <polygon points="6 4 20 12 6 20 6 4" />
@@ -270,7 +276,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         {/* Group 2 — Daily */}
         <SidebarGroupLabel label="Daily" />
         <SidebarItem icon={ICONS.checklist} label="Checklist" href="/checklist" active={isActive("/checklist")} />
-        <SidebarItem icon={ICONS.lightning} label="Trade Planner" href="/planner" active={isActive("/planner")} />
+        <SidebarItem icon={ICONS.bell} label="Alerts" href="/alerts" active={isActive("/alerts")} />
         <SidebarItem icon={ICONS.trophy} label="Challenge" href="/challenge" active={isActive("/challenge")} />
 
         <SidebarDivider />

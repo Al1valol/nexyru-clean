@@ -5229,7 +5229,7 @@ function ToolsDropdown({ onSelectTab }) {
       heading: "Manage",
       items: [
         { key:"checklist", href:"/checklist", emoji:"", label:"Checklist",     color:"#22d3a5" },
-        { key:"planner",   href:"/planner",   emoji:"", label:"Trade Planner", color:"#6366f1" },
+        { key:"alerts",    href:"/alerts",    emoji:"", label:"Alerts",        color:"#6366f1" },
         { key:"challenge", href:"/challenge", emoji:"", label:"Challenge",     color:"#a5b4fc" },
       ],
     },
@@ -6656,6 +6656,12 @@ const SIDEBAR_ICONS = {
       <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
     </svg>
   ),
+  bell: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  ),
   play: (
     <svg {...SIDEBAR_ICON_PROPS}>
       <polygon points="6 4 20 12 6 20 6 4"/>
@@ -7146,7 +7152,7 @@ function TradingDashboard({ session, onLogout }) {
           {/* Group 2 — Daily */}
           <SidebarGroupLabel label="Daily"/>
           <SidebarItem icon={SIDEBAR_ICONS.checklist} label="Checklist"     href="/checklist"/>
-          <SidebarItem icon={SIDEBAR_ICONS.lightning} label="Trade Planner" href="/planner"/>
+          <SidebarItem icon={SIDEBAR_ICONS.bell}      label="Alerts"        href="/alerts"/>
           <SidebarItem icon={SIDEBAR_ICONS.trophy}    label="Challenge"     href="/challenge"/>
 
           <SidebarDivider/>
@@ -7236,7 +7242,7 @@ function TradingDashboard({ session, onLogout }) {
               ]},
               { heading:"Manage", items:[
                 { href:"/checklist", emoji:"", label:"Checklist",     color:"#22d3a5" },
-                { href:"/planner",   emoji:"", label:"Trade Planner", color:"#6366f1" },
+                { href:"/alerts",    emoji:"", label:"Alerts",        color:"#6366f1" },
                 { href:"/challenge", emoji:"", label:"Challenge",     color:"#a5b4fc" },
               ]},
               { heading:"Review", items:[
