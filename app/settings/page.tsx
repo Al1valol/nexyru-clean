@@ -60,11 +60,58 @@ type Notifications = {
 
 type Display = {
   accentColor: string;
+  theme: "dark" | "light";
   compactMode: boolean;
   showPnlColors: boolean;
   fontSize: "small" | "medium" | "large";
   numberFormat: "withCommas" | "plain";
 };
+
+const THEME_VARS = {
+  dark: {
+    "--bg": "#080808",
+    "--surface": "#111111",
+    "--surface2": "#1a1a1a",
+    "--border": "#1e1e1e",
+    "--text-primary": "#ffffff",
+    "--text-secondary": "#6b7280",
+    "--text-muted": "#374151",
+  },
+  light: {
+    "--bg": "#ffffff",
+    "--surface": "#f9fafb",
+    "--surface2": "#f3f4f6",
+    "--border": "#e5e7eb",
+    "--text-primary": "#111827",
+    "--text-secondary": "#6b7280",
+    "--text-muted": "#9ca3af",
+  },
+} as const;
+
+function applyTheme(theme: "dark" | "light") {
+  if (typeof document === "undefined") return;
+  const vars = THEME_VARS[theme];
+  const css = `:root{${Object.entries(vars)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(";")}}`;
+  let tag = document.getElementById("nexyru-theme-vars") as HTMLStyleElement | null;
+  if (!tag) {
+    tag = document.createElement("style");
+    tag.id = "nexyru-theme-vars";
+    document.head.appendChild(tag);
+  }
+  tag.textContent = css;
+  if (theme === "light") {
+    document.documentElement.classList.add("light-mode");
+  } else {
+    document.documentElement.classList.remove("light-mode");
+  }
+}
+
+function applyAccent(color: string) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--accent", color);
+}
 
 const TIMEZONES = [
   "Eastern (ET)",
@@ -1227,16 +1274,20 @@ function DisplaySection() {
   const [display, setDisplay] = useState<Display>(() => {
     const defaults: Display = {
       accentColor: "#6366f1",
+      theme: "dark",
       compactMode: false,
       showPnlColors: true,
       fontSize: "medium",
       numberFormat: "withCommas",
     };
     try {
-      const accent = localStorage.getItem("nexyru_accent_color") || defaults.accentColor;
+      const accent = localStorage.getItem("nexyru_accent") || defaults.accentColor;
+      const theme =
+        (localStorage.getItem("nexyru_theme") as "light" | "dark" | null) ||
+        defaults.theme;
       const raw = localStorage.getItem("nexyru_display");
       const parsed = raw ? JSON.parse(raw) : {};
-      return { ...defaults, ...parsed, accentColor: accent };
+      return { ...defaults, ...parsed, accentColor: accent, theme };
     } catch {
       return defaults;
     }
@@ -1248,8 +1299,16 @@ function DisplaySection() {
 
   const pickAccent = (color: string) => {
     setDisplay((d) => ({ ...d, accentColor: color }));
-    localStorage.setItem("nexyru_accent_color", color);
+    localStorage.setItem("nexyru_accent", color);
+    applyAccent(color);
     setFlash({ msg: "Accent color updated", kind: "success" });
+  };
+
+  const pickTheme = (theme: "dark" | "light") => {
+    setDisplay((d) => ({ ...d, theme }));
+    localStorage.setItem("nexyru_theme", theme);
+    applyTheme(theme);
+    setFlash({ msg: `${theme === "light" ? "Light" : "Dark"} mode applied`, kind: "success" });
   };
 
   const updateDisplay = (patch: Partial<Display>) => {
@@ -1267,41 +1326,41 @@ function DisplaySection() {
       <div style={{ marginBottom: 22 }}>
         <label style={label}>Theme</label>
         <div style={{ display: "flex", gap: 10 }}>
-          <div
-            style={{
-              flex: 1,
-              padding: "14px 16px",
-              borderRadius: 8,
-              background: "rgba(99,102,241,0.15)",
-              border: "1px solid #6366f1",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 700,
-            }}
-          >
-            Dark
-            <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500, marginTop: 2 }}>
-              Selected
-            </div>
-          </div>
-          <div
-            style={{
-              flex: 1,
-              padding: "14px 16px",
-              borderRadius: 8,
-              background: "#0a0a0f",
-              border: "1px solid #2a2a2a",
-              color: "#6b7280",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "not-allowed",
-            }}
-          >
-            Light
-            <div style={{ fontSize: 11, fontWeight: 500, marginTop: 2 }}>
-              Coming soon
-            </div>
-          </div>
+          {(["dark", "light"] as const).map((t) => {
+            const active = display.theme === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => pickTheme(t)}
+                style={{
+                  flex: 1,
+                  textAlign: "left",
+                  padding: "14px 16px",
+                  borderRadius: 8,
+                  background: active ? "rgba(99,102,241,0.15)" : "#0a0a0f",
+                  border: active ? "1px solid #6366f1" : "1px solid #2a2a2a",
+                  color: active ? "#fff" : "#9ca3af",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  textTransform: "capitalize",
+                }}
+              >
+                {t}
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: active ? "#9ca3af" : "#6b7280",
+                    fontWeight: 500,
+                    marginTop: 2,
+                  }}
+                >
+                  {active ? "Selected" : t === "light" ? "Bright theme" : "Default"}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -1255,7 +1255,7 @@ function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
               const active = tab === t.id;
               return (
                 <button key={t.id} onClick={() => setTab(t.id)}
-                  style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 14px", border:"none", background:"transparent", color:active?"#ffffff":"#6b7280", fontSize:12, fontWeight:active?700:600, cursor:"pointer", borderBottom:`2px solid ${active?"#6366f1":"transparent"}`, marginBottom:-1, transition:"all 0.15s" }}>
+                  style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 14px", border:"none", background:"transparent", color:active?"#ffffff":"#6b7280", fontSize:12, fontWeight:active?700:600, cursor:"pointer", borderBottom:`2px solid ${active?"var(--accent)":"transparent"}`, marginBottom:-1, transition:"all 0.15s" }}>
                   {t.icon}{t.label}
                   {t.id === "ai" && <span style={{ fontSize:8, fontWeight:800, padding:"1px 5px", borderRadius:8, background:"linear-gradient(135deg,#6366f1,#a855f7)", color:"#fff", letterSpacing:"0.06em" }}>NEW</span>}
                 </button>
@@ -1831,7 +1831,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
                 <button onClick={onImport} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"1px solid rgba(99,102,241,0.4)", background:"transparent", color:"#6366f1", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}><Upload size={12}/>Import CSV</button>
               )}
               {onAdd && (
-                <button onClick={onAdd} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(99,102,241,0.25)", transition:"all 0.15s" }}><Plus size={13}/>Log Trade</button>
+                <button onClick={onAdd} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(99,102,241,0.25)", transition:"all 0.15s" }}><Plus size={13}/>Log Trade</button>
               )}
             </div></div>) : (<div style={{ padding:"40px", textAlign:"center", color:"#6b7280", fontSize:12, borderRadius:12, border:"1px dashed #2a2a3a" }}>No trades match your filters.</div>)
  ) : isMobile ? (<div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -3785,7 +3785,7 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
                       {Math.abs(t.pnlPercent ?? 0) >= 0.05 &&<div style={{ fontSize:9, color:(t.pnl??0)>=0?"#10b981":"#ef4444", opacity:0.7 }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>}
                     </div></div>
                 ))}
-              </div></div>) : (<div style={{ padding:"32px 24px", borderRadius:12, border:"1px dashed #2a2a3a", textAlign:"center", animation:"fadeIn 0.3s ease" }}><div style={{ fontSize:36, marginBottom:12 }}></div><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", marginBottom:6 }}>No trades yet</div><div style={{ fontSize:12, color:"#6b7280", marginBottom:16 }}>Log your first trade to start building your track record</div><div style={{ display:"flex", gap:10, justifyContent:"center" }}><button onClick={onAddTrade} style={{ padding:"8px 18px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Log Trade</button><button onClick={onOpenImport} style={{ padding:"8px 18px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:12, fontWeight:600, cursor:"pointer" }}>Import CSV</button></div></div>
+              </div></div>) : (<div style={{ padding:"32px 24px", borderRadius:12, border:"1px dashed #2a2a3a", textAlign:"center", animation:"fadeIn 0.3s ease" }}><div style={{ fontSize:36, marginBottom:12 }}></div><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", marginBottom:6 }}>No trades yet</div><div style={{ fontSize:12, color:"#6b7280", marginBottom:16 }}>Log your first trade to start building your track record</div><div style={{ display:"flex", gap:10, justifyContent:"center" }}><button onClick={onAddTrade} style={{ padding:"8px 18px", borderRadius:9, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Log Trade</button><button onClick={onOpenImport} style={{ padding:"8px 18px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:12, fontWeight:600, cursor:"pointer" }}>Import CSV</button></div></div>
           )}
 
           {!trades.length && <div style={{ textAlign:"center", padding:"32px", color:"#374151", fontSize:12 }}>No trades logged yet</div>}
@@ -5174,7 +5174,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
             )}
           </div><button onClick={inDemo ? undefined : onAdd} disabled={inDemo}
             title={inDemo ? "Exit demo mode to log trades" : "Log Trade"}
-            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"#6366f1", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}><Plus size={12}/>Log Trade</button></div></div>
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}><Plus size={12}/>Log Trade</button></div></div>
 
       {/* Trades */}
       <section><TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade} onAdd={inDemo ? undefined : onAdd} onImport={inDemo ? undefined : onCSV}/></section>
@@ -5656,7 +5656,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
   const showOnboarding = trades.length < 3 && !onboardingDismissed && username;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:20 }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:22, fontWeight:800, color:"#ffffff", letterSpacing:"-0.02em" }}>Dashboard</div><div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Your trading journal & performance hub</div></div><div style={{ display:"flex", gap:8 }}><button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.25)" }}><Plus size={14}/>Log Trade</button></div></div>
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:22, fontWeight:800, color:"#ffffff", letterSpacing:"-0.02em" }}>Dashboard</div><div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Your trading journal & performance hub</div></div><div style={{ display:"flex", gap:8 }}><button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.25)" }}><Plus size={14}/>Log Trade</button></div></div>
 
       {showOnboarding && <OnboardingBanner onOpenImport={onOpenImport} onDismiss={dismissOnboarding}/>}
 
@@ -5665,7 +5665,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
 
       {trades.length >0 ? (
  isMobile ? (<div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}><StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/><StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/><div style={{ gridColumn:"span 2" }}><StatCard label="Total PnL" value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/></div><StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/><StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/></div>) : (<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10 }}><StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/><StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/><StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/><StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/><StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/></div>)
- ) : !showOnboarding && (<div style={{ padding:"56px 24px", borderRadius:16, border:"2px dashed #2a2a3a", textAlign:"center" }}><div style={{ fontSize:48, marginBottom:14, lineHeight:1 }}></div><div style={{ fontSize:17, fontWeight:700, color:"#9ca3af", marginBottom:8 }}>Your journal is empty</div><div style={{ fontSize:12, color:"#6b7280", marginBottom:24, lineHeight:1.6 }}>Import a CSV or log your first trade to get started.<br/>Nexyru analyzes your performance and gives you actionable insights.</div><div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}><button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", transition:"all 0.15s", boxShadow:"0 4px 14px rgba(99,102,241,0.25)" }}><Plus size={14}/>Log Trade</button><button onClick={onOpenImport} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"1px solid rgba(99,102,241,0.4)", background:"transparent", color:"#6366f1", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}><Upload size={13}/>Import CSV</button></div></div>
+ ) : !showOnboarding && (<div style={{ padding:"56px 24px", borderRadius:16, border:"2px dashed #2a2a3a", textAlign:"center" }}><div style={{ fontSize:48, marginBottom:14, lineHeight:1 }}></div><div style={{ fontSize:17, fontWeight:700, color:"#9ca3af", marginBottom:8 }}>Your journal is empty</div><div style={{ fontSize:12, color:"#6b7280", marginBottom:24, lineHeight:1.6 }}>Import a CSV or log your first trade to get started.<br/>Nexyru analyzes your performance and gives you actionable insights.</div><div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}><button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", transition:"all 0.15s", boxShadow:"0 4px 14px rgba(99,102,241,0.25)" }}><Plus size={14}/>Log Trade</button><button onClick={onOpenImport} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"1px solid rgba(99,102,241,0.4)", background:"transparent", color:"#6366f1", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}><Upload size={13}/>Import CSV</button></div></div>
       )}
       {/* Weekly Challenges — hidden for now */}
       {/* <WeeklyReport trades={trades}/> */}
@@ -6696,13 +6696,13 @@ const TAB_LABELS = {
 function SidebarItem({ icon, label, active, onClick, href }) {
   const [hover, setHover] = useState(false);
   const bg    = active ? "#1e1e2a" : (hover ? "#1a1a24" : "transparent");
-  const color = active ? "#6366f1" : (hover ? "#ffffff" : "#6b7280");
+  const color = active ? "var(--accent)" : (hover ? "#ffffff" : "#6b7280");
   const commonStyle = {
     width:40, height:40,
     borderRadius:8,
     background:bg,
     border:"none",
-    borderLeft: active ? "2px solid #6366f1" : "2px solid transparent",
+    borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
     paddingLeft: active ? 0 : 2,
     cursor:"pointer",
     color,
@@ -6837,6 +6837,48 @@ function TradingDashboard({ session, onLogout }) {
 
   const copyTrading  = useCopyTrading(session.username);
   const paperAccts   = usePaperAccounts(session.username);
+
+  // Apply saved theme + accent on mount
+  useEffect(() => {
+    try {
+      const accent = localStorage.getItem("nexyru_accent") || "#6366f1";
+      document.documentElement.style.setProperty("--accent", accent);
+
+      const theme = localStorage.getItem("nexyru_theme") === "light" ? "light" : "dark";
+      const vars = theme === "light"
+        ? {
+            "--bg": "#ffffff",
+            "--surface": "#f9fafb",
+            "--surface2": "#f3f4f6",
+            "--border": "#e5e7eb",
+            "--text-primary": "#111827",
+            "--text-secondary": "#6b7280",
+            "--text-muted": "#9ca3af",
+          }
+        : {
+            "--bg": "#080808",
+            "--surface": "#111111",
+            "--surface2": "#1a1a1a",
+            "--border": "#1e1e1e",
+            "--text-primary": "#ffffff",
+            "--text-secondary": "#6b7280",
+            "--text-muted": "#374151",
+          };
+      const css = `:root{${Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(";")}}`;
+      let tag = document.getElementById("nexyru-theme-vars");
+      if (!tag) {
+        tag = document.createElement("style");
+        tag.id = "nexyru-theme-vars";
+        document.head.appendChild(tag);
+      }
+      tag.textContent = css;
+      if (theme === "light") {
+        document.documentElement.classList.add("light-mode");
+      } else {
+        document.documentElement.classList.remove("light-mode");
+      }
+    } catch {}
+  }, []);
 
   // Seed demo data AFTER accounts are initialized
   useEffect(() => {
@@ -7146,12 +7188,12 @@ function TradingDashboard({ session, onLogout }) {
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
             {supabaseUserId && <SyncIndicator status={syncStatus} />}
             <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
-            <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+            <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
               <Plus size={13}/><span className="hide-mobile">Log Trade</span>
             </button>
             <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24" }}>
               <a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}>
-                <div style={{ width:22, height:22, borderRadius:"50%", background:"#6366f1", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:"#fff" }}>{session.displayName[0].toUpperCase()}</div>
+                <div style={{ width:22, height:22, borderRadius:"50%", background:"var(--accent)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:"#fff" }}>{session.displayName[0].toUpperCase()}</div>
                 <span style={{ fontSize:11, color:"#9ca3af", fontWeight:600 }} className="hide-mobile">{session.displayName}</span>
               </a>
               <button onClick={onLogout} title="Sign out" style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", display:"flex", padding:2 }} className="hide-mobile"><LogOut size={12}/></button>
