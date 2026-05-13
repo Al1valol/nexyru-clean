@@ -6483,6 +6483,146 @@ function StrategyLabPage({ session, trades }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  SIDEBAR NAV (left rail)
+// ═══════════════════════════════════════════════════════════════
+
+const SIDEBAR_ICON_PROPS = {
+  width:"20", height:"20", viewBox:"0 0 24 24",
+  fill:"none", stroke:"currentColor",
+  strokeWidth:"1.5", strokeLinecap:"round", strokeLinejoin:"round",
+};
+
+const SIDEBAR_ICONS = {
+  dashboard: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <rect x="3" y="3" width="7" height="7" rx="1"/>
+      <rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/>
+      <rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+  ),
+  journal: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+    </svg>
+  ),
+  trophy: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+      <path d="M4 22h16"/>
+      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+    </svg>
+  ),
+  brain: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+    </svg>
+  ),
+  target: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <circle cx="12" cy="12" r="10"/>
+      <circle cx="12" cy="12" r="6"/>
+      <circle cx="12" cy="12" r="2"/>
+    </svg>
+  ),
+  checklist: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <path d="M9 12l2 2 4-4"/>
+    </svg>
+  ),
+  lightning: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+    </svg>
+  ),
+  play: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <polygon points="6 4 20 12 6 20 6 4"/>
+    </svg>
+  ),
+  flask: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M9 2v6L3.5 18.5A2 2 0 0 0 5.3 21.5h13.4a2 2 0 0 0 1.8-3L15 8V2"/>
+      <path d="M8 2h8"/>
+      <path d="M6 14h12"/>
+    </svg>
+  ),
+  chart: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <line x1="3" y1="21" x2="21" y2="21"/>
+      <line x1="7" y1="21" x2="7" y2="13"/>
+      <line x1="12" y1="21" x2="12" y2="9"/>
+      <line x1="17" y1="21" x2="17" y2="5"/>
+    </svg>
+  ),
+  gear: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  ),
+};
+
+const TAB_LABELS = {
+  dashboard:  "Dashboard",
+  journal:    "Journal",
+  insights:   "Insights",
+  stratlab:   "Strategy Lab",
+  strategies: "Strategies",
+  copy:       "Copy Trading",
+};
+
+function SidebarItem({ icon, label, active, onClick, href }) {
+  const [hover, setHover] = useState(false);
+  const bg    = active ? "#1e1e2a" : (hover ? "#1a1a24" : "transparent");
+  const color = active ? "#6366f1" : (hover ? "#ffffff" : "#6b7280");
+  const commonStyle = {
+    width:40, height:40,
+    borderRadius:8,
+    background:bg,
+    border:"none",
+    borderLeft: active ? "2px solid #6366f1" : "2px solid transparent",
+    paddingLeft: active ? 0 : 2,
+    cursor:"pointer",
+    color,
+    textDecoration:"none",
+    display:"flex", alignItems:"center", justifyContent:"center",
+    transition:"background 0.15s, color 0.15s",
+  };
+  return (
+    <div
+      style={{ position:"relative", display:"flex", justifyContent:"center" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}>
+      {href ? (
+        <a href={href} aria-label={label} style={commonStyle}>{icon}</a>
+      ) : (
+        <button type="button" onClick={onClick} aria-label={label} style={commonStyle}>{icon}</button>
+      )}
+      {hover && (
+        <span style={{
+          position:"absolute", left:48, top:"50%", transform:"translateY(-50%)",
+          background:"#1e1e2a", border:"1px solid #2a2a3a", borderRadius:6,
+          padding:"4px 10px", fontSize:12, color:"#fff", whiteSpace:"nowrap",
+          pointerEvents:"none", zIndex:100, boxShadow:"0 4px 14px rgba(0,0,0,0.5)",
+          fontWeight:600,
+        }}>{label}</span>
+      )}
+    </div>
+  );
+}
+
+function SidebarDivider() {
+  return <div style={{ width:24, height:1, background:"#1e1e2a", margin:"6px 0", flexShrink:0 }}/>;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  MAIN TRADING DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 
@@ -6629,13 +6769,8 @@ function TradingDashboard({ session, onLogout }) {
     return trades.filter(t => t.accountId === id || (!t.accountId && isDefault));
   }, [trades, paperAccts.activeAccount, paperAccts.accounts]);
 
-  const NAV_TABS = [
-    { id:"dashboard",  label:"Dashboard",    icon:<Activity size={13}/> },
-    { id:"journal",    label:"Journal",      icon:<BookOpen size={13}/> },
-  ];
-
   return (
-    <div style={{ minHeight:"100vh", background:"#0a0a0f", display:"flex", flexDirection:"column", fontFamily:"system-ui,-apple-system,sans-serif", color:"#ffffff" }}>
+    <div style={{ minHeight:"100vh", background:"#0a0a0f", fontFamily:"system-ui,-apple-system,sans-serif", color:"#ffffff" }}>
 
       {/* Modals */}
       {(showForm || editTrade) && <TradeForm initial={editTrade} strategies={strategies} onSave={saveTrade} onClose={() => { setShowForm(false); setEditTrade(null); }}/>}
@@ -6689,48 +6824,80 @@ function TradingDashboard({ session, onLogout }) {
         />
       )}
 
-      {/* Top bar */}
-      {/* ── Top nav bar ── */}
-      <div style={{ display:"flex", alignItems:"center", height:52, borderBottom:"1px solid #2a2a3a", background:"#111118", flexShrink:0, padding:"0 16px", gap:8, position:"sticky", top:0, zIndex:50 }}>
-        {/* Logo */}
-        <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}><div style={{ width:28, height:28, borderRadius:8, background:"#6366f1", display:"flex", alignItems:"center", justifyContent:"center" }}><BookOpen size={14} style={{ color:"#fff" }}/></div><span style={{ fontSize:14, fontWeight:800, color:"#ffffff" }} className="hide-mobile">Nexyru</span></div>
+      {/* ── Left Sidebar (desktop) ── */}
+      <aside className="hide-mobile" style={{ position:"fixed", top:0, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
+        {/* Logo mark */}
+        <a href="/" aria-label="Nexyru" style={{ width:36, height:36, borderRadius:9, background:"linear-gradient(135deg,#6366f1,#4f46e5)", display:"flex", alignItems:"center", justifyContent:"center", textDecoration:"none", marginBottom:14, flexShrink:0, fontWeight:900, color:"#fff", fontSize:16, letterSpacing:"-0.02em" }}>N</a>
 
-        {/* Nav tabs — hidden on mobile (use bottom nav instead) */}
-        <div style={{ display:"flex", alignItems:"center", gap:1, flex:1, overflowX:"auto" }} className="hide-mobile">
-          {NAV_TABS.map(({ id, label, icon }) =>(<button key={id} onClick={()=>setTab(id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 10px", borderRadius:7, fontSize:11, fontWeight:600, cursor:"pointer", border:"none", whiteSpace:"nowrap", background:tab===id?"rgba(99,102,241,0.12)":"transparent", color:tab===id?"#6366f1":"#6b7280" }}>
-              {icon}{label}
+        {/* Nav stack */}
+        <nav style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+          <SidebarItem icon={SIDEBAR_ICONS.dashboard} label="Dashboard"    active={tab==="dashboard"} onClick={()=>setTab("dashboard")}/>
+          <SidebarItem icon={SIDEBAR_ICONS.journal}   label="Journal"      active={tab==="journal"}   onClick={()=>setTab("journal")}/>
+          <SidebarDivider/>
+          <SidebarItem icon={SIDEBAR_ICONS.trophy}    label="Challenge"     href="/challenge"/>
+          <SidebarItem icon={SIDEBAR_ICONS.brain}     label="Psychology"    href="/psychology"/>
+          <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups"/>
+          <SidebarItem icon={SIDEBAR_ICONS.checklist} label="Checklist"     href="/checklist"/>
+          <SidebarItem icon={SIDEBAR_ICONS.lightning} label="Trade Planner" href="/planner"/>
+          <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Replay"  href="/replay"/>
+          <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab" active={tab==="stratlab"} onClick={()=>setTab("stratlab")}/>
+          <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"     active={tab==="insights"} onClick={()=>setTab("insights")}/>
+          <SidebarDivider/>
+        </nav>
+
+        {/* Settings at bottom */}
+        <SidebarItem icon={SIDEBAR_ICONS.gear} label="Settings" href="/settings"/>
+      </aside>
+
+      {/* ── Main column (top bar + content) ── */}
+      <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
+
+        {/* ── Top bar ── */}
+        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:0, zIndex:40, flexShrink:0 }}>
+          {/* Breadcrumb */}
+          <div style={{ flex:1, display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+            <span style={{ fontSize:13, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+              {TAB_LABELS[tab] ?? "Dashboard"}
+            </span>
+            {isDemoMode(session.username) && (
+              <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"rgba(245,158,11,0.12)", border:"1px solid rgba(245,158,11,0.25)", color:"#f59e0b", whiteSpace:"nowrap" }} className="hide-mobile">DEMO MODE</span>
+            )}
+          </div>
+
+          {/* Right: account selector + Log Trade + avatar */}
+          <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+            <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
+            <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+              <Plus size={13}/><span className="hide-mobile">Log Trade</span>
             </button>
-          ))}
-          {isDemoMode(session.username) && (
-            <span style={{ marginLeft:6, fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"rgba(245,158,11,0.12)", border:"1px solid rgba(245,158,11,0.25)", color:"#f59e0b", whiteSpace:"nowrap" }}>DEMO MODE</span>
-          )}
-        </div>
+            <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24" }}>
+              <a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}>
+                <div style={{ width:22, height:22, borderRadius:"50%", background:"#6366f1", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:"#fff" }}>{session.displayName[0].toUpperCase()}</div>
+                <span style={{ fontSize:11, color:"#9ca3af", fontWeight:600 }} className="hide-mobile">{session.displayName}</span>
+              </a>
+              <button onClick={onLogout} title="Sign out" style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", display:"flex", padding:2 }} className="hide-mobile"><LogOut size={12}/></button>
+            </div>
+          </div>
+        </header>
 
-        {/* Mobile: current tab label */}
-        <div style={{ flex:1 }} className="show-mobile"><span style={{ fontSize:13, fontWeight:700, color:"#ffffff" }}>
-            {NAV_TABS.find(t => t.id === tab)?.label ?? "Nexyru"}
-          </span>
-          {isDemoMode(session.username) && <span style={{ marginLeft:8, fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:10, background:"rgba(245,158,11,0.15)", border:"1px solid rgba(245,158,11,0.3)", color:"#f59e0b" }}>DEMO</span>}
-        </div>
-
-        {/* Right side */}
-        <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}><AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/><button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(99,102,241,0.1)", color:"#6366f1", fontSize:11, fontWeight:700, cursor:"pointer" }}><Plus size={12}/><span className="hide-mobile">Add</span></button><span className="hide-mobile"><ToolsDropdown onSelectTab={setTab}/></span>
-          {/* User avatar — always visible */}
-          <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24" }}><a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}><div style={{ width:22, height:22, borderRadius:"50%", background:"#6366f1", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:"#fff" }}>{session.displayName[0].toUpperCase()}</div><span style={{ fontSize:11, color:"#9ca3af", fontWeight:600 }} className="hide-mobile">{session.displayName}</span></a><button onClick={onLogout} title="Sign out" style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", display:"flex", padding:2 }} className="hide-mobile"><LogOut size={12}/></button></div></div></div>
-
-      {/* ── Page content ── */}
-      <div style={{ flex:1, overflowY:"auto", paddingBottom:80 }}>
-        {/* Demo banner — always visible on all tabs */}
-        <div style={{ maxWidth:1200, margin:"0 auto", padding:"16px 16px 0" }}><DemoBanner username={session.username} onClear={() => {
-            setDemoMode(session.username, false);
-            saveUserTrades(session.username, []);
-            setTrades([]);
-            setShowAccountSetup(true);
-          }}/></div><div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"12px 16px 16px" }}>
+        {/* ── Page content ── */}
+        <main style={{ flex:1, padding:"24px", paddingBottom:80, background:"#0a0a0f" }}>
+          <div style={{ maxWidth:1200, margin:"0 auto" }}>
+            <DemoBanner username={session.username} onClear={() => {
+              setDemoMode(session.username, false);
+              saveUserTrades(session.username, []);
+              setTrades([]);
+              setShowAccountSetup(true);
+            }}/>
+          </div>
+          <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", paddingTop:12 }}>
 
       {/* ── Bottom nav — mobile only ── */}
       <div className="show-mobile" style={{ position:"fixed", bottom:0, left:0, right:0, height:60, background:"#111118", borderTop:"1px solid #2a2a3a", display:"flex", alignItems:"stretch", zIndex:50, paddingBottom:"env(safe-area-inset-bottom)" }}>
-        {NAV_TABS.map(({ id, label }) =>(<button key={id} onClick={()=>setTab(id)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:tab===id?"#6366f1":"#6b7280", fontSize:10, fontWeight:700 }}><span style={{ fontSize:18 }}>{id==="dashboard"?"":""}</span>
+        {[
+          { id:"dashboard", label:"Dashboard" },
+          { id:"journal",   label:"Journal" },
+        ].map(({ id, label }) =>(<button key={id} onClick={()=>setTab(id)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:tab===id?"#6366f1":"#6b7280", fontSize:10, fontWeight:700 }}><span style={{ fontSize:18 }}>{id==="dashboard"?"":""}</span>
             {label}
           </button>
         ))}
@@ -6792,7 +6959,10 @@ function TradingDashboard({ session, onLogout }) {
           )}
           {tab==="stratlab"   && <StrategyLabPage session={session} trades={activeTrades}/>}
           {tab==="copy" && <CopyTradingPage session={session} copyTrading={copyTrading}/> }
-        </div></div><style>{`
+          </div>
+        </main>
+      </div>
+      <style>{`
         * { box-sizing: border-box; }
         @keyframes spin    { to { transform: rotate(360deg) } }
         @keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
@@ -6811,9 +6981,11 @@ function TradingDashboard({ session, onLogout }) {
         button:active { transform: scale(0.97); }
         .hide-mobile { display: flex !important; }
         .show-mobile { display: none !important; }
+        .main-with-sidebar { margin-left: 56px; }
         @media (max-width: 767px) {
           .hide-mobile { display: none !important; }
           .show-mobile { display: flex !important; }
+          .main-with-sidebar { margin-left: 0 !important; }
         }
       `}</style></div>
   );
