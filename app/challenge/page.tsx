@@ -739,6 +739,24 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
 
   const warnings = getPhaseWarnings(account.firm, account.phase);
 
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current); }, []);
+  function startConfirmDelete() {
+    setConfirmingDelete(true);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = setTimeout(() => setConfirmingDelete(false), 3000);
+  }
+  function cancelConfirmDelete() {
+    if (confirmTimerRef.current) { clearTimeout(confirmTimerRef.current); confirmTimerRef.current = null; }
+    setConfirmingDelete(false);
+  }
+  function confirmDelete() {
+    if (confirmTimerRef.current) { clearTimeout(confirmTimerRef.current); confirmTimerRef.current = null; }
+    setConfirmingDelete(false);
+    onDelete();
+  }
+
   // Topstep payout eligibility heuristic
   const topstepPayoutReady = account.firm === "topstep" && account.phase === "express"
     && stats.benchmarkDaysDone >= account.benchmarkDays && stats.consistencyScore >= 50;
@@ -752,7 +770,17 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
       <div style={{ ...card, padding:"22px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, borderColor: firm.color + "55", background: `linear-gradient(135deg, #111118, ${firm.accent})` }}><div><div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6, flexWrap:"wrap" }}><span style={{ width:12, height:12, borderRadius:3, background:firm.color }}/><span style={{ fontSize:18, fontWeight:900, color:"#ffffff" }}>{account.name}</span><span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:firm.accent, color:firm.color, border:`1px solid ${firm.color}44` }}>{firm.label}</span><span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:"#111118", color:"#7a8aa8", border:"1px solid #2a2a3a" }}>{phaseDef.label}</span></div><div style={{ display:"flex", alignItems:"center", gap:14, fontSize:11, color:"#5a6a8a", flexWrap:"wrap" }}><span>Size<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>${(account.accountSize/1000).toFixed(0)}K</strong></span><span>Started<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>{account.startDate}</strong></span><span>Peak<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>{fmtUSD(stats.peakBalance)}</strong></span>
             {account.maxContracts >0 &&<span>Max contracts<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>{account.maxContracts}</strong></span>}
             {stats.trailingIsLocked && <span style={{ color:"#22c55e", fontWeight:700 }}>Trailing locked</span>}
-          </div></div><div style={{ display:"flex", alignItems:"center", gap:12 }}><div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:"#5a6a8a", textTransform:"uppercase", letterSpacing:"0.08em" }}>Current Balance</div><div style={{ fontSize:26, fontWeight:900, fontFamily:"monospace", color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSD(stats.currentBalance)}</div><div style={{ fontSize:11, color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444", fontWeight:800, fontFamily:"monospace" }}>{fmtUSDsigned(stats.totalProfit)}</div></div><div style={{ display:"flex", flexDirection:"column", gap:6 }}><button onClick={onEdit} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#111118", color:"#9ca3af", fontSize:11, fontWeight:700, cursor:"pointer" }}>Edit</button><button onClick={onDelete} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid rgba(239,68,68,0.25)", background:"transparent", color:"#ef4444", fontSize:11, fontWeight:700, cursor:"pointer" }}>Delete</button></div></div></div>
+          </div></div><div style={{ display:"flex", alignItems:"center", gap:12 }}><div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:"#5a6a8a", textTransform:"uppercase", letterSpacing:"0.08em" }}>Current Balance</div><div style={{ fontSize:26, fontWeight:900, fontFamily:"monospace", color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSD(stats.currentBalance)}</div><div style={{ fontSize:11, color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444", fontWeight:800, fontFamily:"monospace" }}>{fmtUSDsigned(stats.totalProfit)}</div></div><div style={{ display:"flex", flexDirection:"column", gap:6 }}><button onClick={onEdit} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#111118", color:"#9ca3af", fontSize:11, fontWeight:700, cursor:"pointer" }}>Edit</button>
+            {confirmingDelete ? (
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                <span style={{ fontSize:11, fontWeight:700, color:"#ef4444" }}>Sure?</span>
+                <button onClick={confirmDelete} style={{ padding:"7px 10px", borderRadius:8, border:"1px solid #ef4444", background:"#ef4444", color:"#ffffff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Yes, delete</button>
+                <button onClick={cancelConfirmDelete} style={{ padding:"7px 10px", borderRadius:8, border:"1px solid #2a2a3a", background:"#111118", color:"#9ca3af", fontSize:11, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={startConfirmDelete} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid rgba(239,68,68,0.25)", background:"transparent", color:"#ef4444", fontSize:11, fontWeight:700, cursor:"pointer" }}>Delete</button>
+            )}
+          </div></div></div>
 
       {/* 4 rings */}
       <div className="rings-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:14 }}>
@@ -1008,7 +1036,6 @@ export default function ChallengePage() {
     setMode("view");
   }
   function deleteAccount(id:string) {
-    if (!confirm("Delete this challenge account? This can't be undone.")) return;
     const next = accounts.filter(a => a.id !== id);
     setAccounts(next);
     saveAccounts(username, next);

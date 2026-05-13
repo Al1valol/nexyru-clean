@@ -458,8 +458,19 @@ function ReplayPageInner() {
       const savedReviews = JSON.parse(localStorage.getItem(reviewsKey(u)) || "{}") || {};
       setReviews(savedReviews);
 
-      // resume at first unreviewed trade
-      const startIdx = sorted.findIndex((t) => !savedReviews[t.id]);
+      // if tradeId param present, start replay on that specific trade
+      let startIdx = -1;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const tradeId = params.get("tradeId");
+        if (tradeId) {
+          const found = sorted.findIndex((t) => String(t.id) === String(tradeId));
+          if (found >= 0) startIdx = found;
+        }
+      } catch {}
+
+      // fallback: resume at first unreviewed trade
+      if (startIdx < 0) startIdx = sorted.findIndex((t) => !savedReviews[t.id]);
       setIdx(startIdx >= 0 ? startIdx : sorted.length);
       if (startIdx === -1 && sorted.length > 0) setDone(true);
     } catch (e) {
