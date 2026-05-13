@@ -6695,7 +6695,21 @@ function TradingDashboard({ session, onLogout }) {
 
   // Cross-device sync state
   const [syncStatus,    setSyncStatus]    = useState("idle"); // "idle" | "syncing" | "saved" | "offline"
-  const supabaseUserId = session?.supabaseUserId ?? null;
+  const rawSupabaseUserId = session?.supabaseUserId ?? null;
+  // Only treat as a real Supabase session if an sb- auth token exists in localStorage.
+  // localStorage-only accounts may carry a stale supabaseUserId but no active session,
+  // in which case sync would always fail and falsely show "Offline".
+  const hasSupabaseSession = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("sb-")) return true;
+      }
+    } catch {}
+    return false;
+  })();
+  const supabaseUserId = (rawSupabaseUserId && hasSupabaseSession) ? rawSupabaseUserId : null;
   const initialSyncDoneRef = useRef(false);
   const skipNextPushRef = useRef(false);
   const pushTimerRef = useRef(null);
