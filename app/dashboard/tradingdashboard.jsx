@@ -650,21 +650,46 @@ function AuthScreen({ auth }) {
 // ═══════════════════════════════════════════════════════════════
 
 function StatCard({ label, value, sub, pos, icon }) {
-  const accent = pos === true ? "#34d399" : pos === false ? "#f87171" : "#38bdf8";
-  const border = pos === true ? "rgba(16,185,129,0.2)" : pos === false ? "rgba(239,68,68,0.2)" : "rgba(51,65,85,0.6)";
-  const glow   = pos === true ? "rgba(52,211,153,0.15)" : pos === false ? "rgba(248,113,113,0.15)" : "rgba(56,189,248,0.15)";
+  const LABEL_ACCENT = {
+    "Total Trades": "#38bdf8",
+    "Win Rate":     "#a78bfa",
+    "Best Trade":   "#34d399",
+    "Worst Trade":  "#f87171",
+  };
+  const topAccent = LABEL_ACCENT[label] ?? (pos === true ? "#34d399" : pos === false ? "#f87171" : "#38bdf8");
+  const accent    = pos === true ? "#34d399" : pos === false ? "#f87171" : "#e2e8f0";
+  const border    = "rgba(51,65,85,0.5)";
+  const glow      = pos === true ? "rgba(52,211,153,0.15)" : pos === false ? "rgba(248,113,113,0.15)" : "rgba(56,189,248,0.15)";
   return (
     <div
-      style={{ borderRadius:12, border:`1px solid ${border}`, background:"rgba(15,23,42,0.85)", padding:"14px 16px", transition:"box-shadow 0.18s, transform 0.18s, border-color 0.18s" }}
+      style={{
+        position:"relative",
+        borderRadius:12,
+        border:`1px solid ${border}`,
+        background:"linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))",
+        backgroundColor:"rgba(15,23,42,0.85)",
+        padding:"14px 16px",
+        overflow:"hidden",
+        transition:"box-shadow 0.18s, transform 0.18s, border-color 0.18s",
+      }}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 8px 22px ${glow}`; e.currentTarget.style.transform = "translateY(-1px)"; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "translateY(0)"; }}
     >
+      <div style={{ position:"absolute", top:0, left:0, right:0, height:2, background:topAccent }}/>
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:10 }}>
-        <span style={{ fontSize:9, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em" }}>{label}</span>
-        <span style={{ color:accent, opacity:0.7 }}>{icon}</span>
+        <span style={{ fontSize:10, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.1em" }}>{label}</span>
+        <span style={{ color:topAccent, opacity:0.75 }}>{icon}</span>
       </div>
-      <div style={{ fontSize:22, fontWeight:800, fontFamily:"monospace", color:accent, lineHeight:1 }}>{value}</div>
-      {sub && <div style={{ fontSize:10, color:"#64748b", marginTop:6 }}>{sub}</div>}
+      <div style={{
+        fontSize:30,
+        fontWeight:800,
+        letterSpacing:"-0.5px",
+        color:accent,
+        lineHeight:1,
+        fontFamily:'-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif',
+        fontVariantNumeric:"tabular-nums",
+      }}>{value}</div>
+      {sub && <div style={{ fontSize:11, color:"#64748b", marginTop:8, letterSpacing:"0.01em" }}>{sub}</div>}
     </div>
   );
 }
@@ -2019,8 +2044,9 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
 
   const toggleSort = k => { if (sortK===k) setSortD(d=>d==="asc"?"desc":"asc"); else { setSortK(k); setSortD("desc"); } };
   const SIcon = ({ c }) => c!==sortK ? <ChevronsUpDown size={10} style={{ color:"#475569" }}/> : sortD==="asc" ? <ChevronUp size={10} style={{ color:"#38bdf8" }}/> : <ChevronDown size={10} style={{ color:"#38bdf8" }}/>;
-  const th = { padding:"8px 12px", textAlign:"left", fontSize:9, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.07em", cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", borderBottom:"1px solid rgba(30,41,59,0.8)", background:"rgba(10,15,30,0.98)" };
-  const td = { padding:"9px 12px", fontSize:11, borderBottom:"1px solid rgba(30,41,59,0.4)" };
+  const th = { padding:"10px 14px", textAlign:"left", fontSize:10, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.08em", cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", borderBottom:"1px solid rgba(30,41,59,0.8)", background:"rgba(10,15,30,0.98)" };
+  const td = { padding:"11px 14px", fontSize:11, borderBottom:"1px solid rgba(30,41,59,0.4)" };
+  const sysFont = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif';
   const sel = { padding:"5px 10px", borderRadius:7, background:"#111827", border:"1px solid #1e2d3e", fontSize:11, color:"#94a3b8", cursor:"pointer", outline:"none" };
 
   return (
@@ -2082,7 +2108,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(t => {
+                {filtered.map((t, rowIdx) => {
                   const w   = (t.pnl??0)>=0;
                   const rev = reviewMap[t.id] ?? (t.source === "demo" && t.emotion ? {
                     emotion: t.emotion,
@@ -2092,12 +2118,13 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
                   } : null);
                   const EMOJIS = { calm:"😌", confident:"💪", fomo:"😰", fear:"😨", revenge:"😤" };
                   const winBorder = `2px solid ${w ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`;
+                  const zebraBg = rowIdx % 2 === 1 ? "rgba(255,255,255,0.012)" : "transparent";
                   return (
                     <tr key={t.id}
-                        style={{ cursor:"pointer", minHeight:52, transition:"background 0.12s" }}
-                        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.025)"}
-                        onMouseLeave={e=>e.currentTarget.style.background=""}>
-                      <td style={{ ...td, fontWeight:700, color:"#e2e8f0", fontFamily:"monospace", borderLeft: winBorder, minHeight:52, height:52 }} onClick={()=>setViewing(t)}>
+                        style={{ cursor:"pointer", minHeight:52, transition:"background 0.12s", background:zebraBg }}
+                        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+                        onMouseLeave={e=>e.currentTarget.style.background=zebraBg}>
+                      <td style={{ ...td, fontWeight:700, color:"#e2e8f0", borderLeft: winBorder, minHeight:52, height:52, letterSpacing:"-0.01em" }} onClick={()=>setViewing(t)}>
                         <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                           {t.pair}
                           {(t.screenshot || t._hasScreenshot) && <Image size={9} style={{ color:"#475569" }}/>}
@@ -2111,11 +2138,11 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
                           {t.type==="long"?"▲":"▼"} {t.type?.toUpperCase()}
                         </span>
                       </td>
-                      <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{formatPrice(t.entryPrice)}</td>
-                      <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{formatPrice(t.exitPrice)}</td>
-                      <td style={{ ...td, fontFamily:"monospace", fontWeight:700, color: w?"#34d399":"#f87171" }} onClick={()=>setViewing(t)}>
-                        <div>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
-                        {Math.abs(t.pnlPercent ?? 0) >= 0.05 && <div style={{ fontSize:9, opacity:0.7 }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>}
+                      <td style={{ ...td, color:"#94a3b8", fontVariantNumeric:"tabular-nums" }} onClick={()=>setViewing(t)}>{formatPrice(t.entryPrice)}</td>
+                      <td style={{ ...td, color:"#94a3b8", fontVariantNumeric:"tabular-nums" }} onClick={()=>setViewing(t)}>{formatPrice(t.exitPrice)}</td>
+                      <td style={{ ...td, fontWeight:800, color: w?"#34d399":"#f87171", fontFamily:sysFont, fontVariantNumeric:"tabular-nums", letterSpacing:"-0.01em" }} onClick={()=>setViewing(t)}>
+                        <div style={{ fontSize:13 }}>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
+                        {Math.abs(t.pnlPercent ?? 0) >= 0.05 && <div style={{ fontSize:10, opacity:0.7, fontWeight:600, marginTop:1 }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>}
                       </td>
                       <td style={{ ...td, color:"#64748b" }} onClick={()=>setViewing(t)}>{t.strategy}</td>
 
@@ -3471,23 +3498,23 @@ function AccountSwitcher({ accounts, activeAccount, onSwitch, onAdd, trades }) {
     <div ref={ref} style={{ position:"relative", flexShrink:0 }}>
       {/* Trigger button */}
       <button onClick={() => setOpen(v => !v)} style={{
-        display:"flex", alignItems:"center", gap:8, padding:"5px 10px", borderRadius:8,
+        display:"flex", alignItems:"center", gap:10, padding:"6px 12px", borderRadius:9,
         border:`1px solid ${open ? typeClr + "50" : "#1a2035"}`,
         background: open ? typeClr + "08" : "#111827",
         cursor:"pointer", transition:"all 0.15s",
       }}>
         {/* Account type dot — pulse if upgrade available */}
         <span style={{ width:7, height:7, borderRadius:"50%", background: canUpgrade ? "#f59e0b" : typeClr, flexShrink:0, animation: canUpgrade ? "pulse 1.5s infinite" : "none" }}/>
-        <div style={{ textAlign:"left" }}>
-          <div style={{ fontSize:10, fontWeight:700, color:"#e2e8f0", whiteSpace:"nowrap", maxWidth:120, overflow:"hidden", textOverflow:"ellipsis" }}>
+        <div style={{ textAlign:"left", lineHeight:1.2 }}>
+          <div style={{ fontSize:10, fontWeight:600, color:"#64748b", whiteSpace:"nowrap", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", letterSpacing:"0.01em" }}>
             {activeAccount.name} {canUpgrade ? "⬆️" : ""}
           </div>
-          <div style={{ fontSize:9, fontFamily:"monospace", color: pnlPos ? "#34d399" : "#f87171" }}>
+          <div style={{ marginTop:2, fontSize:12, fontWeight:700, color: pnlPos ? "#34d399" : "#f87171", letterSpacing:"-0.01em", fontVariantNumeric:"tabular-nums" }}>
             ${activeAccount.balance.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}
-            <span style={{ opacity:0.7 }}> {pnlPos?"+":""}{pnlPct.toFixed(1)}%</span>
+            <span style={{ opacity:0.8, marginLeft:5, fontWeight:600 }}>{pnlPos?"+":""}{pnlPct.toFixed(1)}%</span>
           </div>
         </div>
-        <ChevronDown size={11} style={{ color:"#475569", transform:open?"rotate(180deg)":"none", transition:"transform 0.2s", flexShrink:0 }}/>
+        <ChevronDown size={13} strokeWidth={2.5} style={{ color:"#64748b", transform:open?"rotate(180deg)":"none", transition:"transform 0.2s", flexShrink:0 }}/>
       </button>
 
       {/* Dropdown */}
@@ -3574,41 +3601,59 @@ function AccountStatsCard({ activeAccount, trades }) {
   const wins      = accTrades.filter(t => (t.pnl??0)>0).length;
   const wr        = accTrades.length ? +((wins / accTrades.length) * 100).toFixed(1) : 0;
 
+  const perfClr = pnlPos ? "#34d399" : "#f87171";
+  const sysFont = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif';
   return (
     <div style={{
       borderRadius:12, overflow:"hidden",
-      border:`1px solid ${typeClr}30`,
-      background:`linear-gradient(135deg, ${typeClr}08, rgba(13,17,32,0.9))`,
+      border:`1px solid ${typeClr}25`,
+      borderLeft:`3px solid ${perfClr}`,
+      background:`linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)), linear-gradient(135deg, ${typeClr}08, rgba(13,17,32,0.92))`,
     }}>
       {/* Account header */}
-      <div style={{ padding:"12px 16px", borderBottom:`1px solid ${typeClr}20`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:16 }}>{activeAccount.type === "funded" ? "💰" : "📄"}</span>
+      <div style={{ padding:"14px 18px", borderBottom:`1px solid ${typeClr}18`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:18 }}>{activeAccount.type === "funded" ? "💰" : "📄"}</span>
           <div>
-            <div style={{ fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{activeAccount.name}</div>
-            <div style={{ fontSize:9, fontWeight:700, color:typeClr, textTransform:"uppercase", letterSpacing:"0.08em" }}>{activeAccount.type} account</div>
+            <div style={{ fontSize:14, fontWeight:700, color:"#e2e8f0", letterSpacing:"-0.01em" }}>{activeAccount.name}</div>
+            <div style={{ fontSize:10, fontWeight:700, color:typeClr, textTransform:"uppercase", letterSpacing:"0.1em", marginTop:2 }}>{activeAccount.type} account</div>
           </div>
         </div>
         <div style={{ textAlign:"right" }}>
-          <div style={{ fontSize:18, fontWeight:800, fontFamily:"monospace", color:"#f1f5f9" }}>
+          <div style={{
+            fontSize:24,
+            fontWeight:800,
+            letterSpacing:"-0.5px",
+            color:"#f1f5f9",
+            lineHeight:1,
+            fontFamily:sysFont,
+            fontVariantNumeric:"tabular-nums",
+          }}>
             {fmtMoney(activeAccount.balance)}
           </div>
-          <div style={{ fontSize:10, fontFamily:"monospace", color: pnlPos?"#34d399":"#f87171" }}>
+          <div style={{ fontSize:11, color:perfClr, marginTop:4, fontWeight:600, fontVariantNumeric:"tabular-nums" }}>
             {fmtPct(pnlPct, { signed:true })} return
           </div>
         </div>
       </div>
       {/* Mini stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", padding:"10px 0" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", padding:"12px 0" }}>
         {[
-          { label:"Balance",  val: fmtMoney(activeAccount.balance), color:"#f1f5f9" },
+          { label:"Balance",  val: fmtMoney(activeAccount.balance), color:"#e2e8f0" },
           { label:"PnL",      val: fmtMoney(pnl, { signed:true }),  color:pnlPos?"#34d399":"#f87171" },
           { label:"Return",   val: fmtPct(pnlPct, { signed:true }), color:pnlPos?"#34d399":"#f87171" },
           { label:"Win Rate", val: accTrades.length ? fmtPct(wr) : "—", color:wr>=50?"#34d399":"#fbbf24" },
-        ].map(({ label,val,color }) => (
-          <div key={label} style={{ textAlign:"center", padding:"4px 8px", borderRight:"1px solid rgba(30,41,59,0.4)" }}>
-            <div style={{ fontSize:8, color:"#334155", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:3 }}>{label}</div>
-            <div style={{ fontSize:11, fontWeight:700, fontFamily:"monospace", color }}>{val}</div>
+        ].map(({ label,val,color }, idx, arr) => (
+          <div key={label} style={{ textAlign:"center", padding:"4px 10px", borderRight: idx < arr.length-1 ? "1px solid rgba(30,41,59,0.4)" : "none" }}>
+            <div style={{ fontSize:9, color:"#475569", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:5, fontWeight:700 }}>{label}</div>
+            <div style={{
+              fontSize:14,
+              fontWeight:700,
+              color,
+              letterSpacing:"-0.01em",
+              fontFamily:sysFont,
+              fontVariantNumeric:"tabular-nums",
+            }}>{val}</div>
           </div>
         ))}
       </div>
@@ -5542,9 +5587,9 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
         <div>
-          <div style={{ fontSize:18, fontWeight:800, color:"#f1f5f9" }}>Journal</div>
+          <div style={{ fontSize:22, fontWeight:800, color:"#f1f5f9", letterSpacing:"-0.02em" }}>Journal</div>
           {activeAccount && (
-            <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>
+            <div style={{ fontSize:12, color:"#475569", marginTop:4 }}>
               {activeAccount.name} · {trades.length} trade{trades.length!==1?"s":""}
             </div>
           )}
@@ -6047,7 +6092,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
-        <div><div style={{ fontSize:20, fontWeight:800, color:"#f1f5f9" }}>Dashboard</div><div style={{ fontSize:11, color:"#475569", marginTop:3 }}>Your trading journal & performance hub</div></div>
+        <div><div style={{ fontSize:22, fontWeight:800, color:"#f1f5f9", letterSpacing:"-0.02em" }}>Dashboard</div><div style={{ fontSize:12, color:"#475569", marginTop:4 }}>Your trading journal & performance hub</div></div>
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={onOpenImport} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 16px", borderRadius:9, border:"1px solid #1a2035", background:"#111827", color:"#94a3b8", fontSize:12, fontWeight:600, cursor:"pointer" }}><Upload size={13}/> Import</button>
           <button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(56,189,248,0.25)" }}><Plus size={14}/> Log Trade</button>
@@ -6107,7 +6152,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
 
       {loading ? (
         <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
-          <div style={{ padding:"12px 16px", borderBottom:"1px solid #111827", fontSize:12, fontWeight:700, color:"#94a3b8" }}>Recent Trades</div>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #1a2035", fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.1em" }}>Recent Trades</div>
           <style>{`@keyframes nexyruPulse { 0%,100%{opacity:0.4} 50%{opacity:0.85} }`}</style>
           {[0,1,2].map(i => (
             <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:"1px solid rgba(30,41,59,0.4)", borderLeft:"2px solid rgba(51,65,85,0.4)", minHeight:52 }}>
@@ -6123,22 +6168,38 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
           ))}
         </div>
       ) : recent.length > 0 && (
-        <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
-          <div style={{ padding:"12px 16px", borderBottom:"1px solid #111827", fontSize:12, fontWeight:700, color:"#94a3b8" }}>Recent Trades</div>
-          {recent.map(t => {
-            const w = (t.pnl??0)>=0;
+        <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden", background:"rgba(13,17,32,0.4)" }}>
+          <div style={{ padding:"12px 16px", borderBottom:"1px solid #1a2035", fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.1em" }}>Recent Trades</div>
+          {recent.map((t, i) => {
+            const w     = (t.pnl??0)>=0;
+            const isLong= t.type === "long";
+            const dotClr= isLong ? "#34d399" : "#f87171";
+            const pct   = t.pnlPercent ?? 0;
+            const showPct = Math.abs(pct) >= 0.05;
             return (
               <div key={t.id}
-                   style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:"1px solid rgba(30,41,59,0.4)", borderLeft:`2px solid ${w ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`, cursor:"pointer", transition:"background 0.12s", minHeight:52 }}
+                   style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px", borderBottom: i === recent.length-1 ? "none" : "1px solid rgba(30,41,59,0.5)", cursor:"pointer", transition:"background 0.12s", minHeight:56 }}
                    onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.025)"}
                    onMouseLeave={e=>e.currentTarget.style.background=""}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.type==="long"?"rgba(16,185,129,0.1)":"rgba(239,68,68,0.1)", color:t.type==="long"?"#34d399":"#f87171" }}>{t.type==="long"?"▲":"▼"}</span>
-                  <div><div style={{ fontSize:12, fontWeight:700, color:"#e2e8f0" }}>{t.pair}</div><div style={{ fontSize:10, color:"#475569" }}>{t.strategy} · {new Date(t.date).toLocaleDateString()}</div></div>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <span style={{ width:8, height:8, borderRadius:"50%", background:dotClr, boxShadow:`0 0 8px ${dotClr}80`, flexShrink:0 }}/>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:700, color:"#e2e8f0", letterSpacing:"-0.01em" }}>{t.pair}</div>
+                    <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>{t.strategy ? `${t.strategy} · ` : ""}{new Date(t.date).toLocaleDateString()}</div>
+                  </div>
                 </div>
                 <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:w?"#34d399":"#f87171" }}>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
-                  <div style={{ fontSize:10, color:w?"#34d399":"#f87171", opacity:0.7, fontFamily:"monospace" }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>
+                  <div style={{
+                    fontSize:15,
+                    fontWeight:700,
+                    color:w?"#34d399":"#f87171",
+                    letterSpacing:"-0.01em",
+                    fontFamily:'-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif',
+                    fontVariantNumeric:"tabular-nums",
+                  }}>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
+                  {showPct && (
+                    <div style={{ fontSize:11, color:w?"#34d399":"#f87171", opacity:0.65, marginTop:2, fontVariantNumeric:"tabular-nums" }}>{fmtPct(pct, { signed:true })}</div>
+                  )}
                 </div>
               </div>
             );
