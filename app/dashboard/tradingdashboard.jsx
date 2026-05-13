@@ -5056,9 +5056,9 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
             {showImportHint && (
               <style>{`@keyframes nexyruImportPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.55), 0 0 0 0 rgba(99,102,241,0); } 50% { box-shadow: 0 0 0 6px rgba(99,102,241,0), 0 0 18px 2px rgba(99,102,241,0.45); } }`}</style>
             )}
-            <a href={inDemo ? undefined : "/import"} onClick={inDemo ? e => e.preventDefault() : undefined}
+            <button onClick={inDemo ? undefined : onOpenImport}
               title={inDemo ? "Exit demo mode to import trades" : "Import CSV"}
-              style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:`1px solid ${showImportHint ? "rgba(99,102,241,0.65)" : "rgba(99,102,241,0.25)"}`, background:inDemo?"#111118":"rgba(99,102,241,0.06)", color:inDemo?"#374151":"#6366f1", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1, animation: showImportHint ? "nexyruImportPulse 1.8s ease-in-out infinite" : undefined }}><Upload size={11}/>Import CSV</a>
+              style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:`1px solid ${showImportHint ? "rgba(99,102,241,0.65)" : "rgba(99,102,241,0.25)"}`, background:inDemo?"#111118":"rgba(99,102,241,0.06)", color:inDemo?"#374151":"#6366f1", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1, animation: showImportHint ? "nexyruImportPulse 1.8s ease-in-out infinite" : undefined }}><Upload size={11}/>Import CSV</button>
             {showImportHint && (
               <div style={{ position:"absolute", top:"calc(100% + 10px)", right:0, background:"#111118", border:"1px solid rgba(99,102,241,0.45)", borderRadius:8, padding:"7px 12px", fontSize:10, fontWeight:600, color:"#6366f1", whiteSpace:"nowrap", boxShadow:"0 8px 24px rgba(0,0,0,0.5)", zIndex:50 }}><div style={{ position:"absolute", top:-5, right:24, width:9, height:9, background:"#111118", borderLeft:"1px solid rgba(99,102,241,0.45)", borderTop:"1px solid rgba(99,102,241,0.45)", transform:"rotate(45deg)" }}/>Start here — import your trades</div>
             )}
