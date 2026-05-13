@@ -6737,6 +6737,16 @@ function SidebarDivider() {
   return <div style={{ width:24, height:1, background:"#1e1e2a", margin:"6px 0", flexShrink:0 }}/>;
 }
 
+function SidebarGroupLabel({ label }) {
+  return (
+    <div style={{
+      width:40, textAlign:"center", fontSize:8, color:"#333333",
+      textTransform:"uppercase", letterSpacing:"0.1em", fontWeight:700,
+      marginTop:2, marginBottom:2, userSelect:"none", flexShrink:0,
+    }}>{label}</div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  SYNC INDICATOR
 // ═══════════════════════════════════════════════════════════════
@@ -7085,18 +7095,32 @@ function TradingDashboard({ session, onLogout }) {
 
         {/* Nav stack */}
         <nav style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+          {/* Group 1 — Main */}
           <SidebarItem icon={SIDEBAR_ICONS.dashboard} label="Dashboard"    active={tab==="dashboard"} onClick={()=>setTab("dashboard")}/>
           <SidebarItem icon={SIDEBAR_ICONS.journal}   label="Journal"      active={tab==="journal"}   onClick={()=>setTab("journal")}/>
+
           <SidebarDivider/>
-          <SidebarItem icon={SIDEBAR_ICONS.trophy}    label="Challenge"     href="/challenge"/>
-          <SidebarItem icon={SIDEBAR_ICONS.brain}     label="Psychology"    href="/psychology"/>
-          <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups"/>
+
+          {/* Group 2 — Daily */}
+          <SidebarGroupLabel label="Daily"/>
           <SidebarItem icon={SIDEBAR_ICONS.checklist} label="Checklist"     href="/checklist"/>
           <SidebarItem icon={SIDEBAR_ICONS.lightning} label="Trade Planner" href="/planner"/>
-          <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Replay"  href="/replay"/>
-          <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab" active={tab==="stratlab"} onClick={()=>setTab("stratlab")}/>
-          <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"     active={tab==="insights"} onClick={()=>setTab("insights")}/>
+          <SidebarItem icon={SIDEBAR_ICONS.trophy}    label="Challenge"     href="/challenge"/>
+
           <SidebarDivider/>
+
+          {/* Group 3 — Analyze */}
+          <SidebarGroupLabel label="Analyze"/>
+          <SidebarItem icon={SIDEBAR_ICONS.brain}     label="Psychology"    href="/psychology"/>
+          <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups"/>
+          <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"      active={tab==="insights"}  onClick={()=>setTab("insights")}/>
+          <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Replay"  href="/replay"/>
+
+          <SidebarDivider/>
+
+          {/* Group 4 — Build */}
+          <SidebarGroupLabel label="Build"/>
+          <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab"  active={tab==="stratlab"}  onClick={()=>setTab("stratlab")}/>
         </nav>
 
         {/* Settings at bottom */}
