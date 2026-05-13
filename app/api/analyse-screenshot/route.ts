@@ -20,7 +20,8 @@ Extract ALL visible trades. Return ONLY a valid JSON array — no other text, no
     "strategy": "Breakout",
     "notes": "Clean breakout above resistance",
     "tradeDate": "2024-11-15T14:30:00",
-    "dateFromImage": true
+    "dateFromImage": true,
+    "confidence": "HIGH"
   }
 ]
 
@@ -33,6 +34,7 @@ Rules:
 - notes: briefly describe what you see
 - tradeDate: if a date/time is visible in the screenshot, include it as ISO 8601 string. If no date is visible, set tradeDate to null and dateFromImage to false
 - dateFromImage: true if you found a real date in the image, false if not
+- confidence: "HIGH" if the symbol, direction, entry and exit are all clearly visible; "MEDIUM" if any of those required values had to be inferred; "LOW" if the image is ambiguous, partially obscured, or you had to guess significantly
 - Return ONLY the JSON array, nothing else`;
 
 export async function POST(req: NextRequest) {
@@ -120,5 +122,6 @@ function sanitise(trade: Record<string, unknown>) {
     notes:           typeof trade.notes === "string" ? trade.notes : "",
     date,
     _dateFromImage:  dateFromImage,
+    confidence:      trade.confidence === "HIGH" || trade.confidence === "MEDIUM" || trade.confidence === "LOW" ? trade.confidence : "MEDIUM",
   };
 }

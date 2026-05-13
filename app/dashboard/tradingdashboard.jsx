@@ -1006,7 +1006,11 @@ function parseCSV(text) {
   return { trades, broker };
 }
 
-function CSVUploader({ onImport, onClose }) {
+function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
+  // ── Tab state (CSV import vs. AI screenshot import) ──
+  const [tab, setTab] = useState(initialTab === "ai" ? "ai" : "csv");
+
+  // ── CSV flow state ──
   const [preview,   setPreview]   = useState(null);
   const [broker,    setBroker]    = useState(null);
   const [shots,     setShots]     = useState({});
@@ -1015,6 +1019,17 @@ function CSVUploader({ onImport, onClose }) {
   const [dragIdx,   setDragIdx]   = useState(null);
   const fileRef   = useRef(null);
   const imgRefs   = useRef({});
+
+  // ── AI screenshot flow state ──
+  // aiImages: [{ id, name, dataUrl, mediaType, status: "idle"|"processing"|"done"|"error", trades:[{id,_selected,...}], error:"" }]
+  const MAX_SHOTS = 20;
+  const [aiImages,   setAiImages]   = useState([]);
+  const [aiStep,     setAiStep]     = useState("upload"); // "upload" | "review"
+  const [aiDragOver, setAiDragOver] = useState(false);
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const [aiProgress, setAiProgress] = useState({ current: 0, total: 0, label: "" });
+  const aiCancelRef = useRef(false);
+  const aiFileRef = useRef(null);
 
   const handleFile = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1027,7 +1042,6 @@ function CSVUploader({ onImport, onClose }) {
         setPreview(trades);
         setBroker(detectedBroker);
         setShots({}); setError("");
-        // Show reconstruction info if execution-level data
         if (isExecution && stats.reconstructed < stats.totalRows) {
           console.log(`[Nexyru] Reconstructed ${stats.reconstructed} trades from ${stats.totalRows} raw fills`);
         }
@@ -1056,7 +1070,7 @@ function CSVUploader({ onImport, onClose }) {
   };
 
   useEffect(() => {
-    if (step !== "screenshots" || !preview) return;
+    if (tab !== "csv" || step !== "screenshots" || !preview) return;
     const onPaste = (e) => {
       const items = Array.from(e.clipboardData?.items ?? []);
       const img = items.find(item => item.type.startsWith("image/"));
@@ -1066,35 +1080,193 @@ function CSVUploader({ onImport, onClose }) {
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [step, preview, shots]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, step, preview, shots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doImport = () => {
     onImport(preview.map(t => ({ ...t, screenshot: shots[t.id] ?? null })));
     onClose();
   };
 
+  // ── AI screenshot helpers ──
+  const SUPPORTED_IMG = /^image\/(png|jpe?g|webp)$/i;
+
+  const addAiImages = (files) => {
+    const list = Array.from(files ?? []).filter(f => SUPPORTED_IMG.test(f.type));
+    if (!list.length) return;
+    const remaining = MAX_SHOTS - aiImages.length;
+    const accepted  = list.slice(0, Math.max(0, remaining));
+    accepted.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target.result;
+        setAiImages(prev => prev.length >= MAX_SHOTS ? prev : [...prev, {
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+          name: file.name || "screenshot.png",
+          dataUrl,
+          mediaType: file.type || "image/png",
+          status: "idle",
+          trades: [],
+          error: "",
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeAiImage = (id) => setAiImages(prev => prev.filter(i => i.id !== id));
+
+  // Paste support on AI tab upload step
+  useEffect(() => {
+    if (tab !== "ai" || aiStep !== "upload") return;
+    const onPaste = (e) => {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imgs  = items.filter(i => i.type.startsWith("image/")).map(i => i.getAsFile()).filter(Boolean);
+      if (imgs.length) addAiImages(imgs);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [tab, aiStep, aiImages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const analyseAi = async () => {
+    if (aiProcessing) return;
+    aiCancelRef.current = false;
+    const queue = aiImages.filter(i => i.status === "idle" || i.status === "error");
+    if (!queue.length) return;
+    setAiProcessing(true);
+    setAiProgress({ current: 0, total: queue.length, label: `Analysing screenshot 1 of ${queue.length}…` });
+
+    for (let i = 0; i < queue.length; i++) {
+      if (aiCancelRef.current) break;
+      const img = queue[i];
+      setAiProgress({ current: i, total: queue.length, label: `Analysing screenshot ${i + 1} of ${queue.length}…` });
+      setAiImages(prev => prev.map(x => x.id === img.id ? { ...x, status: "processing", error: "", trades: [] } : x));
+
+      try {
+        const base64 = img.dataUrl.split(",")[1];
+        const res = await fetch("/api/analyse-screenshot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64, mediaType: img.mediaType }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+        const trades = (data.trades ?? (data.trade ? [data.trade] : [])).map(t => ({
+          ...t,
+          id: `shot_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+          _selected: true,
+        }));
+        if (!trades.length) throw new Error("No trades found in this screenshot");
+        setAiImages(prev => prev.map(x => x.id === img.id ? { ...x, status: "done", trades } : x));
+      } catch (e) {
+        setAiImages(prev => prev.map(x => x.id === img.id ? { ...x, status: "error", error: e.message } : x));
+      }
+
+      setAiProgress({ current: i + 1, total: queue.length, label: `Analysing screenshot ${Math.min(i + 2, queue.length)} of ${queue.length}…` });
+      if (i < queue.length - 1 && !aiCancelRef.current) {
+        await new Promise(r => setTimeout(r, 500)); // rate-limit spacer
+      }
+    }
+
+    setAiProcessing(false);
+    setAiProgress({ current: 0, total: 0, label: "" });
+    aiCancelRef.current = false;
+    setAiStep("review");
+  };
+
+  const cancelAi = () => { aiCancelRef.current = true; };
+
+  const toggleAiTrade = (imgId, tradeId) => {
+    setAiImages(prev => prev.map(img => img.id !== imgId ? img : {
+      ...img, trades: img.trades.map(t => t.id === tradeId ? { ...t, _selected: !t._selected } : t),
+    }));
+  };
+
+  const allAiTrades = aiImages.flatMap(i => i.trades.map(t => ({ ...t, _imgId: i.id, _imgDataUrl: i.dataUrl })));
+  const selectedAiTrades = allAiTrades.filter(t => t._selected);
+
+  const setAllAiSelected = (val) => {
+    setAiImages(prev => prev.map(img => ({
+      ...img, trades: img.trades.map(t => ({ ...t, _selected: val })),
+    })));
+  };
+
+  const editAiTrade = (imgId, tradeId, field, value) => {
+    setAiImages(prev => prev.map(img => img.id !== imgId ? img : {
+      ...img, trades: img.trades.map(t => t.id === tradeId ? { ...t, [field]: value } : t),
+    }));
+  };
+
+  const doAiImport = () => {
+    const toImport = selectedAiTrades.map(({ _selected, _imgId, _imgDataUrl, confidence, ...t }) => ({
+      ...t,
+      screenshot: _imgDataUrl,
+      source: "screenshot",
+      tags: ["Screenshot Import"],
+      _aiConfidence: confidence,
+    }));
+    onImport(toImport);
+    onClose();
+  };
+
   const shotCount = Object.keys(shots).length;
+  const aiDoneCount = aiImages.filter(i => i.status === "done").length;
+  const aiErrorCount = aiImages.filter(i => i.status === "error").length;
   const th = { padding:"8px 12px", fontSize:9, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.07em", borderBottom:"1px solid rgba(30,41,59,0.8)" };
   const td = { padding:"8px 12px", fontSize:11, borderBottom:"1px solid rgba(30,41,59,0.5)", color:"#9ca3af", fontFamily:"monospace" };
+  const aiInp = { padding:"5px 8px", borderRadius:6, background:"#111118", border:"1px solid #2a2a3a", fontSize:11, color:"#ffffff", outline:"none", width:"100%", boxSizing:"border-box" };
+
+  const confidenceBadge = (c) => {
+    const conf = (c || "MEDIUM").toUpperCase();
+    const palette = conf === "HIGH"
+      ? { bg:"rgba(16,185,129,0.12)", fg:"#10b981", br:"rgba(16,185,129,0.25)" }
+      : conf === "LOW"
+      ? { bg:"rgba(239,68,68,0.12)",  fg:"#ef4444", br:"rgba(239,68,68,0.25)" }
+      : { bg:"rgba(245,158,11,0.12)", fg:"#f59e0b", br:"rgba(245,158,11,0.25)" };
+    return (
+      <span style={{ fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:10, background:palette.bg, color:palette.fg, border:`1px solid ${palette.br}`, letterSpacing:"0.04em" }}>{conf}</span>
+    );
+  };
+
+  const modalWidth = tab === "ai"
+    ? (aiStep === "review" ? 920 : 680)
+    : (step === "screenshots" ? 800 : 720);
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:80, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}><div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(4px)" }}/><div style={{ position:"relative", zIndex:10, width:"100%", maxWidth: step === "screenshots" ? 800 : 720, maxHeight:"92vh", borderRadius:16, border:"1px solid #2a2a3a", background:"#111118", boxShadow:"0 25px 60px rgba(0,0,0,0.6)", display:"flex", flexDirection:"column" }}>
+    <div style={{ position:"fixed", inset:0, zIndex:80, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}><div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(4px)" }}/><div style={{ position:"relative", zIndex:10, width:"100%", maxWidth: modalWidth, maxHeight:"92vh", borderRadius:16, border:"1px solid #2a2a3a", background:"#111118", boxShadow:"0 25px 60px rgba(0,0,0,0.6)", display:"flex", flexDirection:"column", transition:"max-width 0.2s" }}>
 
         {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 20px", borderBottom:"1px solid #2a2a3a", flexShrink:0 }}><div style={{ display:"flex", alignItems:"center", gap:12 }}><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", display:"flex", alignItems:"center", gap:8 }}>
-              {step === "csv"
-                ? <><Upload size={15} style={{ color:"#6366f1" }}/>Import from CSV</>:<><Image size={15} style={{ color:"#6366f1" }}/>Attach Screenshots<span style={{ fontSize:11, color:"#6b7280", fontWeight:400 }}>(optional)</span></>
+        <div style={{ padding:"14px 20px 0", borderBottom:"1px solid #2a2a3a", flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:"#ffffff", display:"flex", alignItems:"center", gap:8 }}>
+              {tab === "csv"
+                ? (step === "csv" ? <><Upload size={15} style={{ color:"#6366f1" }}/>Import Trades</> : <><Image size={15} style={{ color:"#6366f1" }}/>Attach Screenshots<span style={{ fontSize:11, color:"#6b7280", fontWeight:400 }}>(optional)</span></>)
+                : <><Sparkles size={15} style={{ color:"#6366f1" }}/>Import Trades<span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:10, background:"rgba(99,102,241,0.12)", border:"1px solid rgba(99,102,241,0.25)", color:"#6366f1", letterSpacing:"0.04em" }}>AI</span></>
               }
-            </div><div style={{ display:"flex", alignItems:"center", gap:4 }}>
-              {["csv","screenshots"].map((s, i) =>(<div key={s} style={{ display:"flex", alignItems:"center", gap:4 }}><div style={{ width:20, height:20, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, background: step===s?"#6366f1":preview?"rgba(99,102,241,0.2)":"#2a2a3a", color: step===s?"#000":preview?"#6366f1":"#374151" }}>{i+1}</div>
-                  {i === 0 && <div style={{ width:20, height:1, background:"#2a2a3a" }}/>}
-                </div>
-              ))}
-            </div></div><button onClick={onClose} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer" }}><X size={16}/></button></div>
+            </div>
+            <button onClick={onClose} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer" }}><X size={16}/></button>
+          </div>
 
-        {/* Step 1: CSV */}
-        {step === "csv" && (
-          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:16 }}><div style={{ padding:"12px 16px", borderRadius:10, background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.15)", fontSize:11, color:"#6b7280", lineHeight:1.7 }}><strong style={{ color:"#6366f1" }}>Supported brokers:</strong>MT4/MT5, TradingView, cTrader, Interactive Brokers, Oanda, and any CSV-exporting platform.<br/><strong style={{ color:"#9ca3af" }}>Required columns:</strong>pair/symbol, entry price, exit price, direction/type.</div>
+          {/* Tab bar */}
+          <div style={{ display:"flex", gap:4 }}>
+            {[
+              { id:"csv", icon:<FileText size={12}/>, label:"CSV Import" },
+              { id:"ai",  icon:<Sparkles size={12}/>, label:"Screenshot Import" },
+            ].map(t => {
+              const active = tab === t.id;
+              return (
+                <button key={t.id} onClick={() => setTab(t.id)}
+                  style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 14px", border:"none", background:"transparent", color:active?"#ffffff":"#6b7280", fontSize:12, fontWeight:active?700:600, cursor:"pointer", borderBottom:`2px solid ${active?"#6366f1":"transparent"}`, marginBottom:-1, transition:"all 0.15s" }}>
+                  {t.icon}{t.label}
+                  {t.id === "ai" && <span style={{ fontSize:8, fontWeight:800, padding:"1px 5px", borderRadius:8, background:"linear-gradient(135deg,#6366f1,#a855f7)", color:"#fff", letterSpacing:"0.06em" }}>NEW</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── CSV TAB ── */}
+        {tab === "csv" && step === "csv" && (
+          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:16 }}><div style={{ padding:"12px 16px", borderRadius:10, background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.15)", fontSize:11, color:"#6b7280", lineHeight:1.7 }}><strong style={{ color:"#6366f1" }}>Supported brokers:</strong> MT4/MT5, TradingView, cTrader, Interactive Brokers, Oanda, and any CSV-exporting platform.<br/><strong style={{ color:"#9ca3af" }}>Required columns:</strong> pair/symbol, entry price, exit price, direction/type.</div>
             {!preview && (
               <div onClick={() => fileRef.current?.click()} style={{ padding:"40px 20px", borderRadius:12, border:"2px dashed #2a2a3a", cursor:"pointer", textAlign:"center", background:"#1a1a24" }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor="#6366f1"; e.currentTarget.style.background="rgba(99,102,241,0.04)"; }}
@@ -1106,14 +1278,13 @@ function CSVUploader({ onImport, onClose }) {
             {error && <div style={{ padding:"10px 14px", borderRadius:8, background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.2)", fontSize:12, color:"#ef4444", display:"flex", alignItems:"center", gap:7 }}><AlertCircle size={12}/>{error}</div>}
             {preview && (
               <div>
-                {/* Broker detected banner */}
                 {broker && (
-                  <div style={{ marginBottom:10, padding:"10px 14px", borderRadius:9, background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.3)", display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:16 }}></span><div><div style={{ fontSize:12, fontWeight:700, color:"#10b981" }}>Broker detected: {broker.name}</div><div style={{ fontSize:10, color:"#3a6a8a", marginTop:1 }}>These trades will be tagged as<strong style={{ color:"#10b981" }}>verified broker imports</strong>and count toward your rank progression.</div></div></div>
+                  <div style={{ marginBottom:10, padding:"10px 14px", borderRadius:9, background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.3)", display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:16 }}></span><div><div style={{ fontSize:12, fontWeight:700, color:"#10b981" }}>Broker detected: {broker.name}</div><div style={{ fontSize:10, color:"#3a6a8a", marginTop:1 }}>These trades will be tagged as<strong style={{ color:"#10b981" }}> verified broker imports </strong>and count toward your rank progression.</div></div></div>
                 )}
                 {!broker && (
-                  <div style={{ marginBottom:10, padding:"8px 12px", borderRadius:9, background:"rgba(245,158,11,0.06)", border:"1px solid rgba(245,158,11,0.2)", display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:14 }}>️</span><div style={{ fontSize:11, color:"#6b7280" }}>Broker not recognised — trades imported as<strong>manual</strong>. Supported brokers: Tradovate, Apex, TopstepX, NinjaTrader, TradeLocker, IBKR.</div></div>
+                  <div style={{ marginBottom:10, padding:"8px 12px", borderRadius:9, background:"rgba(245,158,11,0.06)", border:"1px solid rgba(245,158,11,0.2)", display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:14 }}>️</span><div style={{ fontSize:11, color:"#6b7280" }}>Broker not recognised — trades imported as<strong> manual</strong>. Supported brokers: Tradovate, Apex, TopstepX, NinjaTrader, TradeLocker, IBKR.</div></div>
                 )}
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}><div style={{ fontSize:12, color:"#9ca3af" }}><span style={{ fontWeight:700, color:"#10b981" }}>{preview.length}</span>trades found</div><button onClick={() => { setPreview(null); setBroker(null); setShots({}); setError(""); }} style={{ fontSize:11, color:"#6b7280", background:"none", border:"none", cursor:"pointer" }}>← Re-upload</button></div><div style={{ borderRadius:10, border:"1px solid #2a2a3a", overflow:"auto", maxHeight:240 }}><table style={{ width:"100%", borderCollapse:"collapse", minWidth:540 }}><thead><tr>{["Pair","Type","Entry","Exit","PnL","Date","Strategy"].map(h =><th key={h} style={th}>{h}</th>)}</tr></thead><tbody>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}><div style={{ fontSize:12, color:"#9ca3af" }}><span style={{ fontWeight:700, color:"#10b981" }}>{preview.length} </span>trades found</div><button onClick={() => { setPreview(null); setBroker(null); setShots({}); setError(""); }} style={{ fontSize:11, color:"#6b7280", background:"none", border:"none", cursor:"pointer" }}>← Re-upload</button></div><div style={{ borderRadius:10, border:"1px solid #2a2a3a", overflow:"auto", maxHeight:240 }}><table style={{ width:"100%", borderCollapse:"collapse", minWidth:540 }}><thead><tr>{["Pair","Type","Entry","Exit","PnL","Date","Strategy"].map(h =><th key={h} style={th}>{h}</th>)}</tr></thead><tbody>
                       {preview.slice(0,20).map((t,i) =>(<tr key={i}><td style={{ ...td, fontWeight:700, color:"#ffffff" }}>{t.pair}</td><td style={{ ...td, color:t.type==="long"?"#10b981":"#ef4444" }}>{t.type.toUpperCase()}</td><td style={td}>{t.entryPrice}</td><td style={td}>{t.exitPrice}</td><td style={{ ...td, color:(t.pnl??0)>=0?"#10b981":"#ef4444", fontWeight:700 }}>{(t.pnl??0)>=0?"+":""}{(t.pnl??0).toFixed(4)}</td><td style={td}>{new Date(t.date).toLocaleDateString()}</td><td style={td}>{t.strategy}</td></tr>
                       ))}
                       {preview.length >20 &&<tr><td colSpan={7} style={{ ...td, textAlign:"center", color:"#6b7280" }}>...and {preview.length-20} more trades</td></tr>}
@@ -1122,15 +1293,14 @@ function CSVUploader({ onImport, onClose }) {
           </div>
         )}
 
-        {/* Step 2: Screenshots */}
-        {step === "screenshots" && preview && (
-          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:12 }}><div style={{ padding:"10px 14px", borderRadius:9, background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.15)", fontSize:11, color:"#6b7280", lineHeight:1.6 }}>Drop, click, or<strong style={{ color:"#9ca3af" }}>⌘V paste</strong> a screenshot onto each trade row. Paste fills the next empty slot automatically.{shotCount >0 &&<span style={{ color:"#10b981", marginLeft:6 }}>✓ {shotCount} attached</span>}
+        {tab === "csv" && step === "screenshots" && preview && (
+          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:12 }}><div style={{ padding:"10px 14px", borderRadius:9, background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.15)", fontSize:11, color:"#6b7280", lineHeight:1.6 }}>Drop, click, or<strong style={{ color:"#9ca3af" }}> ⌘V paste </strong>a screenshot onto each trade row. Paste fills the next empty slot automatically.{shotCount >0 &&<span style={{ color:"#10b981", marginLeft:6 }}>✓ {shotCount} attached</span>}
             </div><div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               {preview.map((t, idx) => {
                 const shot = shots[t.id];
                 const isDrag = dragIdx === t.id;
                 const w = (t.pnl??0)>=0;
- return (<div key={t.id}
+                return (<div key={t.id}
                     onDrop={e => handleRowDrop(t.id, e)}
                     onDragOver={e => { e.preventDefault(); setDragIdx(t.id); }}
                     onDragEnter={e => { e.preventDefault(); setDragIdx(t.id); }}
@@ -1147,251 +1317,191 @@ function CSVUploader({ onImport, onClose }) {
             </div></div>
         )}
 
-        {/* Footer */}
-        <div style={{ padding:"14px 20px", borderTop:"1px solid #2a2a3a", display:"flex", gap:10, flexShrink:0 }}>
-          {step === "csv" && !preview && (
-            <button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button>
-          )}
-          {step === "csv" && preview && <><button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button><button onClick={() => setStep("screenshots")} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Next — Add Screenshots →</button></>}
-          {step === "screenshots" && <><button onClick={() => setStep("csv")} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>← Back</button><button onClick={doImport} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", fontSize:12, fontWeight:600, cursor:"pointer" }}>Skip & Import</button><button onClick={doImport} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.2)" }}>
-              Import {preview.length} Trades{shotCount > 0 ? ` + ${shotCount} Screenshot${shotCount!==1?"s":""}` : ""}
-            </button></>}
-        </div></div></div>
-  );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-//  SCREENSHOT IMPORTER — AI reads trade data from chart image
-// ═══════════════════════════════════════════════════════════════
-
-function ScreenshotImporter({ onImportAll, onClose }) {
-  // images: [{ id, dataUrl, status: "idle"|"processing"|"done"|"error", trades: [], error: "" }]
-  const [images,   setImages]   = useState([]);
-  const [dragOver, setDragOver] = useState(false);
-  const [step,     setStep]     = useState("upload"); // "upload" | "review"
-  const fileRef = useRef(null);
-
-  const addImages = (files) => {
-    const imgs = Array.from(files).filter(f => f.type.startsWith("image/"));
-    if (!imgs.length) return;
-    imgs.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setImages(prev => [...prev, {
-          id:      `img_${Date.now()}_${Math.random().toString(36).slice(2,5)}`,
-          dataUrl: ev.target.result,
-          status:  "idle",
-          trades:  [],
-          error:   "",
-        }]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Paste — add pasted image to queue
-  useEffect(() => {
-    const onPaste = (e) => {
-      if (step !== "upload") return;
-      const items = Array.from(e.clipboardData?.items ?? []);
-      const imgs  = items.filter(i => i.type.startsWith("image/")).map(i => i.getAsFile());
-      if (imgs.length) addImages(imgs);
-    };
-    document.addEventListener("paste", onPaste);
-    return () => document.removeEventListener("paste", onPaste);
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const removeImage = (id) => setImages(prev => prev.filter(img => img.id !== id));
-
-  // Analyse a single image — updates its entry in state
-  const analyseOne = async (img) => {
-    setImages(prev => prev.map(i => i.id === img.id ? { ...i, status:"processing", error:"", trades:[] } : i));
-    try {
-      const base64    = img.dataUrl.split(",")[1];
-      const mediaType = img.dataUrl.split(";")[0].split(":")[1];
-      const res = await fetch("/api/analyse-screenshot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base64, mediaType }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
-      const trades = (data.trades ?? (data.trade ? [data.trade] : [])).map(t => ({
-        ...t, screenshot: img.dataUrl,
-        id: `shot_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-        _selected: true,
-      }));
-      if (!trades.length) throw new Error("No trades found in this screenshot");
-      setImages(prev => prev.map(i => i.id === img.id ? { ...i, status:"done", trades } : i));
-    } catch (e) {
-      setImages(prev => prev.map(i => i.id === img.id ? { ...i, status:"error", error: e.message } : i));
-    }
-  };
-
-  // Analyse all idle images in parallel
-  const analyseAll = async () => {
-    const toProcess = images.filter(i => i.status === "idle" || i.status === "error");
-    await Promise.all(toProcess.map(analyseOne));
-    setStep("review");
-  };
-
-  // Toggle a trade's selected state in the review step
-  const toggleTrade = (imgId, tradeId) => {
-    setImages(prev => prev.map(img => img.id !== imgId ? img : {
-      ...img, trades: img.trades.map(t => t.id === tradeId ? { ...t, _selected: !t._selected } : t)
-    }));
-  };
-
-  // Edit a field on a trade in-place
-  const editTrade = (imgId, tradeId, field, value) => {
-    setImages(prev => prev.map(img => img.id !== imgId ? img : {
-      ...img, trades: img.trades.map(t => t.id === tradeId ? { ...t, [field]: value } : t)
-    }));
-  };
-
-  const allTrades = images.flatMap(i => i.trades);
-  const selectedTrades = allTrades.filter(t => t._selected);
-  const doneCount = images.filter(i => i.status === "done").length;
-  const processingCount = images.filter(i => i.status === "processing").length;
-  const anyProcessing = processingCount > 0;
-
-  const doImport = () => {
-    // Strip internal _selected flag before saving
-    onImportAll(selectedTrades.map(({ _selected, ...t }) => ({
-      ...t, source: "screenshot", tags: ["Screenshot Import"], confidence: 3,
-    })));
-    onClose();
-  };
-
-  const inp = { padding:"5px 8px", borderRadius:6, background:"#111118", border:"1px solid #2a2a3a", fontSize:11, color:"#ffffff", outline:"none", width:"100%", boxSizing:"border-box" };
-
-  return (
-    <div style={{ position:"fixed", inset:0, zIndex:80, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}><div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", backdropFilter:"blur(4px)" }}/><div style={{ position:"relative", zIndex:10, width:"100%", maxWidth: step === "review" ? 860 : 600, maxHeight:"92vh", borderRadius:16, border:"1px solid #2a2a3a", background:"#111118", boxShadow:"0 25px 60px rgba(0,0,0,0.6)", display:"flex", flexDirection:"column", transition:"max-width 0.2s" }}>
-
-        {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 20px", borderBottom:"1px solid #2a2a3a", flexShrink:0 }}><div style={{ display:"flex", alignItems:"center", gap:12 }}><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", display:"flex", alignItems:"center", gap:8 }}><Sparkles size={15} style={{ color:"#6366f1" }}/>AI Screenshot Import</div>
-            {/* Step pills */}
-            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-              {["upload","review"].map((s, i) =>(<div key={s} style={{ display:"flex", alignItems:"center", gap:4 }}><div style={{ width:20, height:20, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, background: step===s?"#6366f1":doneCount>0?"rgba(99,102,241,0.3)":"#2a2a3a", color: step===s?"#fff":doneCount>0?"#6366f1":"#374151" }}>{i+1}</div>
-                  {i===0 && <div style={{ width:20, height:1, background:"#2a2a3a" }}/>}
-                </div>
-              ))}
-            </div></div><button onClick={onClose} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer" }}><X size={16}/></button></div>
-
-        {/* ── STEP 1: Upload ── */}
-        {step === "upload" && (
-          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:14 }}><div style={{ padding:"10px 14px", borderRadius:9, background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.2)", fontSize:11, color:"#6b7280", lineHeight:1.6 }}>Drop multiple screenshots at once — Claude will read every trade from every image. Each screenshot can contain multiple trades (e.g. a trade history list). You'll review and edit results before importing.</div>
+        {/* ── AI SCREENSHOT TAB ── */}
+        {tab === "ai" && aiStep === "upload" && (
+          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ padding:"10px 14px", borderRadius:9, background:"linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.05))", border:"1px solid rgba(99,102,241,0.25)", fontSize:11, color:"#9ca3af", lineHeight:1.6, display:"flex", alignItems:"center", gap:10 }}>
+              <Sparkles size={16} style={{ color:"#a855f7", flexShrink:0 }}/>
+              <span>Drop up to <strong style={{ color:"#ffffff" }}>{MAX_SHOTS}</strong> chart screenshots. Claude reads each one and extracts symbol, direction, entry/exit, and PnL. Review and edit before importing.</span>
+            </div>
 
             {/* Drop zone */}
             <div
-              onClick={() => fileRef.current?.click()}
-              onDrop={e => { e.preventDefault(); setDragOver(false); addImages(e.dataTransfer.files); }}
-              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-              onDragEnter={e => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
-              style={{ borderRadius:10, border:`2px dashed ${dragOver?"#6366f1":"#2a2a3a"}`, background:dragOver?"rgba(99,102,241,0.06)":"#1a1a24", cursor:"pointer", padding:"28px 20px", textAlign:"center", transition:"all 0.15s" }}
-            ><div style={{ pointerEvents:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}><div style={{ width:44, height:44, borderRadius:12, background:dragOver?"rgba(99,102,241,0.15)":"#2a2a3a", display:"flex", alignItems:"center", justifyContent:"center" }}><Upload size={20} style={{ color:dragOver?"#6366f1":"#6b7280" }}/></div><div style={{ fontSize:13, fontWeight:600, color:dragOver?"#6366f1":"#6b7280" }}>
-                  {dragOver ? "Drop screenshots here" : "Drop screenshots, click to browse, or ⌘V to paste"}
-                </div><div style={{ fontSize:10, color:"#374151" }}>Multiple files supported · PNG, JPG, WebP · Each can contain multiple trades</div></div></div><input ref={fileRef} type="file" accept="image/*" multiple style={{ display:"none" }} onChange={e => addImages(e.target.files)}/>
+              onClick={() => !aiProcessing && aiFileRef.current?.click()}
+              onDrop={e => { e.preventDefault(); setAiDragOver(false); addAiImages(e.dataTransfer.files); }}
+              onDragOver={e => { e.preventDefault(); setAiDragOver(true); }}
+              onDragEnter={e => { e.preventDefault(); setAiDragOver(true); }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setAiDragOver(false); }}
+              style={{ borderRadius:14, border:`2px dashed ${aiDragOver?"#6366f1":"rgba(99,102,241,0.35)"}`, background:aiDragOver?"rgba(99,102,241,0.08)":"#0f0f17", cursor: aiProcessing ? "not-allowed" : "pointer", padding:"36px 24px", textAlign:"center", transition:"all 0.15s", opacity:aiProcessing?0.5:1 }}
+            >
+              <div style={{ pointerEvents:"none", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+                <div style={{ width:54, height:54, borderRadius:14, background: aiDragOver ? "rgba(99,102,241,0.2)" : "linear-gradient(135deg,#1a1a24,#23232f)", border:"1px solid rgba(99,102,241,0.3)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <Upload size={24} style={{ color: aiDragOver?"#a5b4fc":"#6366f1" }}/>
+                </div>
+                <div style={{ fontSize:14, fontWeight:700, color:aiDragOver?"#a5b4fc":"#ffffff" }}>
+                  {aiDragOver ? "Drop your screenshots" : "Drop your trade screenshots here"}
+                </div>
+                <div style={{ fontSize:11, color:"#6b7280" }}>or <span style={{ color:"#6366f1", fontWeight:600 }}>click to browse</span> · <span style={{ color:"#9ca3af" }}>⌘V to paste</span></div>
+                <div style={{ fontSize:10, color:"#374151", marginTop:2 }}>Multiple files at once · PNG, JPG, JPEG, WebP · Max {MAX_SHOTS}</div>
+              </div>
+            </div>
+            <input ref={aiFileRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp" multiple style={{ display:"none" }} onChange={e => { addAiImages(e.target.files); e.target.value = ""; }}/>
 
-            {/* Image queue */}
-            {images.length >0 && (<div style={{ display:"flex", flexDirection:"column", gap:8 }}><div style={{ fontSize:11, fontWeight:700, color:"#6b7280" }}>{images.length} screenshot{images.length!==1?"s":""} queued</div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:8 }}>
-                  {images.map(img =>(<div key={img.id} style={{ position:"relative", borderRadius:8, overflow:"hidden", border:`1px solid ${img.status==="done"?"rgba(52,211,153,0.3)":img.status==="error"?"rgba(239,68,68,0.3)":img.status==="processing"?"rgba(99,102,241,0.3)":"#2a2a3a"}` }}><img src={img.dataUrl} alt="" style={{ width:"100%", height:90, objectFit:"cover", display:"block" }}/>
-                      {/* Status overlay */}
-                      <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                        {img.status==="processing" && <span style={{ display:"inline-block", width:18, height:18, border:"2px solid rgba(255,255,255,0.2)", borderTopColor:"#6366f1", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>}
-                        {img.status==="done"       && <span style={{ fontSize:18 }}>✓</span>}
-                        {img.status==="error"      && <span style={{ fontSize:16 }}></span>}
-                      </div>
-                      {/* Status label */}
-                      <div style={{ padding:"4px 6px", background:"rgba(13,17,32,0.9)", fontSize:9, fontWeight:700, color: img.status==="done"?"#10b981":img.status==="error"?"#ef4444":img.status==="processing"?"#6366f1":"#6b7280", textAlign:"center" }}>
-                        {img.status==="done"       ? `${img.trades.length} trade${img.trades.length!==1?"s":""}` :
-                         img.status==="error"      ? "Error" :
-                         img.status==="processing" ? "Analysing…" : "Queued"}
-                      </div>
-                      {/* Remove */}
-                      <button onClick={() => removeImage(img.id)} style={{ position:"absolute", top:4, right:4, width:18, height:18, borderRadius:"50%", background:"rgba(0,0,0,0.7)", border:"none", cursor:"pointer", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}><X size={9}/></button></div>
+            {/* Count + thumbnail grid */}
+            {aiImages.length > 0 && (
+              <>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:12, color:"#9ca3af" }}>
+                    <strong style={{ color:"#ffffff" }}>{aiImages.length}</strong> screenshot{aiImages.length!==1?"s":""} selected
+                    {aiImages.length >= MAX_SHOTS && <span style={{ marginLeft:8, fontSize:10, color:"#f59e0b" }}>· Max reached</span>}
+                  </div>
+                  <button onClick={() => setAiImages([])} disabled={aiProcessing} style={{ fontSize:11, color:"#6b7280", background:"none", border:"none", cursor: aiProcessing ? "not-allowed" : "pointer" }}>Clear all</button>
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:10 }}>
+                  {aiImages.map(img => (
+                    <div key={img.id} style={{ position:"relative", borderRadius:10, overflow:"hidden", border:`1px solid ${img.status==="done"?"rgba(16,185,129,0.4)":img.status==="error"?"rgba(239,68,68,0.4)":img.status==="processing"?"rgba(99,102,241,0.5)":"#2a2a3a"}`, background:"#0f0f17" }}>
+                      <img src={img.dataUrl} alt="" style={{ width:"100%", height:88, objectFit:"cover", display:"block" }}/>
+                      {(img.status === "processing" || img.status === "done" || img.status === "error") && (
+                        <div style={{ position:"absolute", top:0, left:0, right:0, height:88, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.5)" }}>
+                          {img.status === "processing" && <span style={{ display:"inline-block", width:22, height:22, border:"2px solid rgba(255,255,255,0.18)", borderTopColor:"#6366f1", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>}
+                          {img.status === "done"       && <Check size={22} style={{ color:"#10b981" }}/>}
+                          {img.status === "error"      && <AlertCircle size={22} style={{ color:"#ef4444" }}/>}
+                        </div>
+                      )}
+                      <div style={{ padding:"5px 8px", fontSize:9, color:"#6b7280", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }} title={img.name}>{img.name}</div>
+                      {!aiProcessing && (
+                        <button onClick={(e) => { e.stopPropagation(); removeAiImage(img.id); }} aria-label="Remove screenshot"
+                          style={{ position:"absolute", top:5, right:5, width:20, height:20, borderRadius:"50%", background:"rgba(0,0,0,0.7)", border:"1px solid rgba(255,255,255,0.15)", cursor:"pointer", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}><X size={11}/></button>
+                      )}
+                    </div>
                   ))}
-                </div></div>
+                </div>
+              </>
+            )}
+
+            {/* Progress bar (during processing) */}
+            {aiProcessing && aiProgress.total > 0 && (
+              <div style={{ padding:"14px 16px", borderRadius:12, background:"#0f0f17", border:"1px solid rgba(99,102,241,0.3)", display:"flex", flexDirection:"column", gap:9 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", fontSize:11, color:"#9ca3af" }}>
+                  <span style={{ display:"flex", alignItems:"center", gap:7 }}>
+                    <span style={{ display:"inline-block", width:11, height:11, border:"2px solid #374151", borderTopColor:"#6366f1", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>
+                    <span style={{ color:"#ffffff", fontWeight:600 }}>{aiProgress.label}</span>
+                  </span>
+                  <span style={{ fontFamily:"monospace", color:"#6366f1", fontWeight:700 }}>{Math.round((aiProgress.current / aiProgress.total) * 100)}%</span>
+                </div>
+                <div style={{ height:6, borderRadius:6, background:"#1a1a24", overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${(aiProgress.current / aiProgress.total) * 100}%`, background:"linear-gradient(90deg,#6366f1,#a855f7)", transition:"width 0.25s ease", borderRadius:6 }}/>
+                </div>
+              </div>
             )}
           </div>
         )}
 
-        {/* ── STEP 2: Review ── */}
-        {step === "review" && (
-          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:14 }}><div style={{ padding:"10px 14px", borderRadius:9, background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.2)", fontSize:11, color:"#6b7280", lineHeight:1.6 }}><strong style={{ color:"#6366f1" }}>{allTrades.length} trade{allTrades.length!==1?"s":""} found</strong> across {doneCount} screenshot{doneCount!==1?"s":""}. Edit any field, uncheck trades to skip them, then click Import.
+        {tab === "ai" && aiStep === "review" && (
+          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ padding:"10px 14px", borderRadius:9, background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.2)", fontSize:11, color:"#9ca3af", lineHeight:1.6, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+              <span>
+                <strong style={{ color:"#6366f1" }}>{allAiTrades.length} trade{allAiTrades.length!==1?"s":""} found</strong>
+                {" "}across {aiDoneCount} screenshot{aiDoneCount!==1?"s":""}.{aiErrorCount > 0 && <span style={{ color:"#ef4444", marginLeft:6 }}>{aiErrorCount} failed.</span>} Edit any field inline before importing.
+              </span>
+              <span style={{ display:"flex", gap:6 }}>
+                <button onClick={() => setAllAiSelected(true)}  style={{ fontSize:10, padding:"4px 9px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", cursor:"pointer", fontWeight:600 }}>Select all</button>
+                <button onClick={() => setAllAiSelected(false)} style={{ fontSize:10, padding:"4px 9px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", cursor:"pointer", fontWeight:600 }}>Deselect all</button>
+              </span>
             </div>
 
-            {images.map(img =>(<div key={img.id}>
-                {/* Image thumbnail + status */}
-                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}><img src={img.dataUrl} alt="" style={{ width:52, height:36, objectFit:"cover", borderRadius:5, border:"1px solid #2a2a3a", flexShrink:0 }}/><div>
-                    {img.status==="done"  && <div style={{ fontSize:11, fontWeight:700, color:"#10b981" }}>✓ {img.trades.length} trade{img.trades.length!==1?"s":""} extracted</div>}
-                    {img.status==="error" && <div style={{ fontSize:11, color:"#ef4444" }}> {img.error}</div>}
-                  </div></div>
-
-                {/* Trade cards for this image */}
-                {img.trades.map(t =>(<div key={t.id} style={{ marginBottom:8, borderRadius:9, border:`1px solid ${t._selected?"rgba(99,102,241,0.3)":"#2a2a3a"}`, background:t._selected?"rgba(99,102,241,0.04)":"#1a1a24", overflow:"hidden", opacity:t._selected?1:0.45, transition:"all 0.15s" }}>
-                    {/* Trade header */}
-                    <div style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderBottom:"1px solid rgba(30,41,59,0.6)" }}><input type="checkbox" checked={t._selected} onChange={() => toggleTrade(img.id, t.id)} style={{ cursor:"pointer", accentColor:"#6366f1", width:14, height:14, flexShrink:0 }}/><span style={{ fontSize:12, fontWeight:700, color:"#ffffff" }}>{t.pair ?? "Unknown"}</span><span style={{ fontSize:9, fontWeight:700, padding:"1px 7px", borderRadius:4, background:t.type==="long"?"rgba(16,185,129,0.12)":"rgba(239,68,68,0.12)", color:t.type==="long"?"#10b981":"#ef4444" }}>{(t.type??"long").toUpperCase()}</span>
-                      {t.pnl != null && <span style={{ fontSize:11, fontFamily:"monospace", color:(t.pnl??0)>=0?"#10b981":"#ef4444", marginLeft:"auto" }}>{(t.pnl??0)>=0?"+":""}{t.pnl}</span>}
-                    </div>
-                    {/* Editable fields */}
-                    {t._selected && (
-                      <div style={{ padding:"10px 12px", display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
-                        {[
-                          { label:"Pair",    field:"pair",       val:t.pair ?? "" },
-                          { label:"Type",    field:"type",       val:t.type ?? "long", opts:["long","short"] },
-                          { label:"Entry",   field:"entryPrice", val:t.entryPrice ?? "" },
-                          { label:"Exit",    field:"exitPrice",  val:t.exitPrice ?? "" },
-                          { label:"SL",      field:"stopLoss",   val:t.stopLoss ?? "" },
-                          { label:"TP",      field:"takeProfit", val:t.takeProfit ?? "" },
-                          { label:"Size",    field:"size",       val:t.size ?? 1 },
-                          { label:"Strategy",field:"strategy",   val:t.strategy ?? "" },
-                          { label:"PnL",     field:"pnl",        val:t.pnl ?? "" },
-                        ].map(({ label, field, val, opts }) =>(<div key={field}><div style={{ fontSize:8, color:"#374151", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:3 }}>{label}</div>
-                            {opts ? (
-                              <select value={val} onChange={e => editTrade(img.id, t.id, field, e.target.value)} style={{ ...inp, cursor:"pointer" }}>
-                                {opts.map(o =><option key={o} value={o}>{o}</option>)}
-                              </select>) : (<input value={val} onChange={e => editTrade(img.id, t.id, field, e.target.value)} style={inp}/>
-                            )}
-                          </div>
-                        ))}
-                        {/* Notes spans full width */}
-                        <div style={{ gridColumn:"1/-1" }}><div style={{ fontSize:8, color:"#374151", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:3 }}>Notes (from AI)</div><input value={t.notes ?? ""} onChange={e => editTrade(img.id, t.id, "notes", e.target.value)} style={inp}/></div></div>
-                    )}
-                  </div>
-                ))}
+            {/* Failed images banner */}
+            {aiErrorCount > 0 && (
+              <div style={{ padding:"8px 12px", borderRadius:8, background:"rgba(239,68,68,0.06)", border:"1px solid rgba(239,68,68,0.2)", fontSize:11, color:"#ef4444", display:"flex", alignItems:"center", gap:7 }}>
+                <AlertCircle size={12}/> {aiErrorCount} screenshot{aiErrorCount!==1?"s":""} couldn't be read. Click <button onClick={() => setAiStep("upload")} style={{ background:"none", border:"none", color:"#ef4444", textDecoration:"underline", cursor:"pointer", fontSize:11, padding:0 }}>back</button> to retry.
               </div>
-            ))}
+            )}
+
+            {/* Trade table */}
+            <div style={{ borderRadius:11, border:"1px solid #2a2a3a", overflow:"hidden", background:"#0f0f17" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"34px 70px 1.2fr 0.8fr 1fr 1fr 0.9fr 0.9fr", gap:8, padding:"9px 12px", borderBottom:"1px solid #2a2a3a", background:"#13131c", fontSize:9, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.08em" }}>
+                <span></span><span>Shot</span><span>Symbol</span><span>Dir</span><span>Entry</span><span>Exit</span><span>PnL</span><span>Conf</span>
+              </div>
+
+              {allAiTrades.length === 0 && (
+                <div style={{ padding:"24px 16px", textAlign:"center", fontSize:12, color:"#6b7280" }}>No trades extracted. Try different screenshots.</div>
+              )}
+
+              {allAiTrades.map(t => {
+                const isLow = (t.confidence || "").toUpperCase() === "LOW";
+                return (
+                  <div key={t.id} style={{ display:"grid", gridTemplateColumns:"34px 70px 1.2fr 0.8fr 1fr 1fr 0.9fr 0.9fr", gap:8, padding:"9px 12px", alignItems:"center", borderBottom:"1px solid rgba(30,41,59,0.5)", background: isLow ? "rgba(245,158,11,0.04)" : t._selected ? "transparent" : "rgba(30,30,42,0.4)", opacity: t._selected ? 1 : 0.5, transition:"all 0.12s" }}>
+                    <input type="checkbox" checked={t._selected} onChange={() => toggleAiTrade(t._imgId, t.id)} style={{ cursor:"pointer", accentColor:"#6366f1", width:14, height:14 }}/>
+                    <img src={t._imgDataUrl} alt="" style={{ width:60, height:38, objectFit:"cover", borderRadius:5, border:"1px solid #2a2a3a" }}/>
+                    <input value={t.pair ?? ""} onChange={e => editAiTrade(t._imgId, t.id, "pair", e.target.value)} style={{ ...aiInp, fontWeight:700 }}/>
+                    <select value={t.type ?? "long"} onChange={e => editAiTrade(t._imgId, t.id, "type", e.target.value)} style={{ ...aiInp, cursor:"pointer", color:(t.type==="short")?"#ef4444":"#10b981", fontWeight:700 }}>
+                      <option value="long">LONG</option><option value="short">SHORT</option>
+                    </select>
+                    <input value={t.entryPrice ?? ""} onChange={e => editAiTrade(t._imgId, t.id, "entryPrice", e.target.value === "" ? null : parseFloat(e.target.value) || e.target.value)} style={aiInp}/>
+                    <input value={t.exitPrice ?? ""}  onChange={e => editAiTrade(t._imgId, t.id, "exitPrice",  e.target.value === "" ? null : parseFloat(e.target.value) || e.target.value)} style={aiInp}/>
+                    <input value={t.pnl ?? ""}        onChange={e => editAiTrade(t._imgId, t.id, "pnl",        e.target.value === "" ? null : parseFloat(e.target.value) || e.target.value)} style={{ ...aiInp, color:(parseFloat(t.pnl)||0)>=0?"#10b981":"#ef4444", fontWeight:700 }}/>
+                    <div style={{ display:"flex", alignItems:"center" }}>{confidenceBadge(t.confidence)}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
         {/* Footer */}
         <div style={{ padding:"14px 20px", borderTop:"1px solid #2a2a3a", display:"flex", gap:10, flexShrink:0 }}>
-          {step === "upload" && (
-            <><button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button><button onClick={analyseAll} disabled={!images.length || anyProcessing} style={{
-                flex:3, padding:"10px", borderRadius:9, border:"none",
-                background: !images.length||anyProcessing ? "#2a2a3a" : "#6366f1",
-                color: !images.length||anyProcessing ? "#374151" : "#fff",
-                fontSize:12, fontWeight:700, cursor: !images.length||anyProcessing ? "not-allowed":"pointer",
-                display:"flex", alignItems:"center", justifyContent:"center", gap:7,
-              }}>
-                {anyProcessing
-                  ? <><span style={{ display:"inline-block", width:11, height:11, border:"2px solid #374151", borderTopColor:"#6366f1", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/> Analysing {processingCount} screenshot{processingCount!==1?"s":""}…</>:<><Sparkles size={13}/> Analyse {images.length || ""} Screenshot{images.length!==1?"s":""} with AI</>
-                }
-              </button></>
+          {tab === "csv" && step === "csv" && !preview && (
+            <button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button>
           )}
-          {step === "review" && (
-            <><button onClick={() => setStep("upload")} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>← Back</button><button onClick={doImport} disabled={!selectedTrades.length} style={{
-                flex:3, padding:"10px", borderRadius:9, border:"none",
-                background: selectedTrades.length ? "#6366f1" : "#2a2a3a",
-                color: selectedTrades.length ? "#fff" : "#374151",
-                fontSize:12, fontWeight:700, cursor: selectedTrades.length ? "pointer" : "not-allowed",
-                boxShadow: selectedTrades.length ? "0 4px 16px rgba(99,102,241,0.2)" : "none",
-              }}>
-                Import {selectedTrades.length} Trade{selectedTrades.length!==1?"s":""}
-              </button></>
+          {tab === "csv" && step === "csv" && preview && <><button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button><button onClick={() => setStep("screenshots")} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Next — Add Screenshots →</button></>}
+          {tab === "csv" && step === "screenshots" && <><button onClick={() => setStep("csv")} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>← Back</button><button onClick={doImport} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", fontSize:12, fontWeight:600, cursor:"pointer" }}>Skip & Import</button><button onClick={doImport} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.2)" }}>
+              Import {preview.length} Trades{shotCount > 0 ? ` + ${shotCount} Screenshot${shotCount!==1?"s":""}` : ""}
+            </button></>}
+
+          {tab === "ai" && aiStep === "upload" && (
+            <>
+              {aiProcessing ? (
+                <button onClick={cancelAi} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid rgba(239,68,68,0.4)", background:"rgba(239,68,68,0.08)", color:"#ef4444", fontSize:12, fontWeight:700, cursor:"pointer" }}>Cancel Analysis</button>
+              ) : (
+                <button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+              )}
+              <button
+                onClick={analyseAi}
+                disabled={!aiImages.length || aiProcessing}
+                style={{
+                  flex:3, padding:"10px", borderRadius:9, border:"none",
+                  background: !aiImages.length || aiProcessing ? "#2a2a3a" : "linear-gradient(135deg,#6366f1,#a855f7)",
+                  color:      !aiImages.length || aiProcessing ? "#6b7280" : "#fff",
+                  fontSize:12, fontWeight:700,
+                  cursor: !aiImages.length || aiProcessing ? "not-allowed" : "pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:7,
+                  boxShadow: !aiImages.length || aiProcessing ? "none" : "0 4px 16px rgba(99,102,241,0.25)",
+                }}>
+                {aiProcessing
+                  ? <>Analysing… {aiProgress.current}/{aiProgress.total}</>
+                  : <><Sparkles size={13}/>Analyze {aiImages.length || ""} Screenshot{aiImages.length===1?"":"s"} with AI</>}
+              </button>
+            </>
+          )}
+
+          {tab === "ai" && aiStep === "review" && (
+            <>
+              <button onClick={() => setAiStep("upload")} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>← Back</button>
+              <button
+                onClick={doAiImport}
+                disabled={!selectedAiTrades.length}
+                style={{
+                  flex:3, padding:"10px", borderRadius:9, border:"none",
+                  background: selectedAiTrades.length ? "linear-gradient(135deg,#6366f1,#a855f7)" : "#2a2a3a",
+                  color:      selectedAiTrades.length ? "#fff" : "#6b7280",
+                  fontSize:12, fontWeight:700,
+                  cursor:     selectedAiTrades.length ? "pointer" : "not-allowed",
+                  boxShadow:  selectedAiTrades.length ? "0 4px 16px rgba(99,102,241,0.25)" : "none",
+                }}>
+                Import {selectedAiTrades.length} Trade{selectedAiTrades.length===1?"":"s"}
+              </button>
+            </>
           )}
         </div></div></div>
   );
@@ -6687,9 +6797,9 @@ function TradingDashboard({ session, onLogout }) {
   const [tradesLoading, setTradesLoading] = useState(true);
   const [showForm,      setShowForm]      = useState(false);
   const [showCSV,       setShowCSV]       = useState(false);
+  const [csvInitialTab, setCsvInitialTab] = useState("csv"); // "csv" | "ai"
   const [showHub,       setShowHub]       = useState(false);
   const [showAddAcct,   setShowAddAcct]   = useState(false);
-  const [showShot,      setShowShot]      = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [editTrade,     setEditTrade]     = useState(null);
   const [showMobileTools, setShowMobileTools] = useState(false);
@@ -6964,22 +7074,9 @@ function TradingDashboard({ session, onLogout }) {
           onSkip={() => setShowAccountSetup(false)}
         />
       )}
-      {showCSV && <CSVUploader onImport={(imported) => setTrades(prev => [...prev, ...imported.map(t => ({ ...t, accountId: paperAccts.activeAccount?.id ?? null }))])} onClose={() => setShowCSV(false)}/>}
-      {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => setShowCSV(true)} onScreenshot={() => setShowShot(true)} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
+      {showCSV && <CSVUploader initialTab={csvInitialTab} onImport={(imported) => setTrades(prev => [...prev, ...imported.map(t => ({ ...t, accountId: paperAccts.activeAccount?.id ?? null }))])} onClose={() => setShowCSV(false)}/>}
+      {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }} onScreenshot={() => { setCsvInitialTab("ai"); setShowCSV(true); }} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
-      {showShot && (
-        <ScreenshotImporter
-          onClose={() => setShowShot(false)}
-          onImportAll={(trades) => {
-            setTrades(prev => [...prev, ...trades.map(t => ({
-              ...t,
-              id: `shot_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-              accountId: paperAccts.activeAccount?.id ?? null,
-            }))]);
-            setShowShot(false);
-          }}
-        />
-      )}
 
       {/* ── Left Sidebar (desktop) ── */}
       <aside className="hide-mobile" style={{ position:"fixed", top:0, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
@@ -7103,7 +7200,7 @@ function TradingDashboard({ session, onLogout }) {
               onEdit={t => setEditTrade(t)}
               onDelete={deleteTrade}
               onAdd={() => setShowForm(true)}
-              onCSV={() => setShowCSV(true)}
+              onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }}
               onSaveTrade={saveTrade}
               activeAccount={paperAccts.activeAccount}
               username={session.username}
