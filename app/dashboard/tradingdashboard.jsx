@@ -5673,12 +5673,9 @@ function PlatformDropdown() {
       { href:"/planner",     emoji:"⚡", label:"Trade Planner",   color:"#38bdf8" },
       { href:"/checklist",   emoji:"✅", label:"Checklist",      color:"#22d3a5" },
       { href:"/challenge",   emoji:"🏆", label:"Challenge",      color:"#a78bfa" },
-      { href:"/leaderboard", emoji:"🏆", label:"Leaderboard",   color:"#818cf8" },
-      { href:"/earnings",    emoji:"💰", label:"Earnings",       color:"#22d3a5" },
       { href:"/replay",      emoji:"📽️", label:"Trade Replay",    color:"#38bdf8" },
       { href:"/psychology",  emoji:"🧠", label:"Psychology",     color:"#ec4899" },
       { href:"/setups",      emoji:"🎯", label:"Best Setups",    color:"#22c55e" },
-      { href:"/import",      emoji:"📥", label:"Import",         color:"#34d399" },
     ];
 
   return (
@@ -6084,7 +6081,7 @@ function WeeklyChallenges({ trades }) {
   );
 }
 
-function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onAddStrat, onUpgradeAccount, username, onClearDemo, loading }) {
+function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAccount, onUpgradeAccount, username, onClearDemo, loading }) {
   const stats   = useMemo(() => computeStats(trades), [trades]);
   const recent  = useMemo(() => [...trades].sort((a,b)=>b.date-a.date).slice(0,5), [trades]);
   const pnlPos  = stats.totalPnl >= 0;
@@ -6098,32 +6095,6 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
           <button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(56,189,248,0.25)" }}><Plus size={14}/> Log Trade</button>
         </div>
       </div>
-      {/* Shortcuts */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-        <a href="/leaderboard" style={{ textDecoration:"none", borderRadius:12, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}
-          onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.5)"}
-          onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.25)"}>
-          <div style={{ width:38, height:38, borderRadius:10, background:"rgba(129,140,248,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🏆</div>
-          <div>
-            <div style={{ fontSize:12, fontWeight:700, color:"#818cf8" }}>Leaderboard</div>
-            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>See top published strategies</div>
-          </div>
-          <ChevronRight size={14} style={{ color:"#475569", marginLeft:"auto", flexShrink:0 }}/>
-        </a>
-        <button onClick={onAddStrat} style={{ borderRadius:12, border:"1px solid rgba(129,140,248,0.25)", background:"rgba(129,140,248,0.05)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}
-          onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.5)"}
-          onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(129,140,248,0.25)"}>
-          <div style={{ width:38, height:38, borderRadius:10, background:"rgba(129,140,248,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-            <FlaskConical size={18} style={{ color:"#818cf8" }}/>
-          </div>
-          <div style={{ textAlign:"left" }}>
-            <div style={{ fontSize:12, fontWeight:700, color:"#818cf8" }}>New Strategy</div>
-            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Build and backtest a strategy</div>
-          </div>
-          <ChevronRight size={14} style={{ color:"#475569", marginLeft:"auto", flexShrink:0 }}/>
-        </button>
-      </div>
-
       {/* Account stats card */}
       {activeAccount && <AccountStatsCard activeAccount={activeAccount} trades={allTrades ?? trades}/>}
 
@@ -8020,7 +7991,7 @@ function TradingDashboard({ session, onLogout }) {
           <span style={{ fontSize:18 }}>➕</span>Add
         </button>
       </div>
-          {tab==="dashboard"  && <DashboardHome loading={tradesLoading} trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} onAddStrat={()=>setTab("stratlab")} username={session.username} onClearDemo={() => {
+          {tab==="dashboard"  && <DashboardHome loading={tradesLoading} trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} username={session.username} onClearDemo={() => {
               setDemoMode(session.username, false);
               saveUserTrades(session.username, []);
               setTrades([]);
