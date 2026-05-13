@@ -56,6 +56,13 @@ function fmtPct(n, { signed = false, digits = 1 } = {}) {
 function fmtNum(n) {
   return (Number(n) || 0).toLocaleString("en-US");
 }
+function formatPrice(price) {
+  const v = Number(price) || 0;
+  const abs = Math.abs(v);
+  if (abs < 10)   return v.toFixed(4);
+  if (abs < 1000) return v.toFixed(2);
+  return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 function accountKey(u) { return `tradedesk_trades_${u}_v1`; }
 
@@ -2104,11 +2111,11 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
                           {t.type==="long"?"▲":"▼"} {t.type?.toUpperCase()}
                         </span>
                       </td>
-                      <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{t.entryPrice}</td>
-                      <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{t.exitPrice}</td>
+                      <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{formatPrice(t.entryPrice)}</td>
+                      <td style={{ ...td, fontFamily:"monospace", color:"#94a3b8" }} onClick={()=>setViewing(t)}>{formatPrice(t.exitPrice)}</td>
                       <td style={{ ...td, fontFamily:"monospace", fontWeight:700, color: w?"#34d399":"#f87171" }} onClick={()=>setViewing(t)}>
                         <div>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
-                        <div style={{ fontSize:9, opacity:0.7 }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>
+                        {Math.abs(t.pnlPercent ?? 0) >= 0.05 && <div style={{ fontSize:9, opacity:0.7 }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>}
                       </td>
                       <td style={{ ...td, color:"#64748b" }} onClick={()=>setViewing(t)}>{t.strategy}</td>
 
@@ -2256,10 +2263,10 @@ function AnalyticsPanel({ trades }) {
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10 }}>
         <StatCard label="Total Trades" value={String(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
         <StatCard label="Win Rate"     value={`${stats.winRate}%`}       sub={`PF ${stats.profitFactor}`}        pos={stats.winRate>=50}    icon={<Target size={14}/>}/>
-        <StatCard label="Total PnL"    value={`${stats.totalPnl>=0?"+":""}${(stats.totalPnl??0).toFixed(4)}`} sub={`Avg W: +${(stats.avgWin??0).toFixed(4)}`} pos={stats.totalPnl>=0} icon={<TrendingUp size={14}/>}/>
-        <StatCard label="Best Trade"   value={`+${(stats.bestTrade??0).toFixed(4)}`}  pos={true}  icon={<Award size={14}/>}/>
-        <StatCard label="Worst Trade"  value={(stats.worstTrade??0).toFixed(4)}       pos={false} icon={<TrendingDown size={14}/>}/>
-        <StatCard label="Streak"       value={streakLabel} sub={`Avg L: -${(stats.avgLoss??0).toFixed(4)}`} pos={stats.currentStreak>0?true:stats.currentStreak<0?false:null} icon={<Zap size={14}/>}/>
+        <StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={stats.totalPnl>=0} icon={<TrendingUp size={14}/>}/>
+        <StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })} pos={true}  icon={<Award size={14}/>}/>
+        <StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0)}                 pos={false} icon={<TrendingDown size={14}/>}/>
+        <StatCard label="Streak"       value={streakLabel} sub={`Avg L: -${fmtMoney(stats.avgLoss ?? 0)}`} pos={stats.currentStreak>0?true:stats.currentStreak<0?false:null} icon={<Zap size={14}/>}/>
       </div>
       {chartData.length > 1 && (
         <div style={{ borderRadius:12, border:"1px solid rgba(51,65,85,0.6)", background:"rgba(15,23,42,0.85)", padding:"16px 16px 8px" }}>
@@ -3835,8 +3842,8 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
                       </div>
                     </div>
                     <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:(t.pnl??0)>=0?"#34d399":"#f87171" }}>{(t.pnl??0)>=0?"+":""}{(t.pnl??0).toFixed(4)}</div>
-                      <div style={{ fontSize:9, color:(t.pnl??0)>=0?"#34d399":"#f87171", opacity:0.7 }}>{(t.pnlPercent??0)>=0?"+":""}{(t.pnlPercent??0).toFixed(3)}%</div>
+                      <div style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:(t.pnl??0)>=0?"#34d399":"#f87171" }}>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
+                      {Math.abs(t.pnlPercent ?? 0) >= 0.05 && <div style={{ fontSize:9, color:(t.pnl??0)>=0?"#34d399":"#f87171", opacity:0.7 }}>{fmtPct(t.pnlPercent ?? 0, { signed:true })}</div>}
                     </div>
                   </div>
                 ))}
