@@ -258,12 +258,16 @@ function useAuth() {
         const email = payload.email || "";
         const autoUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "");
         const displayName = payload.user_metadata?.full_name || autoUsername;
-        const googleData = { email, displayName, token, autoUsername };
+        const supabaseUserId = payload.sub || null;
+        const googleData = { email, displayName, token, autoUsername, supabaseUserId };
         window.history.replaceState(null, "", "/dashboard");
+        if (supabaseUserId) {
+          try { localStorage.setItem("nexyru_supabase_user_id", supabaseUserId); } catch {}
+        }
         // Check if user already has a chosen username
         const existing = localStorage.getItem(`nexyru_google_username_${email}`);
         if (existing) {
-          const s = { username: existing, displayName, email, googleAuth: true };
+          const s = { username: existing, displayName, email, googleAuth: true, supabaseUserId };
           localStorage.setItem(SESSION_KEY, JSON.stringify(s));
           setSession(s);
         } else {
@@ -294,7 +298,7 @@ function useAuth() {
     if (!/^[a-z0-9_]+$/.test(u)) return "Letters, numbers, underscores only.";
     // Save username mapping for this email
     localStorage.setItem(`nexyru_google_username_${pendingGoogle.email}`, u);
-    const s = { username: u, displayName: pendingGoogle.displayName, email: pendingGoogle.email, googleAuth: true };
+    const s = { username: u, displayName: pendingGoogle.displayName, email: pendingGoogle.email, googleAuth: true, supabaseUserId: pendingGoogle.supabaseUserId || null };
     localStorage.setItem(SESSION_KEY, JSON.stringify(s));
     // Trigger demo seeding for new users
     localStorage.setItem(`nexyru_needs_seed_${u}`, "1");
@@ -6623,6 +6627,56 @@ function SidebarDivider() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  SYNC INDICATOR
+// ═══════════════════════════════════════════════════════════════
+
+function SyncIndicator({ status }) {
+  const cfg = {
+    syncing: { label: "Syncing…", color: "#9ca3af", bg: "rgba(156,163,175,0.08)", border: "rgba(156,163,175,0.25)", spin: true },
+    saved:   { label: "Saved",    color: "#10b981", bg: "rgba(16,185,129,0.08)",  border: "rgba(16,185,129,0.25)",  spin: false },
+    offline: { label: "Offline",  color: "#f59e0b", bg: "rgba(245,158,11,0.08)",  border: "rgba(245,158,11,0.25)",  spin: false },
+    idle:    { label: "Ready",    color: "#6b7280", bg: "transparent",            border: "transparent",            spin: false },
+  };
+  const c = cfg[status] ?? cfg.idle;
+  if (status === "idle") return null;
+  return (
+    <div
+      title={status === "offline" ? "Sync failed — changes saved locally" : c.label}
+      className="hide-mobile"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 9px",
+        borderRadius: 8,
+        border: `1px solid ${c.border}`,
+        background: c.bg,
+        color: c.color,
+        fontSize: 10,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <style>{`@keyframes nx-spin{to{transform:rotate(360deg)}}`}</style>
+      <span
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: c.spin ? "transparent" : c.color,
+          border: c.spin ? `1.5px solid ${c.color}` : "none",
+          borderTopColor: c.spin ? "transparent" : undefined,
+          display: "inline-block",
+          animation: c.spin ? "nx-spin 0.7s linear infinite" : "none",
+          boxSizing: "border-box",
+        }}
+      />
+      {c.label}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  MAIN TRADING DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 
@@ -6638,6 +6692,13 @@ function TradingDashboard({ session, onLogout }) {
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [editTrade,     setEditTrade]     = useState(null);
   const [showMobileTools, setShowMobileTools] = useState(false);
+
+  // Cross-device sync state
+  const [syncStatus,    setSyncStatus]    = useState("idle"); // "idle" | "syncing" | "saved" | "offline"
+  const supabaseUserId = session?.supabaseUserId ?? null;
+  const initialSyncDoneRef = useRef(false);
+  const skipNextPushRef = useRef(false);
+  const pushTimerRef = useRef(null);
 
   const copyTrading  = useCopyTrading(session.username);
   const paperAccts   = usePaperAccounts(session.username);
@@ -6679,29 +6740,107 @@ function TradingDashboard({ session, onLogout }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load trades on mount — rehydrate screenshots from IDB
+  // Load trades on mount — local first for instant UI, then Supabase sync
   useEffect(() => {
+    let cancelled = false;
     setTradesLoading(true);
-    const saved = loadUserTrades(session.username);
-    if (!saved) {
-      setTrades([]);
-      saveUserTrades(session.username, []);
-      setTradesLoading(false);
-      return;
-    }
-    setTrades(saved);
-    setTradesLoading(false);
-    // Rehydrate screenshots in the background
-    Promise.all(saved.map(rehydrateScreenshot)).then(hydrated => {
-      setTrades(hydrated);
-    });
-  }, [session.username]);
+    initialSyncDoneRef.current = false;
 
-  // Persist on change + sync account balances
+    const localSaved = loadUserTrades(session.username) ?? [];
+    setTrades(localSaved);
+    setTradesLoading(false);
+
+    // Rehydrate screenshots in the background
+    Promise.all(localSaved.map(rehydrateScreenshot)).then(hydrated => {
+      if (!cancelled) setTrades(prev => {
+        // Only replace if we haven't already moved past this baseline
+        if (prev.length !== hydrated.length) return prev;
+        return hydrated;
+      });
+    });
+
+    // If we have a Supabase user, sync with the cloud
+    if (!supabaseUserId) {
+      initialSyncDoneRef.current = true;
+      return () => { cancelled = true; };
+    }
+
+    setSyncStatus("syncing");
+    (async () => {
+      try {
+        const res = await fetch(`/api/trades?user_id=${encodeURIComponent(supabaseUserId)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const body = await res.json();
+        const remote = Array.isArray(body.trades) ? body.trades : [];
+        if (cancelled) return;
+
+        if (remote.length > 0) {
+          // Cloud wins on a new device — overwrite local
+          saveUserTrades(session.username, remote);
+          skipNextPushRef.current = true;
+          setTrades(remote);
+          // Rehydrate any screenshots that exist locally in IDB (best-effort)
+          Promise.all(remote.map(rehydrateScreenshot)).then(hyd => {
+            if (!cancelled) {
+              skipNextPushRef.current = true;
+              setTrades(hyd);
+            }
+          }).catch(() => {});
+          initialSyncDoneRef.current = true;
+          setSyncStatus("saved");
+        } else if (localSaved.length > 0) {
+          // First-time upload — push local trades to Supabase
+          const stripped = localSaved.map(stripScreenshot);
+          const upRes = await fetch("/api/trades", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: supabaseUserId, trades: stripped }),
+          });
+          initialSyncDoneRef.current = true;
+          if (cancelled) return;
+          setSyncStatus(upRes.ok ? "saved" : "offline");
+        } else {
+          initialSyncDoneRef.current = true;
+          setSyncStatus("saved");
+        }
+      } catch (e) {
+        if (!cancelled) {
+          initialSyncDoneRef.current = true;
+          setSyncStatus("offline");
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [session.username, supabaseUserId]);
+
+  // Persist on change: localStorage immediately, Supabase debounced
   useEffect(() => {
     saveUserTrades(session.username, trades);
     paperAccts.syncBalance(trades);
-  }, [trades, session.username]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    if (!supabaseUserId || !initialSyncDoneRef.current) return;
+    if (skipNextPushRef.current) {
+      skipNextPushRef.current = false;
+      return;
+    }
+
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    setSyncStatus("syncing");
+    pushTimerRef.current = setTimeout(async () => {
+      try {
+        const stripped = trades.map(stripScreenshot);
+        const res = await fetch("/api/trades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: supabaseUserId, trades: stripped }),
+        });
+        setSyncStatus(res.ok ? "saved" : "offline");
+      } catch {
+        setSyncStatus("offline");
+      }
+    }, 600);
+  }, [trades, session.username, supabaseUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Consume incoming copied trades
   useEffect(() => {
@@ -6756,8 +6895,11 @@ function TradingDashboard({ session, onLogout }) {
   const deleteTrade = useCallback((id) => {
     deleteScreenshot(id);
     setTrades(prev => prev.filter(t => t.id !== id));
+    if (supabaseUserId) {
+      fetch(`/api/trades?trade_id=${encodeURIComponent(id)}&user_id=${encodeURIComponent(supabaseUserId)}`, { method: "DELETE" }).catch(() => {});
+    }
     toast("Trade deleted", "success");
-  }, []);
+  }, [supabaseUserId]);
 
   const strategies = useMemo(() => Array.from(new Set(trades.map(t=>t.strategy).filter(Boolean))).sort(), [trades]);
 
@@ -6866,6 +7008,7 @@ function TradingDashboard({ session, onLogout }) {
 
           {/* Right: account selector + Log Trade + avatar */}
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+            {supabaseUserId && <SyncIndicator status={syncStatus} />}
             <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
             <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
               <Plus size={13}/><span className="hide-mobile">Log Trade</span>

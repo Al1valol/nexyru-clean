@@ -17,9 +17,13 @@ export default function AuthComplete() {
         const email = payload.email || "";
         const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "");
         const displayName = payload.user_metadata?.full_name || username;
+        const supabaseUserId = payload.sub || null;
         localStorage.setItem("tradedesk_session_v1", JSON.stringify({
-          username, displayName, email, googleAuth: true
+          username, displayName, email, googleAuth: true, supabaseUserId
         }));
+        if (supabaseUserId) {
+          try { localStorage.setItem("nexyru_supabase_user_id", supabaseUserId); } catch {}
+        }
         setStatus("Success! Redirecting...");
         setTimeout(() => { window.location.href = "/dashboard"; }, 500);
       } catch(e) {
