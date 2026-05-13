@@ -470,21 +470,29 @@ export default function ChecklistPage() {
         .pulse { animation: pulse 1.6s ease-in-out infinite; }
         .card-enter { animation: cardSlideIn 0.28s ease-out forwards; }
         .yesno-btn:hover { transform: translateY(-1px); }
+        @media (max-width: 767px) {
+          .checklist-top-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+          .checklist-page { padding: 16px !important; }
+          .checklist-header { padding: 12px 16px !important; }
+          .checklist-title { font-size: 22px !important; }
+          .trade-detail-row { grid-template-columns: 1fr 1fr !important; }
+          .checklist-context-grid { grid-template-columns: 1fr 1fr !important; }
+        }
       `}</style>
 
       {/* Top nav */}
-      <div style={{ borderBottom: "1px solid #0d1628", background: "rgba(6,13,26,0.95)", padding: "14px 28px", display: "flex", alignItems: "center", gap: 16, position: "sticky", top: 0, zIndex: 10, backdropFilter: "blur(8px)" }}>
+      <div className="checklist-header" style={{ borderBottom: "1px solid #0d1628", background: "rgba(6,13,26,0.95)", padding: "14px 28px", display: "flex", alignItems: "center", gap: 16, position: "sticky", top: 0, zIndex: 10, backdropFilter: "blur(8px)" }}>
         <a href="/dashboard" style={{ fontSize: 12, color: "#3a4a6a", textDecoration: "none" }}>← Dashboard</a>
         <span style={{ fontSize: 14, fontWeight: 800, color: "#f0f4ff" }}>✅ Pre-Trade Checklist</span>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 10, color: "#3a4a6a", fontWeight: 600 }}>{username ? `@${username}` : ""}</span>
       </div>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 20px" }}>
+      <div className="checklist-page" style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 20px" }}>
 
         {/* HEADER */}
         <header style={{ marginBottom: 28 }}>
-          <h1 style={{ fontSize: 30, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>✅ Pre-Trade Checklist</h1>
+          <h1 className="checklist-title" style={{ fontSize: 30, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>✅ Pre-Trade Checklist</h1>
           <p style={{ fontSize: 13, color: "#64748b", margin: "6px 0 0" }}>Run this before every trade</p>
         </header>
 
@@ -662,7 +670,7 @@ export default function ChecklistPage() {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
+                <div className="checklist-context-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
                   <StatTile label="R:R" value={calcs.rr !== null ? `${calcs.rr}R` : "—"} color={calcs.rr !== null && calcs.rr >= 2 ? "#22d3a5" : calcs.rr !== null && calcs.rr >= 1 ? "#fbbf24" : "#64748b"} />
                   <StatTile label="Dollar risk" value={fmtMoney0(calcs.dollarRisk)} color="#fbbf24" />
                   <StatTile label="Contracts" value={calcs.contracts !== null ? String(calcs.contracts) : "—"} color="#38bdf8" />

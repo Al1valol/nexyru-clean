@@ -512,7 +512,15 @@ export default function SetupsPage() {
   const hasTrades = validTrades.length > 0;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#040810", color: "#e2e8f0", padding: "32px 20px 80px" }}>
+    <div className="setups-main" style={{ minHeight: "100vh", background: "#040810", color: "#e2e8f0", padding: "32px 20px 80px" }}>
+      <style>{`
+        @media (max-width: 767px) {
+          .setups-main { padding: 16px 16px 80px !important; }
+          .setups-hide-mobile { display: none !important; }
+          .setups-table { min-width: 0 !important; }
+          .setups-title { font-size: 24px !important; }
+        }
+      `}</style>
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         {/* Top nav */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
@@ -537,7 +545,7 @@ export default function SetupsPage() {
 
         {/* Header */}
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 32, fontWeight: 800, color: "#f1f5f9", letterSpacing: "-0.02em", marginBottom: 6 }}>
+          <div className="setups-title" style={{ fontSize: 32, fontWeight: 800, color: "#f1f5f9", letterSpacing: "-0.02em", marginBottom: 6 }}>
             🎯 Best Setup Finder
           </div>
           <div style={{ fontSize: 14, color: "#64748b" }}>Discover what actually works in your trading</div>
@@ -625,18 +633,18 @@ export default function SetupsPage() {
                 </div>
               </div>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
+                <table className="setups-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
                   <thead>
                     <tr>
                       <th style={th} onClick={() => toggleSetupSort("name")}>Setup{setupArrow("name")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("trades")}>Trades{setupArrow("trades")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("trades")}>Trades{setupArrow("trades")}</th>
                       <th style={th} onClick={() => toggleSetupSort("winRate")}>Win Rate{setupArrow("winRate")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("avgPnl")}>Avg PnL{setupArrow("avgPnl")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("avgPnl")}>Avg PnL{setupArrow("avgPnl")}</th>
                       <th style={th} onClick={() => toggleSetupSort("totalPnl")}>Total PnL{setupArrow("totalPnl")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("profitFactor")}>Profit Factor{setupArrow("profitFactor")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("bestTrade")}>Best{setupArrow("bestTrade")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("worstTrade")}>Worst{setupArrow("worstTrade")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("expectancy")}>Expectancy{setupArrow("expectancy")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("profitFactor")}>Profit Factor{setupArrow("profitFactor")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("bestTrade")}>Best{setupArrow("bestTrade")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("worstTrade")}>Worst{setupArrow("worstTrade")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("expectancy")}>Expectancy{setupArrow("expectancy")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -662,18 +670,18 @@ export default function SetupsPage() {
                           )}
                           {r.name}
                         </td>
-                        <td style={td}>{r.trades}</td>
+                        <td className="setups-hide-mobile" style={td}>{r.trades}</td>
                         <td style={{ ...td, color: r.winRate > 60 ? "#22c55e" : r.winRate >= 40 ? "#eab308" : "#ef4444", fontWeight: 700 }}>
                           {r.winRate.toFixed(0)}%
                         </td>
-                        <td style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td>
+                        <td className="setups-hide-mobile" style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td>
                         <td style={{ ...td, color: r.totalPnl >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
                           {fmtMoney(r.totalPnl)}
                         </td>
-                        <td style={td}>{isFinite(r.profitFactor) ? r.profitFactor.toFixed(2) : "∞"}</td>
-                        <td style={{ ...td, color: "#22c55e" }}>{fmtMoney(r.bestTrade)}</td>
-                        <td style={{ ...td, color: "#ef4444" }}>{fmtMoney(r.worstTrade)}</td>
-                        <td style={{ ...td, color: r.expectancy >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
+                        <td className="setups-hide-mobile" style={td}>{isFinite(r.profitFactor) ? r.profitFactor.toFixed(2) : "∞"}</td>
+                        <td className="setups-hide-mobile" style={{ ...td, color: "#22c55e" }}>{fmtMoney(r.bestTrade)}</td>
+                        <td className="setups-hide-mobile" style={{ ...td, color: "#ef4444" }}>{fmtMoney(r.worstTrade)}</td>
+                        <td className="setups-hide-mobile" style={{ ...td, color: r.expectancy >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
                           {fmtMoney(r.expectancy)}
                         </td>
                       </tr>
@@ -692,36 +700,36 @@ export default function SetupsPage() {
                 </div>
               </div>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}>
+                <table className="setups-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}>
                   <thead>
                     <tr>
                       <th style={th} onClick={() => toggleInstSort("symbol")}>Symbol{instArrow("symbol")}</th>
-                      <th style={th} onClick={() => toggleInstSort("trades")}>Trades{instArrow("trades")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("trades")}>Trades{instArrow("trades")}</th>
                       <th style={th} onClick={() => toggleInstSort("winRate")}>Win Rate{instArrow("winRate")}</th>
-                      <th style={th} onClick={() => toggleInstSort("avgPnl")}>Avg PnL{instArrow("avgPnl")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("avgPnl")}>Avg PnL{instArrow("avgPnl")}</th>
                       <th style={th} onClick={() => toggleInstSort("totalPnl")}>Total PnL{instArrow("totalPnl")}</th>
-                      <th style={th} onClick={() => toggleInstSort("longWinRate")}>Long Win%{instArrow("longWinRate")}</th>
-                      <th style={th} onClick={() => toggleInstSort("shortWinRate")}>Short Win%{instArrow("shortWinRate")}</th>
-                      <th style={th}>Best Dir</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("longWinRate")}>Long Win%{instArrow("longWinRate")}</th>
+                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("shortWinRate")}>Short Win%{instArrow("shortWinRate")}</th>
+                      <th className="setups-hide-mobile" style={th}>Best Dir</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedInstruments.map((r) => (
                       <tr key={r.symbol} style={{ background: rowBg(r.winRate) }}>
                         <td style={{ ...td, fontWeight: 700, color: "#f1f5f9" }}>{r.symbol}</td>
-                        <td style={td}>{r.trades}</td>
+                        <td className="setups-hide-mobile" style={td}>{r.trades}</td>
                         <td style={{ ...td, color: r.winRate > 60 ? "#22c55e" : r.winRate >= 40 ? "#eab308" : "#ef4444", fontWeight: 700 }}>
                           {r.winRate.toFixed(0)}%
                         </td>
-                        <td style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td>
+                        <td className="setups-hide-mobile" style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td>
                         <td style={{ ...td, color: r.totalPnl >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>{fmtMoney(r.totalPnl)}</td>
-                        <td style={td}>
+                        <td className="setups-hide-mobile" style={td}>
                           {r.longCount > 0 ? `${r.longWinRate.toFixed(0)}% (${r.longCount})` : "—"}
                         </td>
-                        <td style={td}>
+                        <td className="setups-hide-mobile" style={td}>
                           {r.shortCount > 0 ? `${r.shortWinRate.toFixed(0)}% (${r.shortCount})` : "—"}
                         </td>
-                        <td style={td}>
+                        <td className="setups-hide-mobile" style={td}>
                           {r.bestDirection === "long" && (
                             <span style={{ color: "#22c55e", fontWeight: 800, fontSize: 11 }}>▲ LONG</span>
                           )}

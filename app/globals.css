@@ -24,3 +24,35 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Global mobile responsiveness ─────────────────────────────── */
+
+/* Prevent iOS zoom on input focus — needs font-size >= 16px */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Modals: full-width with 16px padding on mobile */
+  [role="dialog"],
+  .modal,
+  .nx-modal {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 16px !important;
+    box-sizing: border-box;
+  }
+
+  /* Tap-target minimum on all buttons */
+  button {
+    min-height: 44px;
+  }
+
+  /* Allow inline icon-only buttons to stay compact */
+  button.icon-btn,
+  button[data-compact="true"] {
+    min-height: 0;
+  }
+}

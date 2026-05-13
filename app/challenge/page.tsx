@@ -2,6 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < breakpoint);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 // ── Types ─────────────────────────────────────────────────────────
 type FirmKey = "apex" | "topstep" | "ftmo" | "mff" | "bulenox" | "custom";
 type PhaseKey =
@@ -427,6 +438,8 @@ function Ring({ value, max, size=170, thickness=13, centerBig, centerSub, mode="
   centerBig?:string; centerSub?:string;
   mode?:"loss"|"fill"; forceColor?:string;
 }) {
+  const isMobile = useIsMobile();
+  if (isMobile) { size = 120; thickness = 10; }
   const pct = Math.min(100, Math.max(0, max > 0 ? (value / max) * 100 : 0));
   const r = (size - thickness) / 2;
   const circ = 2 * Math.PI * r;
@@ -590,7 +603,7 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
         {/* Firm picker */}
         <div style={{ marginBottom:18 }}>
           <label style={lbl}>Prop Firm</label>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8 }}>
+          <div className="firm-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8 }}>
             {(Object.keys(FIRMS) as FirmKey[]).map(k => {
               const f = FIRMS[k];
               const active = firm === k;
@@ -674,7 +687,7 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
         </div>
 
         {/* Start date + starting balance */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:18 }}>
+        <div className="stack-on-mobile" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:18 }}>
           <div>
             <label style={lbl}>Start Date</label>
             <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inp}/>
@@ -835,7 +848,7 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
       </div>
 
       {/* 4 rings */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:14 }}>
+      <div className="rings-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:14 }}>
         {/* Daily Loss */}
         <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
           <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
@@ -1261,7 +1274,16 @@ export default function ChallengePage() {
 
   return (
     <div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,-apple-system,sans-serif" }}>
-      <div style={{ borderBottom:"1px solid #0d1628", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}>
+      <style>{`
+        @media (max-width: 767px) {
+          .firm-grid { grid-template-columns: 1fr 1fr !important; }
+          .rings-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+          .stack-on-mobile { grid-template-columns: 1fr !important; }
+          .challenge-header { padding: 12px 16px !important; }
+          .challenge-content { padding: 16px !important; }
+        }
+      `}</style>
+      <div className="challenge-header" style={{ borderBottom:"1px solid #0d1628", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}>
         <a href="/dashboard" style={{ fontSize:12, color:"#3a4a6a", textDecoration:"none" }}>← Dashboard</a>
         <span style={{ fontSize:14, fontWeight:800, color:"#f0f4ff" }}>Challenge Tracker</span>
         <div style={{ flex:1 }}/>
@@ -1270,7 +1292,7 @@ export default function ChallengePage() {
         )}
       </div>
 
-      <div style={{ maxWidth:1100, margin:"0 auto", padding:"28px 24px 12px" }}>
+      <div className="challenge-content" style={{ maxWidth:1100, margin:"0 auto", padding:"28px 24px 12px" }}>
         <div style={{ marginBottom:18 }}>
           <h1 style={{ fontSize:28, fontWeight:900, color:"#f0f4ff", margin:0, letterSpacing:"-0.01em" }}>🏆 Challenge Tracker</h1>
           <p style={{ fontSize:13, color:"#5a6a8a", margin:"6px 0 0" }}>2026 prop firm rules — each phase has its own ruleset.</p>
@@ -1299,7 +1321,7 @@ export default function ChallengePage() {
         )}
       </div>
 
-      <div style={{ maxWidth:1100, margin:"0 auto", padding:"0 24px 48px" }}>
+      <div className="challenge-content" style={{ maxWidth:1100, margin:"0 auto", padding:"0 24px 48px" }}>
         {mode === "new" && (
           <SetupForm onSave={upsertAccount} onCancel={accounts.length > 0 ? ()=>setMode("view") : undefined}/>
         )}

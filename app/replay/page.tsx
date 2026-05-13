@@ -687,8 +687,16 @@ export default function ReplayPage() {
   const contracts = Number(t.size ?? 0);
 
   return (
-    <div style={shellStyle}>
+    <div className="replay-shell" style={shellStyle}>
       <style>{slideAnimCSS}</style>
+      <style>{`
+        @media (max-width: 767px) {
+          .replay-shell { padding: 16px 12px 90px !important; }
+          .replay-chart-header { grid-template-columns: 1fr !important; gap: 8px !important; }
+          .replay-chart-header-right { text-align: left !important; }
+          .replay-grade-grid { grid-template-columns: repeat(3, 1fr) !important; }
+        }
+      `}</style>
 
       <div style={{ width: "100%", maxWidth: 760 }}>
         <ProgressBar idx={idx} total={total} pct={Math.round(((idx) / total) * 100)} sessionGrade={sessionGrade} />
@@ -701,7 +709,7 @@ export default function ReplayPage() {
           }}
         >
           {/* Unified chart header: symbol+pills | OHLC | date */}
-          <div style={{
+          <div className="replay-chart-header" style={{
             ...cardStyle,
             marginTop: 18,
             padding: "11px 14px",
@@ -774,7 +782,7 @@ export default function ReplayPage() {
             </div>
 
             {/* Right: trade datetime */}
-            <span style={{
+            <span className="replay-chart-header-right" style={{
               fontSize: 11,
               color: "#94a3b8",
               fontFamily: "ui-monospace, SFMono-Regular, monospace",
@@ -921,7 +929,7 @@ export default function ReplayPage() {
             </FormBlock>
 
             <FormBlock label="Trade Grade">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+              <div className="replay-grade-grid" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
                 {GRADE_LIST.map((g) => {
                   const active = grade === g;
                   const c = GRADE_COLOR[g];

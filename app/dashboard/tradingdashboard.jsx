@@ -223,6 +223,21 @@ function computeTraderStats(username) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  MOBILE DETECTION HOOK
+// ═══════════════════════════════════════════════════════════════
+
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < breakpoint);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  AUTH HOOK
 // ═══════════════════════════════════════════════════════════════
 
@@ -1957,6 +1972,7 @@ function TradeDetail({ trade, onClose }) {
 
 function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
   const [err, setErr] = useState(false);
+  const isMobile = useIsMobile();
   if (err) return (
     <div style={{ padding:"24px", borderRadius:12, border:"1px dashed rgba(248,113,113,0.3)", textAlign:"center" }}>
       <div style={{ fontSize:32, marginBottom:8 }}>⚠️</div>
@@ -2090,6 +2106,76 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
             No trades match your filters.
           </div>
         )
+      ) : isMobile ? (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {filtered.map(t => {
+            const w = (t.pnl ?? 0) >= 0;
+            const isLong = t.type === "long";
+            const isCSV  = t.source === "csv_import" || t.source === "broker_import";
+            const isShot = t.source === "screenshot_import";
+            const sourceLabel = isShot ? "Screenshot Import" : isCSV ? "CSV Import" : t.source === "copy" ? "Copy Trade" : t.source === "demo" ? "Demo" : "Manual";
+            const dateLabel = new Date(t.date).toLocaleDateString(undefined, { month:"short", day:"numeric" });
+            return (
+              <div key={t.id}
+                   onClick={() => setViewing(t)}
+                   style={{
+                     position:"relative",
+                     borderRadius:12,
+                     border:"1px solid rgba(30,41,59,0.7)",
+                     borderLeft:`3px solid ${w ? "rgba(52,211,153,0.55)" : "rgba(248,113,113,0.55)"}`,
+                     background:"rgba(13,17,32,0.55)",
+                     padding:"12px 14px",
+                     display:"flex",
+                     flexDirection:"column",
+                     gap:6,
+                     cursor:"pointer",
+                     WebkitTapHighlightColor:"transparent",
+                   }}>
+                {/* Top row */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+                    <span style={{ fontSize:9, fontWeight:800, padding:"3px 7px", borderRadius:5, background: isLong?"rgba(16,185,129,0.12)":"rgba(239,68,68,0.12)", color: isLong?"#34d399":"#f87171", border:`1px solid ${isLong?"rgba(16,185,129,0.3)":"rgba(239,68,68,0.3)"}`, whiteSpace:"nowrap" }}>
+                      {isLong?"▲ LONG":"▼ SHORT"}
+                    </span>
+                    <span style={{ fontSize:14, fontWeight:800, color:"#e2e8f0", letterSpacing:"-0.01em", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.pair}</span>
+                  </div>
+                  <span style={{ fontSize:14, fontWeight:800, color: w?"#34d399":"#f87171", fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap" }}>
+                    {fmtMoney(t.pnl ?? 0, { signed:true })}
+                  </span>
+                </div>
+                {/* Bottom row */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, fontSize:11, color:"#64748b" }}>
+                  <span style={{ fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                    Entry {formatPrice(t.entryPrice)} → Exit {formatPrice(t.exitPrice)}
+                  </span>
+                  <span style={{ whiteSpace:"nowrap", textAlign:"right", flexShrink:0 }}>
+                    {dateLabel} · {sourceLabel}
+                  </span>
+                </div>
+                {/* Action buttons */}
+                <div style={{ position:"absolute", top:8, right:8, display:"flex", gap:4 }} onClick={e => e.stopPropagation()}>
+                  <button onClick={() => onEdit(t)} aria-label="Edit trade"
+                    style={{ width:32, height:32, borderRadius:8, border:"1px solid #1e2d3e", background:"rgba(13,17,32,0.95)", color:"#94a3b8", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+                    <Edit2 size={12}/>
+                  </button>
+                  {confirmingTradeDelete === t.id ? (
+                    <>
+                      <button onClick={(e) => { e.stopPropagation(); setConfirmingTradeDelete(null); onDelete(t.id); }} aria-label="Confirm delete"
+                        style={{ height:32, padding:"0 8px", borderRadius:8, border:"1px solid #f87171", background:"rgba(239,68,68,0.2)", color:"#fca5a5", fontSize:11, fontWeight:700, cursor:"pointer" }}>✓</button>
+                      <button onClick={(e) => { e.stopPropagation(); setConfirmingTradeDelete(null); }} aria-label="Cancel"
+                        style={{ height:32, padding:"0 8px", borderRadius:8, border:"1px solid #334155", background:"rgba(13,17,32,0.95)", color:"#94a3b8", fontSize:11, fontWeight:700, cursor:"pointer" }}>✗</button>
+                    </>
+                  ) : (
+                    <button onClick={(e) => { e.stopPropagation(); setConfirmingTradeDelete(t.id); setTimeout(() => setConfirmingTradeDelete(curr => curr === t.id ? null : curr), 3000); }} aria-label="Delete trade"
+                      style={{ width:32, height:32, borderRadius:8, border:"1px solid rgba(239,68,68,0.25)", background:"rgba(13,17,32,0.95)", color:"#f87171", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+                      <Trash size={12}/>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div style={{ borderRadius:12, border:"1px solid #1a2035", overflow:"hidden" }}>
           <div style={{ overflowX:"auto" }}>
@@ -3591,6 +3677,7 @@ function AccountSwitcher({ accounts, activeAccount, onSwitch, onAdd, trades }) {
 
 // ── Account Stats Card (shown on Dashboard) ───────────────────
 function AccountStatsCard({ activeAccount, trades }) {
+  const isMobile = useIsMobile();
   if (!activeAccount) return null;
 
   const accTrades = trades.filter(t => t.accountId === activeAccount.id);
@@ -3603,6 +3690,14 @@ function AccountStatsCard({ activeAccount, trades }) {
 
   const perfClr = pnlPos ? "#34d399" : "#f87171";
   const sysFont = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif';
+
+  const miniStats = [
+    { label:"Balance",  val: fmtMoney(activeAccount.balance), color:"#e2e8f0" },
+    { label:"PnL",      val: fmtMoney(pnl, { signed:true }),  color:pnlPos?"#34d399":"#f87171" },
+    { label:"Return",   val: fmtPct(pnlPct, { signed:true }), color:pnlPos?"#34d399":"#f87171" },
+    { label:"Win Rate", val: accTrades.length ? fmtPct(wr) : "—", color:wr>=50?"#34d399":"#fbbf24" },
+  ];
+
   return (
     <div style={{
       borderRadius:12, overflow:"hidden",
@@ -3611,7 +3706,7 @@ function AccountStatsCard({ activeAccount, trades }) {
       background:`linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)), linear-gradient(135deg, ${typeClr}08, rgba(13,17,32,0.92))`,
     }}>
       {/* Account header */}
-      <div style={{ padding:"14px 18px", borderBottom:`1px solid ${typeClr}18`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      <div style={{ padding: isMobile ? "12px 14px" : "14px 18px", borderBottom:`1px solid ${typeClr}18`, display:"flex", alignItems: isMobile ? "flex-start" : "center", justifyContent:"space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 10 : 0 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:18 }}>{activeAccount.type === "funded" ? "💰" : "📄"}</span>
           <div>
@@ -3619,9 +3714,9 @@ function AccountStatsCard({ activeAccount, trades }) {
             <div style={{ fontSize:10, fontWeight:700, color:typeClr, textTransform:"uppercase", letterSpacing:"0.1em", marginTop:2 }}>{activeAccount.type} account</div>
           </div>
         </div>
-        <div style={{ textAlign:"right" }}>
+        <div style={{ textAlign: isMobile ? "left" : "right", width: isMobile ? "100%" : "auto" }}>
           <div style={{
-            fontSize:24,
+            fontSize: isMobile ? 22 : 24,
             fontWeight:800,
             letterSpacing:"-0.5px",
             color:"#f1f5f9",
@@ -3637,14 +3732,13 @@ function AccountStatsCard({ activeAccount, trades }) {
         </div>
       </div>
       {/* Mini stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", padding:"12px 0" }}>
-        {[
-          { label:"Balance",  val: fmtMoney(activeAccount.balance), color:"#e2e8f0" },
-          { label:"PnL",      val: fmtMoney(pnl, { signed:true }),  color:pnlPos?"#34d399":"#f87171" },
-          { label:"Return",   val: fmtPct(pnlPct, { signed:true }), color:pnlPos?"#34d399":"#f87171" },
-          { label:"Win Rate", val: accTrades.length ? fmtPct(wr) : "—", color:wr>=50?"#34d399":"#fbbf24" },
-        ].map(({ label,val,color }, idx, arr) => (
-          <div key={label} style={{ textAlign:"center", padding:"4px 10px", borderRight: idx < arr.length-1 ? "1px solid rgba(30,41,59,0.4)" : "none" }}>
+      <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", padding:"12px 0", gap: isMobile ? "8px 0" : 0 }}>
+        {miniStats.map(({ label,val,color }, idx, arr) => (
+          <div key={label} style={{
+            textAlign:"center",
+            padding:"4px 10px",
+            borderRight: isMobile ? (idx % 2 === 0 ? "1px solid rgba(30,41,59,0.4)" : "none") : (idx < arr.length-1 ? "1px solid rgba(30,41,59,0.4)" : "none"),
+          }}>
             <div style={{ fontSize:9, color:"#475569", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:5, fontWeight:700 }}>{label}</div>
             <div style={{
               fontSize:14,
@@ -6195,6 +6289,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
   const stats   = useMemo(() => computeStats(trades), [trades]);
   const recent  = useMemo(() => [...trades].sort((a,b)=>b.date-a.date).slice(0,5), [trades]);
   const pnlPos  = stats.totalPnl >= 0;
+  const isMobile = useIsMobile();
 
   const [onboardingDismissed, setOnboardingDismissed] = useState(true);
   useEffect(() => {
@@ -6224,13 +6319,25 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
       {activeAccount && <AccountStatsCard activeAccount={activeAccount} trades={allTrades ?? trades}/>}
 
       {trades.length > 0 ? (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10 }}>
-          <StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
-          <StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/>
-          <StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/>
-          <StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/>
-          <StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/>
-        </div>
+        isMobile ? (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
+            <StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/>
+            <div style={{ gridColumn:"span 2" }}>
+              <StatCard label="Total PnL" value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/>
+            </div>
+            <StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/>
+            <StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/>
+          </div>
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10 }}>
+            <StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/>
+            <StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/>
+            <StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/>
+            <StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/>
+            <StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/>
+          </div>
+        )
       ) : !showOnboarding && (
         <div style={{ padding:"56px 24px", borderRadius:16, border:"2px dashed #1a2035", textAlign:"center" }}>
           <div style={{ fontSize:48, marginBottom:14, lineHeight:1 }}>📒</div>
@@ -7849,6 +7956,7 @@ function TradingDashboard({ session, onLogout }) {
   const [showShot,      setShowShot]      = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [editTrade,     setEditTrade]     = useState(null);
+  const [showMobileTools, setShowMobileTools] = useState(false);
 
   const copyTrading  = useCopyTrading(session.username);
   const paperAccts   = usePaperAccounts(session.username);
@@ -8090,7 +8198,7 @@ function TradingDashboard({ session, onLogout }) {
       </div>
 
       {/* ── Page content ── */}
-      <div style={{ flex:1, overflowY:"auto", paddingBottom:60 }}>
+      <div style={{ flex:1, overflowY:"auto", paddingBottom:80 }}>
         {/* Demo banner — always visible on all tabs */}
         <div style={{ maxWidth:1200, margin:"0 auto", padding:"16px 16px 0" }}>
           <DemoBanner username={session.username} onClear={() => {
@@ -8103,20 +8211,62 @@ function TradingDashboard({ session, onLogout }) {
         <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", padding:"12px 16px 16px" }}>
 
       {/* ── Bottom nav — mobile only ── */}
-      <div className="show-mobile" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0d1120", borderTop:"1px solid #1a2035", display:"flex", alignItems:"center", zIndex:50 }}>
-        {NAV_TABS.map(({ id, label, icon }) => (
-          <button key={id} onClick={()=>setTab(id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:tab===id?"#38bdf8":"#475569", fontSize:9, fontWeight:700 }}>
+      <div className="show-mobile" style={{ position:"fixed", bottom:0, left:0, right:0, height:60, background:"#0d1120", borderTop:"1px solid #1a2035", display:"flex", alignItems:"stretch", zIndex:50, paddingBottom:"env(safe-area-inset-bottom)" }}>
+        {NAV_TABS.map(({ id, label }) => (
+          <button key={id} onClick={()=>setTab(id)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:tab===id?"#38bdf8":"#475569", fontSize:10, fontWeight:700 }}>
             <span style={{ fontSize:18 }}>{id==="dashboard"?"🏠":"📝"}</span>
             {label}
           </button>
         ))}
-        <button onClick={()=>setTab("stratlab")} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:tab==="stratlab"?"#38bdf8":"#475569", fontSize:9, fontWeight:700 }}>
+        <button onClick={()=>setShowMobileTools(true)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:showMobileTools?"#38bdf8":"#475569", fontSize:10, fontWeight:700 }}>
           <span style={{ fontSize:18 }}>🔬</span>Tools
         </button>
-        <button onClick={()=>setShowHub(true)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:9, fontWeight:700 }}>
+        <button onClick={()=>setShowHub(true)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:10, fontWeight:700 }}>
           <span style={{ fontSize:18 }}>➕</span>Add
         </button>
       </div>
+
+      {/* Mobile Tools bottom sheet */}
+      {showMobileTools && (
+        <div className="show-mobile" onClick={() => setShowMobileTools(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:100, display:"flex", alignItems:"flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:"100%", background:"#0d1120", borderTop:"1px solid #1a2035", borderRadius:"16px 16px 0 0", padding:"16px 16px calc(16px + env(safe-area-inset-bottom))", maxHeight:"75vh", overflowY:"auto" }}>
+            <div style={{ width:40, height:4, borderRadius:2, background:"#1e293b", margin:"0 auto 14px" }}/>
+            <div style={{ fontSize:13, fontWeight:800, color:"#f1f5f9", marginBottom:12, letterSpacing:"-0.01em" }}>Tools</div>
+            {[
+              { heading:"Analyze", items:[
+                { href:"/psychology", emoji:"🧠", label:"Psychology",   color:"#ec4899" },
+                { href:"/setups",     emoji:"🎯", label:"Best Setups",  color:"#22c55e" },
+                { tab:"insights",     emoji:"📊", label:"Insights",     color:"#fbbf24" },
+              ]},
+              { heading:"Manage", items:[
+                { href:"/checklist", emoji:"✅", label:"Checklist",     color:"#22d3a5" },
+                { href:"/planner",   emoji:"⚡", label:"Trade Planner", color:"#38bdf8" },
+                { href:"/challenge", emoji:"🏆", label:"Challenge",     color:"#a78bfa" },
+              ]},
+              { heading:"Review", items:[
+                { href:"/replay",   emoji:"📽️", label:"Trade Replay",  color:"#38bdf8" },
+                { tab:"stratlab",   emoji:"🔬", label:"Strategy Lab",  color:"#818cf8" },
+              ]},
+            ].map(section => (
+              <div key={section.heading} style={{ marginBottom:14 }}>
+                <div style={{ fontSize:9, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6 }}>{section.heading}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  {section.items.map(it => (
+                    <a key={it.label}
+                       href={it.href ?? "#"}
+                       onClick={(e) => { if (it.tab) { e.preventDefault(); setTab(it.tab); setShowMobileTools(false); } else { setShowMobileTools(false); } }}
+                       style={{ minHeight:52, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"#111827", border:"1px solid #1a2035", color:"#e2e8f0", fontSize:13, fontWeight:600, textDecoration:"none" }}>
+                      <span style={{ fontSize:18 }}>{it.emoji}</span>
+                      <span style={{ color: it.color }}>{it.label}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
           {tab==="dashboard"  && <DashboardHome loading={tradesLoading} trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} username={session.username} onClearDemo={() => {
               setDemoMode(session.username, false);
               saveUserTrades(session.username, []);
@@ -8172,7 +8322,7 @@ function TradingDashboard({ session, onLogout }) {
         button:active { transform: scale(0.97); }
         .hide-mobile { display: flex !important; }
         .show-mobile { display: none !important; }
-        @media (max-width: 640px) {
+        @media (max-width: 767px) {
           .hide-mobile { display: none !important; }
           .show-mobile { display: flex !important; }
         }

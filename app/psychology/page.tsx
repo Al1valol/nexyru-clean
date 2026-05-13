@@ -542,12 +542,24 @@ export default function PsychologyPage() {
 
   // ── render
   return (
-    <main style={{ minHeight:"100vh", background:"#070b14", color:"#f0f4ff", padding:"32px 20px", fontFamily:"system-ui, -apple-system, sans-serif" }}>
+    <main className="psych-main" style={{ minHeight:"100vh", background:"#070b14", color:"#f0f4ff", padding:"32px 20px", fontFamily:"system-ui, -apple-system, sans-serif" }}>
+      <style>{`
+        @media (max-width: 767px) {
+          .psych-main { padding: 16px !important; }
+          .psych-overview-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+          .psych-overview-stats { grid-template-columns: repeat(3, 1fr) !important; }
+          .psych-emotion-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+          .psych-mistakes-grid { grid-template-columns: 1fr 1fr !important; }
+          .psych-insights-grid { grid-template-columns: 1fr !important; }
+          .psych-weekly-grid { grid-template-columns: 1fr 1fr !important; }
+          .psych-title { font-size: 24px !important; }
+        }
+      `}</style>
       <div style={{ maxWidth:1100, margin:"0 auto" }}>
 
         {/* HEADER */}
         <header style={{ marginBottom:28 }}>
-          <h1 style={{ fontSize:32, fontWeight:900, margin:0, letterSpacing:"-0.02em" }}>🧠 Psychology Tracker</h1>
+          <h1 className="psych-title" style={{ fontSize:32, fontWeight:900, margin:0, letterSpacing:"-0.02em" }}>🧠 Psychology Tracker</h1>
           <p style={{ fontSize:14, color:"#64748b", margin:"6px 0 0" }}>Understand what's costing you money</p>
         </header>
 
@@ -567,9 +579,9 @@ export default function PsychologyPage() {
         {!!trades.length && (
         <section style={{ ...card, marginBottom:24 }}>
           {sectionTitle("#a78bfa", "Psychology Overview")}
-          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:36, alignItems:"center" }}>
+          <div className="psych-overview-grid" style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:36, alignItems:"center" }}>
             <ScoreRing value={score.value} color={scoreMeta.color} label={scoreMeta.label} glow={scoreMeta.glow}/>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:14 }}>
+            <div className="psych-overview-stats" style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:14 }}>
               <StatTile label="Rule Compliance" value={`${score.ruleCompliance}%`} color="#38bdf8"/>
               <StatTile label="Clean Trades"    value={`${score.cleanPct}%`}        color="#22d3a5"/>
               <StatTile label="Best Streak"     value={`${score.bestStreak} ${score.bestStreak === 1 ? "day" : "days"}`} color="#fbbf24"/>
@@ -588,7 +600,7 @@ export default function PsychologyPage() {
               <p style={{ margin:0, color:"#64748b", fontSize:13 }}>Complete trade reviews in Trade Replay to unlock emotion tracking.</p>
             </div>
           ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:12 }}>
+            <div className="psych-emotion-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:12 }}>
               {(Object.keys(EMOTIONS) as EmotionKey[]).map(key => {
                 const meta = EMOTIONS[key];
                 const s = emotionStats[key];
@@ -685,7 +697,7 @@ export default function PsychologyPage() {
                 </div>
               </div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8 }}>
+            <div className="psych-mistakes-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8 }}>
               {(Object.keys(MISTAKES) as MistakeKey[]).map(mk => {
                 const meta = MISTAKES[mk];
                 const active = lastTradeMistakes.includes(mk);
@@ -725,7 +737,7 @@ export default function PsychologyPage() {
               <p style={{ margin:0, color:"#64748b", fontSize:13 }}>Add a few more trades to surface patterns.</p>
             </div>
           ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12 }}>
+            <div className="psych-insights-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12 }}>
               {insights.map((ins, i) => {
                 const tone = ins.tone === "good"
                   ? { bg:"rgba(34,211,165,0.08)", border:"rgba(34,211,165,0.3)", text:"#22d3a5" }
@@ -758,7 +770,7 @@ export default function PsychologyPage() {
         {!!trades.length && (
         <section style={{ ...card, marginBottom:40 }}>
           {sectionTitle("#22d3a5", "Weekly Report")}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:12 }}>
+          <div className="psych-weekly-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:12 }}>
             <WeeklyTile
               label="PnL this week"
               value={fmtMoney0(weekly.thisPnl)}
