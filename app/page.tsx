@@ -47,30 +47,24 @@ const STEPS = [
   },
 ];
 
-const PLAN_FREE = {
-  name: "Free",
-  price: "$0",
-  tagline: "Get started, no card required",
-  features: [
-    "Trade journal (up to 100 trades)",
-    "Challenge tracker",
-    "Pre-trade checklist",
-  ],
-};
+const FREE_FEATURES = [
+  "Trade journal — unlimited trades",
+  "Challenge tracker — Apex, TopstepX, FTMO & more",
+  "Pre-trade checklist",
+  "Best setup finder",
+  "Psychology tracker",
+  "Trade replay",
+  "Trade planner & position sizer",
+  "AI strategy builder — 5 uses/day",
+];
 
-const PLAN_PRO = {
-  name: "Pro",
-  price: "$19",
-  tagline: "For serious funded traders",
-  features: [
-    "Everything in Free",
-    "Unlimited trades",
-    "Psychology tracker",
-    "Setup finder",
-    "Trade replay",
-    "Trade planner",
-  ],
-};
+const PRO_FEATURES = [
+  "Unlimited AI strategy generations",
+  "Priority support",
+  "Early access to new features",
+  "Team accounts (coming)",
+  "API access (coming)",
+];
 
 function Logo() {
   return (
@@ -192,23 +186,6 @@ function Hero() {
   );
 }
 
-function FeatureCard({
-  title,
-  desc,
-}: {
-  title: string;
-  desc: string;
-}) {
-  return (
-    <div className="nx-card p-6 transition-colors hover:bg-[var(--surface-2)]">
-      <h3 className="text-[15px] font-semibold text-white">{title}</h3>
-      <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-2)]">
-        {desc}
-      </p>
-    </div>
-  );
-}
-
 function Features() {
   return (
     <section
@@ -224,7 +201,8 @@ function Features() {
         >
           Everything you need to keep a funded account.
         </h2>
-        <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-xl border md:grid-cols-2 lg:grid-cols-3"
+        <div
+          className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-xl border md:grid-cols-2 lg:grid-cols-3"
           style={{ borderColor: "var(--border)", background: "var(--border)" }}
         >
           {FEATURES.map((f) => (
@@ -280,68 +258,737 @@ function HowItWorks() {
   );
 }
 
-function PlanCard({
-  plan,
-  highlight = false,
+/* ── Mockups ─────────────────────────────────────────────────────── */
+
+function ProgressRing({
+  size = 96,
+  stroke = 8,
+  pct,
+  color,
+  label,
+  value,
+  subValue,
 }: {
-  plan: typeof PLAN_FREE;
-  highlight?: boolean;
+  size?: number;
+  stroke?: number;
+  pct: number;
+  color: string;
+  label: string;
+  value: string;
+  subValue: string;
 }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (Math.min(pct, 100) / 100) * c;
   return (
-    <div
-      className="relative rounded-xl p-7"
-      style={{
-        background: "var(--surface)",
-        border: highlight
-          ? "1px solid var(--accent)"
-          : "1px solid var(--border)",
-      }}
-    >
-      {highlight && (
-        <span
-          className="absolute -top-2 right-6 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white"
-          style={{ background: "var(--accent)" }}
-        >
-          Popular
-        </span>
-      )}
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-[15px] font-semibold text-white">{plan.name}</h3>
-        <div className="text-right">
-          <span className="text-[28px] font-bold text-white tabular-nums">
-            {plan.price}
-          </span>
-          <span className="ml-1 text-[13px] text-[var(--text-muted)]">
-            /mo
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke="var(--surface-2)"
+            strokeWidth={stroke}
+            fill="none"
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={color}
+            strokeWidth={stroke}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={offset}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span
+            className="text-[14px] font-semibold tabular-nums"
+            style={{ color }}
+          >
+            {pct}%
           </span>
         </div>
       </div>
-      <p className="mt-1 text-[13px] text-[var(--text-2)]">{plan.tagline}</p>
-      <Link
-        href="/login"
-        className={
-          highlight
-            ? "nx-btn-primary mt-6 w-full h-10 text-[14px]"
-            : "nx-btn-ghost mt-6 w-full h-10 text-[14px]"
-        }
-      >
-        Get started
-      </Link>
-      <ul className="mt-7 space-y-3">
-        {plan.features.map((feat) => (
-          <li
-            key={feat}
-            className="flex items-start gap-2 text-[14px] text-[var(--text-2)]"
+      <div className="mt-3 text-center">
+        <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+          {label}
+        </p>
+        <p
+          className="mt-1 text-[13px] font-semibold tabular-nums"
+          style={{ color }}
+        >
+          {value}
+        </p>
+        <p className="text-[11px] text-[var(--text-muted)] tabular-nums">
+          {subValue}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ChallengeMockup() {
+  return (
+    <div
+      className="rounded-xl p-6"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+            Apex $50k · Evaluation
+          </p>
+          <h4 className="mt-1 text-[15px] font-semibold text-white">
+            Challenge Tracker
+          </h4>
+        </div>
+        <span
+          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+          style={{
+            background: "rgba(16,185,129,0.1)",
+            color: "var(--success)",
+            border: "1px solid rgba(16,185,129,0.3)",
+          }}
+        >
+          On Track
+        </span>
+      </div>
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        <ProgressRing
+          pct={9}
+          color="var(--success)"
+          label="Daily Loss"
+          value="$240"
+          subValue="of $2,500"
+        />
+        <ProgressRing
+          pct={61}
+          color="#3b82f6"
+          label="Profit Target"
+          value="$1,840"
+          subValue="of $3,000"
+        />
+        <ProgressRing
+          pct={7}
+          color="var(--success)"
+          label="Drawdown"
+          value="$180"
+          subValue="of $2,500"
+        />
+      </div>
+    </div>
+  );
+}
+
+function JournalMockup() {
+  const trades = [
+    { sym: "NQ1!", side: "LONG", entry: "21,450", exit: "21,520", pnl: 350 },
+    { sym: "ES1!", side: "SHORT", entry: "5,842", exit: "5,810", pnl: 160 },
+    { sym: "SOL/USD", side: "LONG", entry: "148.20", exit: "146.80", pnl: -70 },
+    { sym: "NQ1!", side: "LONG", entry: "21,380", exit: "21,460", pnl: 400 },
+  ];
+  return (
+    <div
+      className="rounded-xl p-6"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+            Last 4 trades
+          </p>
+          <h4 className="mt-1 text-[15px] font-semibold text-white">
+            Trade Journal
+          </h4>
+        </div>
+        <span className="text-[13px] font-semibold tabular-nums text-[var(--success)]">
+          +$840.00
+        </span>
+      </div>
+      <div className="mt-5 overflow-hidden rounded-lg" style={{ border: "1px solid var(--border)" }}>
+        <table className="w-full text-left text-[12px]">
+          <thead style={{ background: "var(--surface-2)" }}>
+            <tr className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+              <th className="px-3 py-2 font-medium">Symbol</th>
+              <th className="px-3 py-2 font-medium">Side</th>
+              <th className="px-3 py-2 font-medium text-right">Entry</th>
+              <th className="px-3 py-2 font-medium text-right">Exit</th>
+              <th className="px-3 py-2 font-medium text-right">P&amp;L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trades.map((t, i) => (
+              <tr
+                key={i}
+                style={{
+                  borderTop: "1px solid var(--border)",
+                }}
+              >
+                <td className="px-3 py-2.5 font-medium text-white">{t.sym}</td>
+                <td className="px-3 py-2.5">
+                  <span
+                    className={
+                      t.side === "LONG" ? "nx-badge-long" : "nx-badge-short"
+                    }
+                  >
+                    {t.side}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-2)]">
+                  {t.entry}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-2)]">
+                  {t.exit}
+                </td>
+                <td
+                  className="px-3 py-2.5 text-right font-semibold tabular-nums"
+                  style={{
+                    color: t.pnl >= 0 ? "var(--success)" : "var(--danger)",
+                  }}
+                >
+                  {t.pnl >= 0 ? "+" : "-"}${Math.abs(t.pnl).toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PsychologyMockup() {
+  const score = 72;
+  const r = 40;
+  const c = 2 * Math.PI * r;
+  const offset = c - (score / 100) * c;
+  const insights = [
+    "Your best day is Tuesday — averaging +$425",
+    "You perform best between 9-10am",
+    "71% win rate when you follow your rules",
+  ];
+  return (
+    <div
+      className="rounded-xl p-6"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+            30-day score
+          </p>
+          <h4 className="mt-1 text-[15px] font-semibold text-white">
+            Psychology Tracker
+          </h4>
+        </div>
+      </div>
+      <div className="mt-5 flex items-center gap-5">
+        <div className="relative" style={{ width: 96, height: 96 }}>
+          <svg width={96} height={96} className="-rotate-90">
+            <circle
+              cx={48}
+              cy={48}
+              r={r}
+              stroke="var(--surface-2)"
+              strokeWidth={8}
+              fill="none"
+            />
+            <circle
+              cx={48}
+              cy={48}
+              r={r}
+              stroke="var(--accent)"
+              strokeWidth={8}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={c}
+              strokeDashoffset={offset}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-[20px] font-bold tabular-nums text-white">
+              {score}
+            </span>
+            <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+              /100
+            </span>
+          </div>
+        </div>
+        <div>
+          <p
+            className="text-[16px] font-semibold"
+            style={{ color: "var(--accent)" }}
+          >
+            Disciplined
+          </p>
+          <p className="mt-1 text-[12px] text-[var(--text-2)]">
+            You stuck to your plan on 18 of 22 sessions.
+          </p>
+        </div>
+      </div>
+      <div className="mt-5 space-y-2">
+        {insights.map((line) => (
+          <div
+            key={line}
+            className="flex items-start gap-2 rounded-lg p-3"
+            style={{
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+            }}
           >
             <span
               aria-hidden
-              className="mt-[7px] inline-block h-1 w-1 rounded-full"
+              className="mt-1 inline-block h-1.5 w-1.5 rounded-full"
               style={{ background: "var(--accent)" }}
             />
+            <p className="text-[12px] leading-relaxed text-[var(--text-2)]">
+              {line}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FeatureShowcase() {
+  return (
+    <section className="border-t" style={{ borderColor: "var(--border)" }}>
+      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
+        <p className="nx-label mb-3">A look inside</p>
+        <h2
+          className="max-w-3xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
+          style={{ letterSpacing: "-0.01em" }}
+        >
+          The same tools used by funded traders, every day.
+        </h2>
+        <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div>
+            <p
+              className="mb-4 text-[12px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--accent)" }}
+            >
+              Challenge Tracker
+            </p>
+            <ChallengeMockup />
+            <p className="mt-4 text-[13px] leading-relaxed text-[var(--text-2)]">
+              Live rule tracking for every prop firm. Know exactly how close you
+              are to a violation.
+            </p>
+          </div>
+          <div>
+            <p
+              className="mb-4 text-[12px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--accent)" }}
+            >
+              Journal
+            </p>
+            <JournalMockup />
+            <p className="mt-4 text-[13px] leading-relaxed text-[var(--text-2)]">
+              Auto-imported from your prop firm. Tag setups, attach screenshots,
+              find your edge.
+            </p>
+          </div>
+          <div>
+            <p
+              className="mb-4 text-[12px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--accent)" }}
+            >
+              Psychology
+            </p>
+            <PsychologyMockup />
+            <p className="mt-4 text-[13px] leading-relaxed text-[var(--text-2)]">
+              Personalized insights that surface when, why, and how you trade
+              your best.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Pricing ─────────────────────────────────────────────────────── */
+
+function CheckIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className="mt-[2px] shrink-0"
+      aria-hidden
+    >
+      <path
+        d="M3.5 8.5L6.5 11.5L12.5 5"
+        stroke="var(--success)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DashIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className="mt-[2px] shrink-0"
+      aria-hidden
+    >
+      <path
+        d="M4 8H12"
+        stroke="var(--text-muted)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function FreeCard() {
+  return (
+    <div
+      className="relative rounded-2xl p-8"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid rgba(255,255,255,0.18)",
+        boxShadow:
+          "0 1px 0 rgba(255,255,255,0.04) inset, 0 30px 60px -30px rgba(99,102,241,0.25)",
+      }}
+    >
+      <div className="flex items-baseline justify-between">
+        <div>
+          <h3 className="text-[18px] font-semibold text-white">Free</h3>
+          <p className="mt-1 text-[13px] text-[var(--text-2)]">
+            Start today, no card required
+          </p>
+        </div>
+        <div className="text-right">
+          <span className="text-[36px] font-bold text-white tabular-nums">
+            $0
+          </span>
+          <span className="ml-1 text-[13px] text-[var(--text-muted)]">/mo</span>
+        </div>
+      </div>
+      <Link
+        href="/login"
+        className="nx-btn-primary mt-6 w-full h-11 text-[14px]"
+      >
+        Get started free
+      </Link>
+      <div
+        className="my-7 h-px w-full"
+        style={{ background: "var(--border)" }}
+      />
+      <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+        Everything included
+      </p>
+      <ul className="mt-4 space-y-3">
+        {FREE_FEATURES.map((feat) => (
+          <li
+            key={feat}
+            className="flex items-start gap-3 text-[14px] text-white"
+          >
+            <CheckIcon />
             <span>{feat}</span>
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function ProCard() {
+  const [email, setEmail] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("nexyru_waitlist");
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      const stored = localStorage.getItem("nexyru_waitlist_me");
+      if (stored && list.includes(stored)) setSubmitted(true);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setError("Enter a valid email");
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("nexyru_waitlist");
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      if (!list.includes(trimmed)) list.push(trimmed);
+      localStorage.setItem("nexyru_waitlist", JSON.stringify(list));
+      localStorage.setItem("nexyru_waitlist_me", trimmed);
+      setSubmitted(true);
+    } catch {
+      setError("Couldn't save — try again");
+    }
+  };
+
+  return (
+    <div
+      className="relative rounded-2xl p-8 overflow-hidden"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        opacity: 0.92,
+      }}
+    >
+      {/* Coming Soon watermark */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 flex items-center justify-center"
+      >
+        <span
+          className="text-[64px] font-bold uppercase tracking-widest"
+          style={{
+            color: "rgba(255,255,255,0.02)",
+            letterSpacing: "0.2em",
+          }}
+        >
+          Soon
+        </span>
+      </div>
+
+      <span
+        className="absolute -top-2 right-6 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white"
+        style={{
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--text-2)",
+        }}
+      >
+        Coming Soon
+      </span>
+
+      <div className="relative">
+        <div className="flex items-baseline justify-between">
+          <div>
+            <h3 className="text-[18px] font-semibold text-[var(--text-2)]">
+              Pro
+            </h3>
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              Coming soon
+            </p>
+          </div>
+          <div className="text-right">
+            <span className="text-[36px] font-bold text-[var(--text-2)] tabular-nums">
+              $19
+            </span>
+            <span className="ml-1 text-[13px] text-[var(--text-muted)]">
+              /mo
+            </span>
+          </div>
+        </div>
+
+        {submitted ? (
+          <div
+            className="mt-6 flex items-center gap-3 rounded-lg px-4 py-3"
+            style={{
+              background: "rgba(16,185,129,0.08)",
+              border: "1px solid rgba(16,185,129,0.3)",
+            }}
+          >
+            <CheckIcon />
+            <p className="text-[13px] font-medium text-white">
+              You&apos;re on the list!
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="mt-6 space-y-2">
+            <button
+              type="submit"
+              className="nx-btn-ghost w-full h-11 text-[14px]"
+            >
+              Join waitlist
+            </button>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full h-10 rounded-lg px-3 text-[13px] text-white placeholder:text-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent)]"
+              style={{
+                background: "var(--surface-2)",
+                border: "1px solid var(--border)",
+              }}
+              aria-label="Email for waitlist"
+            />
+            {error && (
+              <p className="text-[12px]" style={{ color: "var(--danger)" }}>
+                {error}
+              </p>
+            )}
+          </form>
+        )}
+
+        <div
+          className="my-7 h-px w-full"
+          style={{ background: "var(--border)" }}
+        />
+        <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+          What you&apos;ll get
+        </p>
+        <ul className="mt-4 space-y-3">
+          {PRO_FEATURES.map((feat) => (
+            <li
+              key={feat}
+              className="flex items-start gap-3 text-[14px] text-[var(--text-muted)]"
+            >
+              <DashIcon />
+              <span>{feat}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function DashboardPreview() {
+  return (
+    <div
+      className="relative rounded-2xl p-5"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            Apex $50k
+          </p>
+          <p className="mt-1 text-[13px] font-semibold text-white">Dashboard</p>
+        </div>
+        <div className="flex gap-1">
+          <span className="h-2 w-2 rounded-full" style={{ background: "var(--danger)" }} />
+          <span className="h-2 w-2 rounded-full" style={{ background: "var(--warning)" }} />
+          <span className="h-2 w-2 rounded-full" style={{ background: "var(--success)" }} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div
+          className="rounded-lg p-3"
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            Net P&amp;L
+          </p>
+          <p className="mt-1 text-[18px] font-bold tabular-nums text-[var(--success)]">
+            +$1,840
+          </p>
+        </div>
+        <div
+          className="rounded-lg p-3"
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            Win rate
+          </p>
+          <p className="mt-1 text-[18px] font-bold tabular-nums text-white">
+            71%
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="mt-3 rounded-lg p-3"
+        style={{
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+          Equity curve
+        </p>
+        <svg
+          viewBox="0 0 200 60"
+          className="mt-2 w-full"
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M0,50 L20,42 L40,46 L60,34 L80,30 L100,32 L120,22 L140,24 L160,14 L180,18 L200,8 L200,60 L0,60 Z"
+            fill="url(#eqGrad)"
+          />
+          <path
+            d="M0,50 L20,42 L40,46 L60,34 L80,30 L100,32 L120,22 L140,24 L160,14 L180,18 L200,8"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+
+      <div
+        className="mt-3 flex items-center justify-between rounded-lg p-3"
+        style={{
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            Drawdown buffer
+          </p>
+          <p className="mt-1 text-[13px] font-semibold tabular-nums text-white">
+            $2,320 <span className="text-[var(--text-muted)] font-normal">left</span>
+          </p>
+        </div>
+        <span
+          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+          style={{
+            background: "rgba(16,185,129,0.1)",
+            color: "var(--success)",
+            border: "1px solid rgba(16,185,129,0.3)",
+          }}
+        >
+          Safe
+        </span>
+      </div>
     </div>
   );
 }
@@ -353,17 +1000,29 @@ function Pricing() {
       className="border-t"
       style={{ borderColor: "var(--border)" }}
     >
-      <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
         <p className="nx-label mb-3">Pricing</p>
         <h2
           className="max-w-2xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
           style={{ letterSpacing: "-0.01em" }}
         >
-          Simple, honest pricing.
+          Everything, free — while we build what&apos;s next.
         </h2>
-        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2 md:max-w-3xl">
-          <PlanCard plan={PLAN_FREE} />
-          <PlanCard plan={PLAN_PRO} highlight />
+        <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-[var(--text-2)]">
+          Every Nexyru feature is free today. Pro will add unlimited AI and team
+          tools later — join the waitlist to be first in.
+        </p>
+
+        <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-center">
+          <div className="lg:col-span-5">
+            <FreeCard />
+          </div>
+          <div className="lg:col-span-2">
+            <DashboardPreview />
+          </div>
+          <div className="lg:col-span-5">
+            <ProCard />
+          </div>
         </div>
       </div>
     </section>
@@ -411,6 +1070,7 @@ export default function LandingPage() {
         <Hero />
         <Features />
         <HowItWorks />
+        <FeatureShowcase />
         <Pricing />
       </main>
       <Footer />
