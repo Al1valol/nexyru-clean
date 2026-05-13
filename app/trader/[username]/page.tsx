@@ -4,7 +4,7 @@ import FollowButton from "@/components/FollowButton";
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
-  AreaChart, Area, LineChart, Line, XAxis, YAxis,
+  AreaChart, Area, XAxis, YAxis,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 
@@ -86,7 +86,7 @@ export default function TraderProfile(){
   const params=useParams();
   const username=decodeURIComponent((params?.username as string)??"").replace(/^@/,"");
 
-  const [tab,setTab]=useState<"overview"|"posts"|"trades"|"strategies"|"analytics">("overview");
+  const [tab,setTab]=useState<"overview"|"posts"|"trades">("overview");
  const [strategies,setStrategies]=useState<Strategy[]>([]);
  const [trades,setTrades]=useState<Trade[]>([]);
  const [posts,setPosts]=useState<PostRow[]>([]);
@@ -228,7 +228,7 @@ export default function TraderProfile(){
   if(loading)return(
     <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",gap:12,color:"#2a2a3a",fontSize:14}}><span style={{display:"inline-block",width:18,height:18,border:"2px solid #2a2a3a",borderTopColor:"#6366f1",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>Loading profile…<style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>);
 
- if(notFound||!stats)return(<div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:48}}></div><div style={{fontSize:20,fontWeight:800,color:"#ffffff"}}>Trader not found</div><div style={{fontSize:13,color:"#2a2a3a"}}>@{username} hasn&apos;t published any strategies yet</div><a href="/leaderboard" style={{padding:"9px 20px",borderRadius:10,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.2)",color:"#6366f1",fontSize:12,fontWeight:700,textDecoration:"none"}}>Browse Leaderboard</a></div>
+ if(notFound||!stats)return(<div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:48}}></div><div style={{fontSize:20,fontWeight:800,color:"#ffffff"}}>Trader not found</div><div style={{fontSize:13,color:"#2a2a3a"}}>@{username} hasn&apos;t published any strategies yet</div><a href="/dashboard" style={{padding:"9px 20px",borderRadius:10,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.2)",color:"#6366f1",fontSize:12,fontWeight:700,textDecoration:"none"}}>Back to Dashboard</a></div>
   );
 
   const rank=getRank(stats);
@@ -238,13 +238,8 @@ export default function TraderProfile(){
   const avatarColor=["#6366f1","#a5b4fc","#10b981","#f59e0b","#f59e0b"][username.charCodeAt(0)%5];
   const isOwn=currentUser===username;
   const recentTrades=[...trades].sort((a,b)=>b.date-a.date).slice(0,15);
-  const wins=trades.filter(t=>(t.pnl??0)>0);
-  const losses=trades.filter(t=>(t.pnl??0)<0);
-  const avgWin=wins.length?wins.reduce((s,t)=>s+(t.pnl??0),0)/wins.length:0;
-  const avgLoss=losses.length?Math.abs(losses.reduce((s,t)=>s+(t.pnl??0),0)/losses.length):0;
-  const profitFactor=avgLoss>0?(avgWin*wins.length)/(avgLoss*losses.length):wins.length>0?999:0;
   const RANKS=["Beginner","Active Trader","Consistent","Verified Trader","Funded Trader"];
-  const TABS=[{id:"overview",label:"Overview"},{id:"posts",label:`Posts (${posts.length})`},{id:"trades",label:`Trades (${trades.length})`},{id:"strategies",label:`Strategies (${strategies.length})`},{id:"analytics",label:"Analytics"}];
+  const TABS=[{id:"overview",label:"Overview"},{id:"posts",label:`Posts (${posts.length})`},{id:"trades",label:`Trades (${trades.length})`}];
 
   return(
     <div style={{minHeight:"100vh",background:"#060d1a",color:"#c8d8f0",fontFamily:"system-ui,sans-serif"}}><style>{`
@@ -255,9 +250,9 @@ export default function TraderProfile(){
       `}</style>
 
       {/* ── Nav ── */}
-      <div style={{borderBottom:"1px solid #111118",background:"rgba(6,13,26,0.97)",padding:"14px 24px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:10,backdropFilter:"blur(12px)"}}><a href="/traders" style={{fontSize:12,color:"#2a2a3a",textDecoration:"none",display:"flex",alignItems:"center",gap:5}}>← Traders</a><div style={{flex:1}}/><button onClick={handleShare} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #2a2a3a",background:"#111118",color:shareDone?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",transition:"color 0.2s"}}>
+      <div style={{borderBottom:"1px solid #111118",background:"rgba(6,13,26,0.97)",padding:"14px 24px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:10,backdropFilter:"blur(12px)"}}><a href="/dashboard" style={{fontSize:12,color:"#2a2a3a",textDecoration:"none",display:"flex",alignItems:"center",gap:5}}>← Dashboard</a><div style={{flex:1}}/><button onClick={handleShare} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #2a2a3a",background:"#111118",color:shareDone?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",transition:"color 0.2s"}}>
           {shareDone?"✓ Copied link":" Share"}
-        </button><a href="/dashboard" style={{padding:"6px 14px",borderRadius:8,border:"1px solid #2a2a3a",background:"#111118",color:"#4a5a7a",fontSize:11,fontWeight:600,textDecoration:"none"}}>Dashboard</a></div><div style={{maxWidth:960,margin:"0 auto",padding:"28px 20px",animation:"fadeIn 0.4s ease"}}>
+        </button></div><div style={{maxWidth:960,margin:"0 auto",padding:"28px 20px",animation:"fadeIn 0.4s ease"}}>
 
         {/* ── PROFILE HEADER ── */}
         <div style={{background:"linear-gradient(135deg,#111118 0%,#0f1e32 100%)",border:"1px solid #2a2a3a",borderRadius:24,padding:"28px 32px",marginBottom:20,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-50,right:-50,width:220,height:220,borderRadius:"50%",background:`${avatarColor}07`,pointerEvents:"none"}}/><div style={{position:"absolute",bottom:-30,left:60,width:140,height:140,borderRadius:"50%",background:"rgba(99,102,241,0.04)",pointerEvents:"none"}}/><div style={{display:"flex",alignItems:"flex-start",gap:24,flexWrap:"wrap",position:"relative"}}>
@@ -400,43 +395,6 @@ export default function TraderProfile(){
                         );
                       })}
                     </tbody></table></div></div>
-            )}
-          </div>
-        )}
-
-        {/* ═══════════════ STRATEGIES TAB ═══════════════ */}
-        {tab==="strategies"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:12,animation:"fadeIn 0.25s ease"}}>
-            {strategies.length===0?(
-              <div style={{padding:"64px",textAlign:"center",color:"#2a2a3a",fontSize:12,background:"#111118",border:"1px solid #2a2a3a",borderRadius:20}}><div style={{fontSize:36,marginBottom:12}}></div>No published strategies yet</div>
-            ):strategies.map(s=>{
-              const bt=s.backtest_results?.[0];
-              const pos=(bt?.return_pct??0)>=0;
- const fc=followerCounts[s.id]??0;
- const sc:Record<string,string>={verified:"#a5b4fc",live:"#10b981",backtested:"#6366f1"};
-              const c=sc[s.status]??"#6366f1";
-              return(
-                <div key={s.id} style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:16,padding:"18px 22px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}><div style={{flex:1,minWidth:180}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:14,fontWeight:700,color:"#ffffff"}}>{s.name}</span><span style={{fontSize:9,padding:"2px 8px",borderRadius:10,background:`${c}15`,color:c,border:`1px solid ${c}28`,fontWeight:700}}>{s.status}</span></div>
-                    {bt&&<div style={{display:"flex",gap:14,fontSize:11,color:"#2a2a3a"}}><span style={{color:pos?"#10b981":"#ef4444",fontWeight:700}}>{pos?"+":""}{bt.return_pct.toFixed(1)}%</span><span>{bt.win_rate.toFixed(0)}% WR</span><span>{bt.trades_count} trades</span><span>{bt.max_drawdown.toFixed(1)}% DD</span></div>}
-                  </div><div style={{display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
-                    {fc>0&&<div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#2a2a3a"}}>Followers</div><div style={{fontSize:15,fontWeight:700,color:"#6366f1",fontFamily:"monospace"}}>{fc}</div></div>}
-                    {(s.monthly_price??0)>0&&<div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#2a2a3a"}}>Price</div><div style={{fontSize:15,fontWeight:700,color:"#f59e0b",fontFamily:"monospace"}}>${s.monthly_price}/mo</div></div>}
-                    <a href="/leaderboard" style={{padding:"7px 16px",borderRadius:9,background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.2)",color:"#6366f1",fontSize:11,fontWeight:700,textDecoration:"none"}}>View →</a></div></div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ═══════════════ ANALYTICS TAB ═══════════════ */}
-        {tab==="analytics"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn 0.25s ease"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}><StatCard label="Avg Winner"      value={`+${avgWin.toFixed(2)}`}        color="#10b981"/><StatCard label="Avg Loser"       value={`-${avgLoss.toFixed(2)}`}        color="#ef4444"/><StatCard label="Profit Factor"   value={profitFactor>=999?"∞":profitFactor.toFixed(2)} color={profitFactor>=1.5?"#10b981":profitFactor>=1?"#f59e0b":"#ef4444"}/><StatCard label="Best Trade"      value={wins.length?`+${Math.max(...wins.map(t=>t.pnl??0)).toFixed(2)}`:"—"} color="#10b981"/><StatCard label="Worst Trade"     value={losses.length?`${Math.min(...losses.map(t=>t.pnl??0)).toFixed(2)}`:"—"} color="#ef4444"/><StatCard label="Total Wins"      value={String(wins.length)}             color="#10b981"/><StatCard label="Total Losses"    value={String(losses.length)}           color="#ef4444"/><StatCard label="Verified Trades" value={String(stats.verifiedTrades)}    color="#f59e0b" sub="broker imports"/></div>
-
-            {/* Win/Loss bar */}
-            {trades.length>0&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:16,padding:"18px 22px"}}><div style={{fontSize:12,fontWeight:700,color:"#9ca3af",marginBottom:12}}>Win / Loss Split</div><div style={{height:10,borderRadius:5,overflow:"hidden",display:"flex"}}><div style={{width:`${stats.winRate}%`,background:"linear-gradient(90deg,#10b981,#10b981)",transition:"width 0.8s"}}/><div style={{flex:1,background:"linear-gradient(90deg,#ef4444,#ef4444)"}}/></div><div style={{display:"flex",justifyContent:"space-between",marginTop:8}}><span style={{fontSize:11,color:"#10b981",fontWeight:700}}>{stats.winRate}% wins ({wins.length})</span><span style={{fontSize:11,color:"#ef4444",fontWeight:700}}>{100-stats.winRate}% losses ({losses.length})</span></div></div>
-            )}
-
-            {/* PnL chart */}
-            {stats.equityCurve.length>2&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:16,padding:"18px 22px"}}><div style={{fontSize:12,fontWeight:700,color:"#9ca3af",marginBottom:16}}>Cumulative PnL</div><ResponsiveContainer width="100%" height={220}><LineChart data={stats.equityCurve} margin={{top:5,right:5,left:-20,bottom:0}}><XAxis dataKey="label" tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} interval="preserveStartEnd"/><YAxis tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} tickFormatter={v=>`${(v as number)>=0?"+":""}${(v as number).toFixed(0)}`}/><Tooltip content={<EquityTooltip/>}/><ReferenceLine y={0} stroke="#2a2a3a" strokeDasharray="4 4"/><Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={false} activeDot={{r:4,fill:"#6366f1"}}/></LineChart></ResponsiveContainer></div>
             )}
           </div>
         )}
