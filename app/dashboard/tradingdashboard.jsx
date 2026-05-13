@@ -5683,8 +5683,8 @@ async function logActivity(userId, type, data = {}) {
   } catch {}
 }
 
-// ── Platform nav dropdown ─────────────────────────────────────
-function PlatformDropdown() {
+// ── Tools nav dropdown ────────────────────────────────────────
+function ToolsDropdown({ onSelectTab }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -5694,29 +5694,63 @@ function PlatformDropdown() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const items = [
-      { href:"/replay",      emoji:"📽️", label:"Trade Replay",    color:"#38bdf8" },
-      { href:"/psychology",  emoji:"🧠", label:"Psychology",     color:"#ec4899" },
-      { href:"/setups",      emoji:"🎯", label:"Best Setups",    color:"#22c55e" },
-      { href:"/checklist",   emoji:"✅", label:"Checklist",      color:"#22d3a5" },
-      { href:"/challenge",   emoji:"🏆", label:"Challenge",      color:"#a78bfa" },
-      { href:"/planner",     emoji:"⚡", label:"Trade Planner",   color:"#38bdf8" },
-    ];
+  const sections = [
+    {
+      heading: "Analyze",
+      items: [
+        { key:"psychology", href:"/psychology",        emoji:"🧠", label:"Psychology",   color:"#ec4899" },
+        { key:"setups",     href:"/setups",            emoji:"🎯", label:"Best Setups",  color:"#22c55e" },
+        { key:"insights",   tab:"insights",            emoji:"📊", label:"Insights",     color:"#fbbf24" },
+      ],
+    },
+    {
+      heading: "Manage",
+      items: [
+        { key:"checklist", href:"/checklist", emoji:"✅", label:"Checklist",     color:"#22d3a5" },
+        { key:"planner",   href:"/planner",   emoji:"⚡", label:"Trade Planner", color:"#38bdf8" },
+        { key:"challenge", href:"/challenge", emoji:"🏆", label:"Challenge",     color:"#a78bfa" },
+      ],
+    },
+    {
+      heading: "Review",
+      items: [
+        { key:"replay",   href:"/replay",  emoji:"📽️", label:"Trade Replay",  color:"#38bdf8" },
+        { key:"stratlab", tab:"stratlab",  emoji:"🔬", label:"Strategy Lab",  color:"#818cf8" },
+      ],
+    },
+  ];
+
+  const handleClick = (e, item) => {
+    if (item.tab) {
+      e.preventDefault();
+      setOpen(false);
+      onSelectTab?.(item.tab);
+    } else {
+      setOpen(false);
+    }
+  };
 
   return (
     <div ref={ref} style={{ position:"relative" }}>
       <button onClick={() => setOpen(o => !o)} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:`1px solid ${open?"#38bdf8":"#1a2035"}`, background:open?"rgba(56,189,248,0.08)":"transparent", color:open?"#38bdf8":"#64748b", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-        Platform {open ? "▲" : "▼"}
+        Tools {open ? "▲" : "▼"}
       </button>
       {open && (
-        <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#0d1120", border:"1px solid #1a2035", borderRadius:12, padding:"6px", minWidth:160, zIndex:100, boxShadow:"0 12px 40px rgba(0,0,0,0.6)" }}>
-          {items.map(item => (
-            <a key={item.href} href={item.href} onClick={() => setOpen(false)} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:8, color:"#94a3b8", fontSize:12, fontWeight:600, textDecoration:"none" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "#111827"; e.currentTarget.style.color = item.color; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}>
-              <span style={{ fontSize:14 }}>{item.emoji}</span>
-              {item.label}
-            </a>
+        <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:"#0d1120", border:"1px solid #1a2035", borderRadius:12, padding:"6px", minWidth:200, zIndex:100, boxShadow:"0 12px 40px rgba(0,0,0,0.6)" }}>
+          {sections.map((section, sIdx) => (
+            <div key={section.heading} style={{ marginTop: sIdx === 0 ? 0 : 4 }}>
+              <div style={{ padding:"6px 10px 4px", fontSize:9, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.1em" }}>
+                {section.heading}
+              </div>
+              {section.items.map(item => (
+                <a key={item.key} href={item.href ?? "#"} onClick={(e) => handleClick(e, item)} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:8, color:"#94a3b8", fontSize:12, fontWeight:600, textDecoration:"none", cursor:"pointer" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#111827"; e.currentTarget.style.color = item.color; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}>
+                  <span style={{ fontSize:14 }}>{item.emoji}</span>
+                  {item.label}
+                </a>
+              ))}
+            </div>
           ))}
         </div>
       )}
@@ -6107,148 +6141,52 @@ function WeeklyChallenges({ trades }) {
 }
 
 // ── First-time onboarding banner ──────────────────────────────
-function OnboardingBanner({ username, onOpenImport, onDismiss }) {
-  const [hasChallenge, setHasChallenge] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`nexyru_challenge_${username}`);
-      const arr = raw ? JSON.parse(raw) : null;
-      setHasChallenge(Array.isArray(arr) && arr.length > 0);
-    } catch { setHasChallenge(false); }
-  }, [username]);
-
+function OnboardingBanner({ onOpenImport, onDismiss }) {
   const steps = [
-    {
-      n: 1,
-      emoji: "📥",
-      title: "Import Your Trades",
-      body: "Upload a CSV from your broker or prop firm platform",
-      cta: "Import CSV",
-      onClick: onOpenImport,
-      href: null,
-      done: false, // banner only renders when trades.length === 0
-      current: true,
-    },
-    {
-      n: 2,
-      emoji: "🏆",
-      title: "Set Up Challenge Tracker",
-      body: "Track your funded account rules and daily limits",
-      cta: "Set Up Challenge",
-      onClick: null,
-      href: "/challenge",
-      done: hasChallenge,
-      current: false,
-    },
-    {
-      n: 3,
-      emoji: "✅",
-      title: "Run Pre-Trade Checklist",
-      body: "Before your next trade, run through your checklist",
-      cta: "Open Checklist",
-      onClick: null,
-      href: "/checklist",
-      done: false,
-      current: false,
-    },
+    { n:"1️⃣", label:"Import your trades",      cta:"Import CSV",        onClick: onOpenImport, href: null },
+    { n:"2️⃣", label:"Set up your challenge",   cta:"Challenge Tracker", onClick: null,         href:"/challenge" },
+    { n:"3️⃣", label:"Review your trades",      cta:"Trade Replay",      onClick: null,         href:"/replay" },
   ];
 
   return (
     <div style={{
       position:"relative",
-      background:"linear-gradient(135deg, rgba(56,189,248,0.06), rgba(167,139,250,0.04))",
-      border:"1px solid rgba(56,189,248,0.25)",
-      borderRadius:16,
-      padding:"28px 24px 22px",
+      background:"rgba(56,189,248,0.04)",
+      borderLeft:"3px solid #38bdf8",
+      border:"1px solid #1a2035",
+      borderLeftWidth:3,
+      borderLeftColor:"#38bdf8",
+      borderRadius:10,
+      padding:"14px 16px 28px",
     }}>
+      <div style={{ fontSize:13, fontWeight:700, color:"#e2e8f0", marginBottom:12 }}>
+        <span style={{ marginRight:6 }}>👋</span>Welcome! Here's how to get started:
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>
+        {steps.map(s => (
+          <div key={s.n} style={{ display:"flex", alignItems:"center", gap:10, fontSize:12, color:"#94a3b8" }}>
+            <span style={{ fontSize:14, flexShrink:0 }}>{s.n}</span>
+            <span style={{ flex:1, minWidth:0 }}>{s.label}</span>
+            {s.href ? (
+              <a href={s.href} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid rgba(56,189,248,0.3)", background:"rgba(56,189,248,0.08)", color:"#38bdf8", fontSize:10, fontWeight:700, textDecoration:"none", whiteSpace:"nowrap", flexShrink:0 }}>
+                {s.cta}
+              </a>
+            ) : (
+              <button onClick={s.onClick} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid rgba(56,189,248,0.3)", background:"rgba(56,189,248,0.08)", color:"#38bdf8", fontSize:10, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
+                {s.cta}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
       <button onClick={onDismiss}
-        style={{ position:"absolute", top:14, right:14, padding:"5px 10px", borderRadius:6, border:"1px solid #1a2035", background:"transparent", color:"#475569", fontSize:10, fontWeight:600, cursor:"pointer" }}
-        onMouseEnter={e => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.borderColor = "#263d55"; }}
-        onMouseLeave={e => { e.currentTarget.style.color = "#475569"; e.currentTarget.style.borderColor = "#1a2035"; }}>
-        I'll explore on my own →
+        style={{ position:"absolute", bottom:6, right:10, padding:0, border:"none", background:"transparent", color:"#475569", fontSize:10, fontWeight:600, cursor:"pointer", textDecoration:"underline" }}
+        onMouseEnter={e => { e.currentTarget.style.color = "#94a3b8"; }}
+        onMouseLeave={e => { e.currentTarget.style.color = "#475569"; }}>
+        Dismiss
       </button>
-
-      <div style={{ fontSize:22, fontWeight:800, color:"#f1f5f9", letterSpacing:"-0.02em", marginBottom:6 }}>
-        Welcome to Nexyru <span style={{ display:"inline-block" }}>👋</span>
-      </div>
-      <div style={{ fontSize:13, color:"#94a3b8", marginBottom:22, lineHeight:1.5 }}>
-        The trading journal built for funded traders. Get started in 3 steps:
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:12 }}>
-        {steps.map(s => {
-          const isDone = s.done;
-          const isCurrent = s.current && !isDone;
-          const borderColor = isDone ? "rgba(52,211,153,0.35)" : isCurrent ? "rgba(56,189,248,0.45)" : "#1a2035";
-          const bg = isCurrent ? "rgba(56,189,248,0.06)" : "#0d1120";
-          const statusBg = isDone ? "rgba(52,211,153,0.12)" : isCurrent ? "rgba(56,189,248,0.12)" : "#111827";
-          const statusColor = isDone ? "#34d399" : isCurrent ? "#38bdf8" : "#64748b";
-          const btnBg = isDone
-            ? "transparent"
-            : isCurrent
-              ? "linear-gradient(135deg,#0369a1,#38bdf8)"
-              : "transparent";
-          const btnBorder = isDone
-            ? "1px solid rgba(52,211,153,0.35)"
-            : isCurrent
-              ? "none"
-              : "1px solid #1e2d3e";
-          const btnColor = isDone ? "#34d399" : isCurrent ? "#fff" : "#94a3b8";
-          const btnShadow = isCurrent ? "0 4px 14px rgba(56,189,248,0.25)" : "none";
-
-          return (
-            <div key={s.n} style={{
-              background: bg, border:`1px solid ${borderColor}`, borderRadius:12,
-              padding:"16px 14px", display:"flex", flexDirection:"column", gap:10,
-              transition:"border-color 0.15s",
-            }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <span style={{ fontSize:22, lineHeight:1 }}>{s.emoji}</span>
-                <span style={{
-                  display:"inline-flex", alignItems:"center", gap:4,
-                  fontSize:9, fontWeight:700, padding:"3px 8px", borderRadius:20,
-                  background:statusBg, color:statusColor,
-                  textTransform:"uppercase", letterSpacing:"0.07em",
-                }}>
-                  {isDone ? <><Check size={10}/> Done</> : `Step ${s.n}`}
-                </span>
-              </div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:700, color:"#e2e8f0", marginBottom:4 }}>{s.title}</div>
-                <div style={{ fontSize:11, color:"#64748b", lineHeight:1.5 }}>{s.body}</div>
-              </div>
-              {s.href ? (
-                <a href={s.href} style={{
-                  marginTop:"auto", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:5,
-                  padding:"8px 12px", borderRadius:8, textDecoration:"none",
-                  background:btnBg, border:btnBorder, color:btnColor,
-                  fontSize:11, fontWeight:700, cursor:"pointer", boxShadow:btnShadow,
-                }}>
-                  {s.cta}
-                </a>
-              ) : (
-                <button onClick={s.onClick} style={{
-                  marginTop:"auto", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:5,
-                  padding:"8px 12px", borderRadius:8,
-                  background:btnBg, border:btnBorder, color:btnColor,
-                  fontSize:11, fontWeight:700, cursor:"pointer", boxShadow:btnShadow,
-                }}>
-                  {s.cta}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div style={{ marginTop:18, fontSize:11, color:"#64748b", textAlign:"center" }}>
-        Already have trades?{" "}
-        <button onClick={onOpenImport}
-          style={{ background:"none", border:"none", color:"#38bdf8", fontSize:11, fontWeight:600, cursor:"pointer", padding:0 }}>
-          Import a CSV to get started →
-        </button>
-      </div>
     </div>
   );
 }
@@ -6269,17 +6207,19 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
     try { localStorage.setItem(`nexyru_onboarding_dismissed_${username}`, "1"); } catch {}
     setOnboardingDismissed(true);
   };
-  const showOnboarding = trades.length === 0 && !onboardingDismissed && username;
+  const showOnboarding = trades.length < 3 && !onboardingDismissed && username;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
         <div><div style={{ fontSize:22, fontWeight:800, color:"#f1f5f9", letterSpacing:"-0.02em" }}>Dashboard</div><div style={{ fontSize:12, color:"#475569", marginTop:4 }}>Your trading journal & performance hub</div></div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onOpenImport} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 16px", borderRadius:9, border:"1px solid #1a2035", background:"#111827", color:"#94a3b8", fontSize:12, fontWeight:600, cursor:"pointer" }}><Upload size={13}/> Import</button>
           <button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#0369a1,#38bdf8)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(56,189,248,0.25)" }}><Plus size={14}/> Log Trade</button>
         </div>
       </div>
+
+      {showOnboarding && <OnboardingBanner onOpenImport={onOpenImport} onDismiss={dismissOnboarding}/>}
+
       {/* Account stats card */}
       {activeAccount && <AccountStatsCard activeAccount={activeAccount} trades={allTrades ?? trades}/>}
 
@@ -6291,9 +6231,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
           <StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/>
           <StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/>
         </div>
-      ) : showOnboarding ? (
-        <OnboardingBanner username={username} onOpenImport={onOpenImport} onDismiss={dismissOnboarding}/>
-      ) : (
+      ) : !showOnboarding && (
         <div style={{ padding:"56px 24px", borderRadius:16, border:"2px dashed #1a2035", textAlign:"center" }}>
           <div style={{ fontSize:48, marginBottom:14, lineHeight:1 }}>📒</div>
           <div style={{ fontSize:17, fontWeight:700, color:"#cbd5e1", marginBottom:8 }}>Your journal is empty</div>
@@ -8045,8 +7983,6 @@ function TradingDashboard({ session, onLogout }) {
   const NAV_TABS = [
     { id:"dashboard",  label:"Dashboard",    icon:<Activity size={13}/> },
     { id:"journal",    label:"Journal",      icon:<BookOpen size={13}/> },
-    { id:"stratlab",   label:"Strategy Lab", icon:<FlaskConical size={13}/> },
-    { id:"insights",   label:"Insights",     icon:<Sparkles size={13}/> },
   ];
 
   return (
@@ -8141,7 +8077,7 @@ function TradingDashboard({ session, onLogout }) {
           <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 10px", borderRadius:7, border:"none", background:"rgba(56,189,248,0.1)", color:"#38bdf8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
             <Plus size={12}/><span className="hide-mobile"> Add</span>
           </button>
-          <span className="hide-mobile"><PlatformDropdown/></span>
+          <span className="hide-mobile"><ToolsDropdown onSelectTab={setTab}/></span>
           {/* User avatar — always visible */}
           <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #1a2035", background:"#111827" }}>
             <a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}>
@@ -8170,10 +8106,13 @@ function TradingDashboard({ session, onLogout }) {
       <div className="show-mobile" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0d1120", borderTop:"1px solid #1a2035", display:"flex", alignItems:"center", zIndex:50 }}>
         {NAV_TABS.map(({ id, label, icon }) => (
           <button key={id} onClick={()=>setTab(id)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:tab===id?"#38bdf8":"#475569", fontSize:9, fontWeight:700 }}>
-            <span style={{ fontSize:18 }}>{id==="dashboard"?"🏠":id==="journal"?"📝":id==="stratlab"?"⚗️":"✨"}</span>
+            <span style={{ fontSize:18 }}>{id==="dashboard"?"🏠":"📝"}</span>
             {label}
           </button>
         ))}
+        <button onClick={()=>setTab("stratlab")} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:tab==="stratlab"?"#38bdf8":"#475569", fontSize:9, fontWeight:700 }}>
+          <span style={{ fontSize:18 }}>🔬</span>Tools
+        </button>
         <button onClick={()=>setShowHub(true)} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, height:"100%", border:"none", background:"transparent", cursor:"pointer", color:"#38bdf8", fontSize:9, fontWeight:700 }}>
           <span style={{ fontSize:18 }}>➕</span>Add
         </button>
