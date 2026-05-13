@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 
 // ── Constants ─────────────────────────────────────────────────────
 type InstrumentKey = "ES" | "NQ" | "CL" | "GC" | "BTC" | "ETH" | "SOL";
@@ -647,7 +648,7 @@ export default function TradePlannerPage() {
   const toggleAlert = (id: string) => setAlerts(prev => prev.map(a => a.id === id ? { ...a, enabled: !a.enabled } : a));
   const deleteAlert = (id: string) => setAlerts(prev => prev.filter(a =>a.id !== id));
 
- return (<div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,sans-serif" }}>
+ return (<div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}><Sidebar activePath="/planner" /><main style={{ flex:1, marginLeft:56 }}><div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,sans-serif" }}>
 
       {/* Top nav */}
       <div style={{ borderBottom:"1px solid #111118", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}><a href="/dashboard" style={{ fontSize:12, color:"#2a2a3a", textDecoration:"none" }}>← Dashboard</a><span style={{ fontSize:14, fontWeight:800, color:"#ffffff" }}>Trade Planner</span><div style={{ flex:1 }}/><span style={{ fontSize:10, color:"#2a2a3a", fontWeight:600 }}>{username ? `@${username}` : ""}</span></div><div style={{ maxWidth:1400, margin:"0 auto", padding:"32px 20px" }}>
@@ -699,6 +700,6 @@ export default function TradePlannerPage() {
         input[type="range"] {
           height: 4px; border-radius: 4px; background: #2a2a3a;
         }
-      `}</style></div>
+      `}</style></div></main></div>
   );
 }

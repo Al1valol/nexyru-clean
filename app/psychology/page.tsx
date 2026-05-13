@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 
 // ───────────────────────── types ─────────────────────────
 interface Trade {
@@ -541,7 +542,9 @@ export default function PsychologyPage() {
 
   // ── render
   return (
-    <main className="psych-main" style={{ minHeight:"100vh", background:"#070b14", color:"#ffffff", padding:"32px 20px", fontFamily:"system-ui, -apple-system, sans-serif" }}><style>{`
+    <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}>
+      <Sidebar activePath="/psychology" />
+      <main className="psych-main" style={{ flex:1, marginLeft:56, minHeight:"100vh", background:"#070b14", color:"#ffffff", padding:"32px 20px", fontFamily:"system-ui, -apple-system, sans-serif" }}><style>{`
         @media (max-width: 767px) {
           .psych-main { padding: 16px !important; }
           .psych-overview-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
@@ -575,7 +578,7 @@ export default function PsychologyPage() {
         {/* ───────────── SECTION 2: EMOTION TRACKER ───────────── */}
         {!!trades.length && (
         <section style={{ ...card, marginBottom:24 }}>
-          {sectionTitle("#ec4899", "Emotion Tracker")}
+          {sectionTitle("#6b7280", "Emotion Tracker")}
           {!hasAnyEmotion ? (
             <div style={{ background:"#111118", border:"1px dashed #2a2a3a", borderRadius:12, padding:"36px 20px", textAlign:"center" }}><div style={{ fontSize:30, marginBottom:8 }}></div><p style={{ margin:0, color:"#6b7280", fontSize:13 }}>Complete trade reviews in Trade Replay to unlock emotion tracking.</p></div>) : (<div className="psych-emotion-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:12 }}>
               {(Object.keys(EMOTIONS) as EmotionKey[]).map(key => {
@@ -600,7 +603,7 @@ export default function PsychologyPage() {
         {/* ───────────── SECTION 3: MISTAKES TRACKER ───────────── */}
         {!!trades.length && (
         <section style={{ ...card, marginBottom:24 }}>
-          {sectionTitle("#ef4444", "Mistakes Tracker")}
+          {sectionTitle("#6b7280", "Mistakes Tracker")}
 
           {mistakeStats.length >0 && (<div style={{
               background:"linear-gradient(135deg, rgba(248,113,113,0.12), rgba(248,113,113,0.04))",
@@ -735,6 +738,7 @@ export default function PsychologyPage() {
         )}
 
       </div></main>
+    </div>
   );
 }
 

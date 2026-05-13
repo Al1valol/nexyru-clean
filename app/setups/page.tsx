@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 
 // ───────────────────────── types ─────────────────────────
 interface Trade {
@@ -510,7 +511,7 @@ export default function SetupsPage() {
 
   const hasTrades = validTrades.length >0;
 
- return (<div className="setups-main" style={{ minHeight: "100vh", background: "#040810", color: "#ffffff", padding: "32px 20px 80px" }}><style>{`
+ return (<div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}><Sidebar activePath="/setups" /><main style={{ flex:1, marginLeft:56 }}><div className="setups-main" style={{ minHeight: "100vh", background: "#040810", color: "#ffffff", padding: "32px 20px 80px" }}><style>{`
         @media (max-width: 767px) {
           .setups-main { padding: 16px 16px 80px !important; }
           .setups-hide-mobile { display: none !important; }
@@ -565,8 +566,6 @@ export default function SetupsPage() {
             {/* ════════ SECTION 1: EDGE SUMMARY ════════ */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}><HighlightCard
                 tag="BEST SETUP"
-                color="#22c55e"
-                emoji=""
                 big={bestSetup ? `${bestSetup.winRate.toFixed(0)}%` : "—"}
                 line={
                   bestSetup
@@ -575,8 +574,6 @@ export default function SetupsPage() {
                 }
               /><HighlightCard
                 tag="BEST INSTRUMENT"
-                color="#22c55e"
-                emoji=""
                 big={bestInstrument ? fmtMoney0(bestInstrument.avgPnl) : "—"}
                 line={
                   bestInstrument
@@ -585,8 +582,6 @@ export default function SetupsPage() {
                 }
               /><HighlightCard
                 tag="BEST TIME"
-                color="#22c55e"
-                emoji="⏰"
                 big={bestHour ? `${bestHour.winRate.toFixed(0)}%` : "—"}
                 line={
                   bestHour
@@ -781,21 +776,17 @@ export default function SetupsPage() {
               )}
             </div></>
         )}
-      </div></div>
+      </div></div></main></div>
   );
 }
 
 // ───────────────────────── components ─────────────────────────
 function HighlightCard({
   tag,
-  color,
-  emoji,
   big,
   line,
 }: {
   tag: string;
-  color: string;
-  emoji: string;
   big: string;
   line: string;
 }) {
@@ -804,12 +795,11 @@ function HighlightCard({
       style={{
         background: "#111118",
         border: "1px solid #2a2a3a",
-        borderLeft: `4px solid ${color}`,
         borderRadius: 14,
         padding: "20px 22px",
       }}
-    ><div style={{ fontSize: 10, fontWeight: 800, color, letterSpacing: "0.1em", marginBottom: 12 }}>
-        {emoji} {tag}
+    ><div style={{ fontSize: 10, fontWeight: 800, color: "#6b7280", letterSpacing: "0.1em", marginBottom: 12, textTransform: "uppercase" }}>
+        {tag}
       </div><div style={{ fontSize: 36, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.02em", marginBottom: 8, lineHeight: 1 }}>
         {big}
       </div><div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.5 }}>{line}</div></div>

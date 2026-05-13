@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false);
@@ -1016,11 +1017,16 @@ export default function ChallengePage() {
   }
 
   if (!loaded) {
-    return <div style={{ minHeight:"100vh", background:"#060d1a", display:"flex", alignItems:"center", justifyContent:"center", color:"#2a2a3a" }}>Loading…</div>;
+    return (
+      <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}>
+        <Sidebar activePath="/challenge" />
+        <main style={{ flex:1, marginLeft:56, minHeight:"100vh", background:"#060d1a", display:"flex", alignItems:"center", justifyContent:"center", color:"#2a2a3a" }}>Loading…</main>
+      </div>
+    );
   }
 
   return (
-    <div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,-apple-system,sans-serif" }}><style>{`
+    <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}><Sidebar activePath="/challenge" /><main style={{ flex:1, marginLeft:56 }}><div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,-apple-system,sans-serif" }}><style>{`
         @media (max-width: 767px) {
           .firm-grid { grid-template-columns: 1fr 1fr !important; }
           .rings-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
@@ -1062,6 +1068,6 @@ export default function ChallengePage() {
         {mode === "view" && active && stats && (
           <Dashboard account={active} stats={stats} onEdit={()=>setMode("edit")} onDelete={()=>deleteAccount(active.id)}/>
         )}
-      </div></div>
+      </div></div></main></div>
   );
 }

@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import Sidebar from "@/components/Sidebar";
 import {
   createChart,
   CandlestickSeries,
@@ -382,6 +383,17 @@ function topTheme(reviews: Review[]): string | null {
 // ───────────────────── page ─────────────────────
 
 export default function ReplayPage() {
+  return (
+    <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}>
+      <Sidebar activePath="/replay" />
+      <main style={{ flex:1, marginLeft:56 }}>
+        <ReplayPageInner />
+      </main>
+    </div>
+  );
+}
+
+function ReplayPageInner() {
   const [username, setUsername] = useState<string | null>(null);
  const [trades, setTrades] = useState<Trade[]>([]);
  const [loading, setLoading] = useState(true);
