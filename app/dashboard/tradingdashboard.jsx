@@ -3166,6 +3166,710 @@ function InsightsPanel({ trades }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  INSIGHTS ANALYTICS PAGE — full Tradervue-style analytics wall
+// ═══════════════════════════════════════════════════════════════
+
+function getHoldMinutes(t) {
+  if (typeof t.holdMinutes === "number") return t.holdMinutes;
+  if (typeof t.durationMin === "number") return t.durationMin;
+  if (typeof t.durationMs  === "number") return t.durationMs / 60000;
+  if (typeof t.holdMs      === "number") return t.holdMs / 60000;
+  if (t.entryDate && t.exitDate) {
+    const a = new Date(t.entryDate).getTime();
+    const b = new Date(t.exitDate).getTime();
+    if (!isNaN(a) && !isNaN(b) && b > a) return (b - a) / 60000;
+  }
+  if (t.entryTime && t.exitTime) {
+    const a = new Date(t.entryTime).getTime();
+    const b = new Date(t.exitTime).getTime();
+    if (!isNaN(a) && !isNaN(b) && b > a) return (b - a) / 60000;
+  }
+  return null;
+}
+
+function fmtDuration(min) {
+  if (min == null || isNaN(min)) return "—";
+  if (min < 1)   return `${Math.round(min*60)}s`;
+  if (min < 60)  return `${min.toFixed(1)}m`;
+  if (min < 1440) return `${(min/60).toFixed(1)}h`;
+  return `${(min/1440).toFixed(1)}d`;
+}
+
+function computeAnalytics(trades) {
+  const sorted = [...trades].filter(t => t && t.date != null).sort((a,b) => a.date - b.date);
+  const n = sorted.length;
+
+  const wins  = sorted.filter(t => (t.pnl ?? 0) > 0);
+  const losses = sorted.filter(t => (t.pnl ?? 0) < 0);
+  const breakeven = sorted.filter(t => (t.pnl ?? 0) === 0);
+
+  const totalPnl = sorted.reduce((s,t) => s + (t.pnl ?? 0), 0);
+  const grossWin  = wins.reduce((s,t)   => s + (t.pnl ?? 0), 0);
+  const grossLoss = Math.abs(losses.reduce((s,t) => s + (t.pnl ?? 0), 0));
+  const winRate = n ? (wins.length / n) * 100 : 0;
+  const avgWin  = wins.length   ? grossWin  / wins.length   : 0;
+  const avgLoss = losses.length ? grossLoss / losses.length : 0;
+  const profitFactor = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 999 : 0;
+
+  // Hold time
+  const holdTimes = sorted.map(getHoldMinutes).filter(v => v != null);
+  const avgHoldMin = holdTimes.length ? holdTimes.reduce((s,v) => s+v, 0) / holdTimes.length : null;
+
+  // Daily PnL aggregation
+  const dailyMap = {};
+  sorted.forEach(t => {
+    const d = new Date(t.date);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    if (!dailyMap[key]) dailyMap[key] = { date:key, ts:new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(), pnl:0, trades:0, wins:0 };
+    dailyMap[key].pnl += (t.pnl ?? 0);
+    dailyMap[key].trades += 1;
+    if ((t.pnl ?? 0) > 0) dailyMap[key].wins += 1;
+  });
+  const daily = Object.values(dailyMap).sort((a,b) => a.ts - b.ts);
+  const bestDay  = daily.length ? Math.max(...daily.map(d => d.pnl))  : 0;
+  const worstDay = daily.length ? Math.min(...daily.map(d => d.pnl)) : 0;
+
+  // Equity curve
+  let cum = 0;
+  const equity = sorted.map((t, i) => {
+    cum += (t.pnl ?? 0);
+    return { x: i+1, y: cum, date: t.date };
+  });
+
+  // By hour (6am-5pm = hours 6..17)
+  const hourly = [];
+  for (let h = 6; h <= 17; h++) {
+    const hTrades = sorted.filter(t => new Date(t.date).getHours() === h);
+    const hWins   = hTrades.filter(t => (t.pnl ?? 0) > 0).length;
+    hourly.push({
+      hour: h,
+      label: h === 12 ? "12p" : h > 12 ? `${h-12}p` : `${h}a`,
+      count: hTrades.length,
+      winRate: hTrades.length ? (hWins / hTrades.length) * 100 : 0,
+      pnl: hTrades.reduce((s,t) => s + (t.pnl ?? 0), 0),
+    });
+  }
+  const hourlyWithTrades = hourly.filter(h => h.count > 0);
+  const bestHour = hourlyWithTrades.length
+    ? hourlyWithTrades.reduce((best,h) => h.winRate > best.winRate ? h : best, hourlyWithTrades[0])
+    : null;
+
+  // By day of week (Mon-Fri)
+  const dowMap = { 1:{n:"Mon",p:0,c:0,w:0}, 2:{n:"Tue",p:0,c:0,w:0}, 3:{n:"Wed",p:0,c:0,w:0}, 4:{n:"Thu",p:0,c:0,w:0}, 5:{n:"Fri",p:0,c:0,w:0} };
+  sorted.forEach(t => {
+    const d = new Date(t.date).getDay();
+    if (dowMap[d]) {
+      dowMap[d].p += (t.pnl ?? 0);
+      dowMap[d].c += 1;
+      if ((t.pnl ?? 0) > 0) dowMap[d].w += 1;
+    }
+  });
+  const byDow = [1,2,3,4,5].map(i => ({
+    name: dowMap[i].n,
+    avgPnl: dowMap[i].c ? dowMap[i].p / dowMap[i].c : 0,
+    totalPnl: dowMap[i].p,
+    count: dowMap[i].c,
+    winRate: dowMap[i].c ? (dowMap[i].w / dowMap[i].c) * 100 : 0,
+  }));
+
+  // Duration buckets
+  const buckets = [
+    { label: "<5m",   min:0,    max:5,    trades:[], wins:0 },
+    { label: "5-15m", min:5,    max:15,   trades:[], wins:0 },
+    { label: "15-60m",min:15,   max:60,   trades:[], wins:0 },
+    { label: "1-4h",  min:60,   max:240,  trades:[], wins:0 },
+    { label: "Overnight", min:240, max:Infinity, trades:[], wins:0 },
+  ];
+  sorted.forEach(t => {
+    const m = getHoldMinutes(t);
+    if (m == null) return;
+    const b = buckets.find(b => m >= b.min && m < b.max);
+    if (b) {
+      b.trades.push(t);
+      if ((t.pnl ?? 0) > 0) b.wins += 1;
+    }
+  });
+  const durationBuckets = buckets.map(b => ({
+    label: b.label,
+    count: b.trades.length,
+    winRate: b.trades.length ? (b.wins / b.trades.length) * 100 : 0,
+    pnl: b.trades.reduce((s,t) => s + (t.pnl ?? 0), 0),
+  }));
+  const bestDurationBucket = durationBuckets.filter(b => b.count > 0)
+    .reduce((best, b) => !best || b.winRate > best.winRate ? b : best, null);
+
+  // By symbol
+  const symMap = {};
+  sorted.forEach(t => {
+    const sym = (t.symbol || t.pair || "—").toString();
+    if (!symMap[sym]) symMap[sym] = { symbol:sym, trades:0, wins:0, pnl:0, gw:0, gl:0, best:-Infinity, worst:Infinity };
+    const e = symMap[sym];
+    const p = t.pnl ?? 0;
+    e.trades += 1;
+    if (p > 0) { e.wins += 1; e.gw += p; }
+    else if (p < 0) { e.gl += Math.abs(p); }
+    e.pnl += p;
+    if (p > e.best)  e.best  = p;
+    if (p < e.worst) e.worst = p;
+  });
+  const bySymbol = Object.values(symMap).map(s => ({
+    symbol:s.symbol,
+    trades:s.trades,
+    winRate: s.trades ? (s.wins / s.trades) * 100 : 0,
+    avgPnl: s.trades ? s.pnl / s.trades : 0,
+    totalPnl: s.pnl,
+    profitFactor: s.gl > 0 ? s.gw / s.gl : s.gw > 0 ? 999 : 0,
+    best: s.best === -Infinity ? 0 : s.best,
+    worst: s.worst === Infinity ? 0 : s.worst,
+  })).sort((a,b) => b.totalPnl - a.totalPnl);
+
+  // Streaks
+  let curStreak = 0;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const w = (sorted[i].pnl ?? 0) > 0;
+    if (curStreak === 0)              curStreak = w ? 1 : -1;
+    else if (curStreak > 0 && w)      curStreak += 1;
+    else if (curStreak < 0 && !w)     curStreak -= 1;
+    else break;
+  }
+  let longestWin = 0, longestLoss = 0, runWin = 0, runLoss = 0;
+  let afterWinTotal = 0, afterWinWins = 0, afterLossTotal = 0, afterLossWins = 0;
+  sorted.forEach((t, i) => {
+    const w = (t.pnl ?? 0) > 0;
+    if (w)  { runWin += 1; runLoss = 0; if (runWin > longestWin) longestWin = runWin; }
+    else    { runLoss += 1; runWin = 0; if (runLoss > longestLoss) longestLoss = runLoss; }
+    if (i > 0) {
+      const prevWin = (sorted[i-1].pnl ?? 0) > 0;
+      if (prevWin) { afterWinTotal += 1; if (w) afterWinWins += 1; }
+      else         { afterLossTotal += 1; if (w) afterLossWins += 1; }
+    }
+  });
+  const afterWinRate  = afterWinTotal  ? (afterWinWins  / afterWinTotal)  * 100 : 0;
+  const afterLossRate = afterLossTotal ? (afterLossWins / afterLossTotal) * 100 : 0;
+
+  // Monthly (last 6 months)
+  const monthMap = {};
+  sorted.forEach(t => {
+    const d = new Date(t.date);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if (!monthMap[key]) monthMap[key] = { key, year:d.getFullYear(), month:d.getMonth(), trades:0, wins:0, pnl:0 };
+    monthMap[key].trades += 1;
+    monthMap[key].pnl += (t.pnl ?? 0);
+    if ((t.pnl ?? 0) > 0) monthMap[key].wins += 1;
+  });
+  const monthly = Object.values(monthMap)
+    .sort((a,b) => b.key.localeCompare(a.key))
+    .slice(0, 6)
+    .map(m => ({
+      ...m,
+      label: new Date(m.year, m.month, 1).toLocaleDateString("en-US", { month:"short", year:"numeric" }),
+      winRate: m.trades ? (m.wins / m.trades) * 100 : 0,
+    }));
+
+  // Risk Analysis
+  const rrs = sorted.map(t => {
+    if (t.stopLoss && t.takeProfit && t.entryPrice) {
+      const r = Math.abs((t.takeProfit - t.entryPrice) / (t.entryPrice - t.stopLoss));
+      return isFinite(r) ? r : null;
+    }
+    return null;
+  }).filter(v => v != null && isFinite(v) && v < 100);
+  const avgRR = rrs.length ? rrs.reduce((s,v) => s + v, 0) / rrs.length : 0;
+
+  const expectedValue = n ? totalPnl / n : 0;
+  const mean = expectedValue;
+  const stdDev = n
+    ? Math.sqrt(sorted.reduce((s,t) => s + Math.pow((t.pnl ?? 0) - mean, 2), 0) / n)
+    : 0;
+  const sharpeLike = stdDev > 0 ? mean / stdDev : 0;
+
+  const lossRate = n ? losses.length / n : 0;
+  const riskOfRuin = lossRate > 0 && avgWin > 0 && avgLoss > 0
+    ? Math.min(100, Math.pow(lossRate / (1 - lossRate) * (avgLoss / avgWin), Math.min(20, longestLoss + 5)) * 100)
+    : 0;
+
+  // PnL distribution
+  const pnlBuckets = [
+    { label: "<-$500",      min:-Infinity, max:-500,    count:0, color:"#ef4444" },
+    { label: "-$500 to $0", min:-500,      max:0,       count:0, color:"#f87171" },
+    { label: "$0-$100",     min:0,         max:100,     count:0, color:"#86efac" },
+    { label: "$100-$500",   min:100,       max:500,     count:0, color:"#34d399" },
+    { label: "$500-$1k",    min:500,       max:1000,    count:0, color:"#10b981" },
+    { label: ">$1k",        min:1000,      max:Infinity,count:0, color:"#059669" },
+  ];
+  sorted.forEach(t => {
+    const p = t.pnl ?? 0;
+    const b = pnlBuckets.find(b => p >= b.min && p < b.max);
+    if (b) b.count += 1;
+  });
+
+  return {
+    n, wins, losses, breakeven, totalPnl, winRate, avgWin, avgLoss, profitFactor,
+    avgHoldMin, hasHoldData: holdTimes.length > 0,
+    bestDay, worstDay, daily, equity,
+    hourly, bestHour,
+    byDow,
+    durationBuckets, bestDurationBucket,
+    bySymbol,
+    curStreak, longestWin, longestLoss, afterWinRate, afterLossRate, afterWinTotal, afterLossTotal,
+    monthly,
+    avgRR, expectedValue, sharpeLike, longestLossStreak: longestLoss, riskOfRuin,
+    pnlBuckets,
+  };
+}
+
+function InsightsAnalyticsPage({ trades }) {
+  const a = useMemo(() => computeAnalytics(trades || []), [trades]);
+
+  if (!trades || trades.length === 0) {
+    return (
+      <div style={{ padding:"64px 24px", borderRadius:14, border:"1px dashed #1a2035", textAlign:"center", color:"#475569" }}>
+        <div style={{ fontSize:42, marginBottom:14 }}>📊</div>
+        <div style={{ fontSize:15, fontWeight:800, color:"#94a3b8", marginBottom:6 }}>No trades to analyze yet</div>
+        <div style={{ fontSize:12, color:"#475569" }}>Import trades to see your analytics</div>
+      </div>
+    );
+  }
+
+  const sectionLabel = (text) => (
+    <div style={{ fontSize:10, color:"#475569", fontWeight:800, textTransform:"uppercase", letterSpacing:"0.14em", marginBottom:10 }}>{text}</div>
+  );
+
+  const card = {
+    background:"linear-gradient(180deg,#0d1628,#0a1220)",
+    border:"1px solid #16223a",
+    borderRadius:14,
+    padding:"18px 18px 16px",
+  };
+
+  const mono = { fontFamily:"'JetBrains Mono','SF Mono',ui-monospace,monospace" };
+
+  // ── ROW 1: Key stats ────────────────────────────────────────
+  const keyStats = [
+    { label:"Total Trades", value:a.n.toLocaleString(),                                             color:"#e2e8f0" },
+    { label:"Win Rate",     value:`${a.winRate.toFixed(1)}%`,                                       color:a.winRate>=50?"#34d399":"#f87171" },
+    { label:"Profit Factor",value:a.profitFactor>=999?"∞":a.profitFactor.toFixed(2),                color:a.profitFactor>=1?"#34d399":"#f87171" },
+    { label:"Avg Win",      value:fmtMoney(a.avgWin, { signed:true }),                              color:"#34d399" },
+    { label:"Avg Loss",     value:`-${fmtMoney(a.avgLoss)}`,                                        color:"#f87171" },
+    { label:"Avg Hold",     value:fmtDuration(a.avgHoldMin),                                        color:"#94a3b8" },
+    { label:"Best Day",     value:fmtMoney(a.bestDay, { signed:true }),                             color:"#34d399" },
+    { label:"Worst Day",    value:fmtMoney(a.worstDay, { signed:true }),                            color:"#f87171" },
+  ];
+
+  // ── Equity curve SVG ─────────────────────────────────────────
+  const eqW = 600, eqH = 220, eqPad = { l:8, r:50, t:14, b:24 };
+  const yVals = a.equity.map(p => p.y);
+  const yMin = Math.min(0, ...(yVals.length ? yVals : [0]));
+  const yMax = Math.max(0, ...(yVals.length ? yVals : [0]));
+  const yRange = (yMax - yMin) || 1;
+  const xMax = Math.max(1, a.equity.length);
+  const eqPoints = a.equity.map(p => {
+    const x = eqPad.l + ((p.x - 1) / Math.max(1, xMax - 1)) * (eqW - eqPad.l - eqPad.r);
+    const y = eqH - eqPad.b - ((p.y - yMin) / yRange) * (eqH - eqPad.t - eqPad.b);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  const lastEq = a.equity[a.equity.length - 1];
+  const eqColor = (lastEq?.y ?? 0) >= 0 ? "#34d399" : "#f87171";
+  const zeroY = eqH - eqPad.b - ((0 - yMin) / yRange) * (eqH - eqPad.t - eqPad.b);
+  const areaPath = a.equity.length
+    ? `M ${eqPad.l},${zeroY} L ${eqPoints.split(" ").join(" L ")} L ${(eqPad.l + ((xMax-1) / Math.max(1, xMax-1)) * (eqW - eqPad.l - eqPad.r)).toFixed(2)},${zeroY} Z`
+    : "";
+
+  // ── Daily PnL bars ───────────────────────────────────────────
+  const dailyMaxAbs = Math.max(1, ...a.daily.map(d => Math.abs(d.pnl)));
+  const dailyDisplay = a.daily.slice(-30); // last 30 days
+
+  // ── Hourly chart ─────────────────────────────────────────────
+  const hourMaxCount = Math.max(1, ...a.hourly.map(h => h.count));
+
+  // ── Day of week chart ────────────────────────────────────────
+  const dowMaxAbs = Math.max(1, ...a.byDow.map(d => Math.abs(d.avgPnl)));
+
+  // ── Win/Loss distribution ────────────────────────────────────
+  const wlTotal = a.wins.length + a.losses.length + a.breakeven.length;
+  const wRatio = a.avgLoss > 0 ? a.avgWin / a.avgLoss : a.avgWin > 0 ? 999 : 0;
+
+  // ── Duration buckets ─────────────────────────────────────────
+  const durMaxCount = Math.max(1, ...a.durationBuckets.map(b => b.count));
+
+  // ── Symbol max pnl for inline bars ───────────────────────────
+  const symMaxAbs = Math.max(1, ...a.bySymbol.map(s => Math.abs(s.totalPnl)));
+
+  // ── PnL distribution max ─────────────────────────────────────
+  const pnlMaxCount = Math.max(1, ...a.pnlBuckets.map(b => b.count));
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+      {/* ───── ROW 1: KEY STATS BAR ───── */}
+      <div style={{ ...card, padding:"16px 14px" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:12 }}>
+          {keyStats.map(s => (
+            <div key={s.label} style={{ display:"flex", flexDirection:"column", gap:4, padding:"4px 8px", borderLeft:"1px solid #16223a" }}>
+              <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>{s.label}</div>
+              <div style={{ ...mono, fontSize:18, fontWeight:800, color:s.color, lineHeight:1.1 }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ───── ROW 2: EQUITY CURVE + DAILY P&L ───── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }} className="insights-row-2">
+        <div style={card}>
+          {sectionLabel("Equity Curve")}
+          <div style={{ position:"relative" }}>
+            <svg viewBox={`0 0 ${eqW} ${eqH}`} preserveAspectRatio="none" style={{ width:"100%", height:240, display:"block" }}>
+              <defs>
+                <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={eqColor} stopOpacity="0.35"/>
+                  <stop offset="100%" stopColor={eqColor} stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              {/* zero baseline */}
+              <line x1={eqPad.l} x2={eqW-eqPad.r} y1={zeroY} y2={zeroY} stroke="#1e293b" strokeDasharray="3 3" strokeWidth="1"/>
+              {/* fill */}
+              {a.equity.length > 1 && <path d={areaPath} fill="url(#eqGrad)"/>}
+              {/* line */}
+              {a.equity.length > 1 && <polyline points={eqPoints} fill="none" stroke={eqColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>}
+              {/* end dot */}
+              {lastEq && (() => {
+                const x = eqPad.l + ((lastEq.x - 1) / Math.max(1, xMax - 1)) * (eqW - eqPad.l - eqPad.r);
+                const y = eqH - eqPad.b - ((lastEq.y - yMin) / yRange) * (eqH - eqPad.t - eqPad.b);
+                return <circle cx={x} cy={y} r="3.5" fill={eqColor} stroke="#0a1220" strokeWidth="2"/>;
+              })()}
+            </svg>
+            <div style={{ position:"absolute", top:8, right:10, ...mono, fontSize:14, fontWeight:800, color:eqColor }}>
+              {fmtMoney(lastEq?.y ?? 0, { signed:true })}
+            </div>
+            <div style={{ position:"absolute", bottom:0, left:8, fontSize:9, color:"#334155" }}>Trade #1</div>
+            <div style={{ position:"absolute", bottom:0, right:10, fontSize:9, color:"#334155" }}>Trade #{a.n}</div>
+          </div>
+        </div>
+
+        <div style={card}>
+          {sectionLabel("Daily P&L")}
+          <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", height:200, gap:2, padding:"0 4px", borderBottom:"1px solid #1e293b" }}>
+            {dailyDisplay.length === 0 && <div style={{ width:"100%", textAlign:"center", color:"#334155", fontSize:11 }}>No daily data</div>}
+            {dailyDisplay.map(d => {
+              const h = (Math.abs(d.pnl) / dailyMaxAbs) * 90; // % of half height
+              const pos = d.pnl >= 0;
+              return (
+                <div key={d.date} title={`${d.date}: ${fmtMoney(d.pnl,{signed:true})} (${d.trades} trade${d.trades!==1?"s":""})`} style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", height:"100%", cursor:"pointer", minWidth:0 }}>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-end", width:"100%", alignItems:"center" }}>
+                    {pos && <div style={{ width:"80%", height:`${h}%`, background:"linear-gradient(180deg,#34d399,#10b981)", borderRadius:"2px 2px 0 0", minHeight:1 }}/>}
+                  </div>
+                  <div style={{ width:"100%", height:1, background:"#1e293b" }}/>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", width:"100%", alignItems:"center" }}>
+                    {!pos && <div style={{ width:"80%", height:`${h}%`, background:"linear-gradient(0deg,#f87171,#dc2626)", borderRadius:"0 0 2px 2px", minHeight:1 }}/>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", marginTop:8, fontSize:9, color:"#334155" }}>
+            <span>{dailyDisplay[0]?.date ?? "—"}</span>
+            <span>{dailyDisplay.length} days{a.daily.length > dailyDisplay.length ? ` (last ${dailyDisplay.length} of ${a.daily.length})` : ""}</span>
+            <span>{dailyDisplay[dailyDisplay.length-1]?.date ?? "—"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ───── ROW 3: PERFORMANCE BY TIME ───── */}
+      <div style={card}>
+        {sectionLabel("Performance by Time of Day")}
+        <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:180, paddingTop:20 }}>
+          {a.hourly.map(h => {
+            const wr = h.winRate;
+            const fillH = h.count > 0 ? Math.max(4, wr) : 0;
+            const isBest = a.bestHour && a.bestHour.hour === h.hour && h.count > 0;
+            const color = h.count === 0 ? "#1e293b" : wr > 50 ? "#34d399" : "#f87171";
+            return (
+              <div key={h.hour} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, position:"relative", minWidth:0 }}>
+                {isBest && <div style={{ position:"absolute", top:-18, fontSize:14 }}>⭐</div>}
+                <div style={{ width:"100%", height:120, display:"flex", alignItems:"flex-end", position:"relative" }}>
+                  <div style={{ position:"absolute", top:-14, left:"50%", transform:"translateX(-50%)", fontSize:9, color:"#64748b", fontWeight:700, ...mono }}>
+                    {h.count > 0 ? `${wr.toFixed(0)}%` : ""}
+                  </div>
+                  <div title={`${h.label}: ${wr.toFixed(1)}% WR · ${h.count} trades · ${fmtMoney(h.pnl,{signed:true})}`} style={{ width:"100%", height:`${fillH}%`, background:color, borderRadius:"3px 3px 0 0", minHeight: h.count > 0 ? 4 : 0, transition:"height 0.2s" }}/>
+                </div>
+                <div style={{ fontSize:10, color:"#64748b", fontWeight:700, ...mono }}>{h.label}</div>
+                <div style={{ fontSize:9, color:"#334155", ...mono }}>{h.count > 0 ? `${h.count}t` : "—"}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ───── ROW 4: THREE COLUMNS ───── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 }} className="insights-row-4">
+
+        {/* LEFT: Day of Week */}
+        <div style={card}>
+          {sectionLabel("Performance by Day of Week")}
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {a.byDow.map(d => {
+              const pos = d.avgPnl >= 0;
+              const w = (Math.abs(d.avgPnl) / dowMaxAbs) * 100;
+              return (
+                <div key={d.name} style={{ display:"grid", gridTemplateColumns:"36px 1fr 80px", gap:10, alignItems:"center" }}>
+                  <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8" }}>{d.name}</div>
+                  <div style={{ height:20, background:"#0a1220", borderRadius:4, position:"relative", overflow:"hidden", border:"1px solid #16223a" }}>
+                    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", paddingLeft:6, fontSize:9, color:"#334155", ...mono }}>{d.count} trade{d.count!==1?"s":""}</div>
+                    {d.count > 0 && <div style={{ position:"absolute", left:0, top:0, bottom:0, width:`${w}%`, background: pos?"linear-gradient(90deg,rgba(52,211,153,0.6),rgba(52,211,153,0.25))":"linear-gradient(90deg,rgba(248,113,113,0.6),rgba(248,113,113,0.25))", borderRadius:4 }}/>}
+                  </div>
+                  <div style={{ ...mono, fontSize:11, fontWeight:700, color: d.count===0 ? "#334155" : pos?"#34d399":"#f87171", textAlign:"right" }}>
+                    {d.count > 0 ? fmtMoney(d.avgPnl,{signed:true}) : "—"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* MIDDLE: Win/Loss Distribution */}
+        <div style={card}>
+          {sectionLabel("Win/Loss Distribution")}
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {[
+              { label:"Wins",      count:a.wins.length,      color:"#34d399", bg:"rgba(52,211,153,0.15)" },
+              { label:"Losses",    count:a.losses.length,    color:"#f87171", bg:"rgba(248,113,113,0.15)" },
+              { label:"Breakeven", count:a.breakeven.length, color:"#94a3b8", bg:"rgba(148,163,184,0.15)" },
+            ].map(r => {
+              const pct = wlTotal ? (r.count / wlTotal) * 100 : 0;
+              return (
+                <div key={r.label}>
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"#94a3b8", marginBottom:3, fontWeight:700 }}>
+                    <span>{r.label}</span>
+                    <span style={mono}>{r.count} · {pct.toFixed(1)}%</span>
+                  </div>
+                  <div style={{ height:14, background:"#0a1220", borderRadius:3, overflow:"hidden", border:"1px solid #16223a" }}>
+                    <div style={{ height:"100%", width:`${pct}%`, background:r.color, transition:"width 0.3s" }}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid #16223a", display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            <div>
+              <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Avg Win</div>
+              <div style={{ ...mono, fontSize:13, fontWeight:800, color:"#34d399" }}>{fmtMoney(a.avgWin,{signed:true})}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Avg Loss</div>
+              <div style={{ ...mono, fontSize:13, fontWeight:800, color:"#f87171" }}>-{fmtMoney(a.avgLoss)}</div>
+            </div>
+          </div>
+          <div style={{ marginTop:12, padding:"10px 12px", background:"#0a1220", borderRadius:8, border:"1px solid #16223a", textAlign:"center" }}>
+            <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:2 }}>Win/Loss Ratio</div>
+            <div style={{ ...mono, fontSize:24, fontWeight:800, color: wRatio>=1 ? "#34d399" : "#f87171" }}>{wRatio>=999?"∞":wRatio.toFixed(2)}<span style={{ fontSize:14, color:"#475569" }}>:1</span></div>
+          </div>
+        </div>
+
+        {/* RIGHT: Trade Duration */}
+        <div style={card}>
+          {sectionLabel("Trade Duration Analysis")}
+          {a.hasHoldData ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {a.durationBuckets.map(b => {
+                const isBest = a.bestDurationBucket && a.bestDurationBucket.label === b.label && b.count > 0;
+                const w = (b.count / durMaxCount) * 100;
+                const wrColor = b.count === 0 ? "#334155" : b.winRate > 50 ? "#34d399" : "#f87171";
+                return (
+                  <div key={b.label} style={{ display:"grid", gridTemplateColumns:"80px 1fr 56px", gap:10, alignItems:"center" }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", display:"flex", alignItems:"center", gap:4 }}>
+                      {isBest && <span>⭐</span>}{b.label}
+                    </div>
+                    <div style={{ height:18, background:"#0a1220", borderRadius:4, position:"relative", overflow:"hidden", border:"1px solid #16223a" }}>
+                      <div style={{ position:"absolute", left:0, top:0, bottom:0, width:`${w}%`, background: isBest ? "linear-gradient(90deg,rgba(251,191,36,0.6),rgba(251,191,36,0.25))" : "linear-gradient(90deg,rgba(56,189,248,0.5),rgba(56,189,248,0.2))" }}/>
+                      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", paddingLeft:6, fontSize:9, color:"#94a3b8", ...mono, fontWeight:700 }}>{b.count} trade{b.count!==1?"s":""}</div>
+                    </div>
+                    <div style={{ ...mono, fontSize:11, fontWeight:700, color:wrColor, textAlign:"right" }}>
+                      {b.count > 0 ? `${b.winRate.toFixed(0)}%` : "—"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding:"32px 16px", textAlign:"center", color:"#475569", fontSize:11 }}>
+              <div style={{ fontSize:24, marginBottom:8, opacity:0.5 }}>⏱</div>
+              No hold-time data on logged trades
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ───── ROW 5: PERFORMANCE BY SYMBOL ───── */}
+      <div style={card}>
+        {sectionLabel("Performance by Symbol")}
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead>
+              <tr style={{ borderBottom:"1px solid #16223a" }}>
+                {["Symbol","Trades","Win Rate","Avg PnL","Total PnL","Profit Factor","Best","Worst"].map((h, i) => (
+                  <th key={h} style={{ textAlign: i===0 ? "left" : "right", padding:"8px 10px", fontSize:10, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {a.bySymbol.length === 0 && (
+                <tr><td colSpan={8} style={{ padding:24, textAlign:"center", color:"#334155" }}>No symbol data</td></tr>
+              )}
+              {a.bySymbol.map(s => {
+                const pos = s.totalPnl >= 0;
+                const barW = (Math.abs(s.totalPnl) / symMaxAbs) * 100;
+                return (
+                  <tr key={s.symbol} style={{ borderBottom:"1px solid #0f1828", background: pos ? "rgba(52,211,153,0.04)" : "rgba(248,113,113,0.04)" }}>
+                    <td style={{ padding:"10px", fontWeight:800, color:"#e2e8f0" }}>{s.symbol}</td>
+                    <td style={{ padding:"10px", textAlign:"right", ...mono, color:"#94a3b8" }}>{s.trades}</td>
+                    <td style={{ padding:"10px", textAlign:"right", ...mono, color: s.winRate>=50?"#34d399":"#f87171", fontWeight:700 }}>{s.winRate.toFixed(1)}%</td>
+                    <td style={{ padding:"10px", textAlign:"right", ...mono, color: s.avgPnl>=0?"#34d399":"#f87171" }}>{fmtMoney(s.avgPnl,{signed:true})}</td>
+                    <td style={{ padding:"10px", textAlign:"right", ...mono, color: pos?"#34d399":"#f87171", fontWeight:800, position:"relative" }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:8 }}>
+                        <div style={{ flex:1, maxWidth:80, height:6, background:"#0a1220", borderRadius:3, overflow:"hidden", border:"1px solid #16223a" }}>
+                          <div style={{ height:"100%", width:`${barW}%`, background: pos?"#34d399":"#f87171", borderRadius:3 }}/>
+                        </div>
+                        <span>{fmtMoney(s.totalPnl,{signed:true})}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding:"10px", textAlign:"right", ...mono, color:"#94a3b8" }}>{s.profitFactor>=999?"∞":s.profitFactor.toFixed(2)}</td>
+                    <td style={{ padding:"10px", textAlign:"right", ...mono, color:"#34d399" }}>{fmtMoney(s.best,{signed:true})}</td>
+                    <td style={{ padding:"10px", textAlign:"right", ...mono, color:"#f87171" }}>{fmtMoney(s.worst,{signed:true})}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ───── ROW 6: STREAKS + MONTHLY ───── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }} className="insights-row-6">
+
+        {/* Streak analysis */}
+        <div style={card}>
+          {sectionLabel("Streak Analysis")}
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ padding:"14px 16px", background:"#0a1220", borderRadius:10, border:`1px solid ${a.curStreak>=0?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"}` }}>
+              <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>Current Streak</div>
+              <div style={{ ...mono, fontSize:22, fontWeight:800, color: a.curStreak>=0?"#34d399":"#f87171" }}>
+                {Math.abs(a.curStreak)} {a.curStreak>=0?"win":"loss"}{Math.abs(a.curStreak)!==1?"es":""} in a row
+              </div>
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              <div style={{ padding:"12px", background:"#0a1220", borderRadius:8, border:"1px solid #16223a" }}>
+                <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>Longest Win Streak</div>
+                <div style={{ ...mono, fontSize:18, fontWeight:800, color:"#34d399" }}>{a.longestWin}</div>
+              </div>
+              <div style={{ padding:"12px", background:"#0a1220", borderRadius:8, border:"1px solid #16223a" }}>
+                <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>Longest Loss Streak</div>
+                <div style={{ ...mono, fontSize:18, fontWeight:800, color:"#f87171" }}>{a.longestLoss}</div>
+              </div>
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              <div style={{ padding:"12px", background:"#0a1220", borderRadius:8, border:"1px solid #16223a" }}>
+                <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>After Loss WR</div>
+                <div style={{ ...mono, fontSize:16, fontWeight:800, color: a.afterLossRate>=50?"#34d399":"#f87171" }}>
+                  {a.afterLossTotal>0 ? `${a.afterLossRate.toFixed(0)}%` : "—"}
+                </div>
+                <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{a.afterLossTotal} sample{a.afterLossTotal!==1?"s":""}</div>
+              </div>
+              <div style={{ padding:"12px", background:"#0a1220", borderRadius:8, border:"1px solid #16223a" }}>
+                <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>After Win WR</div>
+                <div style={{ ...mono, fontSize:16, fontWeight:800, color: a.afterWinRate>=50?"#34d399":"#f87171" }}>
+                  {a.afterWinTotal>0 ? `${a.afterWinRate.toFixed(0)}%` : "—"}
+                </div>
+                <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{a.afterWinTotal} sample{a.afterWinTotal!==1?"s":""}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Monthly */}
+        <div style={card}>
+          {sectionLabel("Monthly Performance")}
+          {a.monthly.length === 0 ? (
+            <div style={{ padding:"24px 16px", textAlign:"center", color:"#475569", fontSize:11 }}>No monthly data</div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1.4fr 0.7fr 0.9fr 1fr 0.5fr", gap:8, padding:"4px 10px", fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>
+                <div>Month</div><div style={{textAlign:"right"}}>Trades</div><div style={{textAlign:"right"}}>Win Rate</div><div style={{textAlign:"right"}}>PnL</div><div style={{textAlign:"center"}}>—</div>
+              </div>
+              {a.monthly.map(m => {
+                const pos = m.pnl >= 0;
+                return (
+                  <div key={m.key} style={{ display:"grid", gridTemplateColumns:"1.4fr 0.7fr 0.9fr 1fr 0.5fr", gap:8, padding:"10px", borderRadius:8, background: pos?"rgba(52,211,153,0.05)":"rgba(248,113,113,0.05)", border: `1px solid ${pos?"rgba(52,211,153,0.15)":"rgba(248,113,113,0.15)"}`, alignItems:"center" }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:"#e2e8f0" }}>{m.label}</div>
+                    <div style={{ ...mono, fontSize:11, color:"#94a3b8", textAlign:"right" }}>{m.trades}</div>
+                    <div style={{ ...mono, fontSize:11, fontWeight:700, color:m.winRate>=50?"#34d399":"#f87171", textAlign:"right" }}>{m.winRate.toFixed(0)}%</div>
+                    <div style={{ ...mono, fontSize:12, fontWeight:800, color:pos?"#34d399":"#f87171", textAlign:"right" }}>{fmtMoney(m.pnl,{signed:true})}</div>
+                    <div style={{ fontSize:14, textAlign:"center", color:pos?"#34d399":"#f87171" }}>{pos?"✓":"✗"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ───── ROW 7: RISK + P&L DISTRIBUTION ───── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }} className="insights-row-7">
+
+        {/* Risk analysis */}
+        <div style={card}>
+          {sectionLabel("Risk Analysis")}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            {[
+              { label:"Avg Risk/Reward", val:a.avgRR>0 ? `${a.avgRR.toFixed(2)}:1` : "—",                                color: a.avgRR>=2?"#34d399":a.avgRR>=1?"#fbbf24":"#f87171" },
+              { label:"Expected Value",  val:fmtMoney(a.expectedValue,{signed:true}),                                    color: a.expectedValue>=0?"#34d399":"#f87171" },
+              { label:"Sharpe-like",     val:a.sharpeLike>0 ? a.sharpeLike.toFixed(2) : a.sharpeLike.toFixed(2),         color: a.sharpeLike>=1?"#34d399":a.sharpeLike>=0?"#fbbf24":"#f87171" },
+              { label:"Max Consec Losses", val:String(a.longestLossStreak),                                              color: a.longestLossStreak<=3?"#34d399":a.longestLossStreak<=6?"#fbbf24":"#f87171" },
+              { label:"Risk of Ruin",    val:`${a.riskOfRuin.toFixed(2)}%`,                                              color: a.riskOfRuin<=5?"#34d399":a.riskOfRuin<=20?"#fbbf24":"#f87171" },
+              { label:"Total P&L",       val:fmtMoney(a.totalPnl,{signed:true}),                                         color: a.totalPnl>=0?"#34d399":"#f87171" },
+            ].map(s => (
+              <div key={s.label} style={{ padding:"12px", background:"#0a1220", borderRadius:8, border:"1px solid #16223a" }}>
+                <div style={{ fontSize:9, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:5 }}>{s.label}</div>
+                <div style={{ ...mono, fontSize:16, fontWeight:800, color:s.color }}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* PnL distribution */}
+        <div style={card}>
+          {sectionLabel("P&L Distribution")}
+          <div style={{ display:"flex", alignItems:"flex-end", height:160, gap:6, padding:"0 4px", borderBottom:"1px solid #1e293b", marginBottom:10 }}>
+            {a.pnlBuckets.map(b => {
+              const h = (b.count / pnlMaxCount) * 100;
+              return (
+                <div key={b.label} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", height:"100%", position:"relative", minWidth:0 }}>
+                  <div style={{ ...mono, fontSize:10, fontWeight:700, color:"#94a3b8", marginBottom:4 }}>{b.count}</div>
+                  <div title={`${b.label}: ${b.count} trade${b.count!==1?"s":""}`} style={{ width:"85%", height:`${h}%`, background:b.color, borderRadius:"3px 3px 0 0", minHeight: b.count>0?2:0, transition:"height 0.2s" }}/>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display:"flex", gap:6, padding:"0 4px" }}>
+            {a.pnlBuckets.map(b => (
+              <div key={b.label} style={{ flex:1, fontSize:9, color:"#64748b", textAlign:"center", fontWeight:700, ...mono, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.label}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @media (max-width: 900px) {
+          .insights-row-2, .insights-row-6, .insights-row-7 { grid-template-columns: 1fr !important; }
+          .insights-row-4 { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  STRATEGY CARDS
 // ═══════════════════════════════════════════════════════════════
 
@@ -7838,8 +8542,8 @@ function TradingDashboard({ session, onLogout }) {
           )}
           {tab==="insights"   && (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              <div style={{ fontSize:18, fontWeight:800, color:"#f1f5f9" }}>AI Insights</div>
-              <InsightsPanel trades={activeTrades}/>
+              <div style={{ fontSize:18, fontWeight:800, color:"#f1f5f9" }}>Insights</div>
+              <InsightsAnalyticsPage trades={activeTrades}/>
             </div>
           )}
           {tab==="stratlab"   && <StrategyLabPage session={session} trades={activeTrades}/>}
