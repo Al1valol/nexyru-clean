@@ -48,22 +48,24 @@ const STEPS = [
 ];
 
 const FREE_FEATURES = [
-  "Trade journal — unlimited trades",
-  "Challenge tracker — Apex, TopstepX, FTMO & more",
+  "Trade journal — up to 100 trades",
+  "Challenge tracker — 1 account",
   "Pre-trade checklist",
   "Best setup finder",
   "Psychology tracker",
-  "Trade replay",
-  "Trade planner & position sizer",
-  "AI strategy builder — 5 uses/day",
+  "Trade replay — last 10 trades",
+  "AI strategy builder — 3 uses/day",
+  "Syncs across all your devices",
 ];
 
 const PRO_FEATURES = [
+  "Everything in Free, unlimited",
+  "Multiple challenge accounts",
+  "Full trade replay history",
   "Unlimited AI strategy generations",
-  "Priority support",
-  "Early access to new features",
-  "Team accounts (coming)",
-  "API access (coming)",
+  "CSV export",
+  "Advanced analytics",
+  "Priority support + early access",
 ];
 
 function Logo() {
