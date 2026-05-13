@@ -50,6 +50,26 @@ interface Trade {
 type Triad = "yes" | "no" | "partial";
 type Grade = "A+" | "A" | "B" | "C" | "D" | "F";
 
+type EmotionKey =
+  | "fomo" | "fear" | "revenge" | "greed" | "confident"
+  | "neutral" | "frustrated" | "bored" | "overconfident" | "tired";
+
+const EMOTION_LABELS: Record<EmotionKey, string> = {
+  fomo: "FOMO", fear: "Fear", revenge: "Revenge", greed: "Greed", confident: "Confident",
+  neutral: "Neutral", frustrated: "Frustrated", bored: "Bored", overconfident: "Overconfident", tired: "Tired",
+};
+const EMOTION_KEYS = Object.keys(EMOTION_LABELS) as EmotionKey[];
+
+type MistakeKey =
+  | "early_entry" | "early_exit" | "moved_sl" | "missed_entry" | "wrong_size"
+  | "late_entry" | "overtraded" | "ignored_news" | "no_setup" | "broke_rules";
+
+const MISTAKE_LABELS: Record<MistakeKey, string> = {
+  early_entry: "Early Entry", early_exit: "Early Exit", moved_sl: "Moved Stop Loss", missed_entry: "Missed Entry", wrong_size: "Wrong Size",
+  late_entry: "Late Entry", overtraded: "Overtraded", ignored_news: "Ignored News", no_setup: "No Setup", broke_rules: "Broke Rules",
+};
+const MISTAKE_KEYS = Object.keys(MISTAKE_LABELS) as MistakeKey[];
+
 interface Review {
   tradeId: string;
   matchedSetup: Triad | null;
@@ -58,6 +78,8 @@ interface Review {
   differently: string;
   grade: Grade | null;
   reviewedAt: number;
+  emotion?: EmotionKey | null;
+  mistakes?: MistakeKey[];
 }
 
 // ───────────────────── screenshot loading (IDB) ─────────────────────
@@ -413,6 +435,8 @@ function ReplayPageInner() {
  const [confidence, setConfidence] = useState(5);
  const [differently, setDifferently] = useState("");
  const [grade, setGrade] = useState<Grade | null>(null);
+ const [emotion, setEmotion] = useState<EmotionKey | null>(null);
+ const [mistakes, setMistakes] = useState<MistakeKey[]>([]);
 
   // ── Initial load ──
   useEffect(() => {
@@ -460,6 +484,8 @@ function ReplayPageInner() {
     setConfidence(existing?.confidence ?? 5);
     setDifferently(existing?.differently ?? "");
     setGrade(existing?.grade ?? null);
+    setEmotion(existing?.emotion ?? null);
+    setMistakes(existing?.mistakes ?? []);
     setSlideKey((k) => k + 1);
     setZoomOpen(false);
   }, [current?.id]);
@@ -514,6 +540,8 @@ function ReplayPageInner() {
       differently: differently.trim(),
       grade,
       reviewedAt: Date.now(),
+      emotion,
+      mistakes,
     };
     saveCurrent(r);
     setSlideDir("next");
@@ -637,6 +665,8 @@ function ReplayPageInner() {
           .replay-chart-header { grid-template-columns: 1fr !important; gap: 8px !important; }
           .replay-chart-header-right { text-align: left !important; }
           .replay-grade-grid { grid-template-columns: repeat(3, 1fr) !important; }
+          .replay-emotion-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .replay-mistake-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
       `}</style><div style={{ width: "100%", maxWidth: 760 }}><ProgressBar idx={idx} total={total} pct={Math.round(((idx) / total) * 100)} sessionGrade={sessionGrade} />
 
@@ -800,7 +830,74 @@ function ReplayPageInner() {
           )}
 
           {/* Review form */}
-          <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>Review this trade</div><FormBlock label="Was this your setup?"><TriadRow value={matchedSetup} onChange={setMatchedSetup} /></FormBlock><FormBlock label="Did you follow your rules?"><TriadRow value={followedRules} onChange={setFollowedRules} /></FormBlock><FormBlock label={`Confidence — ${confidence}/10`}><ConfidenceDots value={confidence} onChange={setConfidence} /></FormBlock><FormBlock label="What would you do differently?"><textarea
+          <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>Review this trade</div>
+            <div style={{
+              fontSize: 12,
+              color: "#a5b4fc",
+              background: "rgba(99,102,241,0.08)",
+              border: "1px solid rgba(99,102,241,0.3)",
+              borderRadius: 10,
+              padding: "9px 12px",
+              marginBottom: 18,
+              fontWeight: 600,
+            }}>
+              Your answers here appear in <a href="/psychology" style={{ color: "#a5b4fc", textDecoration: "underline" }}>Psychology Tracker</a>
+            </div>
+            <FormBlock label="How did you feel on this trade?">
+              <div className="replay-emotion-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+                {EMOTION_KEYS.map((key) => {
+                  const active = emotion === key;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setEmotion(active ? null : key)}
+                      style={{
+                        padding: "12px 6px",
+                        borderRadius: 999,
+                        border: `1px solid ${active ? "#6366f1" : "#1e2540"}`,
+                        background: active ? "rgba(99,102,241,0.18)" : "transparent",
+                        color: active ? "#a5b4fc" : "#9ca3af",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                        boxShadow: active ? "0 0 0 2px rgba(99,102,241,0.25)" : "none",
+                      }}
+                    >
+                      {EMOTION_LABELS[key]}
+                    </button>
+                  );
+                })}
+              </div>
+            </FormBlock>
+            <FormBlock label="Any mistakes? (tap all that apply)">
+              <div className="replay-mistake-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+                {MISTAKE_KEYS.map((key) => {
+                  const active = mistakes.includes(key);
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setMistakes(active ? mistakes.filter(m => m !== key) : [...mistakes, key])}
+                      style={{
+                        padding: "12px 6px",
+                        borderRadius: 999,
+                        border: `1px solid ${active ? "#f43f5e" : "#1e2540"}`,
+                        background: active ? "rgba(244,63,94,0.15)" : "transparent",
+                        color: active ? "#f43f5e" : "#9ca3af",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                        boxShadow: active ? "0 0 0 2px rgba(244,63,94,0.22)" : "none",
+                      }}
+                    >
+                      {MISTAKE_LABELS[key]}
+                    </button>
+                  );
+                })}
+              </div>
+            </FormBlock>
+            <FormBlock label="Was this your setup?"><TriadRow value={matchedSetup} onChange={setMatchedSetup} /></FormBlock><FormBlock label="Did you follow your rules?"><TriadRow value={followedRules} onChange={setFollowedRules} /></FormBlock><FormBlock label={`Confidence — ${confidence}/10`}><ConfidenceDots value={confidence} onChange={setConfidence} /></FormBlock><FormBlock label="What would you do differently?"><textarea
                 value={differently}
                 onChange={(e) => setDifferently(e.target.value)}
                 placeholder="One honest takeaway. Skip if nothing comes to mind."

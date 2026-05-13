@@ -75,6 +75,9 @@ const MISTAKES: Record<MistakeKey, { emoji: string; label: string }> = {
 const SESSION_KEY = "tradedesk_session_v1";
 const tradesKey = (u: string) => `tradedesk_trades_${u}_v1`;
 const reviewsKey = (u: string) => `nexyru_trade_reviews_${u}`;
+const emotionsKey = (u: string) => `nexyru_trade_emotions_${u}`;
+
+interface EmotionEntry { tradeId: string; emotion: EmotionKey; date: number; }
 
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
@@ -111,6 +114,12 @@ function daysAgo(ms: number): string {
   return `${d} days ago`;
 }
 
+function fmtShortDate(v: unknown): string {
+  const d = parseDate(v);
+  if (!d) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 // ───────────────────────── shared styles ─────────────────────────
 const card: React.CSSProperties = { background:"#111118", border:"1px solid #2a2a3a", borderRadius:18, padding:22 };
 const cardSm: React.CSSProperties = { background:"#111118", border:"1px solid #2a2a3a", borderRadius:12, padding:14 };
@@ -124,6 +133,11 @@ export default function PsychologyPage() {
  const [reviews, setReviews] = useState<Record<string, Review>>({});
   const [mounted, setMounted] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [emotionsList, setEmotionsList] = useState<EmotionEntry[]>([]);
+  const [pendingEmotion, setPendingEmotion] = useState<EmotionKey | null>(null);
+  const [pendingTradeId, setPendingTradeId] = useState<string | null>(null);
+  const [emotionSaved, setEmotionSaved] = useState(false);
+  const [mistakeFlash, setMistakeFlash] = useState<MistakeKey | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -137,11 +151,20 @@ export default function PsychologyPage() {
       const r = JSON.parse(localStorage.getItem(reviewsKey(u)) || "{}") || {};
       setReviews(r && typeof r === "object" ? r : {});
     } catch {}
+    try {
+      const e = JSON.parse(localStorage.getItem(emotionsKey(u)) || "[]") || [];
+      setEmotionsList(Array.isArray(e) ? e : []);
+    } catch {}
   }, []);
 
   const saveReviews = (next: Record<string, Review>) => {
     setReviews(next);
     try { localStorage.setItem(reviewsKey(username), JSON.stringify(next)); } catch {}
+  };
+
+  const saveEmotionsList = (next: EmotionEntry[]) => {
+    setEmotionsList(next);
+    try { localStorage.setItem(emotionsKey(username), JSON.stringify(next)); } catch {}
   };
 
   // ── Derived: sorted trades & reviewed pairs
@@ -250,6 +273,32 @@ export default function PsychologyPage() {
     [emotionStats]
   );
 
+  const emotionCount = useMemo(
+    () => Object.values(reviews).filter(r => r && r.emotion).length + emotionsList.length,
+    [reviews, emotionsList]
+  );
+
+  const recentThreeTrades = useMemo(() => sortedTrades.slice(0, 3), [sortedTrades]);
+
+  useEffect(() => {
+    if (!pendingTradeId && recentThreeTrades.length) {
+      setPendingTradeId(recentThreeTrades[0].id);
+    }
+  }, [recentThreeTrades, pendingTradeId]);
+
+  const handleSaveEmotion = () => {
+    if (!pendingEmotion || !pendingTradeId) return;
+    const now = Date.now();
+    const existing: Review = reviews[pendingTradeId] || { tradeId: pendingTradeId, reviewedAt: now };
+    const nextReview: Review = { ...existing, tradeId: pendingTradeId, emotion: pendingEmotion, reviewedAt: now };
+    saveReviews({ ...reviews, [pendingTradeId]: nextReview });
+    const entry: EmotionEntry = { tradeId: pendingTradeId, emotion: pendingEmotion, date: now };
+    saveEmotionsList([...emotionsList, entry]);
+    setEmotionSaved(true);
+    setPendingEmotion(null);
+    setTimeout(() => setEmotionSaved(false), 3500);
+  };
+
   // ── Mistake data
   const mistakeStats = useMemo(() => {
     type Row = { key: MistakeKey; count: number; cost: number; lastAt: number | null };
@@ -294,8 +343,8 @@ export default function PsychologyPage() {
     if (current.has(mk)) current.delete(mk); else current.add(mk);
     const next: Review = { ...existing, tradeId: lastTrade.id, mistakes: Array.from(current), reviewedAt: Date.now() };
     saveReviews({ ...reviews, [lastTrade.id]: next });
-    setFlash(`${MISTAKES[mk].label} ${current.has(mk) ? "tagged" : "removed"} on last trade`);
-    setTimeout(() => setFlash(null), 1800);
+    setMistakeFlash(mk);
+    setTimeout(() => setMistakeFlash(null), 1500);
   };
 
   // ── Auto insights
@@ -550,6 +599,7 @@ export default function PsychologyPage() {
           .psych-overview-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
           .psych-overview-stats { grid-template-columns: repeat(3, 1fr) !important; }
           .psych-emotion-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+          .psych-emotion-form-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
           .psych-mistakes-grid { grid-template-columns: 1fr 1fr !important; }
           .psych-insights-grid { grid-template-columns: 1fr !important; }
           .psych-weekly-grid { grid-template-columns: 1fr 1fr !important; }
@@ -568,6 +618,34 @@ export default function PsychologyPage() {
           <section style={{ ...card, textAlign:"center", padding:"60px 22px", marginBottom:24 }}><div style={{ fontSize:48, marginBottom:12 }}></div><h2 style={{ margin:"0 0 8px", fontSize:18 }}>No trades yet</h2><p style={{ color:"#6b7280", fontSize:13, margin:0 }}>Log trades in your dashboard to unlock psychology insights.</p></section>
         )}
 
+        {!!trades.length && emotionCount === 0 && (
+          <section style={{
+            marginBottom:24,
+            padding:"20px 22px",
+            background:"linear-gradient(135deg, rgba(99,102,241,0.14), rgba(59,130,246,0.05))",
+            border:"1px solid rgba(99,102,241,0.4)",
+            borderRadius:14,
+          }}>
+            <div style={{ fontSize:12, fontWeight:900, color:"#a5b4fc", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:10 }}>Get started in 2 steps</div>
+            <ol style={{ margin:"0 0 10px", paddingLeft:22, color:"#e2e8f0", fontSize:14, lineHeight:1.7 }}>
+              <li>Tag how you felt on your recent trades below</li>
+              <li>Use Trade Replay to review trades in detail</li>
+            </ol>
+            <div style={{ fontSize:12, color:"#94a3b8", marginBottom:14 }}>The more you tag, the more patterns Nexyru finds.</div>
+            <a href="/replay" style={{
+              display:"inline-block",
+              padding:"9px 16px",
+              background:"#6366f1",
+              color:"#fff",
+              borderRadius:8,
+              fontSize:12,
+              fontWeight:800,
+              textDecoration:"none",
+              letterSpacing:"0.02em",
+            }}>Go to Trade Replay →</a>
+          </section>
+        )}
+
         {/* ───────────── SECTION 1: OVERVIEW SCORE ───────────── */}
         {!!trades.length && (
         <section style={{ ...card, marginBottom:24 }}>
@@ -579,8 +657,112 @@ export default function PsychologyPage() {
         {!!trades.length && (
         <section style={{ ...card, marginBottom:24 }}>
           {sectionTitle("#6b7280", "Emotion Tracker")}
-          {!hasAnyEmotion ? (
-            <div style={{ background:"#111118", border:"1px dashed #2a2a3a", borderRadius:12, padding:"36px 20px", textAlign:"center" }}><div style={{ fontSize:30, marginBottom:8 }}></div><p style={{ margin:0, color:"#6b7280", fontSize:13 }}>Complete trade reviews in Trade Replay to unlock emotion tracking.</p></div>) : (<div className="psych-emotion-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:12 }}>
+          {emotionCount < 3 ? (
+            <div>
+              <h3 style={{ margin:"0 0 14px", fontSize:18, fontWeight:800, color:"#ffffff" }}>How did you feel on your last trade?</h3>
+              <div className="psych-emotion-form-grid" style={{ display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:10, marginBottom:20 }}>
+                {(Object.keys(EMOTIONS) as EmotionKey[]).map(key => {
+                  const meta = EMOTIONS[key];
+                  const active = pendingEmotion === key;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setPendingEmotion(key)}
+                      style={{
+                        padding:"14px 8px",
+                        borderRadius:12,
+                        border:`1px solid ${active ? "#6366f1" : "#2a2a3a"}`,
+                        background: active ? "rgba(99,102,241,0.18)" : "#111118",
+                        color: active ? "#a5b4fc" : "#e5e7eb",
+                        fontSize:13,
+                        fontWeight:700,
+                        cursor:"pointer",
+                        transition:"all 0.15s",
+                        boxShadow: active ? "0 0 0 2px rgba(99,102,241,0.25)" : "none",
+                      }}
+                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.borderColor = "#4b5563"; }}
+                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.borderColor = "#2a2a3a"; }}
+                    >
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {recentThreeTrades.length > 0 && (
+                <>
+                  <div style={{ fontSize:13, fontWeight:700, color:"#cbd5e1", marginBottom:10 }}>Which trade?</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:18 }}>
+                    {recentThreeTrades.map(t => {
+                      const active = pendingTradeId === t.id;
+                      const pnl = Number(t.pnl) || 0;
+                      const pnlColor = pnl >= 0 ? "#22d3a5" : "#ef4444";
+                      const sym = t.pair || t.symbol || "Trade";
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => setPendingTradeId(t.id)}
+                          style={{
+                            padding:"8px 14px",
+                            borderRadius:999,
+                            border:`1px solid ${active ? "#6366f1" : "#2a2a3a"}`,
+                            background: active ? "rgba(99,102,241,0.15)" : "#111118",
+                            color: active ? "#a5b4fc" : "#cbd5e1",
+                            fontSize:12,
+                            fontWeight:700,
+                            cursor:"pointer",
+                            display:"inline-flex",
+                            alignItems:"center",
+                            gap:8,
+                            transition:"all 0.15s",
+                          }}
+                        >
+                          <span>{sym}</span>
+                          <span style={{ color:"#6b7280" }}>·</span>
+                          <span style={{ color:"#9ca3af" }}>{fmtShortDate(t.date)}</span>
+                          <span style={{ color:"#6b7280" }}>·</span>
+                          <span style={{ color:pnlColor, fontFamily:"monospace" }}>{fmtMoney0(pnl)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              <button
+                onClick={handleSaveEmotion}
+                disabled={!pendingEmotion || !pendingTradeId}
+                style={{
+                  padding:"11px 22px",
+                  borderRadius:10,
+                  border:"none",
+                  background: pendingEmotion && pendingTradeId ? "#6366f1" : "#1e293b",
+                  color: pendingEmotion && pendingTradeId ? "#fff" : "#6b7280",
+                  fontSize:13,
+                  fontWeight:800,
+                  cursor: pendingEmotion && pendingTradeId ? "pointer" : "not-allowed",
+                  transition:"all 0.15s",
+                }}
+              >
+                Save
+              </button>
+
+              {emotionSaved && (
+                <div style={{
+                  marginTop:14,
+                  padding:"10px 14px",
+                  borderRadius:10,
+                  background:"rgba(34,211,165,0.10)",
+                  border:"1px solid rgba(34,211,165,0.35)",
+                  color:"#22d3a5",
+                  fontSize:13,
+                  fontWeight:700,
+                }}>
+                  Emotion logged! Keep tagging trades to see your patterns.
+                </div>
+              )}
+            </div>
+          ) : (<div className="psych-emotion-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:12 }}>
               {(Object.keys(EMOTIONS) as EmotionKey[]).map(key => {
                 const meta = EMOTIONS[key];
                 const s = emotionStats[key];
@@ -612,8 +794,54 @@ export default function PsychologyPage() {
             }}><div style={{ fontSize:10, fontWeight:800, color:"#ef4444", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6 }}>Most Costly Mistake</div><div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}><div style={{ fontSize:24 }}>{MISTAKES[mistakeStats[0].key].emoji}</div><div style={{ fontWeight:900, fontSize:18 }}>{MISTAKES[mistakeStats[0].key].label}</div><div style={{ marginLeft:"auto", fontWeight:900, fontSize:22, color:"#ef4444", fontFamily:"monospace" }}>−{fmtMoney0(mistakeStats[0].cost)}</div></div><div style={{ marginTop:6, fontSize:11, color:"#9ca3af" }}>{mistakeStats[0].count}× this has cost you avg {fmtMoney(mistakeStats[0].cost / mistakeStats[0].count)} per occurrence</div></div>
           )}
 
+          {/* Quick log — moved above empty state for visibility */}
+          <div style={{ background:"#0d0d14", border:"1px solid #2a2a3a", borderRadius:12, padding:16, marginBottom:18 }}>
+            <div style={{ fontSize:14, fontWeight:800, color:"#ffffff", marginBottom:6 }}>Tag a mistake on your most recent trade:</div>
+            <div style={{ fontSize:12, color:"#9ca3af", marginBottom:14 }}>
+              {lastTrade ? (
+                <>
+                  <span style={{ color:"#6b7280", marginRight:6 }}>Last trade:</span>
+                  <span style={{ color:"#e5e7eb", fontWeight:700 }}>{lastTrade.pair || lastTrade.symbol || "Trade"}</span>
+                  <span style={{ color:(Number(lastTrade.pnl) || 0) >= 0 ? "#22d3a5" : "#ef4444", fontFamily:"monospace", marginLeft:8 }}>
+                    {(Number(lastTrade.pnl) || 0) >= 0 ? "+" : ""}{fmtMoney0(Number(lastTrade.pnl) || 0)}
+                  </span>
+                  <span style={{ color:"#6b7280", margin:"0 6px" }}>·</span>
+                  <span style={{ color:"#9ca3af" }}>{fmtShortDate(lastTrade.date)}</span>
+                </>
+              ) : "No trades yet"}
+            </div>
+            <div className="psych-mistakes-grid" style={{ display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:8 }}>
+              {(Object.keys(MISTAKES) as MistakeKey[]).map(mk => {
+                const meta = MISTAKES[mk];
+                const active = lastTradeMistakes.includes(mk);
+                const flashed = mistakeFlash === mk;
+                return (
+                  <button
+                    key={mk}
+                    onClick={() => toggleMistakeOnLastTrade(mk)}
+                    disabled={!lastTrade}
+                    style={{
+                      padding:"12px 10px",
+                      borderRadius:10,
+                      border:`1px solid ${flashed ? "rgba(34,211,165,0.6)" : active ? "rgba(248,113,113,0.55)" : "#2a2a3a"}`,
+                      background: flashed ? "rgba(34,211,165,0.15)" : active ? "rgba(248,113,113,0.12)" : "#111118",
+                      color: flashed ? "#22d3a5" : active ? "#ef4444" : "#cbd5e1",
+                      fontSize:12, fontWeight:700,
+                      cursor: lastTrade ? "pointer" : "not-allowed",
+                      display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                      opacity: lastTrade ? 1 : 0.5,
+                      transition:"all 0.15s",
+                      textAlign:"center",
+                    }}>
+                    {flashed ? "Saved!" : meta.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {mistakeStats.length === 0 ? (
-            <div style={{ background:"#111118", border:"1px dashed #2a2a3a", borderRadius:12, padding:"28px 20px", textAlign:"center", marginBottom:18 }}><p style={{ margin:0, color:"#6b7280", fontSize:13 }}>No mistakes tagged yet. Use the quick-log below to start tracking what's costing you.</p></div>) : (<div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:18 }}>
+            <div style={{ background:"#111118", border:"1px dashed #2a2a3a", borderRadius:12, padding:"28px 20px", textAlign:"center" }}><p style={{ margin:0, color:"#6b7280", fontSize:13 }}>No mistakes tagged yet. Tap any mistake above to start tracking what's costing you.</p></div>) : (<div style={{ display:"flex", flexDirection:"column", gap:10 }}>
               {mistakeStats.map((row, idx) => {
                 const meta = MISTAKES[row.key];
                 const rel = maxMistakeCost >0 ? (row.cost / maxMistakeCost) * 100 : 0;
@@ -624,38 +852,7 @@ export default function PsychologyPage() {
               })}
             </div>
           )}
-
-          {/* Quick log */}
-          <div style={{ background:"#111118", border:"1px solid #2a2a3a", borderRadius:12, padding:14 }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, flexWrap:"wrap", gap:6 }}><div><div style={{ fontSize:12, fontWeight:800, color:"#ffffff" }}>Log a mistake on your last trade</div><div style={{ fontSize:11, color:"#6b7280", marginTop:2 }}>
-                  {lastTrade
-                    ? `${lastTrade.pair || lastTrade.symbol || "Trade"} · ${fmtMoney(Number(lastTrade.pnl) || 0)}`
-                    : "No trades yet"}
-                </div></div></div><div className="psych-mistakes-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8 }}>
-              {(Object.keys(MISTAKES) as MistakeKey[]).map(mk => {
-                const meta = MISTAKES[mk];
-                const active = lastTradeMistakes.includes(mk);
-                return (
-                  <button
-                    key={mk}
-                    onClick={() => toggleMistakeOnLastTrade(mk)}
-                    disabled={!lastTrade}
-                    style={{
-                      padding:"10px 12px",
-                      borderRadius:9,
-                      border:`1px solid ${active ? "rgba(248,113,113,0.55)" : "#2a2a3a"}`,
-                      background: active ? "rgba(248,113,113,0.12)" : "#111118",
-                      color: active ? "#ef4444" : "#9ca3af",
-                      fontSize:12, fontWeight:700,
-                      cursor: lastTrade ? "pointer" : "not-allowed",
-                      display:"flex", alignItems:"center", gap:8,
-                      opacity: lastTrade ? 1 : 0.5,
-                      transition:"all 0.15s",
-                    }}><span style={{ fontSize:14 }}>{meta.emoji}</span>
-                    {meta.label}
-                  </button>
-                );
-              })}
-            </div></div></section>
+        </section>
         )}
 
         {/* ───────────── SECTION 4: AUTO INSIGHTS ───────────── */}
