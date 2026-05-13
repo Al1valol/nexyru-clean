@@ -39,10 +39,6 @@ export default function AuthComplete() {
   }, []);
 
   return (
-    <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:"#3a4a6a",fontFamily:"system-ui,sans-serif"}}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <span style={{width:32,height:32,border:"3px solid #1a2540",borderTopColor:"#38bdf8",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/>
-      <div style={{fontSize:14,color:"#38bdf8"}}>{status}</div>
-    </div>
+    <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,color:"#2a2a3a",fontFamily:"system-ui,sans-serif"}}><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style><span style={{width:32,height:32,border:"3px solid #2a2a3a",borderTopColor:"#6366f1",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}/><div style={{fontSize:14,color:"#6366f1"}}>{status}</div></div>
   );
 }

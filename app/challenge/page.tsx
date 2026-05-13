@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < breakpoint);
+    const check = () =>setIsMobile(window.innerWidth< breakpoint);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -52,11 +52,11 @@ interface Trade { id?:string; date:string; pnl:number; symbol?:string; pair?:str
 // ── Firms + phase definitions ─────────────────────────────────────
 const FIRMS: Record<FirmKey, { label:string; color:string; accent:string; sizes:number[]; tagline:string; }> = {
   apex:    { label:"Apex Trader Funding", color:"#22c55e", accent:"rgba(34,197,94,0.10)",  sizes:[25000,50000,100000,150000,250000], tagline:"4.0 — March 2026" },
-  topstep: { label:"Topstep",             color:"#f97316", accent:"rgba(249,115,22,0.10)", sizes:[50000,100000,150000],               tagline:"2026 ruleset" },
+  topstep: { label:"Topstep",             color:"#f59e0b", accent:"rgba(245,158,11,0.10)", sizes:[50000,100000,150000],               tagline:"2026 ruleset" },
   ftmo:    { label:"FTMO",                color:"#3b82f6", accent:"rgba(59,130,246,0.10)", sizes:[10000,25000,50000,100000,200000],   tagline:"Two-phase eval" },
   mff:     { label:"MyFundedFutures",     color:"#a855f7", accent:"rgba(168,85,247,0.10)", sizes:[50000,100000,150000],               tagline:"2026" },
   bulenox: { label:"Bulenox",             color:"#ef4444", accent:"rgba(239,68,68,0.10)",  sizes:[25000,50000,100000],                tagline:"2026" },
-  custom:  { label:"Custom",              color:"#64748b", accent:"rgba(100,116,139,0.10)",sizes:[10000,25000,50000,100000,150000,200000,250000], tagline:"Manual rules" },
+  custom:  { label:"Custom",              color:"#6b7280", accent:"rgba(100,116,139,0.10)",sizes:[10000,25000,50000,100000,150000,200000,250000], tagline:"Manual rules" },
 };
 
 const FIRM_PHASES: Record<FirmKey, Array<{ key:PhaseKey; label:string; sub?:string }>> = {
@@ -243,7 +243,7 @@ function getPhaseWarnings(firm:FirmKey, phase:PhaseKey): string[] {
       ];
     case "apex.pa":
       return [
-        "⚠️ Contract limits drop significantly in PA vs Eval — adjust your strategy",
+        "️ Contract limits drop significantly in PA vs Eval — adjust your strategy",
         "Trailing drawdown locks at starting balance + $100 (becomes fixed floor)",
         "50% consistency rule on payouts: no single day > 50% of total profits",
         "Need 8 trading days, 5 must be profitable, for first payout",
@@ -392,8 +392,8 @@ function computeStats(acc:ChallengeAccount, allTrades:Trade[]): Computed {
   const sorted = [...trades].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const today = new Date();
   const todayTrades = sorted.filter(t => isSameDay(new Date(t.date), today));
-  const todayPnl = todayTrades.reduce((s,t) => s + (t.pnl ?? 0), 0);
-  const dailyLossUsed = todayPnl < 0 ? Math.abs(todayPnl) : 0;
+  const todayPnl = todayTrades.reduce((s,t) =>s + (t.pnl ?? 0), 0);
+ const dailyLossUsed = todayPnl< 0 ? Math.abs(todayPnl) : 0;
 
   const totalProfit = sorted.reduce((s,t) => s + (t.pnl ?? 0), 0);
   const currentBalance = acc.startingBalance + totalProfit;
@@ -456,22 +456,16 @@ function Ring({ value, max, size=170, thickness=13, centerBig, centerSub, mode="
   }
 
   return (
-    <div style={{ position:"relative", width:size, height:size }}>
-      <svg width={size} height={size} style={{ transform:"rotate(-90deg)" }}>
-        <circle cx={size/2} cy={size/2} r={r} stroke="#0f1a2e" strokeWidth={thickness} fill="none"/>
-        <circle
+    <div style={{ position:"relative", width:size, height:size }}><svg width={size} height={size} style={{ transform:"rotate(-90deg)" }}><circle cx={size/2} cy={size/2} r={r} stroke="#0f1a2e" strokeWidth={thickness} fill="none"/><circle
           cx={size/2} cy={size/2} r={r}
           stroke={color} strokeWidth={thickness} fill="none"
           strokeDasharray={`${dash} ${circ}`}
           strokeLinecap="round"
           style={{ transition:"stroke-dasharray 0.7s ease, stroke 0.4s" }}
-        />
-      </svg>
-      <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"0 8px" }}>
-        {centerBig && <div style={{ fontSize:17, fontWeight:900, color:"#f0f4ff", fontFamily:"monospace", lineHeight:1.2 }}>{centerBig}</div>}
+        /></svg><div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"0 8px" }}>
+        {centerBig && <div style={{ fontSize:17, fontWeight:900, color:"#ffffff", fontFamily:"monospace", lineHeight:1.2 }}>{centerBig}</div>}
         {centerSub && <div style={{ fontSize:10, fontWeight:600, color:"#4a5a7a", marginTop:4 }}>{centerSub}</div>}
-      </div>
-    </div>
+      </div></div>
   );
 }
 
@@ -481,7 +475,7 @@ function Info({ text }:{ text:string }) {
     <span title={text} style={{
       display:"inline-flex", alignItems:"center", justifyContent:"center",
       width:14, height:14, borderRadius:"50%",
-      background:"#1a2540", color:"#7a8aa8",
+      background:"#2a2a3a", color:"#7a8aa8",
       fontSize:9, fontWeight:800, cursor:"help", marginLeft:6, flexShrink:0,
       fontStyle:"italic", fontFamily:"serif",
     }}>i</span>
@@ -489,9 +483,9 @@ function Info({ text }:{ text:string }) {
 }
 
 // ── Styles ───────────────────────────────────────────────────────
-const inp:React.CSSProperties = { width:"100%", padding:"10px 12px", borderRadius:9, border:"1px solid #1a2540", background:"#0d1628", color:"#f0f4ff", fontSize:13, fontWeight:700, fontFamily:"monospace", outline:"none", boxSizing:"border-box" };
+const inp:React.CSSProperties = { width:"100%", padding:"10px 12px", borderRadius:9, border:"1px solid #2a2a3a", background:"#111118", color:"#ffffff", fontSize:13, fontWeight:700, fontFamily:"monospace", outline:"none", boxSizing:"border-box" };
 const lbl:React.CSSProperties = { fontSize:10, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", display:"block", marginBottom:6 };
-const card:React.CSSProperties = { background:"#0b1120", border:"1px solid #1a2540", borderRadius:18 };
+const card:React.CSSProperties = { background:"#111118", border:"1px solid #2a2a3a", borderRadius:18 };
 
 function fmtUSD(n:number) { return (n < 0 ? "-" : "") + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
 function fmtUSDsigned(n:number) { return (n >= 0 ? "+" : "-") + "$" + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
@@ -499,31 +493,31 @@ function fmtUSDsigned(n:number) { return (n >= 0 ? "+" : "-") + "$" + Math.abs(n
 // ── Setup Form ────────────────────────────────────────────────────
 function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; onSave:(a:ChallengeAccount)=>void; onCancel?:()=>void; }) {
   const [firm, setFirm]     = useState<FirmKey>(initial?.firm ?? "apex");
-  const sizes = FIRMS[firm].sizes;
-  const [size, setSize]     = useState<number>(initial?.accountSize ?? sizes[0]);
-  const [phase, setPhase]   = useState<PhaseKey>(initial?.phase ?? FIRM_PHASES[firm][0].key);
-  const [name, setName]     = useState<string>(initial?.name ?? "");
-  const [starting, setStarting] = useState<string>(String(initial?.startingBalance ?? sizes[0]));
-  const [startDate, setStartDate] = useState<string>(initial?.startDate ?? new Date().toISOString().slice(0,10));
+ const sizes = FIRMS[firm].sizes;
+ const [size, setSize] = useState<number>(initial?.accountSize ?? sizes[0]);
+ const [phase, setPhase] = useState<PhaseKey>(initial?.phase ?? FIRM_PHASES[firm][0].key);
+ const [name, setName] = useState<string>(initial?.name ?? "");
+ const [starting, setStarting] = useState<string>(String(initial?.startingBalance ?? sizes[0]));
+ const [startDate, setStartDate] = useState<string>(initial?.startDate ?? new Date().toISOString().slice(0,10));
 
   // Track current rule snapshot
-  const rule = useMemo(() => getRule(firm, phase, size), [firm, phase, size]);
+  const rule = useMemo(() =>getRule(firm, phase, size), [firm, phase, size]);
 
-  // Editable rule values
-  const [dailyLoss,       setDailyLoss]       = useState<string>(String(initial?.dailyLoss       ?? rule.dailyLoss));
-  const [maxDrawdown,     setMaxDrawdown]     = useState<string>(String(initial?.maxDrawdown     ?? rule.maxDrawdown));
-  const [profitTarget,    setProfitTarget]    = useState<string>(String(initial?.profitTarget    ?? rule.profitTarget));
-  const [minTradingDays,  setMinTradingDays]  = useState<string>(String(initial?.minTradingDays  ?? rule.minTradingDays));
-  const [consistencyMax,  setConsistencyMax]  = useState<string>(String(initial?.consistencyMax  ?? rule.consistencyMax));
-  const [maxContracts,    setMaxContracts]    = useState<string>(String(initial?.maxContracts    ?? rule.maxContracts));
-  const [trailingLocksAt, setTrailingLocksAt] = useState<string>(String(initial?.trailingLocksAt ?? rule.trailingLocksAt));
-  const [benchmarkDays,   setBenchmarkDays]   = useState<string>(String(initial?.benchmarkDays   ?? rule.benchmarkDays));
-  const [trailingType,    setTrailingType]    = useState<"eod"|"intraday">(initial?.trailingType ?? rule.trailingType);
+ // Editable rule values
+ const [dailyLoss, setDailyLoss] = useState<string>(String(initial?.dailyLoss ?? rule.dailyLoss));
+ const [maxDrawdown, setMaxDrawdown] = useState<string>(String(initial?.maxDrawdown ?? rule.maxDrawdown));
+ const [profitTarget, setProfitTarget] = useState<string>(String(initial?.profitTarget ?? rule.profitTarget));
+ const [minTradingDays, setMinTradingDays] = useState<string>(String(initial?.minTradingDays ?? rule.minTradingDays));
+ const [consistencyMax, setConsistencyMax] = useState<string>(String(initial?.consistencyMax ?? rule.consistencyMax));
+ const [maxContracts, setMaxContracts] = useState<string>(String(initial?.maxContracts ?? rule.maxContracts));
+ const [trailingLocksAt, setTrailingLocksAt] = useState<string>(String(initial?.trailingLocksAt ?? rule.trailingLocksAt));
+ const [benchmarkDays, setBenchmarkDays] = useState<string>(String(initial?.benchmarkDays ?? rule.benchmarkDays));
+ const [trailingType, setTrailingType] = useState<"eod"|"intraday">(initial?.trailingType ?? rule.trailingType);
 
-  // Phase-changed banner
-  const [phaseChanged, setPhaseChanged] = useState(false);
-  const prevPhase = useRef<PhaseKey>(phase);
-  const prevFirm  = useRef<FirmKey>(firm);
+ // Phase-changed banner
+ const [phaseChanged, setPhaseChanged] = useState(false);
+ const prevPhase = useRef<PhaseKey>(phase);
+ const prevFirm = useRef<FirmKey>(firm);
   const isFirstRender = useRef(true);
 
   // When firm changes, snap phase + size
@@ -586,86 +580,64 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
   };
 
   const phases = FIRM_PHASES[firm];
-  const currentPhaseDef = phases.find(p => p.key === phase) ?? phases[0];
+  const currentPhaseDef = phases.find(p =>p.key === phase) ?? phases[0];
 
-  // Rules to show (some hidden per phase)
-  const isFundedPhase = phase === "pa" || phase === "express" || phase === "ftmo_funded" || phase === "funded";
+ // Rules to show (some hidden per phase)
+ const isFundedPhase = phase === "pa" || phase === "express" || phase === "ftmo_funded" || phase === "funded";
 
-  return (
-    <div style={{ maxWidth:720, margin:"0 auto" }}>
-      <div style={{ textAlign:"center", marginBottom:24 }}>
-        <div style={{ fontSize:42, marginBottom:8 }}>🏆</div>
-        <h2 style={{ fontSize:22, fontWeight:900, color:"#f0f4ff", margin:"0 0 6px" }}>{initial ? "Edit Challenge Account" : "Set Up Your Challenge"}</h2>
-        <p style={{ fontSize:12, color:"#4a5a7a", margin:0 }}>2026 prop firm rules — each phase has its own ruleset.</p>
-      </div>
-
-      <div style={{ ...card, padding:24 }}>
+ return (<div style={{ maxWidth:720, margin:"0 auto" }}><div style={{ textAlign:"center", marginBottom:24 }}><div style={{ fontSize:42, marginBottom:8 }}></div><h2 style={{ fontSize:22, fontWeight:900, color:"#ffffff", margin:"0 0 6px" }}>{initial ? "Edit Challenge Account" : "Set Up Your Challenge"}</h2><p style={{ fontSize:12, color:"#4a5a7a", margin:0 }}>2026 prop firm rules — each phase has its own ruleset.</p></div><div style={{ ...card, padding:24 }}>
         {/* Firm picker */}
-        <div style={{ marginBottom:18 }}>
-          <label style={lbl}>Prop Firm</label>
-          <div className="firm-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8 }}>
+        <div style={{ marginBottom:18 }}><label style={lbl}>Prop Firm</label><div className="firm-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8 }}>
             {(Object.keys(FIRMS) as FirmKey[]).map(k => {
               const f = FIRMS[k];
               const active = firm === k;
               return (
                 <button key={k} onClick={()=>setFirm(k)} style={{
                   padding:"12px 12px", borderRadius:11,
-                  border:`1px solid ${active ? f.color : "#1a2540"}`,
-                  background: active ? f.accent : "#0d1628",
+                  border:`1px solid ${active ? f.color : "#2a2a3a"}`,
+                  background: active ? f.accent : "#111118",
                   color: active ? f.color : "#7a8aa8",
                   fontSize:12, fontWeight:800, cursor:"pointer", textAlign:"left",
-                }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                    <span style={{ width:10, height:10, borderRadius:3, background:f.color, display:"inline-block" }}/>
+                }}><div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}><span style={{ width:10, height:10, borderRadius:3, background:f.color, display:"inline-block" }}/>
                     {f.label}
-                  </div>
-                  <div style={{ fontSize:9, color: active ? f.color : "#4a5a7a", opacity:0.8, fontWeight:600 }}>{f.tagline}</div>
-                </button>
+                  </div><div style={{ fontSize:9, color: active ? f.color : "#4a5a7a", opacity:0.8, fontWeight:600 }}>{f.tagline}</div></button>
               );
             })}
-          </div>
-        </div>
+          </div></div>
 
         {/* Account size */}
-        <div style={{ marginBottom:18 }}>
-          <label style={lbl}>Account Size</label>
-          <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(sizes.length,7)},1fr)`, gap:8 }}>
+        <div style={{ marginBottom:18 }}><label style={lbl}>Account Size</label><div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(sizes.length,7)},1fr)`, gap:8 }}>
             {sizes.map(s => {
               const active = size === s;
               return (
                 <button key={s} onClick={()=>setSize(s)} style={{
                   padding:"10px 4px", borderRadius:9,
-                  border:`1px solid ${active ? FIRMS[firm].color : "#1a2540"}`,
-                  background: active ? FIRMS[firm].accent : "#0d1628",
+                  border:`1px solid ${active ? FIRMS[firm].color : "#2a2a3a"}`,
+                  background: active ? FIRMS[firm].accent : "#111118",
                   color: active ? FIRMS[firm].color : "#7a8aa8",
                   fontSize:13, fontWeight:800, fontFamily:"monospace", cursor:"pointer",
                 }}>${s/1000}k</button>
               );
             })}
-          </div>
-        </div>
+          </div></div>
 
         {/* Phase picker */}
-        <div style={{ marginBottom:18 }}>
-          <label style={lbl}>Challenge Phase</label>
-          <div style={{ display:"grid", gridTemplateColumns:`repeat(${phases.length},1fr)`, gap:8 }}>
+        <div style={{ marginBottom:18 }}><label style={lbl}>Challenge Phase</label><div style={{ display:"grid", gridTemplateColumns:`repeat(${phases.length},1fr)`, gap:8 }}>
             {phases.map(p => {
               const active = phase === p.key;
               return (
                 <button key={p.key} onClick={()=>setPhase(p.key)} style={{
                   padding:"10px 12px", borderRadius:10,
-                  border:`1px solid ${active ? FIRMS[firm].color : "#1a2540"}`,
-                  background: active ? FIRMS[firm].accent : "#0d1628",
+                  border:`1px solid ${active ? FIRMS[firm].color : "#2a2a3a"}`,
+                  background: active ? FIRMS[firm].accent : "#111118",
                   color: active ? FIRMS[firm].color : "#7a8aa8",
                   fontSize:12, fontWeight:800, cursor:"pointer", textAlign:"left",
-                }}>
-                  <div>{p.label}</div>
+                }}><div>{p.label}</div>
                   {p.sub && <div style={{ fontSize:9, fontWeight:600, opacity:0.75, marginTop:2 }}>{p.sub}</div>}
                 </button>
               );
             })}
-          </div>
-        </div>
+          </div></div>
 
         {/* Phase Rules Changed banner */}
         {phaseChanged && (
@@ -674,44 +646,23 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
             background:"rgba(245,158,11,0.10)", border:"1px solid rgba(245,158,11,0.4)",
             color:"#f59e0b", fontSize:12, fontWeight:800, marginBottom:14,
             display:"flex", alignItems:"center", gap:8,
-          }}>
-            <span>⚠️</span>
-            <span>Phase Rules Changed — rules below have been reset to {currentPhaseDef.label}.</span>
-          </div>
+          }}><span>️</span><span>Phase Rules Changed — rules below have been reset to {currentPhaseDef.label}.</span></div>
         )}
 
         {/* Name */}
-        <div style={{ marginBottom:18 }}>
-          <label style={lbl}>Account Nickname</label>
-          <input value={name} onChange={e=>setName(e.target.value)} placeholder={`${FIRMS[firm].label} ${size/1000}K`} style={inp}/>
-        </div>
+        <div style={{ marginBottom:18 }}><label style={lbl}>Account Nickname</label><input value={name} onChange={e=>setName(e.target.value)} placeholder={`${FIRMS[firm].label} ${size/1000}K`} style={inp}/></div>
 
         {/* Start date + starting balance */}
-        <div className="stack-on-mobile" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:18 }}>
-          <div>
-            <label style={lbl}>Start Date</label>
-            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inp}/>
-          </div>
-          <div>
-            <label style={lbl}>Starting Balance ($)</label>
-            <input value={starting} onChange={e=>setStarting(e.target.value)} type="number" style={inp}/>
-          </div>
-        </div>
+        <div className="stack-on-mobile" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:18 }}><div><label style={lbl}>Start Date</label><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inp}/></div><div><label style={lbl}>Starting Balance ($)</label><input value={starting} onChange={e=>setStarting(e.target.value)} type="number" style={inp}/></div></div>
 
         {/* Rules */}
-        <div style={{ padding:14, background:"#0d1628", borderRadius:12, border:"1px solid #1a2540", marginBottom:18 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", marginBottom:12, display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:6, height:6, borderRadius:"50%", background:FIRMS[firm].color }}/>
+        <div style={{ padding:14, background:"#111118", borderRadius:12, border:"1px solid #2a2a3a", marginBottom:18 }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af", marginBottom:12, display:"flex", alignItems:"center", gap:6 }}><span style={{ width:6, height:6, borderRadius:"50%", background:FIRMS[firm].color }}/>
             {FIRMS[firm].label} ${size/1000}K — {currentPhaseDef.label} Rules
-          </div>
-
-          <RuleRow label="Daily Loss Limit"   tip={TOOLTIPS.dailyLoss}      value={dailyLoss}      set={setDailyLoss}      prefix="$" zeroNote="No daily limit"/>
-          <RuleRow label="Max Drawdown"       tip={TOOLTIPS.maxDrawdown}    value={maxDrawdown}    set={setMaxDrawdown}    prefix="$" />
+          </div><RuleRow label="Daily Loss Limit"   tip={TOOLTIPS.dailyLoss}      value={dailyLoss}      set={setDailyLoss}      prefix="$" zeroNote="No daily limit"/><RuleRow label="Max Drawdown"       tip={TOOLTIPS.maxDrawdown}    value={maxDrawdown}    set={setMaxDrawdown}    prefix="$" />
           {!isFundedPhase && (
             <RuleRow label="Profit Target"    tip={TOOLTIPS.profitTarget}   value={profitTarget}   set={setProfitTarget}   prefix="$" />
           )}
-          <RuleRow label="Min Trading Days"   tip={TOOLTIPS.minTradingDays} value={minTradingDays} set={setMinTradingDays} prefix=""  zeroNote="No minimum"/>
-          <RuleRow label="Consistency Max %"  tip={TOOLTIPS.consistencyMax} value={consistencyMax} set={setConsistencyMax} prefix=""  zeroNote="No consistency rule"/>
+          <RuleRow label="Min Trading Days"   tip={TOOLTIPS.minTradingDays} value={minTradingDays} set={setMinTradingDays} prefix=""  zeroNote="No minimum"/><RuleRow label="Consistency Max %"  tip={TOOLTIPS.consistencyMax} value={consistencyMax} set={setConsistencyMax} prefix=""  zeroNote="No consistency rule"/>
           {firm === "apex" && (
             <RuleRow label="Max Contracts"    tip={TOOLTIPS.maxContracts}   value={maxContracts}   set={setMaxContracts}   prefix=""  zeroNote="Not tracked"/>
           )}
@@ -723,34 +674,20 @@ function SetupForm({ initial, onSave, onCancel }:{ initial?:ChallengeAccount; on
           )}
 
           {/* Trailing type */}
-          <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr auto", gap:10, alignItems:"center", marginTop:8 }}>
-            <div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600, display:"flex", alignItems:"center" }}>
-              Trailing Drawdown Type
-              <Info text="EOD (end of day) trails based on closing balance. Intraday trails on live unrealized PnL — much riskier."/>
-            </div>
-            <div style={{ display:"flex", gap:6 }}>
-              {(["eod","intraday"] as const).map(t => (
-                <button key={t} onClick={()=>setTrailingType(t)} style={{
+          <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr auto", gap:10, alignItems:"center", marginTop:8 }}><div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600, display:"flex", alignItems:"center" }}>Trailing Drawdown Type<Info text="EOD (end of day) trails based on closing balance. Intraday trails on live unrealized PnL — much riskier."/></div><div style={{ display:"flex", gap:6 }}>
+              {(["eod","intraday"] as const).map(t =>(<button key={t} onClick={()=>setTrailingType(t)} style={{
                   flex:1, padding:"8px 6px", borderRadius:8,
-                  border:`1px solid ${trailingType === t ? FIRMS[firm].color : "#1a2540"}`,
-                  background: trailingType === t ? FIRMS[firm].accent : "#0b1120",
+                  border:`1px solid ${trailingType === t ? FIRMS[firm].color : "#2a2a3a"}`,
+                  background: trailingType === t ? FIRMS[firm].accent : "#111118",
                   color: trailingType === t ? FIRMS[firm].color : "#7a8aa8",
                   fontSize:11, fontWeight:800, cursor:"pointer",
                 }}>{t === "eod" ? "End of Day" : "Intraday"}</button>
               ))}
-            </div>
-            <div style={{ minWidth:130 }}/>
-          </div>
-        </div>
-
-        <div style={{ display:"flex", gap:10 }}>
-          {onCancel && <button onClick={onCancel} style={{ padding:"12px 18px", borderRadius:11, border:"1px solid #1a2540", background:"transparent", color:"#7a8aa8", fontSize:12, fontWeight:700, cursor:"pointer" }}>Cancel</button>}
-          <button onClick={save} style={{ flex:1, padding:14, borderRadius:12, border:"none", background:`linear-gradient(135deg,${FIRMS[firm].color},#a78bfa)`, color:"#fff", fontSize:14, fontWeight:900, cursor:"pointer", letterSpacing:"0.02em" }}>
-            {initial ? "💾 Save Changes" : "🚀 Start Tracking"}
-          </button>
-        </div>
-      </div>
-    </div>
+            </div><div style={{ minWidth:130 }}/></div></div><div style={{ display:"flex", gap:10 }}>
+          {onCancel && <button onClick={onCancel} style={{ padding:"12px 18px", borderRadius:11, border:"1px solid #2a2a3a", background:"transparent", color:"#7a8aa8", fontSize:12, fontWeight:700, cursor:"pointer" }}>Cancel</button>}
+          <button onClick={save} style={{ flex:1, padding:14, borderRadius:12, border:"none", background:`linear-gradient(135deg,${FIRMS[firm].color},#a5b4fc)`, color:"#fff", fontSize:14, fontWeight:900, cursor:"pointer", letterSpacing:"0.02em" }}>
+            {initial ? " Save Changes" : " Start Tracking"}
+          </button></div></div></div>
   );
 }
 
@@ -759,19 +696,13 @@ function RuleRow({ label, tip, value, set, prefix, zeroNote }:{
 }) {
   const isZero = parseFloat(value) === 0;
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr auto", gap:10, alignItems:"center", marginBottom:8 }}>
-      <div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600, display:"flex", alignItems:"center" }}>
+    <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr auto", gap:10, alignItems:"center", marginBottom:8 }}><div style={{ fontSize:11, color:"#7a8aa8", fontWeight:600, display:"flex", alignItems:"center" }}>
         {label}
-        <Info text={tip}/>
-      </div>
-      <div style={{ position:"relative" }}>
-        {prefix && <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#3a4a6a", pointerEvents:"none" }}>{prefix}</span>}
-        <input value={value} onChange={e=>set(e.target.value)} style={{ ...inp, paddingLeft: prefix ? 22 : 12 }}/>
-      </div>
-      <div style={{ fontSize:9, color:"#3a4a6a", whiteSpace:"nowrap", minWidth:130 }}>
+        <Info text={tip}/></div><div style={{ position:"relative" }}>
+        {prefix && <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#2a2a3a", pointerEvents:"none" }}>{prefix}</span>}
+        <input value={value} onChange={e=>set(e.target.value)} style={{ ...inp, paddingLeft: prefix ? 22 : 12 }}/></div><div style={{ fontSize:9, color:"#2a2a3a", whiteSpace:"nowrap", minWidth:130 }}>
         {isZero && zeroNote ? zeroNote : ""}
-      </div>
-    </div>
+      </div></div>
   );
 }
 
@@ -790,9 +721,9 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
   const ddPct    = account.maxDrawdown > 0 ? (stats.drawdownUsed / account.maxDrawdown) * 100 : 0;
   const dangerPct = Math.max(dailyPct, ddPct);
   const status =
-    dangerPct >= 80 ? { label:"🚨 DANGER ZONE", color:"#ef4444", bg:"rgba(239,68,68,0.10)" } :
-    dangerPct >= 50 ? { label:"⚠️ BE CAREFUL",   color:"#f59e0b", bg:"rgba(245,158,11,0.10)" } :
-                      { label:"✅ ON TRACK",     color:"#22c55e", bg:"rgba(34,197,94,0.10)" };
+    dangerPct >= 80 ? { label:" DANGER ZONE", color:"#ef4444", bg:"rgba(239,68,68,0.10)" } :
+    dangerPct >= 50 ? { label:"️ BE CAREFUL",   color:"#f59e0b", bg:"rgba(245,158,11,0.10)" } :
+                      { label:" ON TRACK",     color:"#22c55e", bg:"rgba(34,197,94,0.10)" };
 
   const profitNeeded   = Math.max(0, account.profitTarget - stats.totalProfit);
   const dailyRemaining = hasDailyLimit ? Math.max(0, account.dailyLoss - stats.dailyLossUsed) : 0;
@@ -815,205 +746,85 @@ function Dashboard({ account, stats, onEdit, onDelete }:{
   const apexPaPayoutReady = account.firm === "apex" && account.phase === "pa"
     && stats.tradingDaysDone >= account.minTradingDays && stats.profitableDaysDone >= account.profitableDays;
 
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+ return (<div style={{ display:"flex", flexDirection:"column", gap:18 }}>
       {/* Account header */}
-      <div style={{ ...card, padding:"22px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, borderColor: firm.color + "55", background: `linear-gradient(135deg, #0b1120, ${firm.accent})` }}>
-        <div>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6, flexWrap:"wrap" }}>
-            <span style={{ width:12, height:12, borderRadius:3, background:firm.color }}/>
-            <span style={{ fontSize:18, fontWeight:900, color:"#f0f4ff" }}>{account.name}</span>
-            <span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:firm.accent, color:firm.color, border:`1px solid ${firm.color}44` }}>{firm.label}</span>
-            <span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:"#0d1628", color:"#7a8aa8", border:"1px solid #1a2540" }}>{phaseDef.label}</span>
-          </div>
-          <div style={{ display:"flex", alignItems:"center", gap:14, fontSize:11, color:"#5a6a8a", flexWrap:"wrap" }}>
-            <span>Size <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>${(account.accountSize/1000).toFixed(0)}K</strong></span>
-            <span>Started <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>{account.startDate}</strong></span>
-            <span>Peak <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>{fmtUSD(stats.peakBalance)}</strong></span>
-            {account.maxContracts > 0 && <span>Max contracts <strong style={{ color:"#f0f4ff", fontFamily:"monospace" }}>{account.maxContracts}</strong></span>}
-            {stats.trailingIsLocked && <span style={{ color:"#22c55e", fontWeight:700 }}>🔒 Trailing locked</span>}
-          </div>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:10, color:"#5a6a8a", textTransform:"uppercase", letterSpacing:"0.08em" }}>Current Balance</div>
-            <div style={{ fontSize:26, fontWeight:900, fontFamily:"monospace", color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSD(stats.currentBalance)}</div>
-            <div style={{ fontSize:11, color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444", fontWeight:800, fontFamily:"monospace" }}>{fmtUSDsigned(stats.totalProfit)}</div>
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <button onClick={onEdit} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #1a2540", background:"#0d1628", color:"#94a3b8", fontSize:11, fontWeight:700, cursor:"pointer" }}>Edit</button>
-            <button onClick={onDelete} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid rgba(239,68,68,0.25)", background:"transparent", color:"#ef4444", fontSize:11, fontWeight:700, cursor:"pointer" }}>Delete</button>
-          </div>
-        </div>
-      </div>
+      <div style={{ ...card, padding:"22px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, borderColor: firm.color + "55", background: `linear-gradient(135deg, #111118, ${firm.accent})` }}><div><div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6, flexWrap:"wrap" }}><span style={{ width:12, height:12, borderRadius:3, background:firm.color }}/><span style={{ fontSize:18, fontWeight:900, color:"#ffffff" }}>{account.name}</span><span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:firm.accent, color:firm.color, border:`1px solid ${firm.color}44` }}>{firm.label}</span><span style={{ fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:20, background:"#111118", color:"#7a8aa8", border:"1px solid #2a2a3a" }}>{phaseDef.label}</span></div><div style={{ display:"flex", alignItems:"center", gap:14, fontSize:11, color:"#5a6a8a", flexWrap:"wrap" }}><span>Size<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>${(account.accountSize/1000).toFixed(0)}K</strong></span><span>Started<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>{account.startDate}</strong></span><span>Peak<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>{fmtUSD(stats.peakBalance)}</strong></span>
+            {account.maxContracts >0 &&<span>Max contracts<strong style={{ color:"#ffffff", fontFamily:"monospace" }}>{account.maxContracts}</strong></span>}
+            {stats.trailingIsLocked && <span style={{ color:"#22c55e", fontWeight:700 }}>Trailing locked</span>}
+          </div></div><div style={{ display:"flex", alignItems:"center", gap:12 }}><div style={{ textAlign:"right" }}><div style={{ fontSize:10, color:"#5a6a8a", textTransform:"uppercase", letterSpacing:"0.08em" }}>Current Balance</div><div style={{ fontSize:26, fontWeight:900, fontFamily:"monospace", color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSD(stats.currentBalance)}</div><div style={{ fontSize:11, color: stats.totalProfit >= 0 ? "#22c55e" : "#ef4444", fontWeight:800, fontFamily:"monospace" }}>{fmtUSDsigned(stats.totalProfit)}</div></div><div style={{ display:"flex", flexDirection:"column", gap:6 }}><button onClick={onEdit} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#111118", color:"#9ca3af", fontSize:11, fontWeight:700, cursor:"pointer" }}>Edit</button><button onClick={onDelete} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid rgba(239,68,68,0.25)", background:"transparent", color:"#ef4444", fontSize:11, fontWeight:700, cursor:"pointer" }}>Delete</button></div></div></div>
 
       {/* 4 rings */}
       <div className="rings-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:14 }}>
         {/* Daily Loss */}
-        <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
-            Daily Loss<Info text={TOOLTIPS.dailyLoss}/>
-          </div>
+        <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>Daily Loss<Info text={TOOLTIPS.dailyLoss}/></div>
           {hasDailyLimit ? (
-            <>
-              <Ring value={stats.dailyLossUsed} max={account.dailyLoss}
-                centerBig={fmtUSD(stats.dailyLossUsed)} centerSub={`of ${fmtUSD(account.dailyLoss)}`} mode="loss"/>
-              <div style={{ fontSize:12, fontWeight:700, color: dailyPct >= 80 ? "#ef4444" : dailyPct >= 50 ? "#f59e0b" : "#22c55e", textAlign:"center" }}>
-                Can lose <span style={{ fontFamily:"monospace" }}>{fmtUSD(dailyRemaining)}</span> more today
-              </div>
-              <div style={{ fontSize:10, color:"#4a5a7a" }}>Resets at midnight CT</div>
-            </>
-          ) : (
-            <>
-              <Ring value={0} max={100} centerBig="N/A" centerSub="No daily limit" mode="loss" forceColor="#22c55e"/>
-              <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>No daily limit — Apex 4.0</div>
-              <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>Trailing drawdown applies instead</div>
-            </>
+            <><Ring value={stats.dailyLossUsed} max={account.dailyLoss}
+                centerBig={fmtUSD(stats.dailyLossUsed)} centerSub={`of ${fmtUSD(account.dailyLoss)}`} mode="loss"/><div style={{ fontSize:12, fontWeight:700, color: dailyPct >= 80 ? "#ef4444" : dailyPct >= 50 ? "#f59e0b" : "#22c55e", textAlign:"center" }}>Can lose<span style={{ fontFamily:"monospace" }}>{fmtUSD(dailyRemaining)}</span>more today</div><div style={{ fontSize:10, color:"#4a5a7a" }}>Resets at midnight CT</div></>) : (<><Ring value={0} max={100} centerBig="N/A" centerSub="No daily limit" mode="loss" forceColor="#22c55e"/><div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>No daily limit — Apex 4.0</div><div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>Trailing drawdown applies instead</div></>
           )}
         </div>
 
         {/* Max Drawdown */}
-        <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
-            Max Drawdown<Info text={TOOLTIPS.maxDrawdown}/>
-          </div>
-          <Ring value={stats.drawdownUsed} max={account.maxDrawdown}
-            centerBig={fmtUSD(stats.drawdownUsed)} centerSub={`of ${fmtUSD(account.maxDrawdown)}`} mode="loss"/>
-          <div style={{ fontSize:12, fontWeight:700, color: ddPct >= 80 ? "#ef4444" : ddPct >= 50 ? "#f59e0b" : "#22c55e", textAlign:"center" }}>
-            <span style={{ fontFamily:"monospace" }}>{fmtUSD(ddRemaining)}</span> buffer to breach
-          </div>
-          <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
+        <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>Max Drawdown<Info text={TOOLTIPS.maxDrawdown}/></div><Ring value={stats.drawdownUsed} max={account.maxDrawdown}
+            centerBig={fmtUSD(stats.drawdownUsed)} centerSub={`of ${fmtUSD(account.maxDrawdown)}`} mode="loss"/><div style={{ fontSize:12, fontWeight:700, color: ddPct >= 80 ? "#ef4444" : ddPct >= 50 ? "#f59e0b" : "#22c55e", textAlign:"center" }}><span style={{ fontFamily:"monospace" }}>{fmtUSD(ddRemaining)}</span>buffer to breach</div><div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
             {stats.trailingIsLocked
-              ? `🔒 Locked at ${fmtUSD(account.startingBalance + account.trailingLocksAt)}`
+              ? ` Locked at ${fmtUSD(account.startingBalance + account.trailingLocksAt)}`
               : `${account.trailingType === "intraday" ? "Intraday" : "EOD"} trailing · peak ${fmtUSD(stats.peakBalance)}`}
-          </div>
-        </div>
+          </div></div>
 
         {/* Profit Target — replaced with phase-specific card on funded phases */}
         {hasTarget ? (
-          <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-            <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
-              Profit Target<Info text={TOOLTIPS.profitTarget}/>
-            </div>
-            <Ring value={Math.max(0, stats.totalProfit)} max={account.profitTarget}
-              centerBig={fmtUSD(Math.max(0, stats.totalProfit))} centerSub={`of ${fmtUSD(account.profitTarget)}`} mode="fill"/>
-            <div style={{ fontSize:12, fontWeight:700, color: profitNeeded === 0 ? "#22c55e" : "#3b82f6", textAlign:"center" }}>
-              {profitNeeded === 0 ? "🏆 Target hit!" : <><span style={{ fontFamily:"monospace" }}>{fmtUSD(profitNeeded)}</span> more to pass</>}
-            </div>
-            <div style={{ fontSize:10, color:"#4a5a7a" }}>{phaseDef.label}</div>
-          </div>
-        ) : (
-          <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-            <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em" }}>Total Profit</div>
-            <Ring value={Math.max(0, stats.totalProfit)} max={Math.max(stats.totalProfit, account.accountSize * 0.05)}
-              centerBig={fmtUSDsigned(stats.totalProfit)} centerSub="live funded" mode="fill"/>
-            <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>
+          <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>Profit Target<Info text={TOOLTIPS.profitTarget}/></div><Ring value={Math.max(0, stats.totalProfit)} max={account.profitTarget}
+              centerBig={fmtUSD(Math.max(0, stats.totalProfit))} centerSub={`of ${fmtUSD(account.profitTarget)}`} mode="fill"/><div style={{ fontSize:12, fontWeight:700, color: profitNeeded === 0 ? "#22c55e" : "#3b82f6", textAlign:"center" }}>
+              {profitNeeded === 0 ? " Target hit!" : <><span style={{ fontFamily:"monospace" }}>{fmtUSD(profitNeeded)}</span>more to pass</>}
+            </div><div style={{ fontSize:10, color:"#4a5a7a" }}>{phaseDef.label}</div></div>) : (<div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.1em" }}>Total Profit</div><Ring value={Math.max(0, stats.totalProfit)} max={Math.max(stats.totalProfit, account.accountSize * 0.05)}
+              centerBig={fmtUSDsigned(stats.totalProfit)} centerSub="live funded" mode="fill"/><div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>
               {phaseDef.label} — no profit target
-            </div>
-            <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
+            </div><div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
               {account.firm === "apex"    ? "100% first $25K, then 90/10"
                 : account.firm === "topstep" ? "90/10 split (legacy 100% first $10K)"
                 : account.firm === "ftmo"    ? "80/20 split (scaling to 90/10)"
                 : "Live profit split"}
-            </div>
-          </div>
+            </div></div>
         )}
 
         {/* Consistency */}
-        <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>
-            Consistency<Info text={TOOLTIPS.consistencyMax}/>
-          </div>
+        <div style={{ ...card, padding:"22px 18px 18px", display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.1em", display:"flex", alignItems:"center" }}>Consistency<Info text={TOOLTIPS.consistencyMax}/></div>
           {hasConsistency ? (
-            <>
-              <Ring value={stats.consistencyScore} max={100}
-                centerBig={`${stats.consistencyScore}%`} centerSub={`max ${account.consistencyMax}%/day`} mode="fill"/>
-              <div style={{ fontSize:12, fontWeight:700, color: stats.consistencyScore >= 70 ? "#22c55e" : stats.consistencyScore >= 40 ? "#f59e0b" : "#ef4444", textAlign:"center" }}>
+            <><Ring value={stats.consistencyScore} max={100}
+                centerBig={`${stats.consistencyScore}%`} centerSub={`max ${account.consistencyMax}%/day`} mode="fill"/><div style={{ fontSize:12, fontWeight:700, color: stats.consistencyScore >= 70 ? "#22c55e" : stats.consistencyScore >= 40 ? "#f59e0b" : "#ef4444", textAlign:"center" }}>
                 Best day {stats.consistencyRatio.toFixed(0)}% of total
-              </div>
-              <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
+              </div><div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>
                 {fmtUSD(stats.bestDayPnl)} of {fmtUSD(Math.max(0, stats.totalProfit))}
-              </div>
-            </>
-          ) : (
-            <>
-              <Ring value={100} max={100} centerBig="✓" centerSub="No rule" mode="fill" forceColor="#22c55e"/>
-              <div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>No consistency rule</div>
-              <div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>{phaseDef.label}</div>
-            </>
+              </div></>) : (<><Ring value={100} max={100} centerBig="✓" centerSub="No rule" mode="fill" forceColor="#22c55e"/><div style={{ fontSize:12, fontWeight:700, color:"#22c55e", textAlign:"center" }}>No consistency rule</div><div style={{ fontSize:10, color:"#4a5a7a", textAlign:"center" }}>{phaseDef.label}</div></>
           )}
-        </div>
-      </div>
+        </div></div>
 
       {/* Trading day counter — phase-specific */}
-      <div style={{ ...card, padding:"18px 22px" }}>
-        <TradingDaysPanel account={account} stats={stats} payoutReady={apexPaPayoutReady || topstepPayoutReady}/>
-      </div>
+      <div style={{ ...card, padding:"18px 22px" }}><TradingDaysPanel account={account} stats={stats} payoutReady={apexPaPayoutReady || topstepPayoutReady}/></div>
 
       {/* Today panel */}
-      <div style={{ ...card, padding:"20px 22px", borderColor: status.color + "44", background:`linear-gradient(135deg, #0b1120, ${status.bg})` }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, marginBottom:14 }}>
-          <div>
-            <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Today</div>
-            <div style={{ display:"flex", alignItems:"center", gap:18, flexWrap:"wrap" }}>
-              <div>
-                <div style={{ fontSize:10, color:"#4a5a7a" }}>PnL</div>
-                <div style={{ fontSize:22, fontWeight:900, fontFamily:"monospace", color: stats.todayPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSDsigned(stats.todayPnl)}</div>
-              </div>
-              <div>
-                <div style={{ fontSize:10, color:"#4a5a7a" }}>Trades</div>
-                <div style={{ fontSize:18, fontWeight:800, fontFamily:"monospace", color:"#f0f4ff" }}>{stats.todayTrades.length}</div>
-              </div>
-              <div>
-                <div style={{ fontSize:10, color:"#4a5a7a" }}>Session ends in</div>
-                <div style={{ fontSize:18, fontWeight:800, fontFamily:"monospace", color:"#f0f4ff" }}>{sessionH}h {sessionM}m</div>
-              </div>
-            </div>
-          </div>
-          <div style={{ fontSize:12, fontWeight:800, padding:"8px 16px", borderRadius:24, background:status.bg, color:status.color, border:`1px solid ${status.color}55`, letterSpacing:"0.04em" }}>
+      <div style={{ ...card, padding:"20px 22px", borderColor: status.color + "44", background:`linear-gradient(135deg, #111118, ${status.bg})` }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:14, marginBottom:14 }}><div><div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Today</div><div style={{ display:"flex", alignItems:"center", gap:18, flexWrap:"wrap" }}><div><div style={{ fontSize:10, color:"#4a5a7a" }}>PnL</div><div style={{ fontSize:22, fontWeight:900, fontFamily:"monospace", color: stats.todayPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSDsigned(stats.todayPnl)}</div></div><div><div style={{ fontSize:10, color:"#4a5a7a" }}>Trades</div><div style={{ fontSize:18, fontWeight:800, fontFamily:"monospace", color:"#ffffff" }}>{stats.todayTrades.length}</div></div><div><div style={{ fontSize:10, color:"#4a5a7a" }}>Session ends in</div><div style={{ fontSize:18, fontWeight:800, fontFamily:"monospace", color:"#ffffff" }}>{sessionH}h {sessionM}m</div></div></div></div><div style={{ fontSize:12, fontWeight:800, padding:"8px 16px", borderRadius:24, background:status.bg, color:status.color, border:`1px solid ${status.color}55`, letterSpacing:"0.04em" }}>
             {status.label}
-          </div>
-        </div>
+          </div></div>
 
         {hasDailyLimit && (
-          <div>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-              <span style={{ fontSize:10, color:"#5a6a8a", fontWeight:700 }}>Daily loss used</span>
-              <span style={{ fontSize:10, color: dailyPct >= 80 ? "#ef4444" : "#5a6a8a", fontWeight:700, fontFamily:"monospace" }}>
+          <div><div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}><span style={{ fontSize:10, color:"#5a6a8a", fontWeight:700 }}>Daily loss used</span><span style={{ fontSize:10, color: dailyPct >= 80 ? "#ef4444" : "#5a6a8a", fontWeight:700, fontFamily:"monospace" }}>
                 {fmtUSD(stats.dailyLossUsed)} / {fmtUSD(account.dailyLoss)}
-              </span>
-            </div>
-            <div style={{ height:6, borderRadius:3, background:"#0f1a2e", overflow:"hidden" }}>
-              <div style={{
+              </span></div><div style={{ height:6, borderRadius:3, background:"#0f1a2e", overflow:"hidden" }}><div style={{
                 width:`${Math.min(100, dailyPct)}%`, height:"100%",
-                background: dailyPct >= 80 ? "linear-gradient(90deg,#ef4444,#fca5a5)" : dailyPct >= 50 ? "linear-gradient(90deg,#f59e0b,#fcd34d)" : "linear-gradient(90deg,#22c55e,#86efac)",
+                background: dailyPct >= 80 ? "linear-gradient(90deg,#ef4444,#ef4444)" : dailyPct >= 50 ? "linear-gradient(90deg,#f59e0b,#fcd34d)" : "linear-gradient(90deg,#22c55e,#86efac)",
                 borderRadius:3, transition:"width 0.5s",
-              }}/>
-            </div>
-          </div>
+              }}/></div></div>
         )}
       </div>
 
       {/* Phase rules / warnings */}
-      <div style={{ ...card, padding:"18px 22px", borderColor:"rgba(245,158,11,0.25)", background:"linear-gradient(135deg, #0b1120, rgba(245,158,11,0.04))" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
-          <span style={{ fontSize:14 }}>⚠️</span>
-          <div style={{ fontSize:11, fontWeight:800, color:"#f59e0b", textTransform:"uppercase", letterSpacing:"0.08em" }}>
+      <div style={{ ...card, padding:"18px 22px", borderColor:"rgba(245,158,11,0.25)", background:"linear-gradient(135deg, #111118, rgba(245,158,11,0.04))" }}><div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}><span style={{ fontSize:14 }}>️</span><div style={{ fontSize:11, fontWeight:800, color:"#f59e0b", textTransform:"uppercase", letterSpacing:"0.08em" }}>
             {firm.label} — {phaseDef.label} Rules
-          </div>
-        </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {warnings.map((w,i) => (
-            <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"#c8d8f0", lineHeight:1.5 }}>
-              <span style={{ color:"#f59e0b", marginTop:2 }}>•</span>
-              <span>{w}</span>
-            </div>
+          </div></div><div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {warnings.map((w,i) =>(<div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"#c8d8f0", lineHeight:1.5 }}><span style={{ color:"#f59e0b", marginTop:2 }}>•</span><span>{w}</span></div>
           ))}
-        </div>
-      </div>
-
-      <HistoryCalendar account={account} stats={stats}/>
-    </div>
+        </div></div><HistoryCalendar account={account} stats={stats}/></div>
   );
 }
 
@@ -1025,49 +836,26 @@ function TradingDaysPanel({ account, stats, payoutReady }:{ account:ChallengeAcc
   if (isApexPa) {
     const daysOk = stats.tradingDaysDone >= account.minTradingDays;
     const profOk = stats.profitableDaysDone >= account.profitableDays;
-    return (
-      <>
-        <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>
-          Apex PA Payout Eligibility
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
-          <ProgressBar label="Trading days" current={stats.tradingDaysDone} required={account.minTradingDays} ok={daysOk}/>
-          <ProgressBar label="Profitable days" current={stats.profitableDaysDone} required={account.profitableDays} ok={profOk}/>
-        </div>
-        <div style={{ fontSize:11, fontWeight:700, color: payoutReady ? "#22c55e" : "#94a3b8", marginTop:12 }}>
-          {payoutReady ? "✅ Eligible to request payout" : "Both criteria needed for first payout"}
-        </div>
-      </>
+ return (<><div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Apex PA Payout Eligibility</div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}><ProgressBar label="Trading days" current={stats.tradingDaysDone} required={account.minTradingDays} ok={daysOk}/><ProgressBar label="Profitable days" current={stats.profitableDaysDone} required={account.profitableDays} ok={profOk}/></div><div style={{ fontSize:11, fontWeight:700, color: payoutReady ? "#22c55e" : "#9ca3af", marginTop:12 }}>
+          {payoutReady ? " Eligible to request payout" : "Both criteria needed for first payout"}
+        </div></>
     );
   }
 
   if (isTopstep) {
     const benchOk = stats.benchmarkDaysDone >= account.benchmarkDays;
-    return (
-      <>
-        <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, display:"flex", alignItems:"center" }}>
-          Benchmark Days ($150+ profit)<Info text={TOOLTIPS.benchmarkDays}/>
-        </div>
-        <ProgressBar label={`${stats.benchmarkDaysDone} of ${account.benchmarkDays} benchmark days`} current={stats.benchmarkDaysDone} required={account.benchmarkDays} ok={benchOk}/>
-        <div style={{ fontSize:11, fontWeight:700, color: benchOk ? "#22c55e" : "#94a3b8", marginTop:10 }}>
-          {benchOk ? (account.phase === "express" ? "✅ Eligible for payout requests" : "✅ Benchmark days met") : `${account.benchmarkDays - stats.benchmarkDaysDone} more benchmark days needed`}
-        </div>
-      </>
+ return (<><div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, display:"flex", alignItems:"center" }}>Benchmark Days ($150+ profit)<Info text={TOOLTIPS.benchmarkDays}/></div><ProgressBar label={`${stats.benchmarkDaysDone} of ${account.benchmarkDays} benchmark days`} current={stats.benchmarkDaysDone} required={account.benchmarkDays} ok={benchOk}/><div style={{ fontSize:11, fontWeight:700, color: benchOk ? "#22c55e" : "#9ca3af", marginTop:10 }}>
+          {benchOk ? (account.phase === "express" ? " Eligible for payout requests" : " Benchmark days met") : `${account.benchmarkDays - stats.benchmarkDaysDone} more benchmark days needed`}
+        </div></>
     );
   }
 
   // Generic min trading days
   return (
-    <>
-      <div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, display:"flex", alignItems:"center" }}>
-        Trading Days<Info text={TOOLTIPS.minTradingDays}/>
-      </div>
-      {account.minTradingDays > 0 ? (
-        <ProgressBar label={`Day ${stats.tradingDaysDone} of ${account.minTradingDays} minimum`}
-          current={stats.tradingDaysDone} required={account.minTradingDays} ok={stats.tradingDaysDone >= account.minTradingDays}/>
-      ) : (
-        <div style={{ fontSize:13, fontWeight:800, color:"#22c55e" }}>
-          ✅ No minimum trading days {account.firm === "apex" ? "(Apex 4.0)" : ""}
+    <><div style={{ fontSize:11, color:"#5a6a8a", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8, display:"flex", alignItems:"center" }}>Trading Days<Info text={TOOLTIPS.minTradingDays}/></div>
+      {account.minTradingDays >0 ? (<ProgressBar label={`Day ${stats.tradingDaysDone} of ${account.minTradingDays} minimum`}
+          current={stats.tradingDaysDone} required={account.minTradingDays} ok={stats.tradingDaysDone >= account.minTradingDays}/>) : (<div style={{ fontSize:13, fontWeight:800, color:"#22c55e" }}>
+           No minimum trading days {account.firm === "apex" ? "(Apex 4.0)" : ""}
         </div>
       )}
     </>
@@ -1075,21 +863,12 @@ function TradingDaysPanel({ account, stats, payoutReady }:{ account:ChallengeAcc
 }
 
 function ProgressBar({ label, current, required, ok }:{ label:string; current:number; required:number; ok:boolean; }) {
-  const pct = required > 0 ? Math.min(100, (current/required)*100) : 100;
-  return (
-    <div>
-      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-        <span style={{ fontSize:11, color:"#94a3b8", fontWeight:700 }}>{label}</span>
-        <span style={{ fontSize:11, color: ok ? "#22c55e" : "#5a6a8a", fontWeight:800, fontFamily:"monospace" }}>{current}/{required}</span>
-      </div>
-      <div style={{ height:7, borderRadius:4, background:"#0f1a2e", overflow:"hidden" }}>
-        <div style={{
+  const pct = required >0 ? Math.min(100, (current/required)*100) : 100;
+ return (<div><div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}><span style={{ fontSize:11, color:"#9ca3af", fontWeight:700 }}>{label}</span><span style={{ fontSize:11, color: ok ? "#22c55e" : "#5a6a8a", fontWeight:800, fontFamily:"monospace" }}>{current}/{required}</span></div><div style={{ height:7, borderRadius:4, background:"#0f1a2e", overflow:"hidden" }}><div style={{
           width:`${pct}%`, height:"100%",
           background: ok ? "linear-gradient(90deg,#22c55e,#86efac)" : "linear-gradient(90deg,#3b82f6,#22c55e)",
           borderRadius:4, transition:"width 0.7s",
-        }}/>
-      </div>
-    </div>
+        }}/></div></div>
   );
 }
 
@@ -1098,14 +877,14 @@ function HistoryCalendar({ account, stats }:{ account:ChallengeAccount; stats:Co
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [selected, setSelected] = useState<string | null>(null);
 
-  const year = cursor.getFullYear();
-  const month = cursor.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay  = new Date(year, month+1, 0);
-  const startOffset = firstDay.getDay();
-  const daysInMonth = lastDay.getDate();
-  const cells: (Date | null)[] = [];
-  for (let i=0; i<startOffset; i++) cells.push(null);
+ const year = cursor.getFullYear();
+ const month = cursor.getMonth();
+ const firstDay = new Date(year, month, 1);
+ const lastDay = new Date(year, month+1, 0);
+ const startOffset = firstDay.getDay();
+ const daysInMonth = lastDay.getDate();
+ const cells: (Date | null)[] = [];
+ for (let i=0; i<startOffset; i++) cells.push(null);
   for (let d=1; d<=daysInMonth; d++) cells.push(new Date(year, month, d));
   while (cells.length % 7 !== 0) cells.push(null);
 
@@ -1114,56 +893,41 @@ function HistoryCalendar({ account, stats }:{ account:ChallengeAccount; stats:Co
   function cellColor(d:Date): { bg:string; border:string; text:string; emoji?:string } {
     const k = dayKey(d);
     const day = stats.byDay[k];
-    if (!day || (day.pnl === 0 && day.trades.length === 0)) return { bg:"#0d1628", border:"#1a2540", text:"#3a4a6a" };
+    if (!day || (day.pnl === 0 && day.trades.length === 0)) return { bg:"#111118", border:"#2a2a3a", text:"#2a2a3a" };
     const lossPct = day.pnl < 0 && account.dailyLoss > 0 ? (Math.abs(day.pnl) / account.dailyLoss) * 100 : 0;
-    if (lossPct >= 70) return { bg:"rgba(249,115,22,0.18)", border:"rgba(249,115,22,0.45)", text:"#fb923c", emoji:"⚠️" };
+    if (lossPct >= 70) return { bg:"rgba(245,158,11,0.18)", border:"rgba(245,158,11,0.45)", text:"#f59e0b", emoji:"️" };
     if (day.pnl > 0)   return { bg:"rgba(34,197,94,0.14)",  border:"rgba(34,197,94,0.4)",   text:"#22c55e" };
     if (day.pnl < 0)   return { bg:"rgba(239,68,68,0.12)",  border:"rgba(239,68,68,0.35)",  text:"#ef4444" };
-    return { bg:"#0d1628", border:"#1a2540", text:"#94a3b8" };
+    return { bg:"#111118", border:"#2a2a3a", text:"#9ca3af" };
   }
 
   const selectedDay = selected ? stats.byDay[selected] : null;
 
   return (
-    <div style={{ ...card, padding:"20px 22px" }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-        <div style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.08em" }}>📅 Trading History</div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <button onClick={()=>setCursor(new Date(year, month-1, 1))} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #1a2540", background:"#0d1628", color:"#94a3b8", fontSize:12, fontWeight:700, cursor:"pointer" }}>←</button>
-          <span style={{ fontSize:13, fontWeight:800, color:"#f0f4ff", minWidth:140, textAlign:"center" }}>{monthLabel}</span>
-          <button onClick={()=>setCursor(new Date(year, month+1, 1))} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #1a2540", background:"#0d1628", color:"#94a3b8", fontSize:12, fontWeight:700, cursor:"pointer" }}>→</button>
-        </div>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6, marginBottom:6 }}>
-        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => (
-          <div key={d} style={{ fontSize:9, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", textAlign:"center", paddingBottom:4 }}>{d}</div>
+    <div style={{ ...card, padding:"20px 22px" }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.08em" }}>Trading History</div><div style={{ display:"flex", alignItems:"center", gap:8 }}><button onClick={()=>setCursor(new Date(year, month-1, 1))} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #2a2a3a", background:"#111118", color:"#9ca3af", fontSize:12, fontWeight:700, cursor:"pointer" }}>←</button><span style={{ fontSize:13, fontWeight:800, color:"#ffffff", minWidth:140, textAlign:"center" }}>{monthLabel}</span><button onClick={()=>setCursor(new Date(year, month+1, 1))} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #2a2a3a", background:"#111118", color:"#9ca3af", fontSize:12, fontWeight:700, cursor:"pointer" }}>→</button></div></div><div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6, marginBottom:6 }}>
+        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d =>(<div key={d} style={{ fontSize:9, fontWeight:700, color:"#4a5a7a", textTransform:"uppercase", letterSpacing:"0.08em", textAlign:"center", paddingBottom:4 }}>{d}</div>
         ))}
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6 }}>
+      </div><div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6 }}>
         {cells.map((d, i) => {
           if (!d) return <div key={i} style={{ aspectRatio:"1.1", borderRadius:8, background:"transparent" }}/>;
-          const c = cellColor(d);
-          const k = dayKey(d);
-          const day = stats.byDay[k];
-          const isToday = isSameDay(d, new Date());
-          const isSel = selected === k;
-          return (
-            <button
+ const c = cellColor(d);
+ const k = dayKey(d);
+ const day = stats.byDay[k];
+ const isToday = isSameDay(d, new Date());
+ const isSel = selected === k;
+ return (<button
               key={i}
               onClick={() => day ? setSelected(isSel ? null : k) : null}
               disabled={!day}
               style={{
                 aspectRatio:"1.1", borderRadius:9,
-                border:`1px solid ${isSel ? "#a78bfa" : isToday ? "#a78bfa55" : c.border}`,
+                border:`1px solid ${isSel ? "#a5b4fc" : isToday ? "#a5b4fc55" : c.border}`,
                 background: c.bg, color: c.text,
                 cursor: day ? "pointer" : "default",
                 display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                 gap:2, padding:4, position:"relative",
               }}
-            >
-              <div style={{ fontSize:12, fontWeight:800, color:isToday ? "#a78bfa" : c.text }}>{d.getDate()}</div>
+            ><div style={{ fontSize:12, fontWeight:800, color:isToday ? "#a5b4fc" : c.text }}>{d.getDate()}</div>
               {day && day.pnl !== 0 && (
                 <div style={{ fontSize:9, fontWeight:800, fontFamily:"monospace", color:c.text }}>
                   {day.pnl >= 0 ? "+" : "-"}${Math.abs(Math.round(day.pnl))}
@@ -1173,46 +937,29 @@ function HistoryCalendar({ account, stats }:{ account:ChallengeAccount; stats:Co
             </button>
           );
         })}
-      </div>
-
-      <div style={{ display:"flex", flexWrap:"wrap", gap:14, marginTop:14, fontSize:10, color:"#5a6a8a" }}>
+      </div><div style={{ display:"flex", flexWrap:"wrap", gap:14, marginTop:14, fontSize:10, color:"#5a6a8a" }}>
         {[
           { c:"#22c55e", l:"Profitable" },
           { c:"#ef4444", l:"Loss" },
-          { c:"#fb923c", l:"Near daily limit" },
-          { c:"#3a4a6a", l:"No trades" },
-        ].map(x => (
-          <div key={x.l} style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:8, height:8, borderRadius:2, background:x.c, display:"inline-block" }}/>
+          { c:"#f59e0b", l:"Near daily limit" },
+          { c:"#2a2a3a", l:"No trades" },
+        ].map(x =>(<div key={x.l} style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ width:8, height:8, borderRadius:2, background:x.c, display:"inline-block" }}/>
             {x.l}
           </div>
         ))}
       </div>
 
       {selectedDay && (
-        <div style={{ marginTop:16, padding:14, borderRadius:11, background:"#0d1628", border:"1px solid #1a2540" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-            <div style={{ fontSize:13, fontWeight:800, color:"#f0f4ff" }}>
+        <div style={{ marginTop:16, padding:14, borderRadius:11, background:"#111118", border:"1px solid #2a2a3a" }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}><div style={{ fontSize:13, fontWeight:800, color:"#ffffff" }}>
               {selectedDay.date.toLocaleDateString("en-US",{ weekday:"long", month:"long", day:"numeric" })}
-            </div>
-            <div style={{ fontSize:14, fontWeight:900, fontFamily:"monospace", color: selectedDay.pnl >= 0 ? "#22c55e" : "#ef4444" }}>
+            </div><div style={{ fontSize:14, fontWeight:900, fontFamily:"monospace", color: selectedDay.pnl >= 0 ? "#22c55e" : "#ef4444" }}>
               {fmtUSDsigned(selectedDay.pnl)}
-            </div>
-          </div>
-          <div style={{ fontSize:11, color:"#5a6a8a", marginBottom:10 }}>{selectedDay.trades.length} trade{selectedDay.trades.length === 1 ? "" : "s"}</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            {selectedDay.trades.slice(0, 12).map((t, i) => (
-              <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"7px 10px", borderRadius:8, background:"#0b1120", border:"1px solid #1a2540" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ fontSize:11, fontWeight:800, color:"#f0f4ff", fontFamily:"monospace" }}>{t.symbol ?? t.pair ?? "—"}</span>
-                  {t.side && <span style={{ fontSize:9, fontWeight:700, color:"#94a3b8", padding:"1px 6px", borderRadius:4, background:"#1a2540" }}>{t.side}</span>}
-                  <span style={{ fontSize:10, color:"#4a5a7a" }}>{new Date(t.date).toLocaleTimeString("en-US",{ hour:"2-digit", minute:"2-digit" })}</span>
-                </div>
-                <span style={{ fontSize:12, fontWeight:800, fontFamily:"monospace", color: (t.pnl ?? 0) >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSDsigned(t.pnl ?? 0)}</span>
-              </div>
+            </div></div><div style={{ fontSize:11, color:"#5a6a8a", marginBottom:10 }}>{selectedDay.trades.length} trade{selectedDay.trades.length === 1 ? "" : "s"}</div><div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {selectedDay.trades.slice(0, 12).map((t, i) =>(<div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"7px 10px", borderRadius:8, background:"#111118", border:"1px solid #2a2a3a" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ fontSize:11, fontWeight:800, color:"#ffffff", fontFamily:"monospace" }}>{t.symbol ?? t.pair ?? "—"}</span>
+                  {t.side && <span style={{ fontSize:9, fontWeight:700, color:"#9ca3af", padding:"1px 6px", borderRadius:4, background:"#2a2a3a" }}>{t.side}</span>}
+                  <span style={{ fontSize:10, color:"#4a5a7a" }}>{new Date(t.date).toLocaleTimeString("en-US",{ hour:"2-digit", minute:"2-digit" })}</span></div><span style={{ fontSize:12, fontWeight:800, fontFamily:"monospace", color: (t.pnl ?? 0) >= 0 ? "#22c55e" : "#ef4444" }}>{fmtUSDsigned(t.pnl ?? 0)}</span></div>
             ))}
-          </div>
-        </div>
+          </div></div>
       )}
     </div>
   );
@@ -1221,10 +968,10 @@ function HistoryCalendar({ account, stats }:{ account:ChallengeAccount; stats:Co
 // ── Main page ────────────────────────────────────────────────────
 export default function ChallengePage() {
   const [username, setUsername] = useState<string>("");
-  const [accounts, setAccounts] = useState<ChallengeAccount[]>([]);
-  const [trades, setTrades]     = useState<Trade[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [mode, setMode]         = useState<"view" | "new" | "edit">("view");
+ const [accounts, setAccounts] = useState<ChallengeAccount[]>([]);
+ const [trades, setTrades] = useState<Trade[]>([]);
+ const [activeId, setActiveId] = useState<string | null>(null);
+ const [mode, setMode] = useState<"view" | "new" | "edit">("view");
   const [loaded, setLoaded]     = useState(false);
 
   useEffect(() => {
@@ -1269,12 +1016,11 @@ export default function ChallengePage() {
   }
 
   if (!loaded) {
-    return <div style={{ minHeight:"100vh", background:"#060d1a", display:"flex", alignItems:"center", justifyContent:"center", color:"#3a4a6a" }}>Loading…</div>;
+    return <div style={{ minHeight:"100vh", background:"#060d1a", display:"flex", alignItems:"center", justifyContent:"center", color:"#2a2a3a" }}>Loading…</div>;
   }
 
   return (
-    <div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,-apple-system,sans-serif" }}>
-      <style>{`
+    <div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,-apple-system,sans-serif" }}><style>{`
         @media (max-width: 767px) {
           .firm-grid { grid-template-columns: 1fr 1fr !important; }
           .rings-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
@@ -1282,46 +1028,31 @@ export default function ChallengePage() {
           .challenge-header { padding: 12px 16px !important; }
           .challenge-content { padding: 16px !important; }
         }
-      `}</style>
-      <div className="challenge-header" style={{ borderBottom:"1px solid #0d1628", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}>
-        <a href="/dashboard" style={{ fontSize:12, color:"#3a4a6a", textDecoration:"none" }}>← Dashboard</a>
-        <span style={{ fontSize:14, fontWeight:800, color:"#f0f4ff" }}>Challenge Tracker</span>
-        <div style={{ flex:1 }}/>
-        {accounts.length > 0 && mode === "view" && (
-          <button onClick={()=>setMode("new")} style={{ padding:"7px 14px", borderRadius:9, border:"1px solid #1a2540", background:"#0b1120", color:"#a78bfa", fontSize:11, fontWeight:800, cursor:"pointer" }}>+ Add Account</button>
+      `}</style><div className="challenge-header" style={{ borderBottom:"1px solid #111118", background:"rgba(6,13,26,0.95)", padding:"14px 28px", display:"flex", alignItems:"center", gap:16, position:"sticky", top:0, zIndex:10, backdropFilter:"blur(8px)" }}><a href="/dashboard" style={{ fontSize:12, color:"#2a2a3a", textDecoration:"none" }}>← Dashboard</a><span style={{ fontSize:14, fontWeight:800, color:"#ffffff" }}>Challenge Tracker</span><div style={{ flex:1 }}/>
+        {accounts.length >0 && mode === "view" && (<button onClick={()=>setMode("new")} style={{ padding:"7px 14px", borderRadius:9, border:"1px solid #2a2a3a", background:"#111118", color:"#a5b4fc", fontSize:11, fontWeight:800, cursor:"pointer" }}>+ Add Account</button>
         )}
-      </div>
+      </div><div className="challenge-content" style={{ maxWidth:1100, margin:"0 auto", padding:"28px 24px 12px" }}><div style={{ marginBottom:18 }}><h1 style={{ fontSize:28, fontWeight:900, color:"#ffffff", margin:0, letterSpacing:"-0.01em" }}>Challenge Tracker</h1><p style={{ fontSize:13, color:"#5a6a8a", margin:"6px 0 0" }}>2026 prop firm rules — each phase has its own ruleset.</p></div>
 
-      <div className="challenge-content" style={{ maxWidth:1100, margin:"0 auto", padding:"28px 24px 12px" }}>
-        <div style={{ marginBottom:18 }}>
-          <h1 style={{ fontSize:28, fontWeight:900, color:"#f0f4ff", margin:0, letterSpacing:"-0.01em" }}>🏆 Challenge Tracker</h1>
-          <p style={{ fontSize:13, color:"#5a6a8a", margin:"6px 0 0" }}>2026 prop firm rules — each phase has its own ruleset.</p>
-        </div>
-
-        {accounts.length > 1 && mode === "view" && (
-          <div style={{ display:"flex", gap:8, marginBottom:18, flexWrap:"wrap" }}>
+        {accounts.length >1 && mode === "view" && (<div style={{ display:"flex", gap:8, marginBottom:18, flexWrap:"wrap" }}>
             {accounts.map(a => {
               const f = FIRMS[a.firm];
               const isActive = a.id === activeId;
               return (
                 <button key={a.id} onClick={()=>setActiveId(a.id)} style={{
                   padding:"8px 14px", borderRadius:10,
-                  border:`1px solid ${isActive ? f.color : "#1a2540"}`,
-                  background: isActive ? f.accent : "#0b1120",
+                  border:`1px solid ${isActive ? f.color : "#2a2a3a"}`,
+                  background: isActive ? f.accent : "#111118",
                   color: isActive ? f.color : "#7a8aa8",
                   fontSize:11, fontWeight:800, cursor:"pointer",
                   display:"flex", alignItems:"center", gap:8,
-                }}>
-                  <span style={{ width:8, height:8, borderRadius:2, background:f.color }}/>
+                }}><span style={{ width:8, height:8, borderRadius:2, background:f.color }}/>
                   {a.name}
                 </button>
               );
             })}
           </div>
         )}
-      </div>
-
-      <div className="challenge-content" style={{ maxWidth:1100, margin:"0 auto", padding:"0 24px 48px" }}>
+      </div><div className="challenge-content" style={{ maxWidth:1100, margin:"0 auto", padding:"0 24px 48px" }}>
         {mode === "new" && (
           <SetupForm onSave={upsertAccount} onCancel={accounts.length > 0 ? ()=>setMode("view") : undefined}/>
         )}
@@ -1331,7 +1062,6 @@ export default function ChallengePage() {
         {mode === "view" && active && stats && (
           <Dashboard account={active} stats={stats} onEdit={()=>setMode("edit")} onDelete={()=>deleteAccount(active.id)}/>
         )}
-      </div>
-    </div>
+      </div></div>
   );
 }

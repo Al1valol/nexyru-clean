@@ -109,14 +109,13 @@ function getStrategy(t: Trade): string {
 
 // ───────────────────────── shared styles ─────────────────────────
 const card: React.CSSProperties = {
-  background: "#0b1120",
-  border: "1px solid #1a2540",
+  background: "#111118",
+  border: "1px solid #2a2a3a",
   borderRadius: 18,
   padding: 22,
 };
 
-const sectionTitle = (color: string, label: string) => (
-  <div
+const sectionTitle = (color: string, label: string) =>(<div
     style={{
       fontSize: 11,
       fontWeight: 800,
@@ -135,10 +134,10 @@ const th: React.CSSProperties = {
   textAlign: "left",
   fontSize: 10,
   fontWeight: 800,
-  color: "#64748b",
+  color: "#6b7280",
   textTransform: "uppercase",
   letterSpacing: "0.08em",
-  borderBottom: "1px solid #1a2540",
+  borderBottom: "1px solid #2a2a3a",
   cursor: "pointer",
   userSelect: "none",
   whiteSpace: "nowrap",
@@ -147,7 +146,7 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = {
   padding: "12px",
   fontSize: 13,
-  color: "#e2e8f0",
+  color: "#ffffff",
   borderBottom: "1px solid #111a30",
   whiteSpace: "nowrap",
 };
@@ -156,9 +155,9 @@ const td: React.CSSProperties = {
 export default function SetupsPage() {
   const [username, setUsername] = useState("guest");
   const [trades, setTrades] = useState<Trade[]>([]);
-  const [mounted, setMounted] = useState(false);
+ const [mounted, setMounted] = useState(false);
 
-  const [setupSort, setSetupSort] = useState<{ key: keyof SetupRow; dir: SortDir }>({
+ const [setupSort, setSetupSort] = useState<{ key: keyof SetupRow; dir: SortDir }>({
     key: "expectancy",
     dir: "desc",
   });
@@ -180,12 +179,12 @@ export default function SetupsPage() {
   // ── Derived: clean valid trades
   const validTrades = useMemo(
     () =>
-      trades.filter((t) => t && !isNaN(Number(t.pnl)) && t.pnl !== undefined && t.pnl !== null),
-    [trades]
-  );
+      trades.filter((t) =>t && !isNaN(Number(t.pnl)) && t.pnl !== undefined && t.pnl !== null),
+ [trades]
+ );
 
-  // ── Setup breakdown
-  const setupRows = useMemo<SetupRow[]>(() => {
+ // ── Setup breakdown
+ const setupRows = useMemo<SetupRow[]>(() => {
     const map = new Map<string, Trade[]>();
     for (const t of validTrades) {
       const name = getStrategy(t);
@@ -197,7 +196,7 @@ export default function SetupsPage() {
     for (const [name, ts] of map.entries()) {
       const pnls = ts.map((t) => Number(t.pnl) || 0);
       const wins = pnls.filter((p) => p > 0);
-      const losses = pnls.filter((p) => p < 0);
+      const losses = pnls.filter((p) =>p< 0);
       const totalPnl = pnls.reduce((s, p) => s + p, 0);
       const grossWin = wins.reduce((s, p) => s + p, 0);
       const grossLoss = Math.abs(losses.reduce((s, p) => s + p, 0));
@@ -268,7 +267,7 @@ export default function SetupsPage() {
       const shortWinRate = shorts.length ? (shortWins / shorts.length) * 100 : 0;
       let bestDirection: "long" | "short" | "even" = "even";
       if (longs.length && shorts.length) {
-        bestDirection = longWinRate > shortWinRate ? "long" : longWinRate < shortWinRate ? "short" : "even";
+        bestDirection = longWinRate >shortWinRate ? "long" : longWinRate< shortWinRate ? "short" : "even";
       } else if (longs.length) bestDirection = "long";
       else if (shorts.length) bestDirection = "short";
 
@@ -391,7 +390,7 @@ export default function SetupsPage() {
     // Best setup keep doing
     if (bestSetup && bestSetup.trades >= 3 && bestSetup.expectancy > 0) {
       out.push({
-        emoji: "✅",
+        emoji: "",
         title: "KEEP DOING",
         text: `Your ${bestSetup.name} setup has a ${bestSetup.winRate.toFixed(0)}% win rate over ${bestSetup.trades} trades. Trade it more.`,
         impact: "HIGH",
@@ -402,10 +401,10 @@ export default function SetupsPage() {
     // Worst setup avoid
     const worstSetup = [...setupRows]
       .filter((s) => s.trades >= 3)
-      .sort((a, b) => a.expectancy - b.expectancy)[0];
-    if (worstSetup && worstSetup.expectancy < 0 && worstSetup !== bestSetup) {
+      .sort((a, b) =>a.expectancy - b.expectancy)[0];
+ if (worstSetup && worstSetup.expectancy< 0 && worstSetup !== bestSetup) {
       out.push({
-        emoji: "🚫",
+        emoji: "",
         title: "AVOID",
         text: `You lose on ${worstSetup.name} ${(100 - worstSetup.winRate).toFixed(0)}% of the time. Stop trading it.`,
         impact: "HIGH",
@@ -427,8 +426,8 @@ export default function SetupsPage() {
     // Worst hour
     const worstHour = hourStats
       .filter((h) => h.count >= 3)
-      .sort((a, b) => a.winRate - b.winRate)[0];
-    if (worstHour && worstHour.winRate < 40) {
+      .sort((a, b) =>a.winRate - b.winRate)[0];
+ if (worstHour && worstHour.winRate< 40) {
       out.push({
         emoji: "⏰",
         title: "TIMING",
@@ -448,7 +447,7 @@ export default function SetupsPage() {
         const strongRate = diff > 0 ? ls.long.winRate : ls.short.winRate;
         const weakRate = diff > 0 ? ls.short.winRate : ls.long.winRate;
         out.push({
-          emoji: "📈",
+          emoji: "",
           title: "DIRECTION",
           text: `Focus on ${stronger} trades — you win ${strongRate.toFixed(0)}% vs ${weakRate.toFixed(0)}% on ${weaker}s.`,
           impact: "HIGH",
@@ -460,7 +459,7 @@ export default function SetupsPage() {
     // Size up best instrument
     if (bestInstrument && bestInstrument.trades >= 3 && bestInstrument.avgPnl > 0) {
       out.push({
-        emoji: "💰",
+        emoji: "",
         title: "SIZE UP",
         text: `${bestInstrument.symbol} has your highest avg PnL at ${fmtMoney(bestInstrument.avgPnl)}/trade — consider sizing up.`,
         impact: "MEDIUM",
@@ -471,10 +470,10 @@ export default function SetupsPage() {
     // Worst day
     const worstDow = [...dowStats]
       .filter((d) => d.count >= 2)
-      .sort((a, b) => a.avgPnl - b.avgPnl)[0];
-    if (worstDow && worstDow.avgPnl < 0) {
+      .sort((a, b) =>a.avgPnl - b.avgPnl)[0];
+ if (worstDow && worstDow.avgPnl< 0) {
       out.push({
-        emoji: "📉",
+        emoji: "",
         title: "WEEKDAY",
         text: `${worstDow.label} is your worst day — averaging ${fmtMoney(worstDow.avgPnl)} per trade.`,
         impact: "LOW",
@@ -509,47 +508,34 @@ export default function SetupsPage() {
     return <div style={{ minHeight: "100vh", background: "#040810" }} />;
   }
 
-  const hasTrades = validTrades.length > 0;
+  const hasTrades = validTrades.length >0;
 
-  return (
-    <div className="setups-main" style={{ minHeight: "100vh", background: "#040810", color: "#e2e8f0", padding: "32px 20px 80px" }}>
-      <style>{`
+ return (<div className="setups-main" style={{ minHeight: "100vh", background: "#040810", color: "#ffffff", padding: "32px 20px 80px" }}><style>{`
         @media (max-width: 767px) {
           .setups-main { padding: 16px 16px 80px !important; }
           .setups-hide-mobile { display: none !important; }
           .setups-table { min-width: 0 !important; }
           .setups-title { font-size: 24px !important; }
         }
-      `}</style>
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      `}</style><div style={{ maxWidth: 1200, margin: "0 auto" }}>
         {/* Top nav */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
-          <a
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}><a
             href="/dashboard"
             style={{
               fontSize: 12,
               fontWeight: 700,
-              color: "#64748b",
+              color: "#6b7280",
               textDecoration: "none",
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
             }}
-          >
-            ← Dashboard
-          </a>
-          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+          >← Dashboard</a><div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
             {hasTrades ? `${validTrades.length} trades analyzed` : "No trades yet"}
-          </div>
-        </div>
+          </div></div>
 
         {/* Header */}
-        <div style={{ marginBottom: 32 }}>
-          <div className="setups-title" style={{ fontSize: 32, fontWeight: 800, color: "#f1f5f9", letterSpacing: "-0.02em", marginBottom: 6 }}>
-            🎯 Best Setup Finder
-          </div>
-          <div style={{ fontSize: 14, color: "#64748b" }}>Discover what actually works in your trading</div>
-        </div>
+        <div style={{ marginBottom: 32 }}><div className="setups-title" style={{ fontSize: 32, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.02em", marginBottom: 6 }}>Best Setup Finder</div><div style={{ fontSize: 14, color: "#6b7280" }}>Discover what actually works in your trading</div></div>
 
         {!hasTrades && (
           <div
@@ -559,15 +545,7 @@ export default function SetupsPage() {
               padding: 48,
               marginBottom: 24,
             }}
-          >
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9", marginBottom: 6 }}>
-              No trades logged yet
-            </div>
-            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 18 }}>
-              Add trades to your journal to unlock your edge analysis.
-            </div>
-            <a
+          ><div style={{ fontSize: 40, marginBottom: 12 }}></div><div style={{ fontSize: 16, fontWeight: 700, color: "#ffffff", marginBottom: 6 }}>No trades logged yet</div><div style={{ fontSize: 13, color: "#6b7280", marginBottom: 18 }}>Add trades to your journal to unlock your edge analysis.</div><a
               href="/dashboard"
               style={{
                 display: "inline-block",
@@ -579,39 +557,33 @@ export default function SetupsPage() {
                 fontWeight: 800,
                 textDecoration: "none",
               }}
-            >
-              Go to Journal
-            </a>
-          </div>
+            >Go to Journal</a></div>
         )}
 
         {hasTrades && (
           <>
             {/* ════════ SECTION 1: EDGE SUMMARY ════════ */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}>
-              <HighlightCard
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 24 }}><HighlightCard
                 tag="BEST SETUP"
                 color="#22c55e"
-                emoji="🏆"
+                emoji=""
                 big={bestSetup ? `${bestSetup.winRate.toFixed(0)}%` : "—"}
                 line={
                   bestSetup
                     ? `Your #1 setup is ${bestSetup.name} with ${bestSetup.winRate.toFixed(0)}% win rate on ${bestSetup.trades} trades`
                     : "Add more trades to surface your edge"
                 }
-              />
-              <HighlightCard
+              /><HighlightCard
                 tag="BEST INSTRUMENT"
                 color="#22c55e"
-                emoji="💎"
+                emoji=""
                 big={bestInstrument ? fmtMoney0(bestInstrument.avgPnl) : "—"}
                 line={
                   bestInstrument
                     ? `Your most profitable instrument is ${bestInstrument.symbol} averaging ${fmtMoney(bestInstrument.avgPnl)} per trade`
                     : "Add trades to surface your best instrument"
                 }
-              />
-              <HighlightCard
+              /><HighlightCard
                 tag="BEST TIME"
                 color="#22c55e"
                 emoji="⏰"
@@ -621,36 +593,13 @@ export default function SetupsPage() {
                     ? `You perform best between ${fmtHour(bestHour.hour)} and ${fmtHour(bestHour.hour + 1)} with ${bestHour.winRate.toFixed(0)}% win rate`
                     : "Need more session data to find your best hour"
                 }
-              />
-            </div>
+              /></div>
 
             {/* ════════ SECTION 2: SETUP BREAKDOWN ════════ */}
-            <div style={{ ...card, marginBottom: 24, padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "22px 22px 14px" }}>
+            <div style={{ ...card, marginBottom: 24, padding: 0, overflow: "hidden" }}><div style={{ padding: "22px 22px 14px" }}>
                 {sectionTitle("#22c55e", "Setup Breakdown")}
-                <div style={{ fontSize: 12, color: "#64748b" }}>
-                  Sorted by expectancy — the math-weighted measure of how much each setup earns per trade.
-                </div>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table className="setups-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
-                  <thead>
-                    <tr>
-                      <th style={th} onClick={() => toggleSetupSort("name")}>Setup{setupArrow("name")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("trades")}>Trades{setupArrow("trades")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("winRate")}>Win Rate{setupArrow("winRate")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("avgPnl")}>Avg PnL{setupArrow("avgPnl")}</th>
-                      <th style={th} onClick={() => toggleSetupSort("totalPnl")}>Total PnL{setupArrow("totalPnl")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("profitFactor")}>Profit Factor{setupArrow("profitFactor")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("bestTrade")}>Best{setupArrow("bestTrade")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("worstTrade")}>Worst{setupArrow("worstTrade")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("expectancy")}>Expectancy{setupArrow("expectancy")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedSetups.map((r, i) => (
-                      <tr key={r.name} style={{ background: rowBg(r.winRate) }}>
-                        <td style={{ ...td, fontWeight: 700, color: "#f1f5f9" }}>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>Sorted by expectancy — the math-weighted measure of how much each setup earns per trade.</div></div><div style={{ overflowX: "auto" }}><table className="setups-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}><thead><tr><th style={th} onClick={() => toggleSetupSort("name")}>Setup{setupArrow("name")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("trades")}>Trades{setupArrow("trades")}</th><th style={th} onClick={() => toggleSetupSort("winRate")}>Win Rate{setupArrow("winRate")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("avgPnl")}>Avg PnL{setupArrow("avgPnl")}</th><th style={th} onClick={() => toggleSetupSort("totalPnl")}>Total PnL{setupArrow("totalPnl")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("profitFactor")}>Profit Factor{setupArrow("profitFactor")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("bestTrade")}>Best{setupArrow("bestTrade")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("worstTrade")}>Worst{setupArrow("worstTrade")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleSetupSort("expectancy")}>Expectancy{setupArrow("expectancy")}</th></tr></thead><tbody>
+                    {sortedSetups.map((r, i) =>(<tr key={r.name} style={{ background: rowBg(r.winRate) }}><td style={{ ...td, fontWeight: 700, color: "#ffffff" }}>
                           {i === 0 && setupSort.key === "expectancy" && setupSort.dir === "desc" && (
                             <span
                               style={{
@@ -664,72 +613,30 @@ export default function SetupsPage() {
                                 marginRight: 8,
                                 letterSpacing: "0.05em",
                               }}
-                            >
-                              🏆 BEST
-                            </span>
+                            >BEST</span>
                           )}
                           {r.name}
-                        </td>
-                        <td className="setups-hide-mobile" style={td}>{r.trades}</td>
-                        <td style={{ ...td, color: r.winRate > 60 ? "#22c55e" : r.winRate >= 40 ? "#eab308" : "#ef4444", fontWeight: 700 }}>
+                        </td><td className="setups-hide-mobile" style={td}>{r.trades}</td><td style={{ ...td, color: r.winRate > 60 ? "#22c55e" : r.winRate >= 40 ? "#eab308" : "#ef4444", fontWeight: 700 }}>
                           {r.winRate.toFixed(0)}%
-                        </td>
-                        <td className="setups-hide-mobile" style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td>
-                        <td style={{ ...td, color: r.totalPnl >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
+                        </td><td className="setups-hide-mobile" style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td><td style={{ ...td, color: r.totalPnl >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
                           {fmtMoney(r.totalPnl)}
-                        </td>
-                        <td className="setups-hide-mobile" style={td}>{isFinite(r.profitFactor) ? r.profitFactor.toFixed(2) : "∞"}</td>
-                        <td className="setups-hide-mobile" style={{ ...td, color: "#22c55e" }}>{fmtMoney(r.bestTrade)}</td>
-                        <td className="setups-hide-mobile" style={{ ...td, color: "#ef4444" }}>{fmtMoney(r.worstTrade)}</td>
-                        <td className="setups-hide-mobile" style={{ ...td, color: r.expectancy >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
+                        </td><td className="setups-hide-mobile" style={td}>{isFinite(r.profitFactor) ? r.profitFactor.toFixed(2) : "∞"}</td><td className="setups-hide-mobile" style={{ ...td, color: "#22c55e" }}>{fmtMoney(r.bestTrade)}</td><td className="setups-hide-mobile" style={{ ...td, color: "#ef4444" }}>{fmtMoney(r.worstTrade)}</td><td className="setups-hide-mobile" style={{ ...td, color: r.expectancy >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
                           {fmtMoney(r.expectancy)}
-                        </td>
-                      </tr>
+                        </td></tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </tbody></table></div></div>
 
             {/* ════════ SECTION 3: INSTRUMENT ANALYSIS ════════ */}
-            <div style={{ ...card, marginBottom: 24, padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "22px 22px 14px" }}>
-                {sectionTitle("#38bdf8", "Instrument Analysis")}
-                <div style={{ fontSize: 12, color: "#64748b" }}>
-                  Which symbols pay you — and which direction you trade them best.
-                </div>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table className="setups-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}>
-                  <thead>
-                    <tr>
-                      <th style={th} onClick={() => toggleInstSort("symbol")}>Symbol{instArrow("symbol")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("trades")}>Trades{instArrow("trades")}</th>
-                      <th style={th} onClick={() => toggleInstSort("winRate")}>Win Rate{instArrow("winRate")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("avgPnl")}>Avg PnL{instArrow("avgPnl")}</th>
-                      <th style={th} onClick={() => toggleInstSort("totalPnl")}>Total PnL{instArrow("totalPnl")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("longWinRate")}>Long Win%{instArrow("longWinRate")}</th>
-                      <th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("shortWinRate")}>Short Win%{instArrow("shortWinRate")}</th>
-                      <th className="setups-hide-mobile" style={th}>Best Dir</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedInstruments.map((r) => (
-                      <tr key={r.symbol} style={{ background: rowBg(r.winRate) }}>
-                        <td style={{ ...td, fontWeight: 700, color: "#f1f5f9" }}>{r.symbol}</td>
-                        <td className="setups-hide-mobile" style={td}>{r.trades}</td>
-                        <td style={{ ...td, color: r.winRate > 60 ? "#22c55e" : r.winRate >= 40 ? "#eab308" : "#ef4444", fontWeight: 700 }}>
+            <div style={{ ...card, marginBottom: 24, padding: 0, overflow: "hidden" }}><div style={{ padding: "22px 22px 14px" }}>
+                {sectionTitle("#6366f1", "Instrument Analysis")}
+                <div style={{ fontSize: 12, color: "#6b7280" }}>Which symbols pay you — and which direction you trade them best.</div></div><div style={{ overflowX: "auto" }}><table className="setups-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}><thead><tr><th style={th} onClick={() => toggleInstSort("symbol")}>Symbol{instArrow("symbol")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("trades")}>Trades{instArrow("trades")}</th><th style={th} onClick={() => toggleInstSort("winRate")}>Win Rate{instArrow("winRate")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("avgPnl")}>Avg PnL{instArrow("avgPnl")}</th><th style={th} onClick={() => toggleInstSort("totalPnl")}>Total PnL{instArrow("totalPnl")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("longWinRate")}>Long Win%{instArrow("longWinRate")}</th><th className="setups-hide-mobile" style={th} onClick={() => toggleInstSort("shortWinRate")}>Short Win%{instArrow("shortWinRate")}</th><th className="setups-hide-mobile" style={th}>Best Dir</th></tr></thead><tbody>
+                    {sortedInstruments.map((r) =>(<tr key={r.symbol} style={{ background: rowBg(r.winRate) }}><td style={{ ...td, fontWeight: 700, color: "#ffffff" }}>{r.symbol}</td><td className="setups-hide-mobile" style={td}>{r.trades}</td><td style={{ ...td, color: r.winRate > 60 ? "#22c55e" : r.winRate >= 40 ? "#eab308" : "#ef4444", fontWeight: 700 }}>
                           {r.winRate.toFixed(0)}%
-                        </td>
-                        <td className="setups-hide-mobile" style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td>
-                        <td style={{ ...td, color: r.totalPnl >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>{fmtMoney(r.totalPnl)}</td>
-                        <td className="setups-hide-mobile" style={td}>
+                        </td><td className="setups-hide-mobile" style={{ ...td, color: r.avgPnl >= 0 ? "#22c55e" : "#ef4444" }}>{fmtMoney(r.avgPnl)}</td><td style={{ ...td, color: r.totalPnl >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>{fmtMoney(r.totalPnl)}</td><td className="setups-hide-mobile" style={td}>
                           {r.longCount > 0 ? `${r.longWinRate.toFixed(0)}% (${r.longCount})` : "—"}
-                        </td>
-                        <td className="setups-hide-mobile" style={td}>
+                        </td><td className="setups-hide-mobile" style={td}>
                           {r.shortCount > 0 ? `${r.shortWinRate.toFixed(0)}% (${r.shortCount})` : "—"}
-                        </td>
-                        <td className="setups-hide-mobile" style={td}>
+                        </td><td className="setups-hide-mobile" style={td}>
                           {r.bestDirection === "long" && (
                             <span style={{ color: "#22c55e", fontWeight: 800, fontSize: 11 }}>▲ LONG</span>
                           )}
@@ -737,39 +644,32 @@ export default function SetupsPage() {
                             <span style={{ color: "#ef4444", fontWeight: 800, fontSize: 11 }}>▼ SHORT</span>
                           )}
                           {r.bestDirection === "even" && (
-                            <span style={{ color: "#64748b", fontWeight: 700, fontSize: 11 }}>— EVEN</span>
+                            <span style={{ color: "#6b7280", fontWeight: 700, fontSize: 11 }}>— EVEN</span>
                           )}
-                        </td>
-                      </tr>
+                        </td></tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </tbody></table></div></div>
 
             {/* ════════ SECTION 4: TIME ANALYSIS ════════ */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 14, marginBottom: 24 }}>
               {/* Hour of Day */}
               <div style={card}>
-                {sectionTitle("#a78bfa", "Win Rate by Hour")}
+                {sectionTitle("#a5b4fc", "Win Rate by Hour")}
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 180, padding: "8px 0 16px" }}>
                   {hourStats.map((h) => {
                     const isBest = bestHour && h.hour === bestHour.hour;
                     const hasData = h.count > 0;
                     const heightPct = hasData ? Math.max(4, h.winRate) : 4;
                     const color = !hasData
-                      ? "#1a2540"
+                      ? "#2a2a3a"
                       : h.winRate > 60
                         ? "#22c55e"
                         : h.winRate >= 40
-                          ? "#eab308"
-                          : "#ef4444";
-                    return (
-                      <div key={h.hour} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <div style={{ fontSize: 9, color: "#64748b", fontWeight: 700, height: 12 }}>
+ ? "#eab308"
+ : "#ef4444";
+ return (<div key={h.hour} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}><div style={{ fontSize: 9, color: "#6b7280", fontWeight: 700, height: 12 }}>
                           {hasData ? `${h.winRate.toFixed(0)}%` : ""}
-                        </div>
-                        <div
+                        </div><div
                           style={{
                             width: "100%",
                             height: `${heightPct}%`,
@@ -780,62 +680,47 @@ export default function SetupsPage() {
                           }}
                         >
                           {isBest && (
-                            <div style={{ position: "absolute", top: -18, left: "50%", transform: "translateX(-50%)", fontSize: 14 }}>
-                              ⭐
-                            </div>
+                            <div style={{ position: "absolute", top: -18, left: "50%", transform: "translateX(-50%)", fontSize: 14 }}>⭐</div>
                           )}
-                        </div>
-                        <div style={{ fontSize: 9, color: "#64748b", fontWeight: 600 }}>{fmtHour(h.hour)}</div>
-                      </div>
+                        </div><div style={{ fontSize: 9, color: "#6b7280", fontWeight: 600 }}>{fmtHour(h.hour)}</div></div>
                     );
                   })}
-                </div>
-                <div style={{ fontSize: 11, color: "#475569", textAlign: "center" }}>
+                </div><div style={{ fontSize: 11, color: "#6b7280", textAlign: "center" }}>
                   {bestHour ? `⭐ Best hour: ${fmtHour(bestHour.hour)} — ${bestHour.winRate.toFixed(0)}% win rate` : "Add more timestamped trades"}
-                </div>
-              </div>
+                </div></div>
 
               {/* Day of Week */}
               <div style={card}>
-                {sectionTitle("#a78bfa", "Avg PnL by Day")}
+                {sectionTitle("#a5b4fc", "Avg PnL by Day")}
                 {(() => {
-                  const maxAbs = Math.max(1, ...dowStats.map((d) => Math.abs(d.avgPnl)));
-                  return (
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 180, padding: "8px 0 16px" }}>
+                  const maxAbs = Math.max(1, ...dowStats.map((d) =>Math.abs(d.avgPnl)));
+ return (<div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 180, padding: "8px 0 16px" }}>
                       {dowStats.map((d) => {
                         const hasData = d.count > 0;
                         const heightPct = hasData ? Math.max(4, (Math.abs(d.avgPnl) / maxAbs) * 90) : 4;
                         const positive = d.avgPnl >= 0;
-                        return (
-                          <div key={d.day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                            <div style={{ fontSize: 10, color: positive ? "#22c55e" : "#ef4444", fontWeight: 700, height: 14 }}>
+ return (<div key={d.day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}><div style={{ fontSize: 10, color: positive ? "#22c55e" : "#ef4444", fontWeight: 700, height: 14 }}>
                               {hasData ? fmtMoney0(d.avgPnl) : ""}
-                            </div>
-                            <div
+                            </div><div
                               style={{
                                 width: "100%",
                                 height: `${heightPct}%`,
-                                background: !hasData ? "#1a2540" : positive ? "#22c55e" : "#ef4444",
+                                background: !hasData ? "#2a2a3a" : positive ? "#22c55e" : "#ef4444",
                                 borderRadius: "4px 4px 0 0",
                                 opacity: hasData ? 1 : 0.4,
                               }}
-                            />
-                            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>{d.label}</div>
-                            <div style={{ fontSize: 9, color: "#475569" }}>{d.count} trade{d.count === 1 ? "" : "s"}</div>
-                          </div>
+                            /><div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 700 }}>{d.label}</div><div style={{ fontSize: 9, color: "#6b7280" }}>{d.count} trade{d.count === 1 ? "" : "s"}</div></div>
                         );
                       })}
                     </div>
                   );
                 })()}
-              </div>
-            </div>
+              </div></div>
 
             {/* ════════ SECTION 5: LONG vs SHORT ════════ */}
             <div style={{ ...card, marginBottom: 24 }}>
               {sectionTitle("#ec4899", "Long vs Short")}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
-                <DirectionCard
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}><DirectionCard
                   label="LONG"
                   arrow="▲"
                   color="#22c55e"
@@ -844,8 +729,7 @@ export default function SetupsPage() {
                   avgPnl={longShortStats.long.avgPnl}
                   totalPnl={longShortStats.long.totalPnl}
                   stronger={longShortStats.long.winRate > longShortStats.short.winRate}
-                />
-                <DirectionCard
+                /><DirectionCard
                   label="SHORT"
                   arrow="▼"
                   color="#ef4444"
@@ -854,18 +738,16 @@ export default function SetupsPage() {
                   avgPnl={longShortStats.short.avgPnl}
                   totalPnl={longShortStats.short.totalPnl}
                   stronger={longShortStats.short.winRate > longShortStats.long.winRate}
-                />
-              </div>
-              {longShortStats.long.count > 0 && longShortStats.short.count > 0 && (
-                <div
+                /></div>
+              {longShortStats.long.count > 0 && longShortStats.short.count >0 && (<div
                   style={{
                     marginTop: 14,
                     padding: "12px 14px",
-                    background: "#0d1120",
-                    border: "1px solid #1a2035",
+                    background: "#111118",
+                    border: "1px solid #2a2a3a",
                     borderRadius: 12,
                     fontSize: 13,
-                    color: "#e2e8f0",
+                    color: "#ffffff",
                     textAlign: "center",
                   }}
                 >
@@ -873,11 +755,10 @@ export default function SetupsPage() {
                     const diff = longShortStats.long.winRate - longShortStats.short.winRate;
                     if (Math.abs(diff) < 1)
                       return "Your long and short performance is essentially even.";
-                    const stronger = diff > 0 ? "LONG" : "SHORT";
-                    return (
-                      <>
+                    const stronger = diff >0 ? "LONG" : "SHORT";
+ return (<>
                         You are{" "}
-                        <span style={{ color: "#f1f5f9", fontWeight: 800 }}>
+                        <span style={{ color: "#ffffff", fontWeight: 800 }}>
                           {Math.abs(diff).toFixed(0)}%
                         </span>{" "}
                         better at <span style={{ color: diff > 0 ? "#22c55e" : "#ef4444", fontWeight: 800 }}>{stronger}</span>{" "}
@@ -893,21 +774,14 @@ export default function SetupsPage() {
             <div style={card}>
               {sectionTitle("#f59e0b", "Recommendations")}
               {recommendations.length === 0 ? (
-                <div style={{ fontSize: 13, color: "#64748b", padding: "20px 0" }}>
-                  Log more trades to unlock personalized recommendations.
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {recommendations.map((rec, i) => (
-                    <RecCard key={i} rec={rec} />
+                <div style={{ fontSize: 13, color: "#6b7280", padding: "20px 0" }}>Log more trades to unlock personalized recommendations.</div>) : (<div style={{ display: "grid", gap: 10 }}>
+                  {recommendations.map((rec, i) =>(<RecCard key={i} rec={rec} />
                   ))}
                 </div>
               )}
-            </div>
-          </>
+            </div></>
         )}
-      </div>
-    </div>
+      </div></div>
   );
 }
 
@@ -928,21 +802,17 @@ function HighlightCard({
   return (
     <div
       style={{
-        background: "#0b1120",
-        border: "1px solid #1a2540",
+        background: "#111118",
+        border: "1px solid #2a2a3a",
         borderLeft: `4px solid ${color}`,
         borderRadius: 14,
         padding: "20px 22px",
       }}
-    >
-      <div style={{ fontSize: 10, fontWeight: 800, color, letterSpacing: "0.1em", marginBottom: 12 }}>
+    ><div style={{ fontSize: 10, fontWeight: 800, color, letterSpacing: "0.1em", marginBottom: 12 }}>
         {emoji} {tag}
-      </div>
-      <div style={{ fontSize: 36, fontWeight: 800, color: "#f1f5f9", letterSpacing: "-0.02em", marginBottom: 8, lineHeight: 1 }}>
+      </div><div style={{ fontSize: 36, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.02em", marginBottom: 8, lineHeight: 1 }}>
         {big}
-      </div>
-      <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{line}</div>
-    </div>
+      </div><div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.5 }}>{line}</div></div>
   );
 }
 
@@ -968,15 +838,14 @@ function DirectionCard({
   return (
     <div
       style={{
-        background: "#0d1120",
-        border: `1px solid ${stronger ? color : "#1a2035"}`,
+        background: "#111118",
+        border: `1px solid ${stronger ? color : "#2a2a3a"}`,
         borderRadius: 14,
         padding: 18,
         position: "relative",
       }}
     >
-      {stronger && count > 0 && (
-        <div
+      {stronger && count >0 && (<div
           style={{
             position: "absolute",
             top: 12,
@@ -989,31 +858,19 @@ function DirectionCard({
             borderRadius: 6,
             letterSpacing: "0.05em",
           }}
-        >
-          STRONGER
-        </div>
+        >STRONGER</div>
       )}
       <div style={{ fontSize: 18, fontWeight: 800, color, marginBottom: 14 }}>
         {arrow} {label}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Stat label="Trades" value={count.toString()} />
-        <Stat label="Win Rate" value={`${winRate.toFixed(0)}%`} color={winRate > 50 ? "#22c55e" : "#ef4444"} />
-        <Stat label="Avg PnL" value={fmtMoney(avgPnl)} color={avgPnl >= 0 ? "#22c55e" : "#ef4444"} />
-        <Stat label="Total PnL" value={fmtMoney(totalPnl)} color={totalPnl >= 0 ? "#22c55e" : "#ef4444"} />
-      </div>
-    </div>
+      </div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}><Stat label="Trades" value={count.toString()} /><Stat label="Win Rate" value={`${winRate.toFixed(0)}%`} color={winRate > 50 ? "#22c55e" : "#ef4444"} /><Stat label="Avg PnL" value={fmtMoney(avgPnl)} color={avgPnl >= 0 ? "#22c55e" : "#ef4444"} /><Stat label="Total PnL" value={fmtMoney(totalPnl)} color={totalPnl >= 0 ? "#22c55e" : "#ef4444"} /></div></div>
   );
 }
 
 function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div>
-      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+    <div><div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
         {label}
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 800, color: color || "#f1f5f9" }}>{value}</div>
-    </div>
+      </div><div style={{ fontSize: 16, fontWeight: 800, color: color || "#ffffff" }}>{value}</div></div>
   );
 }
 
@@ -1026,13 +883,13 @@ function RecCard({ rec }: { rec: { emoji: string; title: string; text: string; i
         ? "rgba(234,179,8,0.15)"
         : "rgba(100,116,139,0.15)";
   const impactColor =
-    rec.impact === "HIGH" ? "#ef4444" : rec.impact === "MEDIUM" ? "#eab308" : "#94a3b8";
+    rec.impact === "HIGH" ? "#ef4444" : rec.impact === "MEDIUM" ? "#eab308" : "#9ca3af";
 
   return (
     <div
       style={{
-        background: "#0d1120",
-        border: "1px solid #1a2035",
+        background: "#111118",
+        border: "1px solid #2a2a3a",
         borderLeft: `4px solid ${toneColor}`,
         borderRadius: 12,
         padding: "14px 16px",
@@ -1040,15 +897,9 @@ function RecCard({ rec }: { rec: { emoji: string; title: string; text: string; i
         alignItems: "center",
         gap: 14,
       }}
-    >
-      <div style={{ fontSize: 22 }}>{rec.emoji}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: toneColor, letterSpacing: "0.1em", marginBottom: 4 }}>
+    ><div style={{ fontSize: 22 }}>{rec.emoji}</div><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 10, fontWeight: 800, color: toneColor, letterSpacing: "0.1em", marginBottom: 4 }}>
           {rec.title}
-        </div>
-        <div style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.5 }}>{rec.text}</div>
-      </div>
-      <div
+        </div><div style={{ fontSize: 13, color: "#ffffff", lineHeight: 1.5 }}>{rec.text}</div></div><div
         style={{
           background: impactBg,
           color: impactColor,
@@ -1061,7 +912,6 @@ function RecCard({ rec }: { rec: { emoji: string; title: string; text: string; i
         }}
       >
         {rec.impact}
-      </div>
-    </div>
+      </div></div>
   );
 }

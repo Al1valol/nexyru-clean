@@ -114,10 +114,10 @@ const SCORE_TO_GRADE = (s: number): Grade => {
 };
 const GRADE_COLOR: Record<Grade, string> = {
   "A+": "#22d3a5",
-  A: "#34d399",
+  A: "#10b981",
   B: "#a3e635",
-  C: "#fbbf24",
-  D: "#fb923c",
+  C: "#f59e0b",
+  D: "#f59e0b",
   F: "#f43f5e",
 };
 
@@ -148,9 +148,9 @@ type Interval = "1m" | "5m" | "15m" | "1h";
 
 // Symbols we recognize as crypto (routed to Binance). Values unused — Set semantics.
 const CRYPTO_BASES = new Set<string>([
-  "BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "MATIC", "DOT", "LINK",
-  "UNI", "ATOM", "LTC", "BCH", "NEAR", "SHIB", "TRX", "XLM", "FIL", "ALGO",
-  "APT", "ARB", "OP", "INJ", "TIA", "SUI", "PEPE", "WIF", "BONK", "HYPE",
+ "BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "AVAX", "MATIC", "DOT", "LINK",
+ "UNI", "ATOM", "LTC", "BCH", "NEAR", "SHIB", "TRX", "XLM", "FIL", "ALGO",
+ "APT", "ARB", "OP", "INJ", "TIA", "SUI", "PEPE", "WIF", "BONK", "HYPE",
 ]);
 
 // Kraken uses XBT for Bitcoin and combined USD pairs without separators.
@@ -293,8 +293,8 @@ async function fetchCandlesFromApi(
 
 function useTradeChart(trade: Trade | undefined, interval: Interval) {
   const [candles, setCandles] = useState<ChartRow[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+ const [loading, setLoading] = useState(false);
+ const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!trade) {
@@ -371,8 +371,8 @@ function topTheme(reviews: Review[]): string | null {
       counts[w] = (counts[w] || 0) + 1;
     }
   }
-  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  if (!sorted.length || sorted[0][1] < 2) {
+  const sorted = Object.entries(counts).sort((a, b) =>b[1] - a[1]);
+ if (!sorted.length || sorted[0][1]< 2) {
     const withText = reviews.filter((r) => r.differently?.trim());
     return withText.length ? withText[withText.length - 1].differently.trim() : null;
   }
@@ -383,24 +383,24 @@ function topTheme(reviews: Review[]): string | null {
 
 export default function ReplayPage() {
   const [username, setUsername] = useState<string | null>(null);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [idx, setIdx] = useState(0);
-  const [reviews, setReviews] = useState<Record<string, Review>>({});
+ const [trades, setTrades] = useState<Trade[]>([]);
+ const [loading, setLoading] = useState(true);
+ const [idx, setIdx] = useState(0);
+ const [reviews, setReviews] = useState<Record<string, Review>>({});
   const [shot, setShot] = useState<string | null>(null);
-  const [shotLoading, setShotLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const [slideDir, setSlideDir] = useState<"next" | "prev">("next");
-  const [slideKey, setSlideKey] = useState(0);
-  const [interval, setInterval] = useState<Interval>("5m");
-  const [zoomOpen, setZoomOpen] = useState(false);
+ const [shotLoading, setShotLoading] = useState(false);
+ const [done, setDone] = useState(false);
+ const [slideDir, setSlideDir] = useState<"next" | "prev">("next");
+ const [slideKey, setSlideKey] = useState(0);
+ const [interval, setInterval] = useState<Interval>("5m");
+ const [zoomOpen, setZoomOpen] = useState(false);
 
-  // draft form state
-  const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
-  const [followedRules, setFollowedRules] = useState<Triad | null>(null);
-  const [confidence, setConfidence] = useState(5);
-  const [differently, setDifferently] = useState("");
-  const [grade, setGrade] = useState<Grade | null>(null);
+ // draft form state
+ const [matchedSetup, setMatchedSetup] = useState<Triad | null>(null);
+ const [followedRules, setFollowedRules] = useState<Triad | null>(null);
+ const [confidence, setConfidence] = useState(5);
+ const [differently, setDifferently] = useState("");
+ const [grade, setGrade] = useState<Grade | null>(null);
 
   // ── Initial load ──
   useEffect(() => {
@@ -468,12 +468,12 @@ export default function ReplayPage() {
 
   const total = trades.length;
   const reviewedCount = useMemo(
-    () => trades.filter((t) => reviews[t.id]).length,
-    [trades, reviews]
-  );
-  const progressPct = total ? Math.round(((idx + (done ? 1 : 0)) / total) * 100) : 0;
+    () => trades.filter((t) =>reviews[t.id]).length,
+ [trades, reviews]
+ );
+ const progressPct = total ? Math.round(((idx + (done ? 1 : 0)) / total) * 100) : 0;
 
-  const sessionGrade = useMemo<Grade | null>(() => {
+ const sessionGrade = useMemo<Grade | null>(() => {
     const r = Object.values(reviews).filter((x) => x && x.grade);
     if (!r.length) return null;
     const avg = r.reduce((s, x) => s + (GRADE_SCORE[x.grade!] ?? 0), 0) / r.length;
@@ -555,8 +555,8 @@ export default function ReplayPage() {
     let worst: Trade | null = null;
     for (const t of reviewedTrades) {
       const p = Number(t.pnl ?? 0);
-      if (best === null || p > Number(best.pnl ?? 0)) best = t;
-      if (worst === null || p < Number(worst.pnl ?? 0)) worst = t;
+      if (best === null || p >Number(best.pnl ?? 0)) best = t;
+ if (worst === null || p< Number(worst.pnl ?? 0)) worst = t;
     }
 
     return {
@@ -575,110 +575,42 @@ export default function ReplayPage() {
 
   if (loading) {
     return (
-      <div style={shellStyle}>
-        <div style={{ color: "#3a4a6a", fontSize: 13 }}>Loading replay…</div>
-      </div>
+      <div style={shellStyle}><div style={{ color: "#2a2a3a", fontSize: 13 }}>Loading replay…</div></div>
     );
   }
 
   if (!username) {
     return (
-      <div style={shellStyle}>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#f0f4ff", marginBottom: 8 }}>
-            Sign in required
-          </div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 18 }}>
-            Trade Replay loads your local trade history.
-          </div>
-          <a href="/login" style={primaryBtnStyle}>Go to login</a>
-        </div>
-      </div>
+      <div style={shellStyle}><div style={cardStyle}><div style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", marginBottom: 8 }}>Sign in required</div><div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 18 }}>Trade Replay loads your local trade history.</div><a href="/login" style={primaryBtnStyle}>Go to login</a></div></div>
     );
   }
 
   if (!trades.length) {
     return (
-      <div style={shellStyle}>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>📽️</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#f0f4ff", marginBottom: 8 }}>
-            No trades to replay
-          </div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 18 }}>
-            Log some trades in the dashboard, then come back to review them.
-          </div>
-          <a href="/dashboard" style={primaryBtnStyle}>Open Dashboard</a>
-        </div>
-      </div>
+      <div style={shellStyle}><div style={cardStyle}><div style={{ fontSize: 28, marginBottom: 8 }}>️</div><div style={{ fontSize: 18, fontWeight: 800, color: "#ffffff", marginBottom: 8 }}>No trades to replay</div><div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 18 }}>Log some trades in the dashboard, then come back to review them.</div><a href="/dashboard" style={primaryBtnStyle}>Open Dashboard</a></div></div>
     );
   }
 
   if (done || idx >= total) {
     return (
-      <div style={shellStyle}>
-        <div style={{ width: "100%", maxWidth: 760 }}>
-          <ProgressBar idx={total} total={total} pct={100} sessionGrade={sessionGrade} done />
-
-          <div style={{ ...cardStyle, marginTop: 18, padding: "36px 28px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#22d3a5", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>
-              Replay Complete
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: "#f0f4ff", marginBottom: 28, letterSpacing: "-0.01em" }}>
-              Session summary
-            </div>
+      <div style={shellStyle}><div style={{ width: "100%", maxWidth: 760 }}><ProgressBar idx={total} total={total} pct={100} sessionGrade={sessionGrade} done /><div style={{ ...cardStyle, marginTop: 18, padding: "36px 28px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#22d3a5", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>Replay Complete</div><div style={{ fontSize: 28, fontWeight: 900, color: "#ffffff", marginBottom: 28, letterSpacing: "-0.01em" }}>Session summary</div>
 
             {summary ? (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 }}>
-                  <SummaryStat label="Session Grade" value={summary.avgGrade} color={GRADE_COLOR[summary.avgGrade]} big />
-                  <SummaryStat label="Setup Match" value={`${summary.matchedPct}%`} color={pctColor(summary.matchedPct)} />
-                  <SummaryStat label="Rules Followed" value={`${summary.ruledPct}%`} color={pctColor(summary.ruledPct)} />
-                  <SummaryStat label="Avg Confidence" value={summary.avgConf} color="#38bdf8" />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14, marginBottom: 22 }}>
-                  <BestWorstCard label="Best Trade" trade={summary.best} positive />
-                  <BestWorstCard label="Worst Trade" trade={summary.worst} positive={false} />
-                </div>
-
-                <div style={{ background: "#0b1120", border: "1px solid #1a2540", borderRadius: 14, padding: "18px 20px", marginBottom: 22 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
-                    Top Lesson
-                  </div>
-                  <div style={{ fontSize: 14, color: summary.lesson ? "#f0f4ff" : "#4a5a7a", lineHeight: 1.5, fontStyle: summary.lesson ? "normal" : "italic" }}>
+              <><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 }}><SummaryStat label="Session Grade" value={summary.avgGrade} color={GRADE_COLOR[summary.avgGrade]} big /><SummaryStat label="Setup Match" value={`${summary.matchedPct}%`} color={pctColor(summary.matchedPct)} /><SummaryStat label="Rules Followed" value={`${summary.ruledPct}%`} color={pctColor(summary.ruledPct)} /><SummaryStat label="Avg Confidence" value={summary.avgConf} color="#6366f1" /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14, marginBottom: 22 }}><BestWorstCard label="Best Trade" trade={summary.best} positive /><BestWorstCard label="Worst Trade" trade={summary.worst} positive={false} /></div><div style={{ background: "#111118", border: "1px solid #2a2a3a", borderRadius: 14, padding: "18px 20px", marginBottom: 22 }}><div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Top Lesson</div><div style={{ fontSize: 14, color: summary.lesson ? "#ffffff" : "#4a5a7a", lineHeight: 1.5, fontStyle: summary.lesson ? "normal" : "italic" }}>
                     {summary.lesson || "Not enough notes yet — add reflections to surface patterns."}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button onClick={handleRestart} style={{ ...primaryBtnStyle, flex: "1 1 200px" }}>
-                    Start New Session
-                  </button>
-                  <a href="/dashboard" style={{ ...secondaryBtnStyle, flex: "1 1 140px", textAlign: "center" }}>
-                    Back to Dashboard
-                  </a>
-                </div>
-              </>
-            ) : (
-              <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                  </div></div><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button onClick={handleRestart} style={{ ...primaryBtnStyle, flex: "1 1 200px" }}>Start New Session</button><a href="/dashboard" style={{ ...secondaryBtnStyle, flex: "1 1 140px", textAlign: "center" }}>Back to Dashboard</a></div></>) : (<div style={{ fontSize: 13, color: "#9ca3af" }}>
                 You skipped through without grading any trades.{" "}
-                <button onClick={handleRestart} style={{ background: "transparent", border: "none", color: "#38bdf8", fontWeight: 700, cursor: "pointer", padding: 0 }}>
-                  Start over
-                </button>
-              </div>
+                <button onClick={handleRestart} style={{ background: "transparent", border: "none", color: "#6366f1", fontWeight: 700, cursor: "pointer", padding: 0 }}>Start over</button></div>
             )}
-          </div>
-        </div>
-      </div>
+          </div></div></div>
     );
   }
 
   const t = current;
   const pnl = Number(t.pnl ?? 0);
-  const isWin = pnl > 0;
-  const isLoss = pnl < 0;
-  const pnlColor = isWin ? "#22d3a5" : isLoss ? "#f43f5e" : "#94a3b8";
+  const isWin = pnl >0;
+ const isLoss = pnl< 0;
+  const pnlColor = isWin ? "#22d3a5" : isLoss ? "#f43f5e" : "#9ca3af";
   const sideUpper = (t.type || "").toString().toUpperCase();
   const isLong = sideUpper === "LONG";
   const sym = (t.pair || t.symbol || "").toString();
@@ -687,19 +619,14 @@ export default function ReplayPage() {
   const contracts = Number(t.size ?? 0);
 
   return (
-    <div className="replay-shell" style={shellStyle}>
-      <style>{slideAnimCSS}</style>
-      <style>{`
+    <div className="replay-shell" style={shellStyle}><style>{slideAnimCSS}</style><style>{`
         @media (max-width: 767px) {
           .replay-shell { padding: 16px 12px 90px !important; }
           .replay-chart-header { grid-template-columns: 1fr !important; gap: 8px !important; }
           .replay-chart-header-right { text-align: left !important; }
           .replay-grade-grid { grid-template-columns: repeat(3, 1fr) !important; }
         }
-      `}</style>
-
-      <div style={{ width: "100%", maxWidth: 760 }}>
-        <ProgressBar idx={idx} total={total} pct={Math.round(((idx) / total) * 100)} sessionGrade={sessionGrade} />
+      `}</style><div style={{ width: "100%", maxWidth: 760 }}><ProgressBar idx={idx} total={total} pct={Math.round(((idx) / total) * 100)} sessionGrade={sessionGrade} />
 
         {/* Sliding trade panel */}
         <div
@@ -719,17 +646,15 @@ export default function ReplayPage() {
             gap: 14,
           }}>
             {/* Left: symbol, side, interval pills, screenshot */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><span style={{
                 fontSize: 15,
                 fontWeight: 900,
-                color: "#f0f4ff",
+                color: "#ffffff",
                 letterSpacing: "-0.01em",
                 fontFamily: "ui-monospace, SFMono-Regular, monospace",
               }}>
                 {sym || "—"}
-              </span>
-              <span style={{
+              </span><span style={{
                 padding: "3px 8px",
                 borderRadius: 6,
                 background: isLong ? "rgba(34,211,165,0.18)" : "rgba(244,63,94,0.18)",
@@ -741,19 +666,15 @@ export default function ReplayPage() {
                 fontFamily: "ui-monospace, SFMono-Regular, monospace",
               }}>
                 {isLong ? "▲" : "▼"} {sideUpper || "—"}
-              </span>
-              <div style={{ width: 1, height: 18, background: "#1a2540", margin: "0 2px" }} />
-              <div style={{ display: "flex", gap: 3 }}>
-                {(["1m", "5m", "15m", "1h"] as Interval[]).map((iv) => (
-                  <IntervalBtn
+              </span><div style={{ width: 1, height: 18, background: "#2a2a3a", margin: "0 2px" }} /><div style={{ display: "flex", gap: 3 }}>
+                {(["1m", "5m", "15m", "1h"] as Interval[]).map((iv) =>(<IntervalBtn
                     key={iv}
                     label={iv}
                     active={interval === iv}
                     onClick={() => setInterval(iv)}
                   />
                 ))}
-              </div>
-            </div>
+              </div></div>
 
             {/* Center: live OHLC on hover (or capture-time note when no candles) */}
             <div style={{
@@ -762,10 +683,7 @@ export default function ReplayPage() {
               alignItems: "center",
               minWidth: 0,
             }}>
-              {candles && candles.length > 0 ? (
-                <OhlcRow candle={hoverCandle ?? candles[candles.length - 1]} />
-              ) : (
-                <div style={{
+              {candles && candles.length >0 ? (<OhlcRow candle={hoverCandle ?? candles[candles.length - 1]} />) : (<div style={{
                   fontSize: 10,
                   fontWeight: 700,
                   color: "#4a5a7a",
@@ -775,23 +693,20 @@ export default function ReplayPage() {
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                }}>
-                  📸 Chart captured at time of trade
-                </div>
+                }}>Chart captured at time of trade</div>
               )}
             </div>
 
             {/* Right: trade datetime */}
             <span className="replay-chart-header-right" style={{
               fontSize: 11,
-              color: "#94a3b8",
+              color: "#9ca3af",
               fontFamily: "ui-monospace, SFMono-Regular, monospace",
               whiteSpace: "nowrap",
               textAlign: "right",
             }}>
               {fmtTradeDateTime(t.date)}
-            </span>
-          </div>
+            </span></div>
 
           {/* Chart card — premium screenshot frame */}
           <div style={{
@@ -815,8 +730,7 @@ export default function ReplayPage() {
                 : "0 12px 40px rgba(0,0,0,0.4)"
               : "0 12px 40px rgba(0,0,0,0.4)",
             transition: "border-color 0.3s, box-shadow 0.3s",
-          }}>
-            <ChartArea
+          }}><ChartArea
               trade={t}
               shot={shot}
               shotLoading={shotLoading}
@@ -830,8 +744,7 @@ export default function ReplayPage() {
               isWin={isWin}
               isLoss={isLoss}
               onZoom={() => setZoomOpen(true)}
-            />
-          </div>
+            /></div>
 
           {/* Stats row */}
           <div style={{
@@ -841,45 +754,33 @@ export default function ReplayPage() {
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
             gap: 14,
-          }}>
-            <StatCell label="Entry" value={fmtPrice(entry)} color="#22d3a5" />
-            <StatCell label="Exit" value={fmtPrice(exit)} color="#f43f5e" />
-            <StatCell
+          }}><StatCell label="Entry" value={fmtPrice(entry)} color="#22d3a5" /><StatCell label="Exit" value={fmtPrice(exit)} color="#f43f5e" /><StatCell
               label="PnL"
               value={`${pnl > 0 ? "+" : ""}${fmtMoney(pnl)}`}
               color={pnlColor}
-            />
-            <StatCell label="Duration" value="—" color="#94a3b8" />
-            <StatCell
+            /><StatCell label="Duration" value="—" color="#9ca3af" /><StatCell
               label="Side"
               value={`${isLong ? "▲" : "▼"} ${sideUpper || "—"}`}
               color={isLong ? "#22d3a5" : "#f43f5e"}
-            />
-          </div>
+            /></div>
 
           {/* strategy + notes (below chart) */}
           {(t.strategy || t.notes) && (
             <div style={{ ...cardStyle, marginTop: 12, padding: "14px 18px" }}>
               {t.strategy && (
-                <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: t.notes ? 8 : 0 }}>
-                  <span style={{ color: "#4a5a7a", fontWeight: 700, marginRight: 8, letterSpacing: "0.06em", textTransform: "uppercase", fontSize: 10 }}>Setup</span>
-                  <span style={{ color: "#f0f4ff", fontWeight: 700 }}>{t.strategy}</span>
-                </div>
+                <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: t.notes ? 8 : 0 }}><span style={{ color: "#4a5a7a", fontWeight: 700, marginRight: 8, letterSpacing: "0.06em", textTransform: "uppercase", fontSize: 10 }}>Setup</span><span style={{ color: "#ffffff", fontWeight: 700 }}>{t.strategy}</span></div>
               )}
               {t.notes && (
                 <div style={{
                   fontSize: 12,
-                  color: "#cbd5e1",
+                  color: "#9ca3af",
                   lineHeight: 1.55,
                   whiteSpace: "pre-wrap",
-                  background: "#0b1120",
-                  border: "1px dashed #1a2540",
+                  background: "#111118",
+                  border: "1px dashed #2a2a3a",
                   borderRadius: 10,
                   padding: "10px 12px",
-                }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>
-                    Notes at the time
-                  </div>
+                }}><div style={{ fontSize: 9, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>Notes at the time</div>
                   {t.notes}
                 </div>
               )}
@@ -887,35 +788,17 @@ export default function ReplayPage() {
           )}
 
           {/* Review form */}
-          <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>
-              Review this trade
-            </div>
-
-            <FormBlock label="Was this your setup?">
-              <TriadRow value={matchedSetup} onChange={setMatchedSetup} />
-            </FormBlock>
-
-            <FormBlock label="Did you follow your rules?">
-              <TriadRow value={followedRules} onChange={setFollowedRules} />
-            </FormBlock>
-
-            <FormBlock label={`Confidence — ${confidence}/10`}>
-              <ConfidenceDots value={confidence} onChange={setConfidence} />
-            </FormBlock>
-
-            <FormBlock label="What would you do differently?">
-              <textarea
+          <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>Review this trade</div><FormBlock label="Was this your setup?"><TriadRow value={matchedSetup} onChange={setMatchedSetup} /></FormBlock><FormBlock label="Did you follow your rules?"><TriadRow value={followedRules} onChange={setFollowedRules} /></FormBlock><FormBlock label={`Confidence — ${confidence}/10`}><ConfidenceDots value={confidence} onChange={setConfidence} /></FormBlock><FormBlock label="What would you do differently?"><textarea
                 value={differently}
                 onChange={(e) => setDifferently(e.target.value)}
                 placeholder="One honest takeaway. Skip if nothing comes to mind."
                 rows={3}
                 style={{
                   width: "100%",
-                  background: "#0b1120",
-                  border: "1px solid #1a2540",
+                  background: "#111118",
+                  border: "1px solid #2a2a3a",
                   borderRadius: 10,
-                  color: "#f0f4ff",
+                  color: "#ffffff",
                   fontSize: 13,
                   padding: "10px 12px",
                   fontFamily: "inherit",
@@ -923,13 +806,9 @@ export default function ReplayPage() {
                   outline: "none",
                   lineHeight: 1.5,
                 }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = "#38bdf8")}
-                onBlur={(e) => (e.currentTarget.style.borderColor = "#1a2540")}
-              />
-            </FormBlock>
-
-            <FormBlock label="Trade Grade">
-              <div className="replay-grade-grid" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+                onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "#2a2a3a")}
+              /></FormBlock><FormBlock label="Trade Grade"><div className="replay-grade-grid" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
                 {GRADE_LIST.map((g) => {
                   const active = grade === g;
                   const c = GRADE_COLOR[g];
@@ -954,12 +833,10 @@ export default function ReplayPage() {
                     </button>
                   );
                 })}
-              </div>
-            </FormBlock>
+              </div></FormBlock>
 
             {/* actions */}
-            <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" }}>
-              <button
+            <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" }}><button
                 onClick={handlePrev}
                 disabled={idx === 0}
                 style={{
@@ -968,16 +845,10 @@ export default function ReplayPage() {
                   cursor: idx === 0 ? "not-allowed" : "pointer",
                   flex: "0 0 auto",
                 }}
-              >
-                ← Prev
-              </button>
-              <button
+              >← Prev</button><button
                 onClick={handleSkip}
                 style={{ ...secondaryBtnStyle, flex: "0 0 auto" }}
-              >
-                Skip
-              </button>
-              <button
+              >Skip</button><button
                 onClick={handleNext}
                 disabled={!canAdvance}
                 style={{
@@ -988,17 +859,12 @@ export default function ReplayPage() {
                 }}
               >
                 {idx + 1 >= total ? "Finish →" : "Next →"}
-              </button>
-            </div>
+              </button></div>
 
             {!canAdvance && (
-              <div style={{ marginTop: 10, fontSize: 11, color: "#4a5a7a" }}>
-                Pick setup, rules, and a grade to continue.
-              </div>
+              <div style={{ marginTop: 10, fontSize: 11, color: "#4a5a7a" }}>Pick setup, rules, and a grade to continue.</div>
             )}
-          </div>
-        </div>
-      </div>
+          </div></div></div>
 
       {zoomOpen && shot && (
         <ZoomModal src={shot} onClose={() => setZoomOpen(false)} />
@@ -1036,18 +902,14 @@ function ChartArea({
 
   if (candles && candles.length > 0) {
     return (
-      <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}>
-        <CandleChart trade={trade} candles={candles} height={HEIGHT} onHover={onHover} />
-      </div>
+      <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}><CandleChart trade={trade} candles={candles} height={HEIGHT} onHover={onHover} /></div>
     );
   }
 
   // Fallback: screenshot
   if (shotLoading) {
     return (
-      <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3a4a6a", fontSize: 12 }}>
-        Loading screenshot…
-      </div>
+      <div style={{ height: HEIGHT, background: "#060d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#2a2a3a", fontSize: 12 }}>Loading screenshot…</div>
     );
   }
 
@@ -1057,27 +919,23 @@ function ChartArea({
         height: HEIGHT, background: "#060d1a",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
-        color: "#3a4a6a", gap: 10, padding: 16, textAlign: "center",
-      }}>
-        <div style={{ fontSize: 36, opacity: 0.5 }}>📊</div>
-        <div style={{ fontWeight: 700, color: "#94a3b8", fontSize: 13 }}>
+        color: "#2a2a3a", gap: 10, padding: 16, textAlign: "center",
+      }}><div style={{ fontSize: 36, opacity: 0.5 }}></div><div style={{ fontWeight: 700, color: "#9ca3af", fontSize: 13 }}>
           {chartError ? "No chart data available" : "No chart or screenshot"}
-        </div>
-        <div style={{ fontSize: 11, color: "#3a4a6a", maxWidth: 360 }}>
+        </div><div style={{ fontSize: 11, color: "#2a2a3a", maxWidth: 360 }}>
           {chartError
             ? `Could not load candles (${chartError}). Attach a chart screenshot to see it here.`
             : "Attach a chart screenshot when logging trades to see it here."}
-        </div>
-      </div>
+        </div></div>
     );
   }
 
-  const pnlPositive = pnl > 0;
-  const pnlBg = pnlPositive
-    ? "linear-gradient(135deg, #22d3a5, #0ea5a0)"
-    : pnl < 0
+  const pnlPositive = pnl >0;
+ const pnlBg = pnlPositive
+ ? "linear-gradient(135deg, #22d3a5, #10b981)"
+ : pnl< 0
     ? "linear-gradient(135deg, #f43f5e, #be123c)"
-    : "linear-gradient(135deg, #475569, #334155)";
+    : "linear-gradient(135deg, #6b7280, #374151)";
   const pnlGlow = pnlPositive
     ? "0 6px 24px rgba(34,211,165,0.45)"
     : pnl < 0
@@ -1134,11 +992,11 @@ function ChartArea({
           padding: "8px 12px",
           borderRadius: 10,
           background: "rgba(13,22,40,0.78)",
-          color: "#cbd5e1",
+          color: "#9ca3af",
           fontSize: 11,
           fontWeight: 800,
           letterSpacing: "0.06em",
-          border: "1px solid rgba(56,189,248,0.35)",
+          border: "1px solid rgba(99,102,241,0.35)",
           cursor: "pointer",
           backdropFilter: "blur(10px)",
           WebkitBackdropFilter: "blur(10px)",
@@ -1147,20 +1005,17 @@ function ChartArea({
           transition: "all 0.15s",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = "rgba(56,189,248,0.18)";
-          e.currentTarget.style.color = "#38bdf8";
+          e.currentTarget.style.background = "rgba(99,102,241,0.18)";
+          e.currentTarget.style.color = "#6366f1";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = "rgba(13,22,40,0.78)";
-          e.currentTarget.style.color = "#cbd5e1";
+          e.currentTarget.style.color = "#9ca3af";
         }}
-      >
-        🔍 Zoom
-      </button>
+      >Zoom</button>
 
       {/* Entry badge — bottom left */}
-      {entry > 0 && (
-        <div style={{
+      {entry >0 && (<div style={{
           position: "absolute", bottom: 18, left: 18,
           padding: "9px 14px",
           borderRadius: 10,
@@ -1179,8 +1034,7 @@ function ChartArea({
       )}
 
       {/* Exit badge — bottom right */}
-      {exit > 0 && (
-        <div style={{
+      {exit >0 && (<div style={{
           position: "absolute", bottom: 18, right: 18,
           padding: "9px 14px",
           borderRadius: 10,
@@ -1231,21 +1085,19 @@ function ZoomModal({ src, onClose }: { src: string; onClose: () => void }) {
         cursor: "zoom-out",
         animation: "nexyruZoomFade 0.22s ease-out both",
       }}
-    >
-      <style>{`
+    ><style>{`
         @keyframes nexyruZoomFade {
           from { opacity: 0; }
           to   { opacity: 1; }
         }
-      `}</style>
-      <button
+      `}</style><button
         onClick={(e) => { e.stopPropagation(); onClose(); }}
         style={{
           position: "fixed", top: 22, right: 24,
           padding: "10px 16px",
           borderRadius: 10,
           background: "rgba(13,22,40,0.85)",
-          color: "#f0f4ff",
+          color: "#ffffff",
           fontSize: 12,
           fontWeight: 800,
           letterSpacing: "0.06em",
@@ -1255,9 +1107,7 @@ function ZoomModal({ src, onClose }: { src: string; onClose: () => void }) {
           backdropFilter: "blur(8px)",
           fontFamily: "ui-monospace, SFMono-Regular, monospace",
         }}
-      >
-        ✕ Close · Esc
-      </button>
+      >✕ Close · Esc</button>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
@@ -1270,8 +1120,7 @@ function ZoomModal({ src, onClose }: { src: string; onClose: () => void }) {
           boxShadow: "0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08)",
           cursor: "default",
         }}
-      />
-    </div>
+      /></div>
   );
 }
 
@@ -1282,22 +1131,20 @@ function ChartSkeleton({ height }: { height: number }) {
       background: "#060d1a",
       position: "relative",
       overflow: "hidden",
-    }}>
-      <style>{`
+    }}><style>{`
         @keyframes nexyruPulse {
           0%, 100% { opacity: 0.35; }
           50%      { opacity: 0.85; }
         }
         .nx-skel-bar {
-          background: linear-gradient(180deg, #0d1628 0%, #0a1320 100%);
+          background: linear-gradient(180deg, #111118 0%, #0a1320 100%);
           border-radius: 2px;
           animation: nexyruPulse 1.4s ease-in-out infinite;
         }
       `}</style>
       {/* faux grid */}
       <div style={{ position: "absolute", inset: 0, opacity: 0.5 }}>
-        {[20, 40, 60, 80].map((p) => (
-          <div key={p} style={{
+        {[20, 40, 60, 80].map((p) =>(<div key={p} style={{
             position: "absolute", left: 0, right: 0, top: `${p}%`,
             height: 1, background: "rgba(26, 37, 64, 0.6)",
           }} />
@@ -1349,8 +1196,7 @@ function ChartSkeleton({ height }: { height: number }) {
             />
           );
         })}
-      </div>
-      <div style={{
+      </div><div style={{
         position: "absolute",
         top: "50%", left: "50%",
         transform: "translate(-50%, -50%)",
@@ -1361,10 +1207,7 @@ function ChartSkeleton({ height }: { height: number }) {
         fontFamily: "ui-monospace, SFMono-Regular, monospace",
         animation: "nexyruPulse 1.6s ease-in-out infinite",
         pointerEvents: "none",
-      }}>
-        NEXYRU
-      </div>
-    </div>
+      }}>NEXYRU</div></div>
   );
 }
 
@@ -1393,7 +1236,7 @@ function CandleChart({
     const chart: IChartApi = createChart(container, {
       layout: {
         background: { type: ColorType.Solid, color: "#060d1a" },
-        textColor: "#64748b",
+        textColor: "#6b7280",
         fontSize: 11,
         fontFamily: "ui-monospace, SFMono-Regular, monospace",
         attributionLogo: false,
@@ -1416,13 +1259,13 @@ function CandleChart({
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: "#38bdf8",
+          color: "#6366f1",
           width: 1,
           style: LineStyle.Dashed,
           labelBackgroundColor: "#0ea5e9",
         },
         horzLine: {
-          color: "#38bdf8",
+          color: "#6366f1",
           width: 1,
           style: LineStyle.Dashed,
           labelBackgroundColor: "#0ea5e9",
@@ -1442,7 +1285,7 @@ function CandleChart({
         lines: [
           {
             text: "NEXYRU",
-            color: "rgba(56, 189, 248, 0.06)",
+            color: "rgba(99,102,241, 0.06)",
             fontSize: 92,
             fontStyle: "bold",
             fontFamily: "ui-monospace, SFMono-Regular, monospace",
@@ -1453,12 +1296,12 @@ function CandleChart({
 
     // Candles
     const series: ISeriesApi<"Candlestick"> = chart.addSeries(CandlestickSeries, {
-      upColor: "#34d39930",
-      downColor: "#f8717130",
-      borderUpColor: "#34d399",
-      borderDownColor: "#f87171",
-      wickUpColor: "#34d399",
-      wickDownColor: "#f87171",
+      upColor: "#10b98130",
+      downColor: "#ef444430",
+      borderUpColor: "#10b981",
+      borderDownColor: "#ef4444",
+      wickUpColor: "#10b981",
+      wickDownColor: "#ef4444",
       borderVisible: true,
       wickVisible: true,
       priceLineVisible: false,
@@ -1510,7 +1353,7 @@ function CandleChart({
       markers.push({
         time: entryTime,
         position: "belowBar",
-        color: "#34d399",
+        color: "#10b981",
         shape: "arrowUp",
         size: 2,
         text: `▲ ENTRY $${entryPrice.toFixed(2)}`,
@@ -1520,7 +1363,7 @@ function CandleChart({
       markers.push({
         time: entryTime,
         position: "aboveBar",
-        color: "#f87171",
+        color: "#ef4444",
         shape: "arrowDown",
         size: 2,
         text: `▼ EXIT $${exitPrice.toFixed(2)}`,
@@ -1532,24 +1375,24 @@ function CandleChart({
     if (entryPrice > 0) {
       series.createPriceLine({
         price: entryPrice,
-        color: "#34d399",
+        color: "#10b981",
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
         title: "ENTRY",
-        axisLabelColor: "#34d399",
+        axisLabelColor: "#10b981",
         axisLabelTextColor: "#0a1f17",
       });
     }
     if (exitPrice > 0) {
       series.createPriceLine({
         price: exitPrice,
-        color: "#f87171",
+        color: "#ef4444",
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
         title: "EXIT",
-        axisLabelColor: "#f87171",
+        axisLabelColor: "#ef4444",
         axisLabelTextColor: "#2a0e0e",
       });
     }
@@ -1585,9 +1428,7 @@ function CandleChart({
   }, [candles, entryPrice, exitPrice, tradeSec, height, onHover, pnl]);
 
   return (
-    <div style={{ position: "relative", height, background: "#060d1a" }}>
-      <div ref={containerRef} style={{ width: "100%", height }} />
-    </div>
+    <div style={{ position: "relative", height, background: "#060d1a" }}><div ref={containerRef} style={{ width: "100%", height }} /></div>
   );
 }
 
@@ -1601,9 +1442,9 @@ function IntervalBtn({
       style={{
         padding: "7px 12px",
         borderRadius: 8,
-        border: `1px solid ${active ? "#38bdf8" : "#1e2540"}`,
-        background: active ? "rgba(56,189,248,0.15)" : "transparent",
-        color: active ? "#38bdf8" : disabled ? "#3a4a6a" : "#94a3b8",
+        border: `1px solid ${active ? "#6366f1" : "#1e2540"}`,
+        background: active ? "rgba(99,102,241,0.15)" : "transparent",
+        color: active ? "#6366f1" : disabled ? "#2a2a3a" : "#9ca3af",
         fontSize: 11,
         fontWeight: 700,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -1626,7 +1467,7 @@ function OhlcRow({ candle }: { candle: ChartRow | null }) {
     fontFamily: "ui-monospace, SFMono-Regular, monospace",
     fontSize: 11,
     fontWeight: 700,
-    color: "#64748b",
+    color: "#6b7280",
     letterSpacing: "0.02em",
     minHeight: 18,
     whiteSpace: "nowrap",
@@ -1636,42 +1477,32 @@ function OhlcRow({ candle }: { candle: ChartRow | null }) {
 
   if (!candle) {
     return (
-      <div style={{ ...wrap, color: "#3a4a6a", fontSize: 10, fontWeight: 600 }}>
-        ↕ hover for OHLC
-      </div>
+      <div style={{ ...wrap, color: "#2a2a3a", fontSize: 10, fontWeight: 600 }}>↕ hover for OHLC</div>
     );
   }
 
   const up = candle.close >= candle.open;
-  const cColor = up ? "#34d399" : "#f87171";
+  const cColor = up ? "#10b981" : "#ef4444";
   const change = candle.close - candle.open;
   const changePct = candle.open !== 0 ? (change / candle.open) * 100 : 0;
   const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 
-  const pair = (k: string, v: string, c?: string) => (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
-      <span style={{ color: "#4a5a7a" }}>{k}</span>
-      <span style={{ color: c || "#cbd5e1" }}>{v}</span>
-    </span>
-  );
+  const pair = (k: string, v: string, c?: string) =>(<span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}><span style={{ color: "#4a5a7a" }}>{k}</span><span style={{ color: c || "#9ca3af" }}>{v}</span></span>);
 
-  return (
-    <div style={wrap}>
+ return (<div style={wrap}>
       {pair("O", fmt(candle.open))}
-      {pair("H", fmt(candle.high), "#34d399")}
-      {pair("L", fmt(candle.low), "#f87171")}
+      {pair("H", fmt(candle.high), "#10b981")}
+      {pair("L", fmt(candle.low), "#ef4444")}
       {pair("C", fmt(candle.close), cColor)}
       <span style={{ color: cColor, fontSize: 10 }}>
         {change >= 0 ? "+" : ""}{fmt(change)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
-      </span>
-    </div>
+      </span></div>
   );
 }
 
 function StatCell({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
   return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{
+    <div style={{ minWidth: 0 }}><div style={{
         fontSize: 9,
         fontWeight: 700,
         color: "#4a5a7a",
@@ -1680,8 +1511,7 @@ function StatCell({ label, value, color }: { label: string; value: React.ReactNo
         marginBottom: 4,
       }}>
         {label}
-      </div>
-      <div style={{
+      </div><div style={{
         fontSize: 15,
         fontWeight: 900,
         color,
@@ -1692,8 +1522,7 @@ function StatCell({ label, value, color }: { label: string; value: React.ReactNo
         textOverflow: "ellipsis",
       }}>
         {value}
-      </div>
-    </div>
+      </div></div>
   );
 }
 
@@ -1701,53 +1530,29 @@ function ProgressBar({
   idx, total, pct, sessionGrade, done,
 }: { idx: number; total: number; pct: number; sessionGrade: Grade | null; done?: boolean }) {
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <a href="/dashboard" style={{ fontSize: 11, color: "#4a5a7a", textDecoration: "none", fontWeight: 600 }}>
-            ← Dashboard
-          </a>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#f0f4ff", letterSpacing: "0.04em" }}>
-            📽️ Trade Replay
-          </div>
-        </div>
-        <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, fontFamily: "monospace", display: "flex", alignItems: "center", gap: 8 }}>
-          <span>Trade {done ? total : idx + 1} of {total}</span>
+    <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><a href="/dashboard" style={{ fontSize: 11, color: "#4a5a7a", textDecoration: "none", fontWeight: 600 }}>← Dashboard</a><div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", letterSpacing: "0.04em" }}>️ Trade Replay</div></div><div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 700, fontFamily: "monospace", display: "flex", alignItems: "center", gap: 8 }}><span>Trade {done ? total : idx + 1} of {total}</span>
           {sessionGrade && (
-            <>
-              <span style={{ color: "#1e2540" }}>·</span>
-              <span>Session Grade:{" "}
-                <span style={{ color: GRADE_COLOR[sessionGrade], fontWeight: 900 }}>{sessionGrade}</span>
-              </span>
-            </>
+            <><span style={{ color: "#1e2540" }}>·</span><span>Session Grade:{" "}
+                <span style={{ color: GRADE_COLOR[sessionGrade], fontWeight: 900 }}>{sessionGrade}</span></span></>
           )}
-        </div>
-      </div>
-      <div style={{
+        </div></div><div style={{
         height: 6,
-        background: "#0b1120",
-        border: "1px solid #1a2540",
+        background: "#111118",
+        border: "1px solid #2a2a3a",
         borderRadius: 999,
         overflow: "hidden",
-      }}>
-        <div style={{
+      }}><div style={{
           width: `${pct}%`,
           height: "100%",
-          background: "linear-gradient(90deg,#22d3a5,#38bdf8)",
+          background: "linear-gradient(90deg,#22d3a5,#6366f1)",
           transition: "width 0.4s ease",
-        }} />
-      </div>
-    </div>
+        }} /></div></div>
   );
 }
 
 function TriadRow({ value, onChange }: { value: Triad | null; onChange: (v: Triad) => void }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
-      <TriadBtn label="✅ Yes"     active={value === "yes"}     color="#22d3a5" onClick={() => onChange("yes")} />
-      <TriadBtn label="⚠️ Partial" active={value === "partial"} color="#fbbf24" onClick={() => onChange("partial")} />
-      <TriadBtn label="❌ No"      active={value === "no"}      color="#f43f5e" onClick={() => onChange("no")} />
-    </div>
+    <div style={{ display: "flex", gap: 8 }}><TriadBtn label=" Yes"     active={value === "yes"}     color="#22d3a5" onClick={() => onChange("yes")} /><TriadBtn label="️ Partial" active={value === "partial"} color="#f59e0b" onClick={() => onChange("partial")} /><TriadBtn label=" No"      active={value === "no"}      color="#f43f5e" onClick={() => onChange("no")} /></div>
   );
 }
 
@@ -1763,7 +1568,7 @@ function TriadBtn({
         borderRadius: 10,
         border: `1px solid ${active ? color : "#1e2540"}`,
         background: active ? `${color}22` : "transparent",
-        color: active ? color : "#94a3b8",
+        color: active ? color : "#9ca3af",
         fontSize: 12,
         fontWeight: 700,
         cursor: "pointer",
@@ -1790,12 +1595,12 @@ function ConfidenceDots({ value, onChange }: { value: number; onChange: (v: numb
               minWidth: 0,
               aspectRatio: "1 / 1",
               borderRadius: "50%",
-              border: `1px solid ${filled ? "#38bdf8" : "#1e2540"}`,
-              background: filled ? "#38bdf8" : "transparent",
+              border: `1px solid ${filled ? "#6366f1" : "#1e2540"}`,
+              background: filled ? "#6366f1" : "transparent",
               cursor: "pointer",
               padding: 0,
               transition: "all 0.12s",
-              boxShadow: filled && n === value ? "0 0 0 3px #38bdf833" : "none",
+              boxShadow: filled && n === value ? "0 0 0 3px #6366f133" : "none",
             }}
           />
         );
@@ -1806,8 +1611,7 @@ function ConfidenceDots({ value, onChange }: { value: number; onChange: (v: numb
 
 function FormBlock({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", marginBottom: 8, letterSpacing: "0.02em" }}>
+    <div style={{ marginBottom: 16 }}><div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", marginBottom: 8, letterSpacing: "0.02em" }}>
         {label}
       </div>
       {children}
@@ -1820,15 +1624,13 @@ function SummaryStat({
 }: { label: string; value: React.ReactNode; color: string; big?: boolean }) {
   return (
     <div style={{
-      background: "#0b1120",
+      background: "#111118",
       border: `1px solid ${color}33`,
       borderRadius: 14,
       padding: "16px 18px",
-    }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
+    }}><div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
         {label}
-      </div>
-      <div style={{
+      </div><div style={{
         fontSize: big ? 38 : 26,
         fontWeight: 900,
         color,
@@ -1836,8 +1638,7 @@ function SummaryStat({
         lineHeight: 1.1,
       }}>
         {value}
-      </div>
-    </div>
+      </div></div>
   );
 }
 
@@ -1845,40 +1646,30 @@ function BestWorstCard({ label, trade, positive }: { label: string; trade: Trade
   const color = positive ? "#22d3a5" : "#f43f5e";
   if (!trade) {
     return (
-      <div style={{ background: "#0b1120", border: `1px solid ${color}22`, borderRadius: 14, padding: "16px 18px" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
+      <div style={{ background: "#111118", border: `1px solid ${color}22`, borderRadius: 14, padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
           {label}
-        </div>
-        <div style={{ fontSize: 13, color: "#4a5a7a" }}>—</div>
-      </div>
+        </div><div style={{ fontSize: 13, color: "#4a5a7a" }}>—</div></div>
     );
   }
   const pnl = Number(trade.pnl ?? 0);
   return (
-    <div style={{ background: "#0b1120", border: `1px solid ${color}44`, borderRadius: 14, padding: "16px 18px" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
+    <div style={{ background: "#111118", border: `1px solid ${color}44`, borderRadius: 14, padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
         {label}
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 16, fontWeight: 900, color: "#f0f4ff", letterSpacing: "-0.01em" }}>
+      </div><div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}><div style={{ fontSize: 16, fontWeight: 900, color: "#ffffff", letterSpacing: "-0.01em" }}>
           {trade.pair || trade.symbol || "—"}
-        </div>
-        <div style={{
+        </div><div style={{
           fontSize: 16, fontWeight: 900, color,
           fontFamily: "ui-monospace, SFMono-Regular, monospace",
         }}>
           {pnl > 0 ? "+" : ""}{fmtMoney(pnl)}
-        </div>
-      </div>
-      <div style={{ fontSize: 10, color: "#4a5a7a", marginTop: 4 }}>
+        </div></div><div style={{ fontSize: 10, color: "#4a5a7a", marginTop: 4 }}>
         {fmtDate(trade.date)} · {(trade.type || "").toString().toUpperCase()}
-      </div>
-    </div>
+      </div></div>
   );
 }
 
 function pctColor(p: number) {
-  return p >= 70 ? "#22d3a5" : p >= 40 ? "#fbbf24" : "#f43f5e";
+  return p >= 70 ? "#22d3a5" : p >= 40 ? "#f59e0b" : "#f43f5e";
 }
 
 // ───────────────────── styles ─────────────────────
@@ -1886,7 +1677,7 @@ function pctColor(p: number) {
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
   background: "#060d1a",
-  color: "#f0f4ff",
+  color: "#ffffff",
   padding: "32px 18px 80px",
   display: "flex",
   justifyContent: "center",
@@ -1894,7 +1685,7 @@ const shellStyle: React.CSSProperties = {
 };
 
 const cardStyle: React.CSSProperties = {
-  background: "#0d1628",
+  background: "#111118",
   border: "1px solid #1e2f4a",
   borderRadius: 18,
   padding: "22px",
@@ -1906,7 +1697,7 @@ const primaryBtnStyle: React.CSSProperties = {
   padding: "13px 18px",
   borderRadius: 12,
   border: "none",
-  background: "linear-gradient(135deg,#0ea5a0,#22d3a5)",
+  background: "linear-gradient(135deg,#10b981,#22d3a5)",
   color: "#000",
   fontSize: 13,
   fontWeight: 800,
@@ -1920,7 +1711,7 @@ const secondaryBtnStyle: React.CSSProperties = {
   borderRadius: 12,
   border: "1px solid #1e2f4a",
   background: "transparent",
-  color: "#94a3b8",
+  color: "#9ca3af",
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",

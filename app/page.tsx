@@ -1,1478 +1,419 @@
 "use client";
 import Link from "next/link";
-import { useState, useEffect } from "react";
-
-const PROP_FIRMS = ["Apex Trader Funding", "TopstepX", "FTMO", "MyFundedFutures", "Bulenox", "Tradeday"];
+import { useEffect, useState } from "react";
 
 const FEATURES = [
   {
-    icon: "🏆",
     title: "Challenge Tracker",
-    desc: "Real-time daily loss, drawdown, and profit target tracking with 2026 prop firm rules",
-    color: "#38bdf8",
+    desc: "Real-time daily loss, drawdown, and target tracking with accurate 2026 rules.",
   },
   {
-    icon: "🧠",
     title: "Psychology Tracker",
-    desc: "See exactly which emotions and mistakes cost you money",
-    color: "#a78bfa",
+    desc: "Understand which emotions and mistakes cost you money.",
   },
   {
-    icon: "📽️",
     title: "Trade Replay",
-    desc: "Review every trade with your broker screenshot and entry/exit analysis",
-    color: "#34d399",
+    desc: "Review trades with your broker screenshots and entry/exit analysis.",
   },
   {
-    icon: "🎯",
-    title: "Best Setup Finder",
-    desc: "Automatically finds your highest win rate setups and best trading times",
-    color: "#f59e0b",
+    title: "Setup Finder",
+    desc: "Discover your highest win-rate setups automatically.",
   },
   {
-    icon: "✅",
     title: "Pre-Trade Checklist",
-    desc: "Quick mental checklist before every trade to stay disciplined",
-    color: "#ec4899",
+    desc: "Stay disciplined with a quick checklist before every trade.",
   },
   {
-    icon: "⚡",
     title: "Trade Planner",
-    desc: "Position sizing calculator and session alerts built for funded traders",
-    color: "#f97316",
+    desc: "Position sizing and session management for funded accounts.",
   },
 ];
 
 const STEPS = [
-  { n: "1", title: "Import your trades", desc: "Upload a CSV from your prop firm platform. Takes 30 seconds.", visual: "📥" },
-  { n: "2", title: "Set up your challenge", desc: "Pick your prop firm and account size. Rules auto-fill.", visual: "⚙️" },
-  { n: "3", title: "Trade smarter", desc: "Use insights from your own data to find your edge.", visual: "📈" },
-];
-
-const PLANS = [
   {
-    name: "FREE",
-    price: "$0",
-    period: "/mo",
-    features: ["50 trades per month", "Journal & basic stats", "Challenge tracker (1 account)", "Pre-trade checklist"],
-    cta: "Start Free",
-    popular: false,
-    waitlist: false,
+    n: "01",
+    title: "Import",
+    desc: "Upload a CSV from your prop firm. Takes under a minute.",
   },
   {
-    name: "PRO",
-    price: "$19",
-    period: "/mo",
-    features: [
-      "Unlimited trades",
-      "All 6 tools",
-      "Multiple challenge accounts",
-      "Psychology & mistakes tracker",
-      "Best setup finder",
-      "Trade replay with charts",
-    ],
-    cta: "Join Waitlist",
-    popular: true,
-    waitlist: true,
+    n: "02",
+    title: "Configure",
+    desc: "Select your prop firm and account size. Rules fill automatically.",
   },
   {
-    name: "ELITE",
-    price: "$39",
-    period: "/mo",
-    features: ["Everything in Pro", "AI trade analysis", "Priority support", "Early access to new features"],
-    cta: "Join Waitlist",
-    popular: false,
-    waitlist: true,
+    n: "03",
+    title: "Trade",
+    desc: "Use your data to trade smarter and protect your account.",
   },
 ];
 
-const TESTIMONIALS = [
-  {
-    text: "Finally passed my Apex $50k eval on my third attempt. The challenge tracker showing my trailing drawdown in real time was a game changer.",
-    name: "Jake M.",
-    firm: "Apex Trader Funding",
-  },
-  {
-    text: "The psychology tracker showed me I was revenge trading after every loss and it was costing me $800/month. Just seeing the data made me stop.",
-    name: "Sarah K.",
-    firm: "TopstepX Funded",
-  },
-  {
-    text: "Best $19 I spend every month. The setup finder told me to stop trading oil and focus on NQ — my win rate went from 41% to 68%.",
-    name: "Marcus T.",
-    firm: "FTMO Funded",
-  },
-];
+const PLAN_FREE = {
+  name: "Free",
+  price: "$0",
+  tagline: "Get started, no card required",
+  features: [
+    "Trade journal (up to 100 trades)",
+    "Challenge tracker",
+    "Pre-trade checklist",
+  ],
+};
 
-export default function HomePage() {
+const PLAN_PRO = {
+  name: "Pro",
+  price: "$19",
+  tagline: "For serious funded traders",
+  features: [
+    "Everything in Free",
+    "Unlimited trades",
+    "Psychology tracker",
+    "Setup finder",
+    "Trade replay",
+    "Trade planner",
+  ],
+};
+
+function Logo() {
+  return (
+    <Link href="/" className="flex items-center gap-2 select-none">
+      <span
+        aria-hidden
+        className="inline-flex h-6 w-6 items-center justify-center rounded-md"
+        style={{ background: "var(--accent)" }}
+      >
+        <span
+          className="block h-2 w-2 rounded-sm"
+          style={{ background: "#fff" }}
+        />
+      </span>
+      <span className="text-[15px] font-semibold tracking-tight text-white">
+        Nexyru
+      </span>
+    </Link>
+  );
+}
+
+function Nav() {
   const [scrolled, setScrolled] = useState(false);
-  const [waitlistOpen, setWaitlistOpen] = useState<string | null>(null);
-  const [waitlistEmail, setWaitlistEmail] = useState("");
-  const [waitlistDone, setWaitlistDone] = useState<Record<string, boolean>>({});
-
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll);
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  const submitWaitlist = (plan: string) => {
-    const email = waitlistEmail.trim();
-    if (!email || !email.includes("@")) return;
-    try {
-      const raw = localStorage.getItem("nexyru_waitlist");
-      const existing = raw ? JSON.parse(raw) : [];
-      existing.push({ plan, email, ts: Date.now() });
-      localStorage.setItem("nexyru_waitlist", JSON.stringify(existing));
-    } catch {}
-    setWaitlistDone((prev) => ({ ...prev, [plan]: true }));
-    setWaitlistOpen(null);
-    setWaitlistEmail("");
-  };
-
   return (
-    <div
+    <header
+      className="sticky top-0 z-50 transition-colors"
       style={{
-        background: "#060d1a",
-        color: "#c8d8f0",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        overflowX: "hidden",
-        scrollBehavior: "smooth",
+        backdropFilter: "saturate(180%) blur(10px)",
+        WebkitBackdropFilter: "saturate(180%) blur(10px)",
+        background: scrolled
+          ? "rgba(10, 10, 15, 0.78)"
+          : "rgba(10, 10, 15, 0.4)",
+        borderBottom: scrolled
+          ? "1px solid var(--border)"
+          : "1px solid transparent",
       }}
     >
-      <style>{`
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes glow { 0%, 100% { box-shadow: 0 0 30px rgba(56,189,248,0.2); } 50% { box-shadow: 0 0 60px rgba(56,189,248,0.4); } }
-        .cta-primary { transition: all 0.2s ease; }
-        .cta-primary:hover { transform: translateY(-2px); box-shadow: 0 20px 60px rgba(56,189,248,0.4) !important; }
-        .cta-ghost { transition: all 0.2s ease; }
-        .cta-ghost:hover { background: rgba(255,255,255,0.06) !important; border-color: rgba(255,255,255,0.18) !important; }
-        .feature-card { transition: all 0.25s ease; }
-        .feature-card:hover { transform: translateY(-3px); border-color: rgba(56,189,248,0.25) !important; box-shadow: 0 12px 32px rgba(56,189,248,0.08); }
-        .plan-card { transition: all 0.25s ease; }
-        .plan-card:hover { transform: translateY(-4px); }
-        .nav-link { transition: color 0.15s ease; }
-        .nav-link:hover { color: #f0f4ff !important; }
-        .firm-pill { transition: all 0.2s ease; }
-        .firm-pill:hover { border-color: rgba(56,189,248,0.4) !important; color: #f0f4ff !important; }
-        @media (max-width: 768px) {
-          .nav-links { display: none !important; }
-          .hero-ctas { flex-direction: column; width: 100%; }
-          .hero-ctas a { width: 100%; justify-content: center; }
-          .grid-2 { grid-template-columns: 1fr !important; }
-          .grid-3 { grid-template-columns: 1fr !important; }
-          .grid-3-features { grid-template-columns: 1fr !important; }
-          .section-padding { padding: 56px 20px !important; }
-          .nav-container { padding: 0 20px !important; }
-          .footer { flex-direction: column; text-align: center; }
-        }
-      `}</style>
-
-      {/* ═══════════════════════ NAV ═══════════════════════ */}
-      <nav
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 100,
-          height: 64,
-          background: scrolled ? "rgba(6,13,26,0.85)" : "transparent",
-          backdropFilter: scrolled ? "blur(20px)" : "none",
-          WebkitBackdropFilter: scrolled ? "blur(20px)" : "none",
-          borderBottom: scrolled ? "1px solid rgba(255,255,255,0.06)" : "1px solid transparent",
-          transition: "all 0.3s ease",
-        }}
-      >
-        <div
-          className="nav-container"
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            height: "100%",
-            padding: "0 40px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Link
-            href="/"
-            style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+        <Logo />
+        <nav className="hidden items-center gap-8 md:flex">
+          <a
+            href="#features"
+            className="text-[13px] text-[var(--text-2)] hover:text-white transition-colors"
           >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 16,
-              }}
-            >
-              📈
-            </div>
-            <span style={{ fontSize: 18, fontWeight: 800, color: "#f0f4ff", letterSpacing: "-0.02em" }}>
-              Nexyru
-            </span>
-          </Link>
-
-          <div className="nav-links" style={{ display: "flex", gap: 32, alignItems: "center" }}>
-            <a href="#features" className="nav-link" style={{ fontSize: 14, color: "#94a3b8", textDecoration: "none", fontWeight: 500 }}>
-              Features
-            </a>
-            <a href="#pricing" className="nav-link" style={{ fontSize: 14, color: "#94a3b8", textDecoration: "none", fontWeight: 500 }}>
-              Pricing
-            </a>
-            <a href="#prop-traders" className="nav-link" style={{ fontSize: 14, color: "#94a3b8", textDecoration: "none", fontWeight: 500 }}>
-              For Prop Traders
-            </a>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <Link
-              href="/login"
-              className="cta-ghost"
-              style={{
-                fontSize: 14,
-                color: "#c8d8f0",
-                textDecoration: "none",
-                padding: "8px 16px",
-                borderRadius: 10,
-                fontWeight: 500,
-              }}
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/login"
-              className="cta-primary"
-              style={{
-                fontSize: 14,
-                fontWeight: 700,
-                color: "#fff",
-                textDecoration: "none",
-                padding: "9px 18px",
-                borderRadius: 10,
-                background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-                boxShadow: "0 4px 16px rgba(56,189,248,0.25)",
-              }}
-            >
-              Get Started Free
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      {/* ═══════════════════════ HERO ═══════════════════════ */}
-      <section
-        className="section-padding"
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-          padding: "140px 40px 60px",
-          position: "relative",
-          maxWidth: 1200,
-          margin: "0 auto",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: "15%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 700,
-            height: 700,
-            borderRadius: "50%",
-            background: "radial-gradient(ellipse, rgba(56,189,248,0.09) 0%, transparent 70%)",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "6px 16px",
-            borderRadius: 100,
-            border: "1px solid rgba(52,211,153,0.3)",
-            background: "rgba(52,211,153,0.06)",
-            marginBottom: 32,
-            animation: "fadeUp 0.6s ease both",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: "#34d399",
-              animation: "pulse 2s infinite",
-            }}
-          />
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#34d399" }}>Now live — join free</span>
-        </div>
-
-        <h1
-          style={{
-            fontSize: "clamp(42px, 7vw, 84px)",
-            fontWeight: 900,
-            lineHeight: 1.05,
-            letterSpacing: "-0.035em",
-            marginBottom: 24,
-            animation: "fadeUp 0.7s ease 0.1s both",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          <span style={{ color: "#f0f4ff" }}>Stop losing funded accounts.</span>
-          <br />
-          <span
-            style={{
-              background: "linear-gradient(135deg, #38bdf8, #a78bfa)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
+            Features
+          </a>
+          <a
+            href="#pricing"
+            className="text-[13px] text-[var(--text-2)] hover:text-white transition-colors"
           >
-            Start trading with data.
-          </span>
-        </h1>
-
-        <p
-          style={{
-            fontSize: "clamp(16px, 2vw, 20px)",
-            color: "#94a3b8",
-            maxWidth: 640,
-            lineHeight: 1.6,
-            marginBottom: 40,
-            animation: "fadeUp 0.7s ease 0.2s both",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          Nexyru is the trading journal built specifically for prop firm traders. Track your challenge
-          rules, analyze your psychology, and find your edge — all in one place.
-        </p>
-
-        <div
-          className="hero-ctas"
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            justifyContent: "center",
-            marginBottom: 24,
-            animation: "fadeUp 0.7s ease 0.3s both",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
+            Pricing
+          </a>
+        </nav>
+        <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="cta-primary"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "16px 32px",
-              borderRadius: 14,
-              background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-              color: "#fff",
-              fontSize: 16,
-              fontWeight: 700,
-              textDecoration: "none",
-              boxShadow: "0 8px 32px rgba(56,189,248,0.3)",
-            }}
+            className="hidden sm:inline-flex h-8 items-center rounded-md px-3 text-[13px] text-[var(--text-2)] hover:text-white transition-colors"
           >
-            Start for Free →
+            Sign in
           </Link>
-          <a
-            href="#how-it-works"
-            className="cta-ghost"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "16px 32px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.03)",
-              color: "#c8d8f0",
-              fontSize: 16,
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
+          <Link href="/login" className="nx-btn-primary h-8 text-[13px]">
+            Get started
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Hero() {
+  return (
+    <section className="relative">
+      <div className="mx-auto max-w-6xl px-6 pt-24 pb-20 sm:pt-32 sm:pb-28">
+        <p
+          className="mb-6 text-[13px] font-medium"
+          style={{ color: "var(--accent)" }}
+        >
+          Built for prop traders
+        </p>
+        <h1
+          className="max-w-4xl text-[44px] leading-[1.05] font-bold tracking-tight text-white sm:text-[56px] lg:text-[64px]"
+          style={{ letterSpacing: "-0.02em" }}
+        >
+          The journal that keeps your funded account alive.
+        </h1>
+        <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-[var(--text-2)] sm:text-[18px]">
+          Track challenge rules, find your edge, and understand your
+          psychology. Built specifically for Apex, TopstepX, FTMO, and other
+          prop firms.
+        </p>
+        <div className="mt-10 flex flex-wrap items-center gap-3">
+          <Link
+            href="/login"
+            className="nx-btn-primary h-10 px-5 text-[14px]"
           >
-            See how it works
+            Start for free
+          </Link>
+          <a href="#features" className="nx-btn-ghost h-10 px-5 text-[14px]">
+            See features
           </a>
         </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 24,
-            flexWrap: "wrap",
-            justifyContent: "center",
-            marginBottom: 48,
-            fontSize: 13,
-            color: "#64748b",
-            animation: "fadeUp 0.7s ease 0.4s both",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          <span>
-            <span style={{ color: "#34d399", marginRight: 6 }}>✓</span>No credit card
-          </span>
-          <span>
-            <span style={{ color: "#34d399", marginRight: 6 }}>✓</span>Works with Apex, TopstepX, FTMO & more
-          </span>
-          <span>
-            <span style={{ color: "#34d399", marginRight: 6 }}>✓</span>Free forever plan
-          </span>
-        </div>
-
-        {/* App mockup */}
-        <div
-          style={{
-            width: "100%",
-            maxWidth: 1000,
-            animation: "fadeUp 0.9s ease 0.5s both",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          <div
-            style={{
-              background: "linear-gradient(135deg, #0b1120, #0d1628)",
-              borderRadius: 20,
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.08)",
-              boxShadow: "0 40px 100px rgba(0,0,0,0.6), 0 0 80px rgba(56,189,248,0.1)",
-            }}
-          >
-            <div
-              style={{
-                padding: "14px 20px",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
-                display: "flex",
-                alignItems: "center",
-                gap: 16,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 8,
-                    background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 12,
-                  }}
-                >
-                  📈
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "#f0f4ff" }}>Nexyru</span>
-              </div>
-              {["Dashboard", "Trades", "Challenge", "Psychology"].map((t) => (
-                <span
-                  key={t}
-                  style={{
-                    fontSize: 11,
-                    color: t === "Dashboard" ? "#38bdf8" : "#475569",
-                    fontWeight: t === "Dashboard" ? 700 : 500,
-                    padding: "4px 10px",
-                    borderRadius: 8,
-                    background: t === "Dashboard" ? "rgba(56,189,248,0.1)" : "transparent",
-                  }}
-                >
-                  {t}
-                </span>
-              ))}
-              <div
-                style={{
-                  marginLeft: "auto",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  padding: "3px 8px",
-                  borderRadius: 10,
-                  background: "rgba(52,211,153,0.1)",
-                  border: "1px solid rgba(52,211,153,0.25)",
-                  color: "#34d399",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                ● LIVE
-              </div>
-            </div>
-            <div
-              style={{
-                padding: "24px",
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 14,
-              }}
-            >
-              {[
-                { l: "Total P&L", v: "+$8,432", c: "#34d399", s: "+12.4% this month" },
-                { l: "Win Rate", v: "67.3%", c: "#38bdf8", s: "128 trades" },
-                { l: "Profit Target", v: "84%", c: "#a78bfa", s: "$8.4k / $10k" },
-                { l: "Daily Loss", v: "Safe", c: "#34d399", s: "-$240 / -$3k" },
-              ].map((s, i) => (
-                <div
-                  key={i}
-                  style={{
-                    background: "rgba(255,255,255,0.03)",
-                    borderRadius: 14,
-                    padding: 16,
-                    border: "1px solid rgba(255,255,255,0.05)",
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 9,
-                      color: "#475569",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      marginBottom: 8,
-                    }}
-                  >
-                    {s.l}
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: s.c, fontFamily: "monospace" }}>
-                    {s.v}
-                  </div>
-                  <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>{s.s}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ padding: "0 24px 24px" }}>
-              <div
-                style={{
-                  background: "rgba(255,255,255,0.02)",
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  border: "1px solid rgba(255,255,255,0.04)",
-                }}
-              >
-                {[
-                  { p: "NQ1!", t: "LONG", pnl: "+$312.50", c: "#34d399" },
-                  { p: "ES1!", t: "SHORT", pnl: "+$187.50", c: "#34d399" },
-                  { p: "CL1!", t: "LONG", pnl: "-$95.00", c: "#f87171" },
-                ].map((t, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: "12px 16px",
-                      borderBottom: i < 2 ? "1px solid rgba(255,255,255,0.03)" : "none",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: "#e2e8f0",
-                        fontFamily: "monospace",
-                        width: 50,
-                      }}
-                    >
-                      {t.p}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontWeight: 700,
-                        padding: "3px 8px",
-                        borderRadius: 4,
-                        background:
-                          t.t === "LONG" ? "rgba(52,211,153,0.1)" : "rgba(248,113,113,0.1)",
-                        color: t.t === "LONG" ? "#34d399" : "#f87171",
-                      }}
-                    >
-                      {t.t}
-                    </span>
-                    <span style={{ flex: 1 }} />
-                    <span
-                      style={{ fontSize: 13, fontWeight: 900, color: t.c, fontFamily: "monospace" }}
-                    >
-                      {t.pnl}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════ PROP FIRM LOGOS ═══════════════════════ */}
-      <section
-        id="prop-traders"
-        className="section-padding"
+      </div>
+      {/* Subtle radial highlight */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
         style={{
-          padding: "40px 40px",
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-          borderBottom: "1px solid rgba(255,255,255,0.05)",
+          background:
+            "radial-gradient(60% 50% at 20% 0%, rgba(99,102,241,0.10) 0%, rgba(10,10,15,0) 60%)",
         }}
-      >
-        <div style={{ maxWidth: 1200, margin: "0 auto", textAlign: "center" }}>
-          <p
-            style={{
-              fontSize: 12,
-              color: "#475569",
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              marginBottom: 24,
-            }}
-          >
-            Works with every major prop firm
-          </p>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 12,
-              justifyContent: "center",
-            }}
-          >
-            {PROP_FIRMS.map((firm) => (
-              <div
-                key={firm}
-                className="firm-pill"
-                style={{
-                  padding: "10px 22px",
-                  borderRadius: 100,
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  background: "rgba(255,255,255,0.03)",
-                  fontSize: 14,
-                  color: "#94a3b8",
-                  fontWeight: 600,
-                }}
-              >
-                {firm}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      />
+    </section>
+  );
+}
 
-      {/* ═══════════════════════ PROBLEM / SOLUTION ═══════════════════════ */}
-      <section className="section-padding" style={{ padding: "80px 40px" }}>
-        <div
-          className="grid-2"
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 48,
-          }}
+function FeatureCard({
+  title,
+  desc,
+}: {
+  title: string;
+  desc: string;
+}) {
+  return (
+    <div className="nx-card p-6 transition-colors hover:bg-[var(--surface-2)]">
+      <h3 className="text-[15px] font-semibold text-white">{title}</h3>
+      <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-2)]">
+        {desc}
+      </p>
+    </div>
+  );
+}
+
+function Features() {
+  return (
+    <section
+      id="features"
+      className="border-t"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+        <p className="nx-label mb-3">Features</p>
+        <h2
+          className="max-w-2xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
+          style={{ letterSpacing: "-0.01em" }}
         >
-          <div
-            style={{
-              background: "linear-gradient(135deg, rgba(248,113,113,0.04), rgba(248,113,113,0.01))",
-              border: "1px solid rgba(248,113,113,0.15)",
-              borderRadius: 24,
-              padding: 40,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#f87171",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                marginBottom: 16,
-              }}
-            >
-              The Problem
-            </div>
-            <h2
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                color: "#f0f4ff",
-                lineHeight: 1.25,
-                marginBottom: 28,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              Most funded traders fail not because they can't trade — but because they have no system
-              for tracking rules, mistakes, and psychology.
-            </h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {[
-                "80% of funded accounts are blown within 90 days",
-                "The #1 reason: breaking daily loss limits",
-                "Most traders don't track their mistakes",
-              ].map((stat, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 12,
-                    padding: "14px 16px",
-                    background: "rgba(248,113,113,0.05)",
-                    borderRadius: 12,
-                    border: "1px solid rgba(248,113,113,0.1)",
-                  }}
-                >
-                  <span style={{ color: "#f87171", fontSize: 18, lineHeight: 1, marginTop: 2 }}>✕</span>
-                  <span style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.5, fontWeight: 500 }}>
-                    {stat}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: "linear-gradient(135deg, rgba(52,211,153,0.05), rgba(56,189,248,0.03))",
-              border: "1px solid rgba(52,211,153,0.2)",
-              borderRadius: 24,
-              padding: 40,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#34d399",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                marginBottom: 16,
-              }}
-            >
-              The Solution
-            </div>
-            <h2
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                color: "#f0f4ff",
-                lineHeight: 1.25,
-                marginBottom: 28,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              Nexyru gives you the tools professional traders use — built specifically for the funded
-              trading world.
-            </h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {[
-                "Real-time challenge rule tracking",
-                "Psychology & mistake cost analysis",
-                "Find your highest-edge setups automatically",
-              ].map((stat, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 12,
-                    padding: "14px 16px",
-                    background: "rgba(52,211,153,0.06)",
-                    borderRadius: 12,
-                    border: "1px solid rgba(52,211,153,0.15)",
-                  }}
-                >
-                  <span style={{ color: "#34d399", fontSize: 18, lineHeight: 1, marginTop: 2 }}>✓</span>
-                  <span style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.5, fontWeight: 500 }}>
-                    {stat}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════ FEATURES GRID ═══════════════════════ */}
-      <section
-        id="features"
-        className="section-padding"
-        style={{ padding: "80px 40px", background: "rgba(255,255,255,0.015)" }}
-      >
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#38bdf8",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                marginBottom: 16,
-              }}
-            >
-              Everything you need
-            </div>
-            <h2
-              style={{
-                fontSize: "clamp(32px, 5vw, 52px)",
-                fontWeight: 900,
-                color: "#f0f4ff",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.1,
-              }}
-            >
-              Six tools. One platform.
-            </h2>
-            <p
-              style={{
-                fontSize: 16,
-                color: "#64748b",
-                marginTop: 16,
-                maxWidth: 560,
-                margin: "16px auto 0",
-                lineHeight: 1.6,
-              }}
-            >
-              Every feature is designed around the realities of funded trading and prop firm challenges.
-            </p>
-          </div>
-          <div
-            className="grid-3-features"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}
-          >
-            {FEATURES.map((f, i) => (
-              <div
-                key={i}
-                className="feature-card"
-                style={{
-                  background: "linear-gradient(135deg, #0b1120, #0d1628)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 16,
-                  padding: 22,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 32,
-                    marginBottom: 14,
-                    lineHeight: 1,
-                  }}
-                >
-                  {f.icon}
-                </div>
-                <h3
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 800,
-                    color: "#f0f4ff",
-                    marginBottom: 6,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {f.title}
-                </h3>
-                <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.55 }}>{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════ HOW IT WORKS ═══════════════════════ */}
-      <section id="how-it-works" className="section-padding" style={{ padding: "80px 40px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#a78bfa",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                marginBottom: 16,
-              }}
-            >
-              How it works
-            </div>
-            <h2
-              style={{
-                fontSize: "clamp(32px, 5vw, 52px)",
-                fontWeight: 900,
-                color: "#f0f4ff",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.1,
-              }}
-            >
-              Get started in 3 steps
-            </h2>
-          </div>
-          <div
-            className="grid-3"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}
-          >
-            {STEPS.map((step, i) => (
-              <div
-                key={i}
-                style={{
-                  position: "relative",
-                  background: "linear-gradient(135deg, #0b1120, #0d1628)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 16,
-                  padding: 22,
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 16,
-                }}
-              >
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 18,
-                    fontWeight: 900,
-                    color: "#fff",
-                    boxShadow: "0 4px 16px rgba(56,189,248,0.3)",
-                    flexShrink: 0,
-                  }}
-                >
-                  {step.n}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 18, lineHeight: 1 }}>{step.visual}</span>
-                    <h3
-                      style={{
-                        fontSize: 16,
-                        fontWeight: 800,
-                        color: "#f0f4ff",
-                        letterSpacing: "-0.01em",
-                      }}
-                    >
-                      {step.title}
-                    </h3>
-                  </div>
-                  <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.55 }}>{step.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════ PRICING ═══════════════════════ */}
-      <section
-        id="pricing"
-        className="section-padding"
-        style={{ padding: "80px 40px", background: "rgba(255,255,255,0.015)" }}
-      >
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#34d399",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                marginBottom: 16,
-              }}
-            >
-              Simple pricing
-            </div>
-            <h2
-              style={{
-                fontSize: "clamp(32px, 5vw, 52px)",
-                fontWeight: 900,
-                color: "#f0f4ff",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.1,
-              }}
-            >
-              Start free. Upgrade when you're ready.
-            </h2>
-          </div>
-          <div
-            className="grid-3"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}
-          >
-            {PLANS.map((plan, i) => (
-              <div
-                key={i}
-                className="plan-card"
-                style={{
-                  position: "relative",
-                  background: plan.popular
-                    ? "linear-gradient(135deg, rgba(56,189,248,0.08), rgba(167,139,250,0.05))"
-                    : "linear-gradient(135deg, #0b1120, #0d1628)",
-                  border: plan.popular
-                    ? "1px solid rgba(56,189,248,0.4)"
-                    : "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 20,
-                  padding: 32,
-                  boxShadow: plan.popular ? "0 20px 60px rgba(56,189,248,0.15)" : "none",
-                }}
-              >
-                {plan.popular && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: -12,
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-                      color: "#fff",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      padding: "5px 14px",
-                      borderRadius: 100,
-                      letterSpacing: "0.1em",
-                      boxShadow: "0 4px 16px rgba(56,189,248,0.4)",
-                    }}
-                  >
-                    MOST POPULAR
-                  </div>
-                )}
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: plan.popular ? "#38bdf8" : "#94a3b8",
-                    letterSpacing: "0.12em",
-                    marginBottom: 16,
-                  }}
-                >
-                  {plan.name}
-                </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 28 }}>
-                  <span
-                    style={{
-                      fontSize: 48,
-                      fontWeight: 900,
-                      color: "#f0f4ff",
-                      letterSpacing: "-0.03em",
-                      lineHeight: 1,
-                    }}
-                  >
-                    {plan.price}
-                  </span>
-                  <span style={{ fontSize: 16, color: "#64748b", fontWeight: 500 }}>
-                    {plan.period}
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
-                  {plan.features.map((feat, j) => (
-                    <div key={j} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                      <span
-                        style={{
-                          color: plan.popular ? "#38bdf8" : "#34d399",
-                          fontSize: 14,
-                          lineHeight: 1.5,
-                          flexShrink: 0,
-                        }}
-                      >
-                        ✓
-                      </span>
-                      <span style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.5 }}>{feat}</span>
-                    </div>
-                  ))}
-                </div>
-                {plan.waitlist ? (
-                  waitlistDone[plan.name] ? (
-                    <div
-                      style={{
-                        textAlign: "center",
-                        padding: "14px 20px",
-                        borderRadius: 12,
-                        background: "rgba(52,211,153,0.1)",
-                        border: "1px solid rgba(52,211,153,0.3)",
-                        color: "#34d399",
-                        fontSize: 14,
-                        fontWeight: 700,
-                      }}
-                    >
-                      ✓ You're on the list
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setWaitlistOpen(waitlistOpen === plan.name ? null : plan.name)
-                        }
-                        className="cta-primary"
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          textAlign: "center",
-                          padding: "14px 20px",
-                          borderRadius: 12,
-                          background: plan.popular
-                            ? "linear-gradient(135deg, #0369a1, #38bdf8)"
-                            : "rgba(255,255,255,0.05)",
-                          border: plan.popular ? "none" : "1px solid rgba(255,255,255,0.1)",
-                          color: "#fff",
-                          fontSize: 14,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          boxShadow: plan.popular ? "0 4px 20px rgba(56,189,248,0.3)" : "none",
-                        }}
-                      >
-                        {plan.cta}
-                      </button>
-                      {waitlistOpen === plan.name && (
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <input
-                            type="email"
-                            value={waitlistEmail}
-                            onChange={(e) => setWaitlistEmail(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") submitWaitlist(plan.name);
-                            }}
-                            placeholder="you@email.com"
-                            autoFocus
-                            style={{
-                              flex: 1,
-                              minWidth: 0,
-                              padding: "10px 14px",
-                              borderRadius: 10,
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              background: "rgba(255,255,255,0.04)",
-                              color: "#f0f4ff",
-                              fontSize: 13,
-                              outline: "none",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => submitWaitlist(plan.name)}
-                            style={{
-                              padding: "10px 16px",
-                              borderRadius: 10,
-                              border: "none",
-                              background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-                              color: "#fff",
-                              fontSize: 13,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Join
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                ) : (
-                  <Link
-                    href="/login"
-                    className="cta-primary"
-                    style={{
-                      display: "block",
-                      textAlign: "center",
-                      padding: "14px 20px",
-                      borderRadius: 12,
-                      background: plan.popular
-                        ? "linear-gradient(135deg, #0369a1, #38bdf8)"
-                        : "rgba(255,255,255,0.05)",
-                      border: plan.popular ? "none" : "1px solid rgba(255,255,255,0.1)",
-                      color: "#fff",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      textDecoration: "none",
-                      boxShadow: plan.popular ? "0 4px 20px rgba(56,189,248,0.3)" : "none",
-                    }}
-                  >
-                    {plan.cta}
-                  </Link>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════ TESTIMONIALS ═══════════════════════ */}
-      <section className="section-padding" style={{ padding: "80px 40px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#f59e0b",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                marginBottom: 16,
-              }}
-            >
-              Real traders. Real results.
-            </div>
-            <h2
-              style={{
-                fontSize: "clamp(32px, 5vw, 52px)",
-                fontWeight: 900,
-                color: "#f0f4ff",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.1,
-              }}
-            >
-              Funded traders trust Nexyru
-            </h2>
-          </div>
-          <div
-            className="grid-3"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}
-          >
-            {TESTIMONIALS.map((t, i) => (
-              <div
-                key={i}
-                style={{
-                  background: "linear-gradient(135deg, #0b1120, #0d1628)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 16,
-                  padding: 22,
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    marginBottom: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: "50%",
-                      background: "linear-gradient(135deg, rgba(56,189,248,0.25), rgba(167,139,250,0.25))",
-                      border: "1px solid rgba(56,189,248,0.3)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 14,
-                      fontWeight: 900,
-                      color: "#38bdf8",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {t.name.split(" ").map((p) => p[0]).join("")}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{t.name}</div>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        marginTop: 4,
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: "#94a3b8",
-                        padding: "2px 8px",
-                        borderRadius: 100,
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        letterSpacing: "0.04em",
-                      }}
-                    >
-                      {t.firm}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 1 }}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <span key={s} style={{ color: "#f59e0b", fontSize: 12 }}>
-                        ★
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <p
-                  style={{
-                    fontSize: 14,
-                    color: "#cbd5e1",
-                    lineHeight: 1.6,
-                    flex: 1,
-                  }}
-                >
-                  "{t.text}"
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════ CTA BANNER ═══════════════════════ */}
-      <section className="section-padding" style={{ padding: "60px 40px" }}>
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            background:
-              "linear-gradient(135deg, #0c2545 0%, #0f3a6e 50%, #1450a3 100%)",
-            borderRadius: 28,
-            padding: "80px 40px",
-            textAlign: "center",
-            position: "relative",
-            overflow: "hidden",
-            border: "1px solid rgba(56,189,248,0.25)",
-            boxShadow: "0 30px 80px rgba(56,189,248,0.2)",
-          }}
+          Everything you need to keep a funded account.
+        </h2>
+        <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-xl border md:grid-cols-2 lg:grid-cols-3"
+          style={{ borderColor: "var(--border)", background: "var(--border)" }}
         >
-          <div
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 600,
-              height: 600,
-              borderRadius: "50%",
-              background: "radial-gradient(ellipse, rgba(56,189,248,0.2) 0%, transparent 70%)",
-              pointerEvents: "none",
-            }}
-          />
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <h2
-              style={{
-                fontSize: "clamp(32px, 5vw, 52px)",
-                fontWeight: 900,
-                color: "#fff",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.1,
-                marginBottom: 16,
-              }}
-            >
-              Ready to protect your funded account?
-            </h2>
-            <p
-              style={{
-                fontSize: 18,
-                color: "rgba(255,255,255,0.85)",
-                marginBottom: 36,
-                maxWidth: 560,
-                margin: "0 auto 36px",
-                lineHeight: 1.5,
-              }}
-            >
-              Join traders who use Nexyru to trade smarter, not harder.
-            </p>
-            <Link
-              href="/login"
-              className="cta-primary"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "18px 40px",
-                borderRadius: 16,
-                background: "#fff",
-                color: "#0369a1",
-                fontSize: 17,
-                fontWeight: 800,
-                textDecoration: "none",
-                boxShadow: "0 10px 40px rgba(0,0,0,0.3)",
-                animation: "glow 3s ease-in-out infinite",
-              }}
-            >
-              Get Started Free →
-            </Link>
+          {FEATURES.map((f) => (
             <div
-              style={{
-                marginTop: 20,
-                fontSize: 13,
-                color: "rgba(255,255,255,0.7)",
-                fontWeight: 500,
-              }}
+              key={f.title}
+              className="bg-[var(--surface)] p-6 transition-colors hover:bg-[var(--surface-2)]"
             >
-              No credit card required. Free plan available.
+              <h3 className="text-[15px] font-semibold text-white">
+                {f.title}
+              </h3>
+              <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-2)]">
+                {f.desc}
+              </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════════════════ FOOTER ═══════════════════════ */}
-      <footer
-        className="footer section-padding"
-        style={{
-          padding: "40px",
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-          maxWidth: 1200,
-          margin: "0 auto",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 20,
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                background: "linear-gradient(135deg, #0369a1, #38bdf8)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 14,
-              }}
-            >
-              📈
-            </div>
-            <span style={{ fontSize: 15, fontWeight: 800, color: "#f0f4ff" }}>Nexyru</span>
-          </div>
-          <div style={{ fontSize: 12, color: "#475569" }}>The trading journal for funded traders.</div>
-        </div>
-        <div style={{ display: "flex", gap: 28 }}>
-          {[
-            ["Privacy", "/privacy"],
-            ["Terms", "/terms"],
-            ["Contact", "/contact"],
-          ].map(([label, href]) => (
-            <Link
-              key={label}
-              href={href}
-              className="nav-link"
-              style={{ fontSize: 13, color: "#64748b", textDecoration: "none", fontWeight: 500 }}
-            >
-              {label}
-            </Link>
           ))}
         </div>
-        <div style={{ fontSize: 12, color: "#334155" }}>© 2026 Nexyru. Built for funded traders.</div>
-      </footer>
+      </div>
+    </section>
+  );
+}
+
+function HowItWorks() {
+  return (
+    <section className="border-t" style={{ borderColor: "var(--border)" }}>
+      <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+        <p className="nx-label mb-3">How it works</p>
+        <h2
+          className="max-w-2xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
+          style={{ letterSpacing: "-0.01em" }}
+        >
+          Three steps from CSV to clarity.
+        </h2>
+        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+          {STEPS.map((s) => (
+            <div key={s.n} className="nx-card p-6">
+              <div
+                className="text-[12px] font-semibold tracking-widest"
+                style={{ color: "var(--accent)" }}
+              >
+                {s.n}
+              </div>
+              <h3 className="mt-4 text-[16px] font-semibold text-white">
+                {s.title}
+              </h3>
+              <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-2)]">
+                {s.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PlanCard({
+  plan,
+  highlight = false,
+}: {
+  plan: typeof PLAN_FREE;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className="relative rounded-xl p-7"
+      style={{
+        background: "var(--surface)",
+        border: highlight
+          ? "1px solid var(--accent)"
+          : "1px solid var(--border)",
+      }}
+    >
+      {highlight && (
+        <span
+          className="absolute -top-2 right-6 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white"
+          style={{ background: "var(--accent)" }}
+        >
+          Popular
+        </span>
+      )}
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-[15px] font-semibold text-white">{plan.name}</h3>
+        <div className="text-right">
+          <span className="text-[28px] font-bold text-white tabular-nums">
+            {plan.price}
+          </span>
+          <span className="ml-1 text-[13px] text-[var(--text-muted)]">
+            /mo
+          </span>
+        </div>
+      </div>
+      <p className="mt-1 text-[13px] text-[var(--text-2)]">{plan.tagline}</p>
+      <Link
+        href="/login"
+        className={
+          highlight
+            ? "nx-btn-primary mt-6 w-full h-10 text-[14px]"
+            : "nx-btn-ghost mt-6 w-full h-10 text-[14px]"
+        }
+      >
+        Get started
+      </Link>
+      <ul className="mt-7 space-y-3">
+        {plan.features.map((feat) => (
+          <li
+            key={feat}
+            className="flex items-start gap-2 text-[14px] text-[var(--text-2)]"
+          >
+            <span
+              aria-hidden
+              className="mt-[7px] inline-block h-1 w-1 rounded-full"
+              style={{ background: "var(--accent)" }}
+            />
+            <span>{feat}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Pricing() {
+  return (
+    <section
+      id="pricing"
+      className="border-t"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+        <p className="nx-label mb-3">Pricing</p>
+        <h2
+          className="max-w-2xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
+          style={{ letterSpacing: "-0.01em" }}
+        >
+          Simple, honest pricing.
+        </h2>
+        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2 md:max-w-3xl">
+          <PlanCard plan={PLAN_FREE} />
+          <PlanCard plan={PLAN_PRO} highlight />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="border-t" style={{ borderColor: "var(--border)" }}>
+      <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-10 md:flex-row md:items-center">
+        <Logo />
+        <nav className="flex flex-wrap items-center gap-6 text-[13px] text-[var(--text-2)]">
+          <a href="#features" className="hover:text-white transition-colors">
+            Features
+          </a>
+          <a href="#pricing" className="hover:text-white transition-colors">
+            Pricing
+          </a>
+          <Link href="/privacy" className="hover:text-white transition-colors">
+            Privacy
+          </Link>
+          <Link href="/terms" className="hover:text-white transition-colors">
+            Terms
+          </Link>
+          <Link href="/contact" className="hover:text-white transition-colors">
+            Contact
+          </Link>
+        </nav>
+        <p className="text-[12px] text-[var(--text-muted)]">
+          © {new Date().getFullYear()} Nexyru
+        </p>
+      </div>
+    </footer>
+  );
+}
+
+export default function LandingPage() {
+  return (
+    <div
+      className="min-h-screen"
+      style={{ background: "var(--bg)", color: "var(--text)" }}
+    >
+      <Nav />
+      <main>
+        <Hero />
+        <Features />
+        <HowItWorks />
+        <Pricing />
+      </main>
+      <Footer />
     </div>
   );
 }

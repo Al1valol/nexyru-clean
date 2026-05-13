@@ -42,22 +42,22 @@ function timeAgo(iso:string){
 }
 function getRank(s:ProfileStats) {
   if(s.totalTrades>=200&&s.winRate>=60&&s.consistency>=80) return{label:"Funded Trader",  color:"#f59e0b",next:"Max rank",          progress:100};
-  if(s.totalTrades>=100&&s.winRate>=55&&s.consistency>=70) return{label:"Verified Trader",color:"#a78bfa",next:"Funded Trader",      progress:Math.min(100,((s.totalTrades-100)/100)*100)};
-  if(s.totalTrades>=50 &&s.winRate>=50&&s.consistency>=55) return{label:"Consistent",     color:"#34d399",next:"Verified Trader",    progress:Math.min(100,((s.totalTrades-50)/50)*100)};
-  if(s.totalTrades>=20)                                    return{label:"Active Trader",  color:"#38bdf8",next:"Consistent",         progress:Math.min(100,((s.totalTrades-20)/30)*100)};
-  return                                                         {label:"Beginner",        color:"#64748b",next:"Active Trader",      progress:Math.min(100,(s.totalTrades/20)*100)};
+  if(s.totalTrades>=100&&s.winRate>=55&&s.consistency>=70) return{label:"Verified Trader",color:"#a5b4fc",next:"Funded Trader",      progress:Math.min(100,((s.totalTrades-100)/100)*100)};
+  if(s.totalTrades>=50 &&s.winRate>=50&&s.consistency>=55) return{label:"Consistent",     color:"#10b981",next:"Verified Trader",    progress:Math.min(100,((s.totalTrades-50)/50)*100)};
+  if(s.totalTrades>=20)                                    return{label:"Active Trader",  color:"#6366f1",next:"Consistent",         progress:Math.min(100,((s.totalTrades-20)/30)*100)};
+  return                                                         {label:"Beginner",        color:"#6b7280",next:"Active Trader",      progress:Math.min(100,(s.totalTrades/20)*100)};
 }
 function getBadges(s:ProfileStats,strats:Strategy[]):Badge[] {
   const b:Badge[]=[];
-  if(s.winRate>=60)         b.push({id:"wr",   label:"Sharp Shooter",  icon:"🎯",color:"#34d399",desc:"60%+ win rate"});
-  if(s.consistency>=75)     b.push({id:"con",  label:"Consistent",     icon:"📊",color:"#38bdf8",desc:"75+ score"});
-  if(s.totalTrades>=100)    b.push({id:"100",  label:"Centurion",      icon:"💯",color:"#a78bfa",desc:"100+ trades"});
-  if(s.maxDrawdown<10)      b.push({id:"dd",   label:"Risk Master",    icon:"🛡️",color:"#22d3a5",desc:"DD under 10%"});
-  if(s.bestStreak>=5)       b.push({id:"str",  label:"On Fire",        icon:"🔥",color:"#f97316",desc:"5+ win streak"});
-  if(s.totalPnl>0)          b.push({id:"pnl",  label:"In The Green",   icon:"💚",color:"#34d399",desc:"Positive PnL"});
-  if(s.verifiedTrades>=50)  b.push({id:"ver",  label:"Verified Funded",icon:"✅",color:"#f59e0b",desc:"50+ broker trades"});
-  if(strats.some(x=>x.status==="verified")) b.push({id:"vs",label:"Verified Strategy",icon:"✓",color:"#a78bfa",desc:"Verified strategy"});
-  if(strats.some(x=>(x.monthly_price??0)>0))b.push({id:"earn",label:"Earning",icon:"💰",color:"#fbbf24",desc:"Paid subscribers"});
+  if(s.winRate>=60)         b.push({id:"wr",   label:"Sharp Shooter",  icon:"",color:"#10b981",desc:"60%+ win rate"});
+  if(s.consistency>=75)     b.push({id:"con",  label:"Consistent",     icon:"",color:"#6366f1",desc:"75+ score"});
+  if(s.totalTrades>=100)    b.push({id:"100",  label:"Centurion",      icon:"",color:"#a5b4fc",desc:"100+ trades"});
+  if(s.maxDrawdown<10)      b.push({id:"dd",   label:"Risk Master",    icon:"️",color:"#22d3a5",desc:"DD under 10%"});
+  if(s.bestStreak>=5)       b.push({id:"str",  label:"On Fire",        icon:"",color:"#f59e0b",desc:"5+ win streak"});
+  if(s.totalPnl>0)          b.push({id:"pnl",  label:"In The Green",   icon:"",color:"#10b981",desc:"Positive PnL"});
+  if(s.verifiedTrades>=50)  b.push({id:"ver",  label:"Verified Funded",icon:"",color:"#f59e0b",desc:"50+ broker trades"});
+  if(strats.some(x=>x.status==="verified")) b.push({id:"vs",label:"Verified Strategy",icon:"✓",color:"#a5b4fc",desc:"Verified strategy"});
+  if(strats.some(x=>(x.monthly_price??0)>0))b.push({id:"earn",label:"Earning",icon:"",color:"#f59e0b",desc:"Paid subscribers"});
   return b;
 }
 function calcConsistency(wr:number,dd:number,total:number){
@@ -68,11 +68,8 @@ function calcConsistency(wr:number,dd:number,total:number){
 // ── Small Components ───────────────────────────────────────────
 function StatCard({label,value,color,sub}:{label:string;value:string;color?:string;sub?:string}){
   return(
-    <div style={{background:"#0d1628",border:"1px solid #1a2540",borderRadius:14,padding:"16px",textAlign:"center",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",top:-15,right:-15,width:50,height:50,borderRadius:"50%",background:`${color??"#38bdf8"}08`,pointerEvents:"none"}}/>
-      <div style={{fontSize:9,fontWeight:700,color:"#3a4a6a",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{label}</div>
-      <div style={{fontSize:22,fontWeight:900,fontFamily:"monospace",color:color??"#f0f4ff",lineHeight:1}}>{value}</div>
-      {sub&&<div style={{fontSize:9,color:"#3a4a6a",marginTop:5}}>{sub}</div>}
+    <div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:14,padding:"16px",textAlign:"center",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-15,right:-15,width:50,height:50,borderRadius:"50%",background:`${color??"#6366f1"}08`,pointerEvents:"none"}}/><div style={{fontSize:9,fontWeight:700,color:"#2a2a3a",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{label}</div><div style={{fontSize:22,fontWeight:900,fontFamily:"monospace",color:color??"#ffffff",lineHeight:1}}>{value}</div>
+      {sub&&<div style={{fontSize:9,color:"#2a2a3a",marginTop:5}}>{sub}</div>}
     </div>
   );
 }
@@ -80,10 +77,7 @@ function EquityTooltip({active,payload,label}:any){
   if(!active||!payload?.length)return null;
   const v=payload[0].value as number;
   return(
-    <div style={{background:"#0d1628",border:"1px solid #1a2540",borderRadius:10,padding:"10px 14px",fontSize:11}}>
-      <div style={{color:"#64748b",marginBottom:4}}>{label}</div>
-      <div style={{color:v>=0?"#34d399":"#f87171",fontWeight:700,fontFamily:"monospace"}}>{v>=0?"+":""}{v.toFixed(2)}</div>
-    </div>
+    <div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:10,padding:"10px 14px",fontSize:11}}><div style={{color:"#6b7280",marginBottom:4}}>{label}</div><div style={{color:v>=0?"#10b981":"#ef4444",fontWeight:700,fontFamily:"monospace"}}>{v>=0?"+":""}{v.toFixed(2)}</div></div>
   );
 }
 
@@ -93,14 +87,14 @@ export default function TraderProfile(){
   const username=decodeURIComponent((params?.username as string)??"").replace(/^@/,"");
 
   const [tab,setTab]=useState<"overview"|"posts"|"trades"|"strategies"|"analytics">("overview");
-  const [strategies,setStrategies]=useState<Strategy[]>([]);
-  const [trades,setTrades]=useState<Trade[]>([]);
-  const [posts,setPosts]=useState<PostRow[]>([]);
-  const [postsLoading,setPostsLoading]=useState(true);
-  const [stats,setStats]=useState<ProfileStats|null>(null);
-  const [loading,setLoading]=useState(true);
-  const [notFound,setNotFound]=useState(false);
-  const [followerCounts,setFollowerCounts]=useState<Record<string,number>>({});
+ const [strategies,setStrategies]=useState<Strategy[]>([]);
+ const [trades,setTrades]=useState<Trade[]>([]);
+ const [posts,setPosts]=useState<PostRow[]>([]);
+ const [postsLoading,setPostsLoading]=useState(true);
+ const [stats,setStats]=useState<ProfileStats|null>(null);
+ const [loading,setLoading]=useState(true);
+ const [notFound,setNotFound]=useState(false);
+ const [followerCounts,setFollowerCounts]=useState<Record<string,number>>({});
   const [isFollowing,setIsFollowing]=useState(false);
   const [followerCount,setFollowerCount]=useState(0);
   const [followLoading,setFollowLoading]=useState(false);
@@ -179,7 +173,7 @@ export default function TraderProfile(){
       ]);
       const allStrats:Strategy[]=[...(Array.isArray(bt)?bt:[]),...(Array.isArray(live)?live:[]),...(Array.isArray(ver)?ver:[])].filter((s:any)=>s.user_id===username);
 
-      const counts:Record<string,number>={};
+ const counts:Record<string,number>={};
       await Promise.all(allStrats.map(async s=>{const d=await fetch(`/api/follow?strategy_id=${s.id}`).then(r=>r.json());counts[s.id]=d.count??0;}));
       setFollowerCounts(counts);
 
@@ -209,8 +203,8 @@ export default function TraderProfile(){
           }
           bestStreak=maxStreak;currentWinStreak=streak;
           const days=[...new Set(raw.map((t:any)=>new Date(t.date).toISOString().split("T")[0]))].sort() as string[];
-          let ds=1,bd=1;
-          for(let i=1;i<days.length;i++){const diff=Math.round((new Date(days[i]).getTime()-new Date(days[i-1]).getTime())/86400000);if(diff===1){ds++;if(ds>bd)bd=ds;}else ds=1;}
+ let ds=1,bd=1;
+ for(let i=1;i<days.length;i++){const diff=Math.round((new Date(days[i]).getTime()-new Date(days[i-1]).getTime())/86400000);if(diff===1){ds++;if(ds>bd)bd=ds;}else ds=1;}
           if(days.length===1)bd=1;
           const ld=days[days.length-1]??"";const today=new Date().toISOString().split("T")[0];const yesterday=new Date(Date.now()-86400000).toISOString().split("T")[0];
           currentTradeStreak=(ld===today||ld===yesterday)?ds:0;bestTradeStreak=bd;
@@ -232,27 +226,16 @@ export default function TraderProfile(){
   };
 
   if(loading)return(
-    <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",gap:12,color:"#3a4a6a",fontSize:14}}>
-      <span style={{display:"inline-block",width:18,height:18,border:"2px solid #1a2540",borderTopColor:"#38bdf8",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
-      Loading profile…
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
+    <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",gap:12,color:"#2a2a3a",fontSize:14}}><span style={{display:"inline-block",width:18,height:18,border:"2px solid #2a2a3a",borderTopColor:"#6366f1",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>Loading profile…<style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>);
 
-  if(notFound||!stats)return(
-    <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-      <div style={{fontSize:48}}>👤</div>
-      <div style={{fontSize:20,fontWeight:800,color:"#f0f4ff"}}>Trader not found</div>
-      <div style={{fontSize:13,color:"#3a4a6a"}}>@{username} hasn&apos;t published any strategies yet</div>
-      <a href="/leaderboard" style={{padding:"9px 20px",borderRadius:10,background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.2)",color:"#38bdf8",fontSize:12,fontWeight:700,textDecoration:"none"}}>Browse Leaderboard</a>
-    </div>
+ if(notFound||!stats)return(<div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:48}}></div><div style={{fontSize:20,fontWeight:800,color:"#ffffff"}}>Trader not found</div><div style={{fontSize:13,color:"#2a2a3a"}}>@{username} hasn&apos;t published any strategies yet</div><a href="/leaderboard" style={{padding:"9px 20px",borderRadius:10,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.2)",color:"#6366f1",fontSize:12,fontWeight:700,textDecoration:"none"}}>Browse Leaderboard</a></div>
   );
 
   const rank=getRank(stats);
   const badges=getBadges(stats,strategies);
   const totalFollowers=Object.values(followerCounts).reduce((s,n)=>s+n,0);
   const monthlyRevenue=strategies.reduce((sum,s)=>sum+(followerCounts[s.id]??0)*(s.monthly_price??0),0);
-  const avatarColor=["#38bdf8","#a78bfa","#34d399","#f97316","#f59e0b"][username.charCodeAt(0)%5];
+  const avatarColor=["#6366f1","#a5b4fc","#10b981","#f59e0b","#f59e0b"][username.charCodeAt(0)%5];
   const isOwn=currentUser===username;
   const recentTrades=[...trades].sort((a,b)=>b.date-a.date).slice(0,15);
   const wins=trades.filter(t=>(t.pnl??0)>0);
@@ -264,8 +247,7 @@ export default function TraderProfile(){
   const TABS=[{id:"overview",label:"Overview"},{id:"posts",label:`Posts (${posts.length})`},{id:"trades",label:`Trades (${trades.length})`},{id:"strategies",label:`Strategies (${strategies.length})`},{id:"analytics",label:"Analytics"}];
 
   return(
-    <div style={{minHeight:"100vh",background:"#060d1a",color:"#c8d8f0",fontFamily:"system-ui,sans-serif"}}>
-      <style>{`
+    <div style={{minHeight:"100vh",background:"#060d1a",color:"#c8d8f0",fontFamily:"system-ui,sans-serif"}}><style>{`
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
@@ -273,41 +255,24 @@ export default function TraderProfile(){
       `}</style>
 
       {/* ── Nav ── */}
-      <div style={{borderBottom:"1px solid #0d1628",background:"rgba(6,13,26,0.97)",padding:"14px 24px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:10,backdropFilter:"blur(12px)"}}>
-        <a href="/traders" style={{fontSize:12,color:"#3a4a6a",textDecoration:"none",display:"flex",alignItems:"center",gap:5}}>← Traders</a>
-        <div style={{flex:1}}/>
-        <button onClick={handleShare} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #1a2540",background:"#0b1120",color:shareDone?"#34d399":"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",transition:"color 0.2s"}}>
-          {shareDone?"✓ Copied link":"🔗 Share"}
-        </button>
-        <a href="/dashboard" style={{padding:"6px 14px",borderRadius:8,border:"1px solid #1a2540",background:"#0b1120",color:"#4a5a7a",fontSize:11,fontWeight:600,textDecoration:"none"}}>Dashboard</a>
-      </div>
-
-      <div style={{maxWidth:960,margin:"0 auto",padding:"28px 20px",animation:"fadeIn 0.4s ease"}}>
+      <div style={{borderBottom:"1px solid #111118",background:"rgba(6,13,26,0.97)",padding:"14px 24px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:10,backdropFilter:"blur(12px)"}}><a href="/traders" style={{fontSize:12,color:"#2a2a3a",textDecoration:"none",display:"flex",alignItems:"center",gap:5}}>← Traders</a><div style={{flex:1}}/><button onClick={handleShare} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #2a2a3a",background:"#111118",color:shareDone?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",transition:"color 0.2s"}}>
+          {shareDone?"✓ Copied link":" Share"}
+        </button><a href="/dashboard" style={{padding:"6px 14px",borderRadius:8,border:"1px solid #2a2a3a",background:"#111118",color:"#4a5a7a",fontSize:11,fontWeight:600,textDecoration:"none"}}>Dashboard</a></div><div style={{maxWidth:960,margin:"0 auto",padding:"28px 20px",animation:"fadeIn 0.4s ease"}}>
 
         {/* ── PROFILE HEADER ── */}
-        <div style={{background:"linear-gradient(135deg,#0d1628 0%,#0f1e32 100%)",border:"1px solid #1a2540",borderRadius:24,padding:"28px 32px",marginBottom:20,position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-50,right:-50,width:220,height:220,borderRadius:"50%",background:`${avatarColor}07`,pointerEvents:"none"}}/>
-          <div style={{position:"absolute",bottom:-30,left:60,width:140,height:140,borderRadius:"50%",background:"rgba(56,189,248,0.04)",pointerEvents:"none"}}/>
-
-          <div style={{display:"flex",alignItems:"flex-start",gap:24,flexWrap:"wrap",position:"relative"}}>
+        <div style={{background:"linear-gradient(135deg,#111118 0%,#0f1e32 100%)",border:"1px solid #2a2a3a",borderRadius:24,padding:"28px 32px",marginBottom:20,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-50,right:-50,width:220,height:220,borderRadius:"50%",background:`${avatarColor}07`,pointerEvents:"none"}}/><div style={{position:"absolute",bottom:-30,left:60,width:140,height:140,borderRadius:"50%",background:"rgba(99,102,241,0.04)",pointerEvents:"none"}}/><div style={{display:"flex",alignItems:"flex-start",gap:24,flexWrap:"wrap",position:"relative"}}>
             {/* Avatar */}
-            <div style={{position:"relative",flexShrink:0}}>
-              <div style={{width:88,height:88,borderRadius:22,background:`${avatarColor}20`,border:`2px solid ${avatarColor}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:900,color:avatarColor,fontFamily:"monospace",boxShadow:`0 0 32px ${avatarColor}18`}}>
+            <div style={{position:"relative",flexShrink:0}}><div style={{width:88,height:88,borderRadius:22,background:`${avatarColor}20`,border:`2px solid ${avatarColor}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:900,color:avatarColor,fontFamily:"monospace",boxShadow:`0 0 32px ${avatarColor}18`}}>
                 {username.slice(0,2).toUpperCase()}
               </div>
-              {stats.verifiedTrades>=50&&(
-                <div title="Verified Funded Trader" style={{position:"absolute",bottom:-5,right:-5,width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,#f59e0b,#fbbf24)",border:"2px solid #060d1a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#000"}}>✓</div>
+              {stats.verifiedTrades>=50&&(<div title="Verified Funded Trader" style={{position:"absolute",bottom:-5,right:-5,width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,#f59e0b,#f59e0b)",border:"2px solid #060d1a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#000"}}>✓</div>
               )}
             </div>
 
             {/* Identity */}
-            <div style={{flex:1,minWidth:200}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}>
-                <h1 style={{fontSize:24,fontWeight:900,color:"#f0f4ff",margin:0,letterSpacing:"-0.02em"}}>@{username}</h1>
-                <span style={{fontSize:11,fontWeight:800,padding:"4px 12px",borderRadius:20,background:`${rank.color}18`,border:`1px solid ${rank.color}40`,color:rank.color}}>{rank.label}</span>
-                {stats.verifiedTrades>=50&&<span style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"rgba(245,158,11,0.12)",border:"1px solid rgba(245,158,11,0.25)",color:"#f59e0b"}}>✅ Verified Funded</span>}
-              </div>
-              <div style={{fontSize:12,color:"#3a4a6a",marginBottom:14,lineHeight:1.7}}>
+            <div style={{flex:1,minWidth:200}}><div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}><h1 style={{fontSize:24,fontWeight:900,color:"#ffffff",margin:0,letterSpacing:"-0.02em"}}>@{username}</h1><span style={{fontSize:11,fontWeight:800,padding:"4px 12px",borderRadius:20,background:`${rank.color}18`,border:`1px solid ${rank.color}40`,color:rank.color}}>{rank.label}</span>
+                {stats.verifiedTrades>=50&&<span style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"rgba(245,158,11,0.12)",border:"1px solid rgba(245,158,11,0.25)",color:"#f59e0b"}}>Verified Funded</span>}
+              </div><div style={{fontSize:12,color:"#2a2a3a",marginBottom:14,lineHeight:1.7}}>
                 Member since {new Date(stats.joinDate).toLocaleDateString("en-US",{month:"long",year:"numeric"})}
                 {" · "}{strategies.length} strateg{strategies.length!==1?"ies":"y"}
                 {totalFollowers>0&&` · ${totalFollowers} strategy followers`}
@@ -316,56 +281,30 @@ export default function TraderProfile(){
 
               {/* Action buttons */}
               {!isOwn&&currentUser&&(
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <button onClick={toggleFollow} disabled={followLoading} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 18px",borderRadius:10,fontSize:12,fontWeight:700,cursor:followLoading?"not-allowed":"pointer",transition:"all 0.15s",border:`1px solid ${isFollowing?"rgba(248,113,113,0.35)":"rgba(56,189,248,0.35)"}`,background:isFollowing?"rgba(248,113,113,0.08)":"rgba(56,189,248,0.08)",color:isFollowing?"#f87171":"#38bdf8"}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={toggleFollow} disabled={followLoading} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 18px",borderRadius:10,fontSize:12,fontWeight:700,cursor:followLoading?"not-allowed":"pointer",transition:"all 0.15s",border:`1px solid ${isFollowing?"rgba(248,113,113,0.35)":"rgba(99,102,241,0.35)"}`,background:isFollowing?"rgba(248,113,113,0.08)":"rgba(99,102,241,0.08)",color:isFollowing?"#ef4444":"#6366f1"}}>
                     {followLoading?"…":isFollowing?"✓ Following":"+ Follow"}
-                  </button>
-                  <button onClick={handleCopy} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 20px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",border:"none",background:copied?"rgba(52,211,153,0.15)":"linear-gradient(135deg,#0369a1,#38bdf8)",color:copied?"#34d399":"#fff",transition:"all 0.2s",boxShadow:copied?"none":"0 0 20px rgba(56,189,248,0.2)"}}>
-                    {copied?"✓ Copying Trades":"📋 Copy Trader"}
-                  </button>
-                </div>
+                  </button><button onClick={handleCopy} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 20px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",border:"none",background:copied?"rgba(52,211,153,0.15)":"#6366f1",color:copied?"#10b981":"#fff",transition:"all 0.2s",boxShadow:copied?"none":"0 0 20px rgba(99,102,241,0.2)"}}>
+                    {copied?"✓ Copying Trades":" Copy Trader"}
+                  </button></div>
               )}
 
               {/* Rank progress */}
               {rank.progress<100&&(
-                <div style={{marginTop:14}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
-                    <span style={{fontSize:10,color:"#3a4a6a"}}>Progress to {rank.next}</span>
-                    <span style={{fontSize:10,color:rank.color,fontWeight:700}}>{Math.round(rank.progress)}%</span>
-                  </div>
-                  <div style={{height:4,borderRadius:2,background:"#111d30",overflow:"hidden"}}>
-                    <div style={{width:`${rank.progress}%`,height:"100%",background:`linear-gradient(90deg,${rank.color}66,${rank.color})`,borderRadius:2,transition:"width 0.8s"}}/>
-                  </div>
-                </div>
+                <div style={{marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:10,color:"#2a2a3a"}}>Progress to {rank.next}</span><span style={{fontSize:10,color:rank.color,fontWeight:700}}>{Math.round(rank.progress)}%</span></div><div style={{height:4,borderRadius:2,background:"#111118",overflow:"hidden"}}><div style={{width:`${rank.progress}%`,height:"100%",background:`linear-gradient(90deg,${rank.color}66,${rank.color})`,borderRadius:2,transition:"width 0.8s"}}/></div></div>
               )}
             </div>
 
             {/* Revenue badge */}
-            {monthlyRevenue>0&&(
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <div style={{fontSize:9,color:"#3a4a6a",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.08em"}}>Est. Monthly</div>
-                <div style={{fontSize:26,fontWeight:900,color:"#22d3a5",fontFamily:"monospace"}}>${monthlyRevenue.toFixed(0)}</div>
-              </div>
+            {monthlyRevenue>0&&(<div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:9,color:"#2a2a3a",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.08em"}}>Est. Monthly</div><div style={{fontSize:26,fontWeight:900,color:"#22d3a5",fontFamily:"monospace"}}>${monthlyRevenue.toFixed(0)}</div></div>
             )}
-          </div>
-        </div>
+          </div></div>
 
         {/* ── STAT CARDS ── */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:20}}>
-          <StatCard label="Win Rate"      value={`${stats.winRate}%`}      color={stats.winRate>=55?"#34d399":stats.winRate>=45?"#fbbf24":"#f87171"}/>
-          <StatCard label="Consistency"   value={String(stats.consistency)} color={stats.consistency>=70?"#38bdf8":"#94a3b8"}/>
-          <StatCard label="Avg RR"        value={String(stats.avgRR)}       color={stats.avgRR>=1.5?"#34d399":"#94a3b8"}/>
-          <StatCard label="Max Drawdown"  value={`${stats.maxDrawdown}%`}   color={stats.maxDrawdown<15?"#34d399":stats.maxDrawdown<25?"#fbbf24":"#f87171"}/>
-          <StatCard label="Total PnL"     value={`${stats.totalPnl>=0?"+":""}${stats.totalPnl.toFixed(0)}`} color={stats.totalPnl>=0?"#34d399":"#f87171"}/>
-          <StatCard label="30-Day Return" value={`${stats.monthlyReturn>=0?"+":""}${stats.monthlyReturn.toFixed(0)}`} color={stats.monthlyReturn>=0?"#34d399":"#f87171"} sub="last 30 days"/>
-          <StatCard label="Trades"        value={String(stats.totalTrades)} color="#94a3b8"/>
-          <StatCard label="Followers"     value={String(followerCount)}     color="#38bdf8"/>
-        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:20}}><StatCard label="Win Rate"      value={`${stats.winRate}%`}      color={stats.winRate>=55?"#10b981":stats.winRate>=45?"#f59e0b":"#ef4444"}/><StatCard label="Consistency"   value={String(stats.consistency)} color={stats.consistency>=70?"#6366f1":"#9ca3af"}/><StatCard label="Avg RR"        value={String(stats.avgRR)}       color={stats.avgRR>=1.5?"#10b981":"#9ca3af"}/><StatCard label="Max Drawdown"  value={`${stats.maxDrawdown}%`}   color={stats.maxDrawdown<15?"#10b981":stats.maxDrawdown<25?"#f59e0b":"#ef4444"}/><StatCard label="Total PnL"     value={`${stats.totalPnl>=0?"+":""}${stats.totalPnl.toFixed(0)}`} color={stats.totalPnl>=0?"#10b981":"#ef4444"}/><StatCard label="30-Day Return" value={`${stats.monthlyReturn>=0?"+":""}${stats.monthlyReturn.toFixed(0)}`} color={stats.monthlyReturn>=0?"#10b981":"#ef4444"} sub="last 30 days"/><StatCard label="Trades"        value={String(stats.totalTrades)} color="#9ca3af"/><StatCard label="Followers"     value={String(followerCount)}     color="#6366f1"/></div>
 
         {/* ── TABS ── */}
-        <div style={{display:"flex",gap:0,marginBottom:20,borderBottom:"1px solid #1a2540"}}>
-          {TABS.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id as any)} style={{padding:"10px 20px",border:"none",borderBottom:tab===t.id?"2px solid #38bdf8":"2px solid transparent",marginBottom:-1,background:"transparent",fontSize:12,fontWeight:600,cursor:"pointer",color:tab===t.id?"#38bdf8":"#475569",transition:"all 0.15s",whiteSpace:"nowrap"}}>
+        <div style={{display:"flex",gap:0,marginBottom:20,borderBottom:"1px solid #2a2a3a"}}>
+          {TABS.map(t=>(<button key={t.id} onClick={()=>setTab(t.id as any)} style={{padding:"10px 20px",border:"none",borderBottom:tab===t.id?"2px solid #6366f1":"2px solid transparent",marginBottom:-1,background:"transparent",fontSize:12,fontWeight:600,cursor:"pointer",color:tab===t.id?"#6366f1":"#6b7280",transition:"all 0.15s",whiteSpace:"nowrap"}}>
               {t.label}
             </button>
           ))}
@@ -376,132 +315,68 @@ export default function TraderProfile(){
           <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn 0.25s ease"}}>
 
             {/* Equity Curve */}
-            {stats.equityCurve.length>2&&(
-              <div style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:20,padding:"20px 22px"}}>
-                <div style={{fontSize:13,fontWeight:800,color:"#f0f4ff",marginBottom:4}}>📈 Equity Curve</div>
-                <div style={{fontSize:11,color:"#3a4a6a",marginBottom:16}}>Cumulative PnL over {trades.length} trades</div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={stats.equityCurve} margin={{top:5,right:5,left:-20,bottom:0}}>
-                    <defs>
-                      <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#34d399" stopOpacity={0.18}/>
-                        <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="label" tick={{fontSize:9,fill:"#3a4a6a"}} tickLine={false} axisLine={false} interval="preserveStartEnd"/>
-                    <YAxis tick={{fontSize:9,fill:"#3a4a6a"}} tickLine={false} axisLine={false} tickFormatter={v=>`${v>=0?"+":""}${(v as number).toFixed(0)}`}/>
-                    <Tooltip content={<EquityTooltip/>}/>
-                    <ReferenceLine y={0} stroke="#1a2540" strokeDasharray="4 4"/>
-                    <Area type="monotone" dataKey="value" stroke="#34d399" strokeWidth={2} fill="url(#eqGrad)" dot={false}/>
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+            {stats.equityCurve.length>2&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:4}}>Equity Curve</div><div style={{fontSize:11,color:"#2a2a3a",marginBottom:16}}>Cumulative PnL over {trades.length} trades</div><ResponsiveContainer width="100%" height={200}><AreaChart data={stats.equityCurve} margin={{top:5,right:5,left:-20,bottom:0}}><defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#10b981" stopOpacity={0.18}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs><XAxis dataKey="label" tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} interval="preserveStartEnd"/><YAxis tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} tickFormatter={v=>`${v>=0?"+":""}${(v as number).toFixed(0)}`}/><Tooltip content={<EquityTooltip/>}/><ReferenceLine y={0} stroke="#2a2a3a" strokeDasharray="4 4"/><Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2} fill="url(#eqGrad)" dot={false}/></AreaChart></ResponsiveContainer></div>
             )}
 
             {/* Badges */}
-            {badges.length>0&&(
-              <div style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:20,padding:"20px 22px"}}>
-                <div style={{fontSize:13,fontWeight:800,color:"#f0f4ff",marginBottom:14}}>Achievement Badges</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
-                  {badges.map(b=>(
-                    <div key={b.id} title={b.desc} style={{display:"flex",alignItems:"center",gap:7,padding:"8px 14px",borderRadius:12,background:`${b.color}10`,border:`1px solid ${b.color}30`,cursor:"default"}}>
-                      <span style={{fontSize:16}}>{b.icon}</span>
-                      <span style={{fontSize:12,fontWeight:700,color:b.color}}>{b.label}</span>
-                    </div>
+            {badges.length>0&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:14}}>Achievement Badges</div><div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                  {badges.map(b=>(<div key={b.id} title={b.desc} style={{display:"flex",alignItems:"center",gap:7,padding:"8px 14px",borderRadius:12,background:`${b.color}10`,border:`1px solid ${b.color}30`,cursor:"default"}}><span style={{fontSize:16}}>{b.icon}</span><span style={{fontSize:12,fontWeight:700,color:b.color}}>{b.label}</span></div>
                   ))}
-                </div>
-              </div>
+                </div></div>
             )}
 
             {/* Streaks */}
-            <div style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:20,padding:"20px 22px"}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#f0f4ff",marginBottom:16}}>🔥 Streaks</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
+            <div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:16}}>Streaks</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
                 {[
-                  {label:"Current Win",  val:stats.currentWinStreak,  color:stats.currentWinStreak>=5?"#f97316":stats.currentWinStreak>=3?"#34d399":"#3a4a6a",emoji:stats.currentWinStreak>=10?"🔥":stats.currentWinStreak>=5?"⚡":stats.currentWinStreak>=3?"📈":"➖"},
-                  {label:"Best Win",     val:stats.bestStreak,         color:"#fbbf24",emoji:"🏆"},
-                  {label:"Daily Trade",  val:stats.currentTradeStreak, color:stats.currentTradeStreak>=7?"#38bdf8":"#64748b",emoji:"📅"},
-                  {label:"Best Daily",   val:stats.bestTradeStreak,    color:"#a78bfa",emoji:"⭐"},
-                ].map((s,i)=>(
-                  <div key={i} style={{background:"#0d1628",border:"1px solid #1a2540",borderRadius:14,padding:"14px",textAlign:"center"}}>
-                    <div style={{fontSize:24,marginBottom:6}}>{s.emoji}</div>
-                    <div style={{fontSize:28,fontWeight:900,fontFamily:"monospace",color:s.color,lineHeight:1}}>{s.val}</div>
-                    <div style={{fontSize:10,color:"#3a4a6a",marginTop:6,fontWeight:600}}>{s.label} Streak</div>
-                  </div>
+                  {label:"Current Win",  val:stats.currentWinStreak,  color:stats.currentWinStreak>=5?"#f59e0b":stats.currentWinStreak>=3?"#10b981":"#2a2a3a",emoji:stats.currentWinStreak>=10?"":stats.currentWinStreak>=5?"":stats.currentWinStreak>=3?"":""},
+                  {label:"Best Win",     val:stats.bestStreak,         color:"#f59e0b",emoji:""},
+                  {label:"Daily Trade",  val:stats.currentTradeStreak, color:stats.currentTradeStreak>=7?"#6366f1":"#6b7280",emoji:""},
+                  {label:"Best Daily",   val:stats.bestTradeStreak,    color:"#a5b4fc",emoji:"⭐"},
+                ].map((s,i)=>(<div key={i} style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:14,padding:"14px",textAlign:"center"}}><div style={{fontSize:24,marginBottom:6}}>{s.emoji}</div><div style={{fontSize:28,fontWeight:900,fontFamily:"monospace",color:s.color,lineHeight:1}}>{s.val}</div><div style={{fontSize:10,color:"#2a2a3a",marginTop:6,fontWeight:600}}>{s.label} Streak</div></div>
                 ))}
-              </div>
-            </div>
+              </div></div>
 
             {/* Rank Progression */}
-            <div style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:20,padding:"20px 22px"}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#f0f4ff",marginBottom:16}}>Rank Progression</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:16}}>Rank Progression</div><div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {[
-                  {label:"Beginner",        req:"Start trading",                   color:"#64748b"},
-                  {label:"Active Trader",   req:"20+ trades",                      color:"#38bdf8"},
-                  {label:"Consistent",      req:"50+ trades · 50%+ WR",            color:"#34d399"},
-                  {label:"Verified Trader", req:"100+ trades · 55%+ WR · 70+ score",color:"#a78bfa"},
+                  {label:"Beginner",        req:"Start trading",                   color:"#6b7280"},
+                  {label:"Active Trader",   req:"20+ trades",                      color:"#6366f1"},
+                  {label:"Consistent",      req:"50+ trades · 50%+ WR",            color:"#10b981"},
+                  {label:"Verified Trader", req:"100+ trades · 55%+ WR · 70+ score",color:"#a5b4fc"},
                   {label:"Funded Trader",   req:"200+ trades · 60%+ WR · 80+ score",color:"#f59e0b"},
                 ].map((r,i)=>{
                   const active=rank.label===r.label;
                   const past=RANKS.indexOf(r.label)<RANKS.indexOf(rank.label);
                   return(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,background:active?`${r.color}10`:"transparent",border:`1px solid ${active?r.color+"40":"#1a2540"}`}}>
-                      <div style={{width:20,height:20,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,background:active||past?`${r.color}20`:"#111d30",border:`1px solid ${active||past?r.color:"#1e2f4a"}`,color:active||past?r.color:"#2e3f5a"}}>
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,background:active?`${r.color}10`:"transparent",border:`1px solid ${active?r.color+"40":"#2a2a3a"}`}}><div style={{width:20,height:20,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,background:active||past?`${r.color}20`:"#111118",border:`1px solid ${active||past?r.color:"#1e2f4a"}`,color:active||past?r.color:"#2e3f5a"}}>
                         {past?"✓":active?"●":"○"}
-                      </div>
-                      <div style={{flex:1}}>
-                        <span style={{fontSize:12,fontWeight:active?800:600,color:active?r.color:past?"#c8d8f0":"#3a4a6a"}}>{r.label}</span>
-                        <span style={{fontSize:10,color:"#2e3f5a",marginLeft:8}}>{r.req}</span>
-                      </div>
+                      </div><div style={{flex:1}}><span style={{fontSize:12,fontWeight:active?800:600,color:active?r.color:past?"#c8d8f0":"#2a2a3a"}}>{r.label}</span><span style={{fontSize:10,color:"#2e3f5a",marginLeft:8}}>{r.req}</span></div>
                       {active&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,background:`${r.color}18`,color:r.color}}>Current</span>}
                     </div>
                   );
                 })}
-              </div>
-            </div>
-          </div>
+              </div></div></div>
         )}
 
         {/* ═══════════════ POSTS TAB ═══════════════ */}
         {tab==="posts"&&(
           <div style={{animation:"fadeIn 0.25s ease"}}>
             {postsLoading?(
-              <div style={{padding:60,textAlign:"center",color:"#3a4a6a",fontSize:12}}>
-                <div style={{width:24,height:24,border:"2px solid #1a2540",borderTopColor:"#38bdf8",borderRadius:"50%",animation:"spin 0.7s linear infinite",margin:"0 auto 12px"}}/>
-                Loading posts…
-              </div>
-            ):posts.length===0?(
-              <div style={{padding:"64px",textAlign:"center",color:"#3a4a6a",fontSize:12,background:"#0b1120",border:"1px solid #1a2540",borderRadius:20}}>
-                <div style={{fontSize:36,marginBottom:12}}>📭</div>
+              <div style={{padding:60,textAlign:"center",color:"#2a2a3a",fontSize:12}}><div style={{width:24,height:24,border:"2px solid #2a2a3a",borderTopColor:"#6366f1",borderRadius:"50%",animation:"spin 0.7s linear infinite",margin:"0 auto 12px"}}/>Loading posts…</div>):posts.length===0?(<div style={{padding:"64px",textAlign:"center",color:"#2a2a3a",fontSize:12,background:"#111118",border:"1px solid #2a2a3a",borderRadius:20}}><div style={{fontSize:36,marginBottom:12}}></div>
                 @{username} hasn&apos;t shared any trades yet
-              </div>
-            ):(
-              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              </div>):(<div style={{display:"flex",flexDirection:"column",gap:12}}>
                 {posts.map(p=>{
                   const pos=(p.pnl??0)>=0;
-                  return(
-                    <div key={p.id} style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:18,padding:"16px 20px"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:p.side==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:p.side==="long"?"#34d399":"#f87171"}}>
+ return(<div key={p.id} style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:18,padding:"16px 20px"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}><span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:p.side==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:p.side==="long"?"#10b981":"#ef4444"}}>
                           {p.side==="long"?"▲ LONG":"▼ SHORT"}
-                        </span>
-                        <span style={{fontSize:12,fontWeight:700,color:"#e2e8f0",fontFamily:"monospace"}}>{p.symbol}</span>
-                        {p.setup_name&&<span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:4,background:"rgba(129,140,248,0.1)",color:"#a5b4fc",border:"1px solid rgba(129,140,248,0.2)"}}>{p.setup_name}</span>}
-                        <span style={{flex:1}}/>
-                        <span style={{fontSize:11,color:"#2e3f5a"}}>{timeAgo(p.created_at)}</span>
-                      </div>
+                        </span><span style={{fontSize:12,fontWeight:700,color:"#ffffff",fontFamily:"monospace"}}>{p.symbol}</span>
+                        {p.setup_name&&<span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:4,background:"rgba(99,102,241,0.1)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.2)"}}>{p.setup_name}</span>}
+                        <span style={{flex:1}}/><span style={{fontSize:11,color:"#2e3f5a"}}>{timeAgo(p.created_at)}</span></div>
                       {p.pnl!==null&&(
-                        <div style={{display:"inline-flex",padding:"6px 12px",borderRadius:10,background:pos?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)",border:`1px solid ${pos?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`,marginBottom:8}}>
-                          <span style={{fontSize:18,fontWeight:900,color:pos?"#34d399":"#f87171",fontFamily:"monospace"}}>{pos?"+":""}{(p.pnl??0).toFixed(2)}</span>
-                        </div>
+                        <div style={{display:"inline-flex",padding:"6px 12px",borderRadius:10,background:pos?"rgba(52,211,153,0.08)":"rgba(248,113,113,0.08)",border:`1px solid ${pos?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`,marginBottom:8}}><span style={{fontSize:18,fontWeight:900,color:pos?"#10b981":"#ef4444",fontFamily:"monospace"}}>{pos?"+":""}{(p.pnl??0).toFixed(2)}</span></div>
                       )}
-                      {p.notes&&<p style={{fontSize:12,color:"#64748b",margin:"4px 0 8px",lineHeight:1.6,fontStyle:"italic"}}>&ldquo;{p.notes}&rdquo;</p>}
-                      <div style={{display:"flex",alignItems:"center",gap:16,marginTop:6,fontSize:11,color:"#3a4a6a"}}>
-                        <span>❤️ {p.likes_count}</span>
-                        <span>💬 {p.comments_count}</span>
-                      </div>
-                    </div>
+                      {p.notes&&<p style={{fontSize:12,color:"#6b7280",margin:"4px 0 8px",lineHeight:1.6,fontStyle:"italic"}}>&ldquo;{p.notes}&rdquo;</p>}
+                      <div style={{display:"flex",alignItems:"center",gap:16,marginTop:6,fontSize:11,color:"#2a2a3a"}}><span>️ {p.likes_count}</span><span> {p.comments_count}</span></div></div>
                   );
                 })}
               </div>
@@ -513,48 +388,18 @@ export default function TraderProfile(){
         {tab==="trades"&&(
           <div style={{animation:"fadeIn 0.25s ease"}}>
             {recentTrades.length===0?(
-              <div style={{padding:"64px",textAlign:"center",color:"#3a4a6a",fontSize:12,background:"#0b1120",border:"1px solid #1a2540",borderRadius:20}}>
-                <div style={{fontSize:36,marginBottom:12}}>📭</div>
-                No trades visible on this profile yet
-              </div>
-            ):(
-              <div style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:20,overflow:"hidden"}}>
-                <div style={{padding:"16px 20px",borderBottom:"1px solid #111827",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <span style={{fontSize:12,fontWeight:700,color:"#94a3b8"}}>Recent Trades</span>
-                  <span style={{fontSize:11,color:"#3a4a6a"}}>{trades.length} total</span>
-                </div>
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead>
-                      <tr style={{background:"rgba(10,15,30,0.98)"}}>
-                        {["Pair","Direction","Entry","Exit","PnL","Strategy","Date"].map(h=>(
-                          <th key={h} style={{padding:"9px 14px",textAlign:"left",fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:"1px solid rgba(30,41,59,0.8)",whiteSpace:"nowrap"}}>{h}</th>
+              <div style={{padding:"64px",textAlign:"center",color:"#2a2a3a",fontSize:12,background:"#111118",border:"1px solid #2a2a3a",borderRadius:20}}><div style={{fontSize:36,marginBottom:12}}></div>No trades visible on this profile yet</div>):(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,overflow:"hidden"}}><div style={{padding:"16px 20px",borderBottom:"1px solid #1a1a24",display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{fontSize:12,fontWeight:700,color:"#9ca3af"}}>Recent Trades</span><span style={{fontSize:11,color:"#2a2a3a"}}>{trades.length} total</span></div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr style={{background:"rgba(10,15,30,0.98)"}}>
+                        {["Pair","Direction","Entry","Exit","PnL","Strategy","Date"].map(h=>(<th key={h} style={{padding:"9px 14px",textAlign:"left",fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:"1px solid rgba(30,41,59,0.8)",whiteSpace:"nowrap"}}>{h}</th>
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
+                      </tr></thead><tbody>
                       {recentTrades.map(t=>{
                         const pos=(t.pnl??0)>=0;
-                        return(
-                          <tr key={t.id} style={{borderBottom:"1px solid rgba(30,41,59,0.4)"}}>
-                            <td style={{padding:"9px 14px",fontSize:11,fontWeight:700,color:"#e2e8f0",fontFamily:"monospace"}}>{t.pair}</td>
-                            <td style={{padding:"9px 14px"}}>
-                              <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:t.type==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:t.type==="long"?"#34d399":"#f87171",border:`1px solid ${t.type==="long"?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`}}>
+ return(<tr key={t.id} style={{borderBottom:"1px solid rgba(30,41,59,0.4)"}}><td style={{padding:"9px 14px",fontSize:11,fontWeight:700,color:"#ffffff",fontFamily:"monospace"}}>{t.pair}</td><td style={{padding:"9px 14px"}}><span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:t.type==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:t.type==="long"?"#10b981":"#ef4444",border:`1px solid ${t.type==="long"?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`}}>
                                 {t.type==="long"?"▲ LONG":"▼ SHORT"}
-                              </span>
-                            </td>
-                            <td style={{padding:"9px 14px",fontSize:11,color:"#64748b",fontFamily:"monospace"}}>{t.entryPrice?.toFixed(2)??"-"}</td>
-                            <td style={{padding:"9px 14px",fontSize:11,color:"#64748b",fontFamily:"monospace"}}>{t.exitPrice?.toFixed(2)??"-"}</td>
-                            <td style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:pos?"#34d399":"#f87171",fontFamily:"monospace"}}>{pos?"+":""}{(t.pnl??0).toFixed(2)}</td>
-                            <td style={{padding:"9px 14px",fontSize:11,color:"#475569"}}>{t.strategy||"—"}</td>
-                            <td style={{padding:"9px 14px",fontSize:11,color:"#3a4a6a"}}>{new Date(t.date).toLocaleDateString()}</td>
-                          </tr>
+                              </span></td><td style={{padding:"9px 14px",fontSize:11,color:"#6b7280",fontFamily:"monospace"}}>{t.entryPrice?.toFixed(2)??"-"}</td><td style={{padding:"9px 14px",fontSize:11,color:"#6b7280",fontFamily:"monospace"}}>{t.exitPrice?.toFixed(2)??"-"}</td><td style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:pos?"#10b981":"#ef4444",fontFamily:"monospace"}}>{pos?"+":""}{(t.pnl??0).toFixed(2)}</td><td style={{padding:"9px 14px",fontSize:11,color:"#6b7280"}}>{t.strategy||"—"}</td><td style={{padding:"9px 14px",fontSize:11,color:"#2a2a3a"}}>{new Date(t.date).toLocaleDateString()}</td></tr>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                    </tbody></table></div></div>
             )}
           </div>
         )}
@@ -563,35 +408,20 @@ export default function TraderProfile(){
         {tab==="strategies"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,animation:"fadeIn 0.25s ease"}}>
             {strategies.length===0?(
-              <div style={{padding:"64px",textAlign:"center",color:"#3a4a6a",fontSize:12,background:"#0b1120",border:"1px solid #1a2540",borderRadius:20}}>
-                <div style={{fontSize:36,marginBottom:12}}>📭</div>No published strategies yet
-              </div>
+              <div style={{padding:"64px",textAlign:"center",color:"#2a2a3a",fontSize:12,background:"#111118",border:"1px solid #2a2a3a",borderRadius:20}}><div style={{fontSize:36,marginBottom:12}}></div>No published strategies yet</div>
             ):strategies.map(s=>{
               const bt=s.backtest_results?.[0];
               const pos=(bt?.return_pct??0)>=0;
-              const fc=followerCounts[s.id]??0;
-              const sc:Record<string,string>={verified:"#a78bfa",live:"#34d399",backtested:"#38bdf8"};
-              const c=sc[s.status]??"#38bdf8";
+ const fc=followerCounts[s.id]??0;
+ const sc:Record<string,string>={verified:"#a5b4fc",live:"#10b981",backtested:"#6366f1"};
+              const c=sc[s.status]??"#6366f1";
               return(
-                <div key={s.id} style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:16,padding:"18px 22px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                  <div style={{flex:1,minWidth:180}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                      <span style={{fontSize:14,fontWeight:700,color:"#e2e8f0"}}>{s.name}</span>
-                      <span style={{fontSize:9,padding:"2px 8px",borderRadius:10,background:`${c}15`,color:c,border:`1px solid ${c}28`,fontWeight:700}}>{s.status}</span>
-                    </div>
-                    {bt&&<div style={{display:"flex",gap:14,fontSize:11,color:"#3a4a6a"}}>
-                      <span style={{color:pos?"#34d399":"#f87171",fontWeight:700}}>{pos?"+":""}{bt.return_pct.toFixed(1)}%</span>
-                      <span>{bt.win_rate.toFixed(0)}% WR</span>
-                      <span>{bt.trades_count} trades</span>
-                      <span>{bt.max_drawdown.toFixed(1)}% DD</span>
-                    </div>}
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
-                    {fc>0&&<div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#3a4a6a"}}>Followers</div><div style={{fontSize:15,fontWeight:700,color:"#38bdf8",fontFamily:"monospace"}}>{fc}</div></div>}
-                    {(s.monthly_price??0)>0&&<div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#3a4a6a"}}>Price</div><div style={{fontSize:15,fontWeight:700,color:"#fbbf24",fontFamily:"monospace"}}>${s.monthly_price}/mo</div></div>}
-                    <a href="/leaderboard" style={{padding:"7px 16px",borderRadius:9,background:"rgba(56,189,248,0.08)",border:"1px solid rgba(56,189,248,0.2)",color:"#38bdf8",fontSize:11,fontWeight:700,textDecoration:"none"}}>View →</a>
-                  </div>
-                </div>
+                <div key={s.id} style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:16,padding:"18px 22px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}><div style={{flex:1,minWidth:180}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:14,fontWeight:700,color:"#ffffff"}}>{s.name}</span><span style={{fontSize:9,padding:"2px 8px",borderRadius:10,background:`${c}15`,color:c,border:`1px solid ${c}28`,fontWeight:700}}>{s.status}</span></div>
+                    {bt&&<div style={{display:"flex",gap:14,fontSize:11,color:"#2a2a3a"}}><span style={{color:pos?"#10b981":"#ef4444",fontWeight:700}}>{pos?"+":""}{bt.return_pct.toFixed(1)}%</span><span>{bt.win_rate.toFixed(0)}% WR</span><span>{bt.trades_count} trades</span><span>{bt.max_drawdown.toFixed(1)}% DD</span></div>}
+                  </div><div style={{display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
+                    {fc>0&&<div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#2a2a3a"}}>Followers</div><div style={{fontSize:15,fontWeight:700,color:"#6366f1",fontFamily:"monospace"}}>{fc}</div></div>}
+                    {(s.monthly_price??0)>0&&<div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#2a2a3a"}}>Price</div><div style={{fontSize:15,fontWeight:700,color:"#f59e0b",fontFamily:"monospace"}}>${s.monthly_price}/mo</div></div>}
+                    <a href="/leaderboard" style={{padding:"7px 16px",borderRadius:9,background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.2)",color:"#6366f1",fontSize:11,fontWeight:700,textDecoration:"none"}}>View →</a></div></div>
               );
             })}
           </div>
@@ -599,53 +429,18 @@ export default function TraderProfile(){
 
         {/* ═══════════════ ANALYTICS TAB ═══════════════ */}
         {tab==="analytics"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn 0.25s ease"}}>
-
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
-              <StatCard label="Avg Winner"      value={`+${avgWin.toFixed(2)}`}        color="#34d399"/>
-              <StatCard label="Avg Loser"       value={`-${avgLoss.toFixed(2)}`}        color="#f87171"/>
-              <StatCard label="Profit Factor"   value={profitFactor>=999?"∞":profitFactor.toFixed(2)} color={profitFactor>=1.5?"#34d399":profitFactor>=1?"#fbbf24":"#f87171"}/>
-              <StatCard label="Best Trade"      value={wins.length?`+${Math.max(...wins.map(t=>t.pnl??0)).toFixed(2)}`:"—"} color="#34d399"/>
-              <StatCard label="Worst Trade"     value={losses.length?`${Math.min(...losses.map(t=>t.pnl??0)).toFixed(2)}`:"—"} color="#f87171"/>
-              <StatCard label="Total Wins"      value={String(wins.length)}             color="#34d399"/>
-              <StatCard label="Total Losses"    value={String(losses.length)}           color="#f87171"/>
-              <StatCard label="Verified Trades" value={String(stats.verifiedTrades)}    color="#f59e0b" sub="broker imports"/>
-            </div>
+          <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn 0.25s ease"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}><StatCard label="Avg Winner"      value={`+${avgWin.toFixed(2)}`}        color="#10b981"/><StatCard label="Avg Loser"       value={`-${avgLoss.toFixed(2)}`}        color="#ef4444"/><StatCard label="Profit Factor"   value={profitFactor>=999?"∞":profitFactor.toFixed(2)} color={profitFactor>=1.5?"#10b981":profitFactor>=1?"#f59e0b":"#ef4444"}/><StatCard label="Best Trade"      value={wins.length?`+${Math.max(...wins.map(t=>t.pnl??0)).toFixed(2)}`:"—"} color="#10b981"/><StatCard label="Worst Trade"     value={losses.length?`${Math.min(...losses.map(t=>t.pnl??0)).toFixed(2)}`:"—"} color="#ef4444"/><StatCard label="Total Wins"      value={String(wins.length)}             color="#10b981"/><StatCard label="Total Losses"    value={String(losses.length)}           color="#ef4444"/><StatCard label="Verified Trades" value={String(stats.verifiedTrades)}    color="#f59e0b" sub="broker imports"/></div>
 
             {/* Win/Loss bar */}
-            {trades.length>0&&(
-              <div style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:16,padding:"18px 22px"}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",marginBottom:12}}>Win / Loss Split</div>
-                <div style={{height:10,borderRadius:5,overflow:"hidden",display:"flex"}}>
-                  <div style={{width:`${stats.winRate}%`,background:"linear-gradient(90deg,#0ea5a0,#34d399)",transition:"width 0.8s"}}/>
-                  <div style={{flex:1,background:"linear-gradient(90deg,#ef4444,#f87171)"}}/>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
-                  <span style={{fontSize:11,color:"#34d399",fontWeight:700}}>{stats.winRate}% wins ({wins.length})</span>
-                  <span style={{fontSize:11,color:"#f87171",fontWeight:700}}>{100-stats.winRate}% losses ({losses.length})</span>
-                </div>
-              </div>
+            {trades.length>0&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:16,padding:"18px 22px"}}><div style={{fontSize:12,fontWeight:700,color:"#9ca3af",marginBottom:12}}>Win / Loss Split</div><div style={{height:10,borderRadius:5,overflow:"hidden",display:"flex"}}><div style={{width:`${stats.winRate}%`,background:"linear-gradient(90deg,#10b981,#10b981)",transition:"width 0.8s"}}/><div style={{flex:1,background:"linear-gradient(90deg,#ef4444,#ef4444)"}}/></div><div style={{display:"flex",justifyContent:"space-between",marginTop:8}}><span style={{fontSize:11,color:"#10b981",fontWeight:700}}>{stats.winRate}% wins ({wins.length})</span><span style={{fontSize:11,color:"#ef4444",fontWeight:700}}>{100-stats.winRate}% losses ({losses.length})</span></div></div>
             )}
 
             {/* PnL chart */}
-            {stats.equityCurve.length>2&&(
-              <div style={{background:"#0b1120",border:"1px solid #1a2540",borderRadius:16,padding:"18px 22px"}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",marginBottom:16}}>Cumulative PnL</div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={stats.equityCurve} margin={{top:5,right:5,left:-20,bottom:0}}>
-                    <XAxis dataKey="label" tick={{fontSize:9,fill:"#3a4a6a"}} tickLine={false} axisLine={false} interval="preserveStartEnd"/>
-                    <YAxis tick={{fontSize:9,fill:"#3a4a6a"}} tickLine={false} axisLine={false} tickFormatter={v=>`${(v as number)>=0?"+":""}${(v as number).toFixed(0)}`}/>
-                    <Tooltip content={<EquityTooltip/>}/>
-                    <ReferenceLine y={0} stroke="#1a2540" strokeDasharray="4 4"/>
-                    <Line type="monotone" dataKey="value" stroke="#38bdf8" strokeWidth={2} dot={false} activeDot={{r:4,fill:"#38bdf8"}}/>
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+            {stats.equityCurve.length>2&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:16,padding:"18px 22px"}}><div style={{fontSize:12,fontWeight:700,color:"#9ca3af",marginBottom:16}}>Cumulative PnL</div><ResponsiveContainer width="100%" height={220}><LineChart data={stats.equityCurve} margin={{top:5,right:5,left:-20,bottom:0}}><XAxis dataKey="label" tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} interval="preserveStartEnd"/><YAxis tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} tickFormatter={v=>`${(v as number)>=0?"+":""}${(v as number).toFixed(0)}`}/><Tooltip content={<EquityTooltip/>}/><ReferenceLine y={0} stroke="#2a2a3a" strokeDasharray="4 4"/><Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={false} activeDot={{r:4,fill:"#6366f1"}}/></LineChart></ResponsiveContainer></div>
             )}
           </div>
         )}
 
-      </div>
-    </div>
+      </div></div>
   );
 }
