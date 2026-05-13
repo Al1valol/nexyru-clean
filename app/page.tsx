@@ -1,1081 +1,1650 @@
 "use client";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+const COLORS = {
+  bg: "#080808",
+  surface: "#111111",
+  surface2: "#161616",
+  border: "#222222",
+  borderSoft: "#1a1a1a",
+  borderMid: "#1e1e1e",
+  borderHover: "#333333",
+  text: "#ffffff",
+  textDim: "#888888",
+  textMuted: "#666666",
+  textFaint: "#444444",
+  accent: "#6366f1",
+  accentDim: "rgba(99,102,241,0.12)",
+  green: "#22c55e",
+  greenDim: "rgba(34,197,94,0.12)",
+  red: "#ef4444",
+};
+
+const PROP_FIRMS = [
+  "Apex Trader Funding",
+  "TopstepX",
+  "FTMO",
+  "MyFundedFutures",
+  "Bulenox",
+  "Tradeday",
+];
+
+const HERO_FIRM_TAGS = ["Apex", "TopstepX", "FTMO", "MyFundedFutures", "Bulenox"];
+
 const FEATURES = [
   {
+    dot: COLORS.accent,
     title: "Challenge Tracker",
-    desc: "Real-time daily loss, drawdown, and target tracking with accurate 2026 rules.",
+    desc: "Track your daily loss limit, max drawdown, and profit target in real time. Accurate 2026 rules for Apex, TopstepX, FTMO, and more.",
   },
   {
+    dot: "#a855f7",
     title: "Psychology Tracker",
-    desc: "Understand which emotions and mistakes cost you money.",
+    desc: "See exactly which emotions and mistakes are costing you money. Tag every trade with your mental state and watch the patterns emerge.",
   },
   {
+    dot: COLORS.green,
     title: "Trade Replay",
-    desc: "Review trades with your broker screenshots and entry/exit analysis.",
+    desc: "Review every trade against a real chart. See your entry and exit on actual candles. Learn the way pro athletes watch film.",
   },
   {
-    title: "Setup Finder",
-    desc: "Discover your highest win-rate setups automatically.",
+    dot: "#f59e0b",
+    title: "Best Setup Finder",
+    desc: "Automatically analyzes all your trades and surfaces your highest win-rate setups, best hours, and most profitable instruments.",
   },
   {
+    dot: "#ec4899",
     title: "Pre-Trade Checklist",
-    desc: "Stay disciplined with a quick checklist before every trade.",
+    desc: "A quick mental checklist before every trade. Track which items you skip — and exactly how much it costs you.",
   },
   {
+    dot: "#06b6d4",
     title: "Trade Planner",
-    desc: "Position sizing and session management for funded accounts.",
+    desc: "Set your risk per trade once. Get the exact position size for every trade automatically, based on your account and stop distance.",
   },
 ];
 
 const STEPS = [
   {
     n: "01",
-    title: "Import",
+    title: "Import your trades",
     desc: "Upload a CSV from your prop firm. Takes under a minute.",
   },
   {
     n: "02",
-    title: "Configure",
-    desc: "Select your prop firm and account size. Rules fill automatically.",
+    title: "Configure your challenge",
+    desc: "Select your firm and account size. Rules fill automatically.",
   },
   {
     n: "03",
-    title: "Trade",
-    desc: "Use your data to trade smarter and protect your account.",
+    title: "Trade with clarity",
+    desc: "Your data tells you exactly what works and what doesn't.",
   },
 ];
 
 const FREE_FEATURES = [
   "Trade journal — up to 100 trades",
   "Challenge tracker — 1 account",
-  "Pre-trade checklist",
-  "Best setup finder",
   "Psychology tracker",
+  "Best setup finder",
+  "Pre-trade checklist",
   "Trade replay — last 10 trades",
   "AI strategy builder — 3 uses/day",
-  "Syncs across all your devices",
+  "Syncs across all devices",
 ];
 
 const PRO_FEATURES = [
   "Everything in Free, unlimited",
-  "Multiple challenge accounts",
+  "Multiple challenge accounts (2, 3, 5+)",
   "Full trade replay history",
   "Unlimited AI strategy generations",
-  "CSV export",
-  "Advanced analytics",
-  "Priority support + early access",
+  "Weekly performance report",
+  "Priority support",
 ];
 
-function Logo() {
-  return (
-    <Link href="/" className="flex items-center gap-2 select-none">
-      <span
-        aria-hidden
-        className="inline-flex h-6 w-6 items-center justify-center rounded-md"
-        style={{ background: "var(--accent)" }}
-      >
-        <span
-          className="block h-2 w-2 rounded-sm"
-          style={{ background: "#fff" }}
-        />
-      </span>
-      <span className="text-[15px] font-semibold tracking-tight text-white">
-        Nexyru
-      </span>
-    </Link>
-  );
-}
+const TRADES = [
+  { sym: "NQ1!", dir: "LONG", pnl: 312.5, grade: "A" },
+  { sym: "ES1!", dir: "SHORT", pnl: 187.5, grade: "B+" },
+  { sym: "CL1!", dir: "LONG", pnl: -95.0, grade: "C" },
+];
 
-function Nav() {
+export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistJoined, setWaitlistJoined] = useState(false);
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  function joinWaitlist(e: React.FormEvent) {
+    e.preventDefault();
+    const email = waitlistEmail.trim();
+    if (!email || !email.includes("@")) return;
+    try {
+      const raw = localStorage.getItem("nexyru_waitlist");
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      if (!list.includes(email)) list.push(email);
+      localStorage.setItem("nexyru_waitlist", JSON.stringify(list));
+    } catch {}
+    setWaitlistJoined(true);
+    setWaitlistEmail("");
+  }
+
   return (
-    <header
-      className="sticky top-0 z-50 transition-colors"
+    <div
       style={{
-        backdropFilter: "saturate(180%) blur(10px)",
-        WebkitBackdropFilter: "saturate(180%) blur(10px)",
-        background: scrolled
-          ? "rgba(10, 10, 15, 0.78)"
-          : "rgba(10, 10, 15, 0.4)",
-        borderBottom: scrolled
-          ? "1px solid var(--border)"
-          : "1px solid transparent",
+        background: COLORS.bg,
+        color: COLORS.text,
+        scrollBehavior: "smooth",
+        minHeight: "100vh",
       }}
     >
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-        <Logo />
-        <nav className="hidden items-center gap-8 md:flex">
-          <a
-            href="#features"
-            className="text-[13px] text-[var(--text-2)] hover:text-white transition-colors"
+      {/* ─── NAV ───────────────────────────────────────────────────── */}
+      <nav
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          background: "rgba(8,8,8,0.8)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderBottom: scrolled
+            ? `1px solid ${COLORS.borderSoft}`
+            : "1px solid transparent",
+          transition: "border-color 200ms ease",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            padding: "16px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Link
+            href="/"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              textDecoration: "none",
+            }}
           >
-            Features
-          </a>
-          <a
-            href="#pricing"
-            className="text-[13px] text-[var(--text-2)] hover:text-white transition-colors"
+            <div
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 6,
+                background: `linear-gradient(135deg, ${COLORS.accent}, #4f46e5)`,
+              }}
+            />
+            <span
+              style={{
+                color: COLORS.text,
+                fontWeight: 600,
+                fontSize: 15,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              Nexyru
+            </span>
+          </Link>
+
+          <div className="nx-nav-links" style={{ display: "flex", gap: 28 }}>
+            <a href="#features" style={navLink}>
+              Features
+            </a>
+            <a href="#pricing" style={navLink}>
+              Pricing
+            </a>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Link
+              href="/login"
+              className="nx-ghost-link"
+              style={{
+                color: COLORS.textDim,
+                fontSize: 14,
+                fontWeight: 500,
+                textDecoration: "none",
+                padding: "8px 12px",
+                transition: "color 150ms ease",
+              }}
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/login"
+              style={{
+                background: COLORS.accent,
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 500,
+                textDecoration: "none",
+                padding: "8px 14px",
+                borderRadius: 8,
+                transition: "background 150ms ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#4f46e5")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = COLORS.accent)}
+            >
+              Get started
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* ─── HERO ──────────────────────────────────────────────────── */}
+      <section
+        style={{
+          padding: "100px 24px 80px",
+          maxWidth: 1100,
+          margin: "0 auto",
+        }}
+      >
+        <div className="nx-hero-grid">
+          {/* LEFT */}
+          <div>
+            <div
+              style={{
+                color: COLORS.textDim,
+                fontSize: 13,
+                marginBottom: 24,
+                fontWeight: 500,
+              }}
+            >
+              Free to start · No credit card
+            </div>
+
+            <h1
+              style={{
+                fontSize: "clamp(36px, 5.5vw, 56px)",
+                fontWeight: 800,
+                lineHeight: 1.05,
+                letterSpacing: "-0.025em",
+                color: COLORS.text,
+                margin: 0,
+                marginBottom: 24,
+              }}
+            >
+              The trading journal that keeps your funded account alive.
+            </h1>
+
+            <p
+              style={{
+                fontSize: 18,
+                color: COLORS.textDim,
+                lineHeight: 1.55,
+                margin: 0,
+                marginBottom: 32,
+                maxWidth: 520,
+              }}
+            >
+              Built specifically for prop firm traders. Track your daily loss
+              limits, understand your psychology, and find your edge — all in
+              one place.
+            </p>
+
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 36 }}>
+              <Link
+                href="/login"
+                style={{
+                  background: COLORS.accent,
+                  color: "#fff",
+                  fontSize: 15,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  padding: "12px 22px",
+                  borderRadius: 10,
+                  transition: "background 150ms ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#4f46e5")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = COLORS.accent)}
+              >
+                Start for free
+              </Link>
+              <a
+                href="#features"
+                style={{
+                  background: "transparent",
+                  color: COLORS.text,
+                  fontSize: 15,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  padding: "12px 22px",
+                  borderRadius: 10,
+                  border: `1px solid ${COLORS.textFaint}`,
+                  transition: "border-color 150ms ease",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.borderColor = COLORS.textDim)
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.borderColor = COLORS.textFaint)
+                }
+              >
+                See how it works
+              </a>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {HERO_FIRM_TAGS.map((firm) => (
+                <span
+                  key={firm}
+                  style={{
+                    background: COLORS.borderSoft,
+                    border: `1px solid #2a2a2a`,
+                    color: COLORS.textMuted,
+                    fontSize: 12,
+                    padding: "5px 12px",
+                    borderRadius: 999,
+                    fontWeight: 500,
+                  }}
+                >
+                  {firm}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* RIGHT — app mockup */}
+          <div>
+            <DashboardMockup />
+          </div>
+        </div>
+      </section>
+
+      {/* ─── SOCIAL PROOF BAR ──────────────────────────────────────── */}
+      <section
+        style={{
+          background: COLORS.surface,
+          borderTop: `1px solid ${COLORS.borderMid}`,
+          borderBottom: `1px solid ${COLORS.borderMid}`,
+          padding: "32px 24px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+          }}
+        >
+          <span
+            style={{
+              color: COLORS.textDim,
+              fontSize: 13,
+              fontWeight: 500,
+              marginRight: 8,
+            }}
           >
-            Pricing
-          </a>
-        </nav>
-        <div className="flex items-center gap-2">
+            Works with every major prop firm
+          </span>
+          {PROP_FIRMS.map((firm) => (
+            <span
+              key={firm}
+              style={{
+                background: COLORS.borderSoft,
+                border: `1px solid ${COLORS.textFaint}`,
+                color: COLORS.textDim,
+                fontSize: 12,
+                padding: "5px 12px",
+                borderRadius: 999,
+                fontWeight: 500,
+              }}
+            >
+              {firm}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── PROBLEM ───────────────────────────────────────────────── */}
+      <section style={{ padding: "100px 24px" }}>
+        <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
+          <div className="nx-label" style={sectionLabel}>
+            THE PROBLEM
+          </div>
+          <h2
+            style={{
+              fontSize: "clamp(28px, 4vw, 40px)",
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              lineHeight: 1.15,
+              color: COLORS.text,
+              margin: "16px 0 20px",
+            }}
+          >
+            80% of funded accounts fail within 90 days.
+          </h2>
+          <p
+            style={{
+              fontSize: 17,
+              color: COLORS.textDim,
+              lineHeight: 1.6,
+              margin: 0,
+            }}
+          >
+            Not because traders can&apos;t trade. Because they have no system. No
+            way to track their rules, understand their mistakes, or see their
+            patterns. Nexyru fixes that.
+          </p>
+        </div>
+
+        <div
+          style={{
+            maxWidth: 900,
+            margin: "60px auto 0",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 24,
+          }}
+        >
+          {[
+            { stat: "80%", label: "of funded accounts fail in 90 days" },
+            { stat: "#1 reason", label: "breaking daily loss limits" },
+            { stat: "Most traders", label: "never track their psychology" },
+          ].map((s) => (
+            <div key={s.stat} style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  fontSize: 32,
+                  fontWeight: 700,
+                  color: COLORS.text,
+                  letterSpacing: "-0.02em",
+                  marginBottom: 8,
+                }}
+              >
+                {s.stat}
+              </div>
+              <div style={{ color: COLORS.textMuted, fontSize: 14, lineHeight: 1.5 }}>
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── FEATURES ──────────────────────────────────────────────── */}
+      <section id="features" style={{ padding: "100px 24px" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 64 }}>
+            <div className="nx-label" style={sectionLabel}>
+              FEATURES
+            </div>
+            <h2
+              style={{
+                fontSize: "clamp(28px, 4vw, 40px)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: COLORS.text,
+                margin: "16px 0 0",
+              }}
+            >
+              Everything a funded trader needs.
+            </h2>
+          </div>
+
+          <div className="nx-feature-grid">
+            {FEATURES.map((f) => (
+              <FeatureCard key={f.title} f={f} />
+            ))}
+          </div>
+
+          {/* SPOTLIGHT — Challenge Tracker */}
+          <div
+            style={{
+              marginTop: 80,
+              background: COLORS.surface,
+              border: `1px solid ${COLORS.borderMid}`,
+              borderRadius: 16,
+              padding: 48,
+              overflow: "hidden",
+            }}
+            className="nx-spotlight"
+          >
+            <div className="nx-spotlight-grid">
+              <div>
+                <div className="nx-label" style={{ ...sectionLabel, textAlign: "left" }}>
+                  FEATURE SPOTLIGHT
+                </div>
+                <h3
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 700,
+                    color: COLORS.text,
+                    letterSpacing: "-0.02em",
+                    margin: "12px 0 16px",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Know exactly where you stand on every rule, every day.
+                </h3>
+                <p
+                  style={{
+                    color: COLORS.textDim,
+                    fontSize: 16,
+                    lineHeight: 1.6,
+                    margin: "0 0 20px",
+                  }}
+                >
+                  The Challenge Tracker shows your live progress against every
+                  rule your prop firm enforces. Daily loss limits, trailing
+                  drawdown, profit targets — all updated in real time as you
+                  trade.
+                </p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {[
+                    "Accurate 2026 rules for every major prop firm",
+                    "Trailing drawdown calculated to the cent",
+                    "Warning alerts before you break a rule",
+                  ].map((item) => (
+                    <li
+                      key={item}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        color: COLORS.textDim,
+                        fontSize: 14,
+                        lineHeight: 1.6,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <span style={{ color: COLORS.green, marginTop: 1 }}>✓</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <ChallengeTrackerMockup />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS ──────────────────────────────────────────── */}
+      <section style={{ padding: "100px 24px" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 64 }}>
+            <div className="nx-label" style={sectionLabel}>
+              HOW IT WORKS
+            </div>
+            <h2
+              style={{
+                fontSize: "clamp(28px, 4vw, 40px)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: COLORS.text,
+                margin: "16px 0 0",
+              }}
+            >
+              From CSV to clarity in three steps.
+            </h2>
+          </div>
+
+          <div className="nx-steps">
+            {STEPS.map((s, i) => (
+              <div key={s.n} className="nx-step">
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: COLORS.accent,
+                    letterSpacing: "0.04em",
+                    marginBottom: 12,
+                  }}
+                >
+                  STEP {s.n}
+                </div>
+                <h3
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 600,
+                    color: COLORS.text,
+                    margin: "0 0 8px",
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  {s.title}
+                </h3>
+                <p
+                  style={{
+                    color: COLORS.textMuted,
+                    fontSize: 14,
+                    lineHeight: 1.6,
+                    margin: 0,
+                  }}
+                >
+                  {s.desc}
+                </p>
+                {i < STEPS.length - 1 && (
+                  <div className="nx-step-line" aria-hidden />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── PRICING ───────────────────────────────────────────────── */}
+      <section id="pricing" style={{ padding: "100px 24px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 56 }}>
+            <div className="nx-label" style={sectionLabel}>
+              PRICING
+            </div>
+            <h2
+              style={{
+                fontSize: "clamp(28px, 4vw, 40px)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: COLORS.text,
+                margin: "16px 0 12px",
+              }}
+            >
+              Start free. Upgrade when you&apos;re ready.
+            </h2>
+            <p style={{ color: COLORS.textDim, fontSize: 16, margin: 0 }}>
+              No credit card required to get started.
+            </p>
+          </div>
+
+          <div className="nx-pricing-grid">
+            {/* FREE */}
+            <div
+              style={{
+                background: COLORS.surface,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 16,
+                padding: 32,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div style={{ marginBottom: 24 }}>
+                <div
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    marginBottom: 12,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  FREE
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                  <span
+                    style={{
+                      fontSize: 40,
+                      fontWeight: 700,
+                      color: COLORS.text,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    $0
+                  </span>
+                  <span style={{ color: COLORS.textMuted, fontSize: 15 }}>/mo</span>
+                </div>
+              </div>
+
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, flex: 1 }}>
+                {FREE_FEATURES.map((f) => (
+                  <li
+                    key={f}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      color: COLORS.text,
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <span style={{ color: COLORS.green, fontWeight: 600 }}>✓</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                href="/login"
+                style={{
+                  marginTop: 28,
+                  display: "block",
+                  textAlign: "center",
+                  background: "transparent",
+                  color: COLORS.accent,
+                  border: `1px solid ${COLORS.accent}`,
+                  borderRadius: 10,
+                  padding: "12px 18px",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  transition: "background 150ms ease",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = COLORS.accentDim)
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                Get started free
+              </Link>
+            </div>
+
+            {/* PRO */}
+            <div
+              style={{
+                background: COLORS.surface,
+                border: `1px solid ${COLORS.borderHover}`,
+                borderRadius: 16,
+                padding: 32,
+                opacity: 0.85,
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: 16,
+                  right: 16,
+                  background: COLORS.accentDim,
+                  color: COLORS.accent,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  letterSpacing: "0.06em",
+                  border: `1px solid ${COLORS.accent}33`,
+                }}
+              >
+                COMING SOON
+              </span>
+
+              <div style={{ marginBottom: 24 }}>
+                <div
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    marginBottom: 12,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  PRO
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                  <span
+                    style={{
+                      fontSize: 40,
+                      fontWeight: 700,
+                      color: COLORS.text,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    $19
+                  </span>
+                  <span style={{ color: COLORS.textMuted, fontSize: 15 }}>/mo</span>
+                </div>
+              </div>
+
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, flex: 1 }}>
+                {PRO_FEATURES.map((f) => (
+                  <li
+                    key={f}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      color: COLORS.text,
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <span style={{ color: COLORS.accent, fontWeight: 700, marginTop: 2 }}>
+                      —
+                    </span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div style={{ marginTop: 28 }}>
+                {waitlistJoined ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      color: COLORS.green,
+                      fontSize: 14,
+                      fontWeight: 500,
+                      padding: "12px 18px",
+                      background: COLORS.greenDim,
+                      border: `1px solid ${COLORS.green}44`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    You&apos;re on the list!
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={joinWaitlist}
+                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                  >
+                    <input
+                      type="email"
+                      value={waitlistEmail}
+                      onChange={(e) => setWaitlistEmail(e.target.value)}
+                      placeholder="you@email.com"
+                      required
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        background: COLORS.bg,
+                        border: `1px solid ${COLORS.border}`,
+                        color: COLORS.text,
+                        fontSize: 14,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      style={{
+                        background: COLORS.accent,
+                        color: "#fff",
+                        fontSize: 14,
+                        fontWeight: 500,
+                        padding: "10px 16px",
+                        borderRadius: 8,
+                        border: "none",
+                        cursor: "pointer",
+                        transition: "background 150ms ease",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "#4f46e5")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = COLORS.accent)
+                      }
+                    >
+                      Join waitlist
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FINAL CTA ─────────────────────────────────────────────── */}
+      <section style={{ padding: "100px 24px", textAlign: "center" }}>
+        <div style={{ maxWidth: 600, margin: "0 auto" }}>
+          <h2
+            style={{
+              fontSize: "clamp(32px, 5vw, 48px)",
+              fontWeight: 800,
+              letterSpacing: "-0.025em",
+              color: COLORS.text,
+              margin: "0 0 16px",
+              lineHeight: 1.1,
+            }}
+          >
+            Ready to stop guessing?
+          </h2>
+          <p
+            style={{
+              fontSize: 17,
+              color: COLORS.textDim,
+              lineHeight: 1.55,
+              margin: "0 0 32px",
+            }}
+          >
+            Start tracking your trades today. Free, no card required.
+          </p>
           <Link
             href="/login"
-            className="hidden sm:inline-flex h-8 items-center rounded-md px-3 text-[13px] text-[var(--text-2)] hover:text-white transition-colors"
+            style={{
+              display: "inline-block",
+              background: COLORS.accent,
+              color: "#fff",
+              fontSize: 16,
+              fontWeight: 500,
+              textDecoration: "none",
+              padding: "14px 28px",
+              borderRadius: 12,
+              transition: "background 150ms ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#4f46e5")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = COLORS.accent)}
           >
-            Sign in
+            Get started free
           </Link>
-          <Link href="/login" className="nx-btn-primary h-8 text-[13px]">
-            Get started
-          </Link>
+          <div
+            style={{
+              marginTop: 20,
+              color: COLORS.textDim,
+              fontSize: 13,
+            }}
+          >
+            Takes 2 minutes to import your first trades
+          </div>
         </div>
-      </div>
-    </header>
+      </section>
+
+      {/* ─── FOOTER ────────────────────────────────────────────────── */}
+      <footer
+        style={{
+          borderTop: `1px solid ${COLORS.borderMid}`,
+          padding: "48px 24px 32px",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+          }}
+        >
+          <div
+            className="nx-footer-row"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 24,
+              marginBottom: 32,
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <Link
+                href="/"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  textDecoration: "none",
+                }}
+              >
+                <div
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 6,
+                    background: `linear-gradient(135deg, ${COLORS.accent}, #4f46e5)`,
+                  }}
+                />
+                <span
+                  style={{
+                    color: COLORS.text,
+                    fontWeight: 600,
+                    fontSize: 15,
+                  }}
+                >
+                  Nexyru
+                </span>
+              </Link>
+              <span style={{ color: COLORS.textMuted, fontSize: 13 }}>
+                The trading journal for funded traders
+              </span>
+            </div>
+
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+              <Link href="/privacy" style={footerLink}>
+                Privacy
+              </Link>
+              <Link href="/terms" style={footerLink}>
+                Terms
+              </Link>
+              <Link href="/contact" style={footerLink}>
+                Contact
+              </Link>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderTop: `1px solid ${COLORS.borderSoft}`,
+              paddingTop: 24,
+              color: COLORS.textMuted,
+              fontSize: 13,
+            }}
+          >
+            © 2026 Nexyru
+          </div>
+        </div>
+      </footer>
+
+      {/* ─── PAGE-SCOPED CSS ───────────────────────────────────────── */}
+      <style jsx>{`
+        :global(.nx-ghost-link:hover) {
+          color: #fff !important;
+        }
+        :global(a[style*="color: rgb(136, 136, 136)"]:hover) {
+          color: #fff;
+        }
+        .nx-hero-grid {
+          display: grid;
+          grid-template-columns: 55% 45%;
+          gap: 56px;
+          align-items: center;
+        }
+        .nx-feature-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 20px;
+        }
+        .nx-spotlight-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 48px;
+          align-items: center;
+        }
+        .nx-steps {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 32px;
+          position: relative;
+        }
+        .nx-step {
+          position: relative;
+          padding-right: 24px;
+        }
+        .nx-step-line {
+          position: absolute;
+          right: -16px;
+          top: 38px;
+          width: 32px;
+          height: 1px;
+          background: linear-gradient(
+            to right,
+            ${COLORS.border},
+            transparent
+          );
+        }
+        .nx-pricing-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+        @media (max-width: 880px) {
+          .nx-hero-grid {
+            grid-template-columns: 1fr;
+            gap: 48px;
+          }
+          .nx-feature-grid {
+            grid-template-columns: 1fr;
+          }
+          .nx-spotlight-grid {
+            grid-template-columns: 1fr;
+            gap: 32px;
+          }
+          .nx-steps {
+            grid-template-columns: 1fr;
+            gap: 32px;
+          }
+          .nx-step-line {
+            display: none;
+          }
+          .nx-pricing-grid {
+            grid-template-columns: 1fr;
+          }
+          .nx-spotlight {
+            padding: 32px 24px !important;
+          }
+          .nx-footer-row {
+            flex-direction: column;
+          }
+          .nx-nav-links {
+            display: none !important;
+          }
+        }
+      `}</style>
+    </div>
   );
 }
 
-function Hero() {
+/* ─── helpers ─────────────────────────────────────────────────── */
+
+const navLink: React.CSSProperties = {
+  color: COLORS.textDim,
+  fontSize: 14,
+  fontWeight: 500,
+  textDecoration: "none",
+  transition: "color 150ms ease",
+};
+
+const footerLink: React.CSSProperties = {
+  color: COLORS.textDim,
+  fontSize: 13,
+  textDecoration: "none",
+  transition: "color 150ms ease",
+};
+
+const sectionLabel: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: "0.12em",
+  color: COLORS.accent,
+  textTransform: "uppercase",
+  textAlign: "center",
+};
+
+function FeatureCard({
+  f,
+}: {
+  f: { dot: string; title: string; desc: string };
+}) {
+  const [hover, setHover] = useState(false);
   return (
-    <section className="relative">
-      <div className="mx-auto max-w-6xl px-6 pt-24 pb-20 sm:pt-32 sm:pb-28">
-        <p
-          className="mb-6 text-[13px] font-medium"
-          style={{ color: "var(--accent)" }}
-        >
-          Built for prop traders
-        </p>
-        <h1
-          className="max-w-4xl text-[44px] leading-[1.05] font-bold tracking-tight text-white sm:text-[56px] lg:text-[64px]"
-          style={{ letterSpacing: "-0.02em" }}
-        >
-          The journal that keeps your funded account alive.
-        </h1>
-        <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-[var(--text-2)] sm:text-[18px]">
-          Track challenge rules, find your edge, and understand your
-          psychology. Built specifically for Apex, TopstepX, FTMO, and other
-          prop firms.
-        </p>
-        <div className="mt-10 flex flex-wrap items-center gap-3">
-          <Link
-            href="/login"
-            className="nx-btn-primary h-10 px-5 text-[14px]"
-          >
-            Start for free
-          </Link>
-          <a href="#features" className="nx-btn-ghost h-10 px-5 text-[14px]">
-            See features
-          </a>
-        </div>
-      </div>
-      {/* Subtle radial highlight */}
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: COLORS.surface,
+        border: `1px solid ${hover ? COLORS.borderHover : "#1e1e1e"}`,
+        borderRadius: 14,
+        padding: 24,
+        transition: "border-color 200ms ease, transform 200ms ease",
+        transform: hover ? "translateY(-2px)" : "translateY(0)",
+      }}
+    >
       <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10"
         style={{
-          background:
-            "radial-gradient(60% 50% at 20% 0%, rgba(99,102,241,0.10) 0%, rgba(10,10,15,0) 60%)",
+          width: 10,
+          height: 10,
+          borderRadius: 3,
+          background: f.dot,
+          marginBottom: 16,
+          boxShadow: `0 0 12px ${f.dot}66`,
         }}
       />
-    </section>
+      <h3
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          color: COLORS.text,
+          margin: "0 0 8px",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {f.title}
+      </h3>
+      <p
+        style={{
+          color: COLORS.textMuted,
+          fontSize: 14,
+          lineHeight: 1.6,
+          margin: 0,
+        }}
+      >
+        {f.desc}
+      </p>
+    </div>
   );
 }
 
-function Features() {
+/* ─── Dashboard mockup ────────────────────────────────────────── */
+
+function DashboardMockup() {
   return (
-    <section
-      id="features"
-      className="border-t"
-      style={{ borderColor: "var(--border)" }}
+    <div
+      style={{
+        background: COLORS.borderSoft,
+        border: `1px solid #2a2a2a`,
+        borderRadius: 14,
+        boxShadow:
+          "0 24px 60px -20px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.02)",
+        overflow: "hidden",
+      }}
     >
-      <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
-        <p className="nx-label mb-3">Features</p>
-        <h2
-          className="max-w-2xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
-          style={{ letterSpacing: "-0.01em" }}
-        >
-          Everything you need to keep a funded account.
-        </h2>
+      {/* Top bar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 16px",
+          borderBottom: `1px solid #222`,
+          background: "#0e0e0e",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 4,
+              background: `linear-gradient(135deg, ${COLORS.accent}, #4f46e5)`,
+            }}
+          />
+          <span style={{ fontSize: 12, color: COLORS.text, fontWeight: 600 }}>
+            Nexyru
+          </span>
+          <span
+            style={{
+              marginLeft: 12,
+              fontSize: 11,
+              color: COLORS.text,
+              background: "#1a1a1a",
+              padding: "3px 8px",
+              borderRadius: 6,
+              fontWeight: 500,
+            }}
+          >
+            Dashboard
+          </span>
+        </div>
+        <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+          Apex $50k · Eval
+        </span>
+      </div>
+
+      {/* Stats grid */}
+      <div
+        style={{
+          padding: 16,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 10,
+        }}
+      >
+        <StatCard
+          label="Total P&L"
+          value="+$8,432"
+          valueColor={COLORS.green}
+          sub="This week"
+        />
+        <StatCard
+          label="Win Rate"
+          value="67.3%"
+          valueColor={COLORS.accent}
+          sub="42 trades"
+        />
+        <StatCard
+          label="Profit Target"
+          value="84%"
+          valueColor={COLORS.green}
+          sub="Apex $50k — 84% to goal"
+          progress={84}
+          progressColor={COLORS.green}
+        />
+        <StatCard
+          label="Daily Loss"
+          value="Safe"
+          valueColor={COLORS.green}
+          sub="-$240 of -$3,000"
+        />
+      </div>
+
+      {/* Trade rows */}
+      <div
+        style={{
+          borderTop: `1px solid #1f1f1f`,
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+        }}
+      >
         <div
-          className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-xl border md:grid-cols-2 lg:grid-cols-3"
-          style={{ borderColor: "var(--border)", background: "var(--border)" }}
+          style={{
+            color: COLORS.textMuted,
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.08em",
+            padding: "4px 8px",
+          }}
         >
-          {FEATURES.map((f) => (
-            <div
-              key={f.title}
-              className="bg-[var(--surface)] p-6 transition-colors hover:bg-[var(--surface-2)]"
-            >
-              <h3 className="text-[15px] font-semibold text-white">
-                {f.title}
-              </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-2)]">
-                {f.desc}
-              </p>
-            </div>
-          ))}
+          RECENT TRADES
         </div>
+        {TRADES.map((t) => (
+          <TradeRow key={t.sym + t.dir} t={t} />
+        ))}
       </div>
-    </section>
+    </div>
   );
 }
 
-function HowItWorks() {
-  return (
-    <section className="border-t" style={{ borderColor: "var(--border)" }}>
-      <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
-        <p className="nx-label mb-3">How it works</p>
-        <h2
-          className="max-w-2xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
-          style={{ letterSpacing: "-0.01em" }}
-        >
-          Three steps from CSV to clarity.
-        </h2>
-        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
-          {STEPS.map((s) => (
-            <div key={s.n} className="nx-card p-6">
-              <div
-                className="text-[12px] font-semibold tracking-widest"
-                style={{ color: "var(--accent)" }}
-              >
-                {s.n}
-              </div>
-              <h3 className="mt-4 text-[16px] font-semibold text-white">
-                {s.title}
-              </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-[var(--text-2)]">
-                {s.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Mockups ─────────────────────────────────────────────────────── */
-
-function ProgressRing({
-  size = 96,
-  stroke = 8,
-  pct,
-  color,
+function StatCard({
   label,
   value,
-  subValue,
+  valueColor,
+  sub,
+  progress,
+  progressColor,
 }: {
-  size?: number;
-  stroke?: number;
-  pct: number;
-  color: string;
   label: string;
   value: string;
-  subValue: string;
+  valueColor: string;
+  sub: string;
+  progress?: number;
+  progressColor?: string;
 }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const offset = c - (Math.min(pct, 100) / 100) * c;
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
+    <div
+      style={{
+        background: "#0e0e0e",
+        border: `1px solid #1f1f1f`,
+        borderRadius: 10,
+        padding: 12,
+      }}
+    >
+      <div
+        style={{
+          color: COLORS.textMuted,
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          color: valueColor,
+          fontSize: 20,
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          fontVariantNumeric: "tabular-nums",
+          marginBottom: 4,
+        }}
+      >
+        {value}
+      </div>
+      <div style={{ color: COLORS.textMuted, fontSize: 11 }}>{sub}</div>
+      {typeof progress === "number" && (
+        <div
+          style={{
+            marginTop: 8,
+            background: "#1a1a1a",
+            height: 4,
+            borderRadius: 999,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${progress}%`,
+              height: "100%",
+              background: progressColor ?? COLORS.accent,
+              borderRadius: 999,
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TradeRow({ t }: { t: (typeof TRADES)[number] }) {
+  const isLong = t.dir === "LONG";
+  const positive = t.pnl >= 0;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 8px",
+        borderRadius: 8,
+        background: "transparent",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            color: COLORS.text,
+            fontSize: 13,
+            fontWeight: 600,
+            minWidth: 44,
+          }}
+        >
+          {t.sym}
+        </span>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            padding: "2px 6px",
+            borderRadius: 4,
+            background: isLong
+              ? "rgba(34,197,94,0.12)"
+              : "rgba(239,68,68,0.12)",
+            color: isLong ? COLORS.green : COLORS.red,
+            border: `1px solid ${isLong ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+          }}
+        >
+          {t.dir}
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            color: positive ? COLORS.green : COLORS.red,
+            fontSize: 13,
+            fontWeight: 600,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {positive ? "+" : ""}
+          {t.pnl < 0 ? "-" : ""}${Math.abs(t.pnl).toFixed(2)}
+        </span>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: COLORS.text,
+            background: "#1a1a1a",
+            padding: "2px 6px",
+            borderRadius: 4,
+            minWidth: 20,
+            textAlign: "center",
+          }}
+        >
+          {t.grade}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Challenge Tracker mockup ────────────────────────────────── */
+
+function ChallengeTrackerMockup() {
+  return (
+    <div
+      style={{
+        background: "#0c0c0c",
+        border: `1px solid #1f1f1f`,
+        borderRadius: 14,
+        padding: 28,
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        <ProgressRing
+          label="Daily Loss"
+          percent={9}
+          color={COLORS.green}
+          centerTop="$240"
+          centerBottom="/ $2,500"
+        />
+        <ProgressRing
+          label="Profit Target"
+          percent={61}
+          color={COLORS.accent}
+          centerTop="$1,840"
+          centerBottom="/ $3,000"
+        />
+        <ProgressRing
+          label="Drawdown"
+          percent={7}
+          color={COLORS.green}
+          centerTop="$180"
+          centerBottom="/ $2,500"
+        />
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "14px 16px",
+          background: "#111",
+          border: `1px solid #1f1f1f`,
+          borderRadius: 10,
+        }}
+      >
+        <div>
+          <div style={{ color: COLORS.text, fontSize: 13, fontWeight: 600 }}>
+            Apex Trader Funding · $50k
+          </div>
+          <div style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+            Evaluation · Day 8
+          </div>
+        </div>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            padding: "5px 10px",
+            borderRadius: 999,
+            background: COLORS.greenDim,
+            color: COLORS.green,
+            border: `1px solid ${COLORS.green}44`,
+          }}
+        >
+          ON TRACK
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ProgressRing({
+  label,
+  percent,
+  color,
+  centerTop,
+  centerBottom,
+}: {
+  label: string;
+  percent: number;
+  color: string;
+  centerTop: string;
+  centerBottom: string;
+}) {
+  const size = 110;
+  const stroke = 8;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percent / 100) * circumference;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ position: "relative", width: size, height: size }}>
+        <svg width={size} height={size}>
           <circle
             cx={size / 2}
             cy={size / 2}
-            r={r}
-            stroke="var(--surface-2)"
+            r={radius}
+            stroke="#1f1f1f"
             strokeWidth={stroke}
             fill="none"
           />
           <circle
             cx={size / 2}
             cy={size / 2}
-            r={r}
+            r={radius}
             stroke={color}
             strokeWidth={stroke}
             fill="none"
-            strokeLinecap="round"
-            strokeDasharray={c}
+            strokeDasharray={circumference}
             strokeDashoffset={offset}
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span
-            className="text-[14px] font-semibold tabular-nums"
-            style={{ color }}
-          >
-            {pct}%
-          </span>
-        </div>
-      </div>
-      <div className="mt-3 text-center">
-        <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-          {label}
-        </p>
-        <p
-          className="mt-1 text-[13px] font-semibold tabular-nums"
-          style={{ color }}
-        >
-          {value}
-        </p>
-        <p className="text-[11px] text-[var(--text-muted)] tabular-nums">
-          {subValue}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function ChallengeMockup() {
-  return (
-    <div
-      className="rounded-xl p-6"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-            Apex $50k · Evaluation
-          </p>
-          <h4 className="mt-1 text-[15px] font-semibold text-white">
-            Challenge Tracker
-          </h4>
-        </div>
-        <span
-          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-          style={{
-            background: "rgba(16,185,129,0.1)",
-            color: "var(--success)",
-            border: "1px solid rgba(16,185,129,0.3)",
-          }}
-        >
-          On Track
-        </span>
-      </div>
-      <div className="mt-6 grid grid-cols-3 gap-4">
-        <ProgressRing
-          pct={9}
-          color="var(--success)"
-          label="Daily Loss"
-          value="$240"
-          subValue="of $2,500"
-        />
-        <ProgressRing
-          pct={61}
-          color="#3b82f6"
-          label="Profit Target"
-          value="$1,840"
-          subValue="of $3,000"
-        />
-        <ProgressRing
-          pct={7}
-          color="var(--success)"
-          label="Drawdown"
-          value="$180"
-          subValue="of $2,500"
-        />
-      </div>
-    </div>
-  );
-}
-
-function JournalMockup() {
-  const trades = [
-    { sym: "NQ1!", side: "LONG", entry: "21,450", exit: "21,520", pnl: 350 },
-    { sym: "ES1!", side: "SHORT", entry: "5,842", exit: "5,810", pnl: 160 },
-    { sym: "SOL/USD", side: "LONG", entry: "148.20", exit: "146.80", pnl: -70 },
-    { sym: "NQ1!", side: "LONG", entry: "21,380", exit: "21,460", pnl: 400 },
-  ];
-  return (
-    <div
-      className="rounded-xl p-6"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-            Last 4 trades
-          </p>
-          <h4 className="mt-1 text-[15px] font-semibold text-white">
-            Trade Journal
-          </h4>
-        </div>
-        <span className="text-[13px] font-semibold tabular-nums text-[var(--success)]">
-          +$840.00
-        </span>
-      </div>
-      <div className="mt-5 overflow-hidden rounded-lg" style={{ border: "1px solid var(--border)" }}>
-        <table className="w-full text-left text-[12px]">
-          <thead style={{ background: "var(--surface-2)" }}>
-            <tr className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-              <th className="px-3 py-2 font-medium">Symbol</th>
-              <th className="px-3 py-2 font-medium">Side</th>
-              <th className="px-3 py-2 font-medium text-right">Entry</th>
-              <th className="px-3 py-2 font-medium text-right">Exit</th>
-              <th className="px-3 py-2 font-medium text-right">P&amp;L</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trades.map((t, i) => (
-              <tr
-                key={i}
-                style={{
-                  borderTop: "1px solid var(--border)",
-                }}
-              >
-                <td className="px-3 py-2.5 font-medium text-white">{t.sym}</td>
-                <td className="px-3 py-2.5">
-                  <span
-                    className={
-                      t.side === "LONG" ? "nx-badge-long" : "nx-badge-short"
-                    }
-                  >
-                    {t.side}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-2)]">
-                  {t.entry}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-2)]">
-                  {t.exit}
-                </td>
-                <td
-                  className="px-3 py-2.5 text-right font-semibold tabular-nums"
-                  style={{
-                    color: t.pnl >= 0 ? "var(--success)" : "var(--danger)",
-                  }}
-                >
-                  {t.pnl >= 0 ? "+" : "-"}${Math.abs(t.pnl).toFixed(2)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function PsychologyMockup() {
-  const score = 72;
-  const r = 40;
-  const c = 2 * Math.PI * r;
-  const offset = c - (score / 100) * c;
-  const insights = [
-    "Your best day is Tuesday — averaging +$425",
-    "You perform best between 9-10am",
-    "71% win rate when you follow your rules",
-  ];
-  return (
-    <div
-      className="rounded-xl p-6"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-            30-day score
-          </p>
-          <h4 className="mt-1 text-[15px] font-semibold text-white">
-            Psychology Tracker
-          </h4>
-        </div>
-      </div>
-      <div className="mt-5 flex items-center gap-5">
-        <div className="relative" style={{ width: 96, height: 96 }}>
-          <svg width={96} height={96} className="-rotate-90">
-            <circle
-              cx={48}
-              cy={48}
-              r={r}
-              stroke="var(--surface-2)"
-              strokeWidth={8}
-              fill="none"
-            />
-            <circle
-              cx={48}
-              cy={48}
-              r={r}
-              stroke="var(--accent)"
-              strokeWidth={8}
-              fill="none"
-              strokeLinecap="round"
-              strokeDasharray={c}
-              strokeDashoffset={offset}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[20px] font-bold tabular-nums text-white">
-              {score}
-            </span>
-            <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-              /100
-            </span>
-          </div>
-        </div>
-        <div>
-          <p
-            className="text-[16px] font-semibold"
-            style={{ color: "var(--accent)" }}
-          >
-            Disciplined
-          </p>
-          <p className="mt-1 text-[12px] text-[var(--text-2)]">
-            You stuck to your plan on 18 of 22 sessions.
-          </p>
-        </div>
-      </div>
-      <div className="mt-5 space-y-2">
-        {insights.map((line) => (
-          <div
-            key={line}
-            className="flex items-start gap-2 rounded-lg p-3"
-            style={{
-              background: "var(--surface-2)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <span
-              aria-hidden
-              className="mt-1 inline-block h-1.5 w-1.5 rounded-full"
-              style={{ background: "var(--accent)" }}
-            />
-            <p className="text-[12px] leading-relaxed text-[var(--text-2)]">
-              {line}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FeatureShowcase() {
-  return (
-    <section className="border-t" style={{ borderColor: "var(--border)" }}>
-      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
-        <p className="nx-label mb-3">A look inside</p>
-        <h2
-          className="max-w-3xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
-          style={{ letterSpacing: "-0.01em" }}
-        >
-          The same tools used by funded traders, every day.
-        </h2>
-        <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div>
-            <p
-              className="mb-4 text-[12px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--accent)" }}
-            >
-              Challenge Tracker
-            </p>
-            <ChallengeMockup />
-            <p className="mt-4 text-[13px] leading-relaxed text-[var(--text-2)]">
-              Live rule tracking for every prop firm. Know exactly how close you
-              are to a violation.
-            </p>
-          </div>
-          <div>
-            <p
-              className="mb-4 text-[12px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--accent)" }}
-            >
-              Journal
-            </p>
-            <JournalMockup />
-            <p className="mt-4 text-[13px] leading-relaxed text-[var(--text-2)]">
-              Auto-imported from your prop firm. Tag setups, attach screenshots,
-              find your edge.
-            </p>
-          </div>
-          <div>
-            <p
-              className="mb-4 text-[12px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--accent)" }}
-            >
-              Psychology
-            </p>
-            <PsychologyMockup />
-            <p className="mt-4 text-[13px] leading-relaxed text-[var(--text-2)]">
-              Personalized insights that surface when, why, and how you trade
-              your best.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Pricing ─────────────────────────────────────────────────────── */
-
-function CheckIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className="mt-[2px] shrink-0"
-      aria-hidden
-    >
-      <path
-        d="M3.5 8.5L6.5 11.5L12.5 5"
-        stroke="var(--success)"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DashIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className="mt-[2px] shrink-0"
-      aria-hidden
-    >
-      <path
-        d="M4 8H12"
-        stroke="var(--text-muted)"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function FreeCard() {
-  return (
-    <div
-      className="relative rounded-2xl p-8"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid rgba(255,255,255,0.18)",
-        boxShadow:
-          "0 1px 0 rgba(255,255,255,0.04) inset, 0 30px 60px -30px rgba(99,102,241,0.25)",
-      }}
-    >
-      <div className="flex items-baseline justify-between">
-        <div>
-          <h3 className="text-[18px] font-semibold text-white">Free</h3>
-          <p className="mt-1 text-[13px] text-[var(--text-2)]">
-            Start today, no card required
-          </p>
-        </div>
-        <div className="text-right">
-          <span className="text-[36px] font-bold text-white tabular-nums">
-            $0
-          </span>
-          <span className="ml-1 text-[13px] text-[var(--text-muted)]">/mo</span>
-        </div>
-      </div>
-      <Link
-        href="/login"
-        className="nx-btn-primary mt-6 w-full h-11 text-[14px]"
-      >
-        Get started free
-      </Link>
-      <div
-        className="my-7 h-px w-full"
-        style={{ background: "var(--border)" }}
-      />
-      <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-        Everything included
-      </p>
-      <ul className="mt-4 space-y-3">
-        {FREE_FEATURES.map((feat) => (
-          <li
-            key={feat}
-            className="flex items-start gap-3 text-[14px] text-white"
-          >
-            <CheckIcon />
-            <span>{feat}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ProCard() {
-  const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("nexyru_waitlist");
-      const list: string[] = raw ? JSON.parse(raw) : [];
-      const stored = localStorage.getItem("nexyru_waitlist_me");
-      if (stored && list.includes(stored)) setSubmitted(true);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setError("Enter a valid email");
-      return;
-    }
-    try {
-      const raw = localStorage.getItem("nexyru_waitlist");
-      const list: string[] = raw ? JSON.parse(raw) : [];
-      if (!list.includes(trimmed)) list.push(trimmed);
-      localStorage.setItem("nexyru_waitlist", JSON.stringify(list));
-      localStorage.setItem("nexyru_waitlist_me", trimmed);
-      setSubmitted(true);
-    } catch {
-      setError("Couldn't save — try again");
-    }
-  };
-
-  return (
-    <div
-      className="relative rounded-2xl p-8 overflow-hidden"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        opacity: 0.92,
-      }}
-    >
-      {/* Coming Soon watermark */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 flex items-center justify-center"
-      >
-        <span
-          className="text-[64px] font-bold uppercase tracking-widest"
-          style={{
-            color: "rgba(255,255,255,0.02)",
-            letterSpacing: "0.2em",
-          }}
-        >
-          Soon
-        </span>
-      </div>
-
-      <span
-        className="absolute -top-2 right-6 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white"
-        style={{
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-          color: "var(--text-2)",
-        }}
-      >
-        Coming Soon
-      </span>
-
-      <div className="relative">
-        <div className="flex items-baseline justify-between">
-          <div>
-            <h3 className="text-[18px] font-semibold text-[var(--text-2)]">
-              Pro
-            </h3>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-              Coming soon
-            </p>
-          </div>
-          <div className="text-right">
-            <span className="text-[36px] font-bold text-[var(--text-2)] tabular-nums">
-              $19
-            </span>
-            <span className="ml-1 text-[13px] text-[var(--text-muted)]">
-              /mo
-            </span>
-          </div>
-        </div>
-
-        {submitted ? (
-          <div
-            className="mt-6 flex items-center gap-3 rounded-lg px-4 py-3"
-            style={{
-              background: "rgba(16,185,129,0.08)",
-              border: "1px solid rgba(16,185,129,0.3)",
-            }}
-          >
-            <CheckIcon />
-            <p className="text-[13px] font-medium text-white">
-              You&apos;re on the list!
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="mt-6 space-y-2">
-            <button
-              type="submit"
-              className="nx-btn-ghost w-full h-11 text-[14px]"
-            >
-              Join waitlist
-            </button>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full h-10 rounded-lg px-3 text-[13px] text-white placeholder:text-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent)]"
-              style={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-              }}
-              aria-label="Email for waitlist"
-            />
-            {error && (
-              <p className="text-[12px]" style={{ color: "var(--danger)" }}>
-                {error}
-              </p>
-            )}
-          </form>
-        )}
-
-        <div
-          className="my-7 h-px w-full"
-          style={{ background: "var(--border)" }}
-        />
-        <p className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-          What you&apos;ll get
-        </p>
-        <ul className="mt-4 space-y-3">
-          {PRO_FEATURES.map((feat) => (
-            <li
-              key={feat}
-              className="flex items-start gap-3 text-[14px] text-[var(--text-muted)]"
-            >
-              <DashIcon />
-              <span>{feat}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-function DashboardPreview() {
-  return (
-    <div
-      className="relative rounded-2xl p-5"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-            Apex $50k
-          </p>
-          <p className="mt-1 text-[13px] font-semibold text-white">Dashboard</p>
-        </div>
-        <div className="flex gap-1">
-          <span className="h-2 w-2 rounded-full" style={{ background: "var(--danger)" }} />
-          <span className="h-2 w-2 rounded-full" style={{ background: "var(--warning)" }} />
-          <span className="h-2 w-2 rounded-full" style={{ background: "var(--success)" }} />
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <div
-          className="rounded-lg p-3"
-          style={{
-            background: "var(--surface-2)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-            Net P&amp;L
-          </p>
-          <p className="mt-1 text-[18px] font-bold tabular-nums text-[var(--success)]">
-            +$1,840
-          </p>
-        </div>
-        <div
-          className="rounded-lg p-3"
-          style={{
-            background: "var(--surface-2)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-            Win rate
-          </p>
-          <p className="mt-1 text-[18px] font-bold tabular-nums text-white">
-            71%
-          </p>
-        </div>
-      </div>
-
-      <div
-        className="mt-3 rounded-lg p-3"
-        style={{
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-          Equity curve
-        </p>
-        <svg
-          viewBox="0 0 200 60"
-          className="mt-2 w-full"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M0,50 L20,42 L40,46 L60,34 L80,30 L100,32 L120,22 L140,24 L160,14 L180,18 L200,8 L200,60 L0,60 Z"
-            fill="url(#eqGrad)"
-          />
-          <path
-            d="M0,50 L20,42 L40,46 L60,34 L80,30 L100,32 L120,22 L140,24 L160,14 L180,18 L200,8"
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="1.5"
             strokeLinecap="round"
-            strokeLinejoin="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
           />
         </svg>
-      </div>
-
-      <div
-        className="mt-3 flex items-center justify-between rounded-lg p-3"
-        style={{
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-            Drawdown buffer
-          </p>
-          <p className="mt-1 text-[13px] font-semibold tabular-nums text-white">
-            $2,320 <span className="text-[var(--text-muted)] font-normal">left</span>
-          </p>
-        </div>
-        <span
-          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+        <div
           style={{
-            background: "rgba(16,185,129,0.1)",
-            color: "var(--success)",
-            border: "1px solid rgba(16,185,129,0.3)",
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
           }}
         >
-          Safe
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function Pricing() {
-  return (
-    <section
-      id="pricing"
-      className="border-t"
-      style={{ borderColor: "var(--border)" }}
-    >
-      <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
-        <p className="nx-label mb-3">Pricing</p>
-        <h2
-          className="max-w-2xl text-[28px] font-semibold tracking-tight text-white sm:text-[34px]"
-          style={{ letterSpacing: "-0.01em" }}
-        >
-          Everything, free — while we build what&apos;s next.
-        </h2>
-        <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-[var(--text-2)]">
-          Every Nexyru feature is free today. Pro will add unlimited AI and team
-          tools later — join the waitlist to be first in.
-        </p>
-
-        <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-center">
-          <div className="lg:col-span-5">
-            <FreeCard />
+          <div
+            style={{
+              color: COLORS.text,
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: "-0.01em",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {centerTop}
           </div>
-          <div className="lg:col-span-2">
-            <DashboardPreview />
-          </div>
-          <div className="lg:col-span-5">
-            <ProCard />
+          <div
+            style={{
+              color: COLORS.textMuted,
+              fontSize: 10,
+              marginTop: 1,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {centerBottom}
           </div>
         </div>
       </div>
-    </section>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="border-t" style={{ borderColor: "var(--border)" }}>
-      <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-10 md:flex-row md:items-center">
-        <Logo />
-        <nav className="flex flex-wrap items-center gap-6 text-[13px] text-[var(--text-2)]">
-          <a href="#features" className="hover:text-white transition-colors">
-            Features
-          </a>
-          <a href="#pricing" className="hover:text-white transition-colors">
-            Pricing
-          </a>
-          <Link href="/privacy" className="hover:text-white transition-colors">
-            Privacy
-          </Link>
-          <Link href="/terms" className="hover:text-white transition-colors">
-            Terms
-          </Link>
-          <Link href="/contact" className="hover:text-white transition-colors">
-            Contact
-          </Link>
-        </nav>
-        <p className="text-[12px] text-[var(--text-muted)]">
-          © {new Date().getFullYear()} Nexyru
-        </p>
+      <div
+        style={{
+          color: COLORS.textDim,
+          fontSize: 11,
+          fontWeight: 500,
+          letterSpacing: "0.04em",
+          marginTop: 10,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
       </div>
-    </footer>
-  );
-}
-
-export default function LandingPage() {
-  return (
-    <div
-      className="min-h-screen"
-      style={{ background: "var(--bg)", color: "var(--text)" }}
-    >
-      <Nav />
-      <main>
-        <Hero />
-        <Features />
-        <HowItWorks />
-        <FeatureShowcase />
-        <Pricing />
-      </main>
-      <Footer />
     </div>
   );
 }
