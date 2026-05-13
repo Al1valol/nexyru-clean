@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const ICON_PROPS = {
   width: "20",
@@ -103,7 +103,7 @@ function SidebarItem({
 }) {
   const [hover, setHover] = useState(false);
   const bg = active ? "#1e1e2a" : hover ? "#1a1a24" : "transparent";
-  const color = active ? "#6366f1" : hover ? "#ffffff" : "#6b7280";
+  const color = active ? "var(--accent)" : hover ? "#ffffff" : "#6b7280";
   return (
     <div
       style={{ position: "relative", display: "flex", justifyContent: "center" }}
@@ -119,7 +119,7 @@ function SidebarItem({
           borderRadius: 8,
           background: bg,
           border: "none",
-          borderLeft: active ? "2px solid #6366f1" : "2px solid transparent",
+          borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
           paddingLeft: active ? 0 : 2,
           cursor: "pointer",
           color,
@@ -173,20 +173,45 @@ function SidebarDivider() {
   );
 }
 
-const NAV_ITEMS: { icon: React.ReactNode; label: string; href: string }[] = [
-  { icon: ICONS.dashboard, label: "Dashboard", href: "/dashboard" },
-  { icon: ICONS.journal, label: "Journal", href: "/dashboard?tab=journal" },
-  { icon: ICONS.trophy, label: "Challenge", href: "/challenge" },
-  { icon: ICONS.brain, label: "Psychology", href: "/psychology" },
-  { icon: ICONS.target, label: "Best Setups", href: "/setups" },
-  { icon: ICONS.checklist, label: "Checklist", href: "/checklist" },
-  { icon: ICONS.lightning, label: "Trade Planner", href: "/planner" },
-  { icon: ICONS.play, label: "Trade Replay", href: "/replay" },
-  { icon: ICONS.flask, label: "Strategy Lab", href: "/dashboard?tab=stratlab" },
-  { icon: ICONS.chart, label: "Insights", href: "/dashboard?tab=insights" },
-];
+function SidebarGroupLabel({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        width: 40,
+        textAlign: "center",
+        fontSize: 8,
+        color: "#333333",
+        textTransform: "uppercase",
+        letterSpacing: "0.1em",
+        fontWeight: 700,
+        marginTop: 2,
+        marginBottom: 2,
+        userSelect: "none",
+        flexShrink: 0,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
 
 export default function Sidebar({ activePath }: { activePath?: string }) {
+  useEffect(() => {
+    try {
+      const accent = localStorage.getItem("nexyru_accent") || "#6366f1";
+      document.documentElement.style.setProperty("--accent", accent);
+
+      const theme = localStorage.getItem("nexyru_theme") || "dark";
+      if (theme === "light") {
+        document.documentElement.classList.add("light-mode");
+      } else {
+        document.documentElement.classList.remove("light-mode");
+      }
+    } catch {}
+  }, []);
+
+  const isActive = (href: string) => activePath === href;
+
   return (
     <aside
       style={{
@@ -226,6 +251,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
       >
         N
       </a>
+
       <nav
         style={{
           flex: 1,
@@ -235,42 +261,35 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
           gap: 4,
         }}
       >
-        {NAV_ITEMS.slice(0, 2).map((item) => (
-          <SidebarItem
-            key={item.href}
-            icon={item.icon}
-            label={item.label}
-            href={item.href}
-            active={activePath === item.href}
-          />
-        ))}
+        {/* Group 1 — Main */}
+        <SidebarItem icon={ICONS.dashboard} label="Dashboard" href="/dashboard" active={isActive("/dashboard")} />
+        <SidebarItem icon={ICONS.journal} label="Journal" href="/dashboard?tab=journal" active={isActive("/dashboard?tab=journal")} />
+
         <SidebarDivider />
-        {NAV_ITEMS.slice(2, 8).map((item) => (
-          <SidebarItem
-            key={item.href}
-            icon={item.icon}
-            label={item.label}
-            href={item.href}
-            active={activePath === item.href}
-          />
-        ))}
-        {NAV_ITEMS.slice(8).map((item) => (
-          <SidebarItem
-            key={item.href}
-            icon={item.icon}
-            label={item.label}
-            href={item.href}
-            active={activePath === item.href}
-          />
-        ))}
+
+        {/* Group 2 — Daily */}
+        <SidebarGroupLabel label="Daily" />
+        <SidebarItem icon={ICONS.checklist} label="Checklist" href="/checklist" active={isActive("/checklist")} />
+        <SidebarItem icon={ICONS.lightning} label="Trade Planner" href="/planner" active={isActive("/planner")} />
+        <SidebarItem icon={ICONS.trophy} label="Challenge" href="/challenge" active={isActive("/challenge")} />
+
         <SidebarDivider />
+
+        {/* Group 3 — Analyze */}
+        <SidebarGroupLabel label="Analyze" />
+        <SidebarItem icon={ICONS.brain} label="Psychology" href="/psychology" active={isActive("/psychology")} />
+        <SidebarItem icon={ICONS.target} label="Best Setups" href="/setups" active={isActive("/setups")} />
+        <SidebarItem icon={ICONS.chart} label="Insights" href="/dashboard?tab=insights" active={isActive("/dashboard?tab=insights")} />
+        <SidebarItem icon={ICONS.play} label="Trade Replay" href="/replay" active={isActive("/replay")} />
+
+        <SidebarDivider />
+
+        {/* Group 4 — Build */}
+        <SidebarGroupLabel label="Build" />
+        <SidebarItem icon={ICONS.flask} label="Strategy Lab" href="/dashboard?tab=stratlab" active={isActive("/dashboard?tab=stratlab")} />
       </nav>
-      <SidebarItem
-        icon={ICONS.gear}
-        label="Settings"
-        href="/settings"
-        active={activePath === "/settings"}
-      />
+
+      <SidebarItem icon={ICONS.gear} label="Settings" href="/settings" active={isActive("/settings")} />
     </aside>
   );
 }
