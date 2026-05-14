@@ -5795,7 +5795,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
               {activeAccount.name} · {trades.length} trade{trades.length!==1?"s":""}
             </div>
           )}
-        </div><div className="hide-mobile" style={{ display: isMobile ? "none" : "flex", gap:8, alignItems:"center" }}>
+        </div>{!isMobile && (<div style={{ display:"flex", gap:8, alignItems:"center" }}>
           {inDemo && (
             <div style={{ fontSize:10, fontWeight:700, color:"#f59e0b", background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.25)", padding:"4px 10px", borderRadius:8 }}>Exit demo mode to add trades</div>
           )}
@@ -5805,13 +5805,13 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
             )}
             <button onClick={inDemo ? undefined : onCSV}
               title={inDemo ? "Exit demo mode to import trades" : "Import CSV"}
-              style={{ display: isMobile ? "none" : "flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:`1px solid ${showImportHint ? "rgba(99,102,241,0.65)" : "rgba(99,102,241,0.25)"}`, background:inDemo?"#111118":"rgba(99,102,241,0.06)", color:inDemo?"#374151":"#6366f1", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1, animation: showImportHint ? "nexyruImportPulse 1.8s ease-in-out infinite" : undefined }} className="hide-mobile"><Upload size={11}/>Import CSV</button>
+              style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:`1px solid ${showImportHint ? "rgba(99,102,241,0.65)" : "rgba(99,102,241,0.25)"}`, background:inDemo?"#111118":"rgba(99,102,241,0.06)", color:inDemo?"#374151":"#6366f1", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1, animation: showImportHint ? "nexyruImportPulse 1.8s ease-in-out infinite" : undefined }}><Upload size={11}/>Import CSV</button>
             {showImportHint && (
               <div style={{ position:"absolute", top:"calc(100% + 10px)", right:0, background:"#111118", border:"1px solid rgba(99,102,241,0.45)", borderRadius:8, padding:"7px 12px", fontSize:10, fontWeight:600, color:"#6366f1", whiteSpace:"nowrap", boxShadow:"0 8px 24px rgba(0,0,0,0.5)", zIndex:50 }}><div style={{ position:"absolute", top:-5, right:24, width:9, height:9, background:"#111118", borderLeft:"1px solid rgba(99,102,241,0.45)", borderTop:"1px solid rgba(99,102,241,0.45)", transform:"rotate(45deg)" }}/>Start here — import your trades</div>
             )}
           </div><button onClick={inDemo ? undefined : onAdd} disabled={inDemo}
             title={inDemo ? "Exit demo mode to log trades" : "Log Trade"}
-            style={{ display: isMobile ? "none" : "flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }} className="hide-mobile"><Plus size={12}/>Log Trade</button></div></div>
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}><Plus size={12}/>Log Trade</button></div>)}</div>
 
       {/* Trades */}
       <section><TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade} onAdd={inDemo ? undefined : onAdd} onImport={inDemo ? undefined : onCSV} username={username}/></section>
@@ -6293,7 +6293,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
   const showOnboarding = trades.length < 3 && !onboardingDismissed && username;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:20 }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:22, fontWeight:800, color:"#ffffff", letterSpacing:"-0.02em" }}>Dashboard</div><div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Your trading journal & performance hub</div></div><div style={{ display:"flex", gap:8 }}><button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.25)" }}><Plus size={14}/>Log Trade</button></div></div>
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:22, fontWeight:800, color:"#ffffff", letterSpacing:"-0.02em" }}>Dashboard</div><div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Your trading journal & performance hub</div></div>{!isMobile && (<div style={{ display:"flex", gap:8 }}><button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.25)" }}><Plus size={14}/>Log Trade</button></div>)}</div>
 
       {showOnboarding && <OnboardingBanner onOpenImport={onOpenImport} onDismiss={dismissOnboarding}/>}
 
@@ -6301,7 +6301,7 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
       {activeAccount && <AccountStatsCard activeAccount={activeAccount} trades={allTrades ?? trades}/>}
 
       {trades.length >0 ? (
- isMobile ? (<div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}><StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/><StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/><div style={{ gridColumn:"span 2" }}><StatCard label="Total PnL" value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/></div><StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/><StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/></div>) : (<div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10 }}><StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/><StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/><StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/><StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/><StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/></div>)
+ (<div style={{ display:"flex", gap:10, flexWrap: isMobile ? "nowrap" : "wrap", overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling:"touch" }}><div style={{ minWidth: isMobile ? "140px" : "auto", flex: isMobile ? "0 0 140px" : "1 1 150px" }}><StatCard label="Total Trades" value={fmtNum(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/></div><div style={{ minWidth: isMobile ? "140px" : "auto", flex: isMobile ? "0 0 140px" : "1 1 150px" }}><StatCard label="Win Rate"     value={fmtPct(stats.winRate)}       sub={`PF ${stats.profitFactor}`}         pos={stats.winRate>=50}   icon={<Zap size={14}/>}/></div><div style={{ minWidth: isMobile ? "140px" : "auto", flex: isMobile ? "0 0 140px" : "1 1 150px" }}><StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={pnlPos} icon={<TrendingUp size={14}/>}/></div><div style={{ minWidth: isMobile ? "140px" : "auto", flex: isMobile ? "0 0 140px" : "1 1 150px" }}><StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })}  pos={true}  icon={<Award size={14}/>}/></div><div style={{ minWidth: isMobile ? "140px" : "auto", flex: isMobile ? "0 0 140px" : "1 1 150px" }}><StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0, { signed:true })}  pos={false} icon={<TrendingDown size={14}/>}/></div></div>)
  ) : !showOnboarding && (<div style={{ padding:"56px 24px", borderRadius:16, border:"2px dashed #2a2a3a", textAlign:"center" }}><div style={{ fontSize:48, marginBottom:14, lineHeight:1 }}></div><div style={{ fontSize:17, fontWeight:700, color:"#9ca3af", marginBottom:8 }}>Your journal is empty</div><div style={{ fontSize:12, color:"#6b7280", marginBottom:24, lineHeight:1.6 }}>Import a CSV or log your first trade to get started.<br/>Nexyru analyzes your performance and gives you actionable insights.</div><div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}><button onClick={onAddTrade} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", transition:"all 0.15s", boxShadow:"0 4px 14px rgba(99,102,241,0.25)" }}><Plus size={14}/>Log Trade</button><button onClick={onOpenImport} style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 20px", borderRadius:10, border:"1px solid rgba(99,102,241,0.4)", background:"transparent", color:"#6366f1", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s" }}><Upload size={13}/>Import CSV</button></div></div>
       )}
       {/* Weekly Challenges — hidden for now */}
@@ -7445,6 +7445,7 @@ function SyncIndicator({ status }) {
 // ═══════════════════════════════════════════════════════════════
 
 function TradingDashboard({ session, onLogout }) {
+  const isMobile = useIsMobile();
   const [tab,           setTab]           = useState("dashboard");
   const [trades,        setTrades]        = useState([]);
   const [tradesLoading, setTradesLoading] = useState(true);
@@ -7849,9 +7850,11 @@ function TradingDashboard({ session, onLogout }) {
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
             {supabaseUserId && <SyncIndicator status={syncStatus} />}
             <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
-            <button onClick={()=>setShowHub(true)} className="hide-mobile" style={{ alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-              <Plus size={13}/><span>Log Trade</span>
-            </button>
+            {!isMobile && (
+              <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                <Plus size={13}/><span>Log Trade</span>
+              </button>
+            )}
             <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24" }}>
               <a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}>
                 <div style={{ width:22, height:22, borderRadius:"50%", background:"var(--accent)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:"#fff" }}>{session.displayName[0].toUpperCase()}</div>
@@ -7959,12 +7962,13 @@ function TradingDashboard({ session, onLogout }) {
                 activeAccount={paperAccts.activeAccount}
                 username={session.username}
               />
-              <button
-                className="show-mobile"
-                onClick={() => setShowForm(true)}
-                aria-label="Log Trade"
-                style={{ position:"fixed", bottom:"calc(72px + env(safe-area-inset-bottom))", right:16, width:52, height:52, borderRadius:"50%", background:"var(--accent)", border:"none", color:"#fff", fontSize:24, cursor:"pointer", zIndex:8000, alignItems:"center", justifyContent:"center", boxShadow:"0 4px 20px rgba(99,102,241,0.4)" }}
-              >+</button>
+              {isMobile && (
+                <button
+                  onClick={() => setShowForm(true)}
+                  aria-label="Log Trade"
+                  style={{ position:"fixed", bottom:"calc(72px + env(safe-area-inset-bottom))", right:16, width:56, height:56, borderRadius:"50%", background:"var(--accent)", border:"none", color:"#fff", fontSize:28, cursor:"pointer", zIndex:8000, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 4px 20px rgba(99,102,241,0.5)" }}
+                >+</button>
+              )}
             </>
           )}
           {tab==="strategies" && (
