@@ -274,6 +274,28 @@ export default function NotesPage() {
   const [pnlByDate, setPnlByDate] = useState<Record<string, number>>({});
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [adding, setAdding] = useState(false);
+  const [newPlan, setNewPlan] = useState("");
+  const [newReview, setNewReview] = useState("");
+  const [newMood, setNewMood] = useState("");
+
+  const todayKey = new Date().toISOString().split("T")[0];
+
+  const handleSaveNew = () => {
+    if (!username) return;
+    saveDailyNotesEntry(username, todayKey, { plan: newPlan, review: newReview, mood: newMood });
+    setNewPlan("");
+    setNewReview("");
+    setNewMood("");
+    setAdding(false);
+  };
+
+  const handleCancelNew = () => {
+    setNewPlan("");
+    setNewReview("");
+    setNewMood("");
+    setAdding(false);
+  };
 
   useEffect(() => {
     const u = getUsername();
@@ -318,10 +340,71 @@ export default function NotesPage() {
               {stats.total === 0 ? "No notes yet" : `${stats.total} day${stats.total === 1 ? "" : "s"} journaled`}
             </div>
           </div>
-          <a href="/dashboard?tab=journal" style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid rgba(99,102,241,0.35)", background: "rgba(99,102,241,0.08)", color: "#a5b4fc", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
-            Add today's notes
-          </a>
+          {!adding && (
+            <button
+              onClick={() => setAdding(true)}
+              style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid rgba(99,102,241,0.35)", background: "rgba(99,102,241,0.08)", color: "#a5b4fc", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+            >
+              Add today's notes
+            </button>
+          )}
         </div>
+
+        {adding && (
+          <div style={{ marginBottom: 18, borderRadius: 14, border: "1px solid #1e1e1e", background: "#111111", padding: 18 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#ffffff", marginBottom: 14 }}>{formatDateLong(todayKey)}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Pre-Session Plan</div>
+                <textarea
+                  value={newPlan}
+                  onChange={(e) => setNewPlan(e.target.value)}
+                  rows={4}
+                  placeholder="What's your plan for today? Key levels, news events, max trades..."
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 9, boxSizing: "border-box", background: "#0a0a0f", border: "1px solid #1e1e1e", color: "#e5e7eb", fontSize: 12, fontFamily: "inherit", resize: "vertical", outline: "none" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                  onBlur={(e) => (e.target.style.borderColor = "#1e1e1e")}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Post-Session Review</div>
+                <textarea
+                  value={newReview}
+                  onChange={(e) => setNewReview(e.target.value)}
+                  rows={4}
+                  placeholder="How did the session go? What worked? What to improve?"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 9, boxSizing: "border-box", background: "#0a0a0f", border: "1px solid #1e1e1e", color: "#e5e7eb", fontSize: 12, fontFamily: "inherit", resize: "vertical", outline: "none" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+                  onBlur={(e) => (e.target.style.borderColor = "#1e1e1e")}
+                />
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Mood</div>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                {MOODS.map((m) => {
+                  const active = newMood === m;
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => setNewMood(active ? "" : m)}
+                      style={{
+                        padding: "7px 14px", borderRadius: 999, cursor: "pointer", fontSize: 11, fontWeight: 700,
+                        background: active ? "rgba(99,102,241,0.16)" : "#111111",
+                        border: active ? "1px solid #6366f1" : "1px solid #2a2a3a",
+                        color: active ? "#a5b4fc" : "#9ca3af",
+                      }}
+                    >{m}</button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button onClick={handleCancelNew} style={{ padding: "9px 16px", borderRadius: 9, border: "1px solid #2a2a3a", background: "transparent", color: "#9ca3af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+              <button onClick={handleSaveNew} style={{ padding: "9px 20px", borderRadius: 9, border: "none", background: "#6366f1", color: "#ffffff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save Notes</button>
+            </div>
+          </div>
+        )}
 
         {!username ? (
           <div style={{ padding: 40, textAlign: "center", borderRadius: 12, border: "1px dashed #2a2a3a", color: "#6b7280" }}>
