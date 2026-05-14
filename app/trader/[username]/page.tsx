@@ -1,5 +1,4 @@
 "use client";
-import FollowButton from "@/components/FollowButton";
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
@@ -24,29 +23,7 @@ interface ProfileStats {
   bestStreak:number; currentWinStreak:number; currentTradeStreak:number; bestTradeStreak:number;
   joinDate:string; equityCurve:{label:string;value:number}[];
 }
-interface Badge { id:string; label:string; icon:string; color:string; desc:string; }
 
-// ── Helpers ────────────────────────────────────────────────────
-function getRank(s:ProfileStats) {
-  if(s.totalTrades>=200&&s.winRate>=60&&s.consistency>=80) return{label:"Funded Trader",  color:"#f59e0b",next:"Max rank",          progress:100};
-  if(s.totalTrades>=100&&s.winRate>=55&&s.consistency>=70) return{label:"Verified Trader",color:"#a5b4fc",next:"Funded Trader",      progress:Math.min(100,((s.totalTrades-100)/100)*100)};
-  if(s.totalTrades>=50 &&s.winRate>=50&&s.consistency>=55) return{label:"Consistent",     color:"#10b981",next:"Verified Trader",    progress:Math.min(100,((s.totalTrades-50)/50)*100)};
-  if(s.totalTrades>=20)                                    return{label:"Active Trader",  color:"#6366f1",next:"Consistent",         progress:Math.min(100,((s.totalTrades-20)/30)*100)};
-  return                                                         {label:"Beginner",        color:"#6b7280",next:"Active Trader",      progress:Math.min(100,(s.totalTrades/20)*100)};
-}
-function getBadges(s:ProfileStats,strats:Strategy[]):Badge[] {
-  const b:Badge[]=[];
-  if(s.winRate>=60)         b.push({id:"wr",   label:"Sharp Shooter",  icon:"",color:"#10b981",desc:"60%+ win rate"});
-  if(s.consistency>=75)     b.push({id:"con",  label:"Consistent",     icon:"",color:"#6366f1",desc:"75+ score"});
-  if(s.totalTrades>=100)    b.push({id:"100",  label:"Centurion",      icon:"",color:"#a5b4fc",desc:"100+ trades"});
-  if(s.maxDrawdown<10)      b.push({id:"dd",   label:"Risk Master",    icon:"️",color:"#22d3a5",desc:"DD under 10%"});
-  if(s.bestStreak>=5)       b.push({id:"str",  label:"On Fire",        icon:"",color:"#f59e0b",desc:"5+ win streak"});
-  if(s.totalPnl>0)          b.push({id:"pnl",  label:"In The Green",   icon:"",color:"#10b981",desc:"Positive PnL"});
-  if(s.verifiedTrades>=50)  b.push({id:"ver",  label:"Verified Funded",icon:"",color:"#f59e0b",desc:"50+ broker trades"});
-  if(strats.some(x=>x.status==="verified")) b.push({id:"vs",label:"Verified Strategy",icon:"✓",color:"#a5b4fc",desc:"Verified strategy"});
-  if(strats.some(x=>(x.monthly_price??0)>0))b.push({id:"earn",label:"Earning",icon:"",color:"#f59e0b",desc:"Paid subscribers"});
-  return b;
-}
 function calcConsistency(wr:number,dd:number,total:number){
   if(total<5)return 0;
   return Math.round(Math.min(100,wr*1.4)*0.5+Math.max(0,100-dd*3)*0.3+Math.min(100,total/2)*0.2);
@@ -74,56 +51,17 @@ export default function TraderProfile(){
   const username=decodeURIComponent((params?.username as string)??"").replace(/^@/,"");
 
   const [tab,setTab]=useState<"overview"|"trades">("overview");
- const [strategies,setStrategies]=useState<Strategy[]>([]);
- const [trades,setTrades]=useState<Trade[]>([]);
- const [stats,setStats]=useState<ProfileStats|null>(null);
- const [loading,setLoading]=useState(true);
- const [notFound,setNotFound]=useState(false);
- const [followerCounts,setFollowerCounts]=useState<Record<string,number>>({});
-  const [isFollowing,setIsFollowing]=useState(false);
-  const [followerCount,setFollowerCount]=useState(0);
-  const [followLoading,setFollowLoading]=useState(false);
-  const [currentUser,setCurrentUser]=useState("");
-  const [copied,setCopied]=useState(false);
+  const [strategies,setStrategies]=useState<Strategy[]>([]);
+  const [trades,setTrades]=useState<Trade[]>([]);
+  const [stats,setStats]=useState<ProfileStats|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [notFound,setNotFound]=useState(false);
   const [shareDone,setShareDone]=useState(false);
 
   useEffect(()=>{
     if(!username)return;
     loadProfile();
-    try{const s=JSON.parse(localStorage.getItem("tradedesk_session_v1")??"{}");setCurrentUser(s.username??"");}catch{}
   },[username]);
-
-  useEffect(()=>{
-    if(!currentUser||!username||currentUser===username)return;
-    fetch(`/api/trader-follows?follower_id=${currentUser}&trader_id=${username}`)
-      .then(r=>r.json()).then(d=>{if(Array.isArray(d)&&d.length>0)setIsFollowing(true);}).catch(()=>{});
-    fetch(`/api/trader-follows?trader_id=${username}`)
-      .then(r=>r.json()).then(d=>{if(Array.isArray(d))setFollowerCount(d.length);}).catch(()=>{});
-  },[currentUser,username]);
-
-  const toggleFollow=async()=>{
-    if(!currentUser||followLoading)return;
-    setFollowLoading(true);
-    try{
-      if(isFollowing){
-        await fetch("/api/trader-follows",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({follower_id:currentUser,trader_id:username})});
-        setIsFollowing(false);setFollowerCount(p=>Math.max(0,p-1));
-      }else{
-        await fetch("/api/trader-follows",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({follower_id:currentUser,trader_id:username})});
-        setIsFollowing(true);setFollowerCount(p=>p+1);
-        fetch("/api/activity",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:currentUser,type:"followed_trader",data:{trader:username}})}).catch(()=>{});
-      }
-    }catch{}
-    setFollowLoading(false);
-  };
-
-  const handleCopy=async()=>{
-    if(copied)return;
-    await toggleFollow();
-    fetch("/api/activity",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:currentUser,type:"copy_trader",data:{trader:username}})}).catch(()=>{});
-    setCopied(true);
-    setTimeout(()=>setCopied(false),3000);
-  };
 
   const handleShare=()=>{
     const url=window.location.href;
@@ -140,12 +78,6 @@ export default function TraderProfile(){
         fetch("/api/leaderboard?status=verified").then(r=>r.json()),
       ]);
       const allStrats:Strategy[]=[...(Array.isArray(bt)?bt:[]),...(Array.isArray(live)?live:[]),...(Array.isArray(ver)?ver:[])].filter((s:any)=>s.user_id===username);
-
- const counts:Record<string,number>={};
-      await Promise.all(allStrats.map(async s=>{const d=await fetch(`/api/follow?strategy_id=${s.id}`).then(r=>r.json());counts[s.id]=d.count??0;}));
-      setFollowerCounts(counts);
-
-      // Allow profiles without published strategies
 
       let winRate=0,maxDD=0,totalPnl=0,total=0,bestStreak=0;
       let currentWinStreak=0,currentTradeStreak=0,bestTradeStreak=0,verifiedTrades=0;
@@ -171,8 +103,8 @@ export default function TraderProfile(){
           }
           bestStreak=maxStreak;currentWinStreak=streak;
           const days=[...new Set(raw.map((t:any)=>new Date(t.date).toISOString().split("T")[0]))].sort() as string[];
- let ds=1,bd=1;
- for(let i=1;i<days.length;i++){const diff=Math.round((new Date(days[i]).getTime()-new Date(days[i-1]).getTime())/86400000);if(diff===1){ds++;if(ds>bd)bd=ds;}else ds=1;}
+          let ds=1,bd=1;
+          for(let i=1;i<days.length;i++){const diff=Math.round((new Date(days[i]).getTime()-new Date(days[i-1]).getTime())/86400000);if(diff===1){ds++;if(ds>bd)bd=ds;}else ds=1;}
           if(days.length===1)bd=1;
           const ld=days[days.length-1]??"";const today=new Date().toISOString().split("T")[0];const yesterday=new Date(Date.now()-86400000).toISOString().split("T")[0];
           currentTradeStreak=(ld===today||ld===yesterday)?ds:0;bestTradeStreak=bd;
@@ -196,17 +128,11 @@ export default function TraderProfile(){
   if(loading)return(
     <div style={{minHeight:"100vh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center",gap:12,color:"#2a2a3a",fontSize:14}}><span style={{display:"inline-block",width:18,height:18,border:"2px solid #2a2a3a",borderTopColor:"#6366f1",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>Loading profile…<style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>);
 
- if(notFound||!stats)return(<div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:48}}></div><div style={{fontSize:20,fontWeight:800,color:"#ffffff"}}>Trader not found</div><div style={{fontSize:13,color:"#2a2a3a"}}>@{username} hasn&apos;t published any strategies yet</div><a href="/dashboard" style={{padding:"9px 20px",borderRadius:10,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.2)",color:"#6366f1",fontSize:12,fontWeight:700,textDecoration:"none"}}>Back to Dashboard</a></div>
+  if(notFound||!stats)return(<div style={{minHeight:"100vh",background:"#060d1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:48}}></div><div style={{fontSize:20,fontWeight:800,color:"#ffffff"}}>Trader not found</div><div style={{fontSize:13,color:"#2a2a3a"}}>@{username} hasn&apos;t published any strategies yet</div><a href="/dashboard" style={{padding:"9px 20px",borderRadius:10,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.2)",color:"#6366f1",fontSize:12,fontWeight:700,textDecoration:"none"}}>Back to Dashboard</a></div>
   );
 
-  const rank=getRank(stats);
-  const badges=getBadges(stats,strategies);
-  const totalFollowers=Object.values(followerCounts).reduce((s,n)=>s+n,0);
-  const monthlyRevenue=strategies.reduce((sum,s)=>sum+(followerCounts[s.id]??0)*(s.monthly_price??0),0);
   const avatarColor=["#6366f1","#a5b4fc","#10b981","#f59e0b","#f59e0b"][username.charCodeAt(0)%5];
-  const isOwn=currentUser===username;
   const recentTrades=[...trades].sort((a,b)=>b.date-a.date).slice(0,15);
-  const RANKS=["Beginner","Active Trader","Consistent","Verified Trader","Funded Trader"];
   const TABS=[{id:"overview",label:"Overview"},{id:"trades",label:`Trades (${trades.length})`}];
 
   return(
@@ -228,42 +154,18 @@ export default function TraderProfile(){
             <div style={{position:"relative",flexShrink:0}}><div style={{width:88,height:88,borderRadius:22,background:`${avatarColor}20`,border:`2px solid ${avatarColor}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:900,color:avatarColor,fontFamily:"monospace",boxShadow:`0 0 32px ${avatarColor}18`}}>
                 {username.slice(0,2).toUpperCase()}
               </div>
-              {stats.verifiedTrades>=50&&(<div title="Verified Funded Trader" style={{position:"absolute",bottom:-5,right:-5,width:24,height:24,borderRadius:"50%",background:"linear-gradient(135deg,#f59e0b,#f59e0b)",border:"2px solid #060d1a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#000"}}>✓</div>
-              )}
             </div>
 
             {/* Identity */}
-            <div style={{flex:1,minWidth:200}}><div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}><h1 style={{fontSize:24,fontWeight:900,color:"#ffffff",margin:0,letterSpacing:"-0.02em"}}>@{username}</h1><span style={{fontSize:11,fontWeight:800,padding:"4px 12px",borderRadius:20,background:`${rank.color}18`,border:`1px solid ${rank.color}40`,color:rank.color}}>{rank.label}</span>
-                {stats.verifiedTrades>=50&&<span style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"rgba(245,158,11,0.12)",border:"1px solid rgba(245,158,11,0.25)",color:"#f59e0b"}}>Verified Funded</span>}
-              </div><div style={{fontSize:12,color:"#2a2a3a",marginBottom:14,lineHeight:1.7}}>
+            <div style={{flex:1,minWidth:200}}><div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}><h1 style={{fontSize:24,fontWeight:900,color:"#ffffff",margin:0,letterSpacing:"-0.02em"}}>@{username}</h1></div><div style={{fontSize:12,color:"#2a2a3a",marginBottom:14,lineHeight:1.7}}>
                 Member since {new Date(stats.joinDate).toLocaleDateString("en-US",{month:"long",year:"numeric"})}
                 {" · "}{strategies.length} strateg{strategies.length!==1?"ies":"y"}
-                {totalFollowers>0&&` · ${totalFollowers} strategy followers`}
-                {followerCount>0&&` · ${followerCount} followers`}
               </div>
-
-              {/* Action buttons */}
-              {!isOwn&&currentUser&&(
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={toggleFollow} disabled={followLoading} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 18px",borderRadius:10,fontSize:12,fontWeight:700,cursor:followLoading?"not-allowed":"pointer",transition:"all 0.15s",border:`1px solid ${isFollowing?"rgba(248,113,113,0.35)":"rgba(99,102,241,0.35)"}`,background:isFollowing?"rgba(248,113,113,0.08)":"rgba(99,102,241,0.08)",color:isFollowing?"#ef4444":"#6366f1"}}>
-                    {followLoading?"…":isFollowing?"✓ Following":"+ Follow"}
-                  </button><button onClick={handleCopy} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 20px",borderRadius:10,fontSize:12,fontWeight:800,cursor:"pointer",border:"none",background:copied?"rgba(52,211,153,0.15)":"#6366f1",color:copied?"#10b981":"#fff",transition:"all 0.2s",boxShadow:copied?"none":"0 0 20px rgba(99,102,241,0.2)"}}>
-                    {copied?"✓ Copying Trades":" Copy Trader"}
-                  </button></div>
-              )}
-
-              {/* Rank progress */}
-              {rank.progress<100&&(
-                <div style={{marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:10,color:"#2a2a3a"}}>Progress to {rank.next}</span><span style={{fontSize:10,color:rank.color,fontWeight:700}}>{Math.round(rank.progress)}%</span></div><div style={{height:4,borderRadius:2,background:"#111118",overflow:"hidden"}}><div style={{width:`${rank.progress}%`,height:"100%",background:`linear-gradient(90deg,${rank.color}66,${rank.color})`,borderRadius:2,transition:"width 0.8s"}}/></div></div>
-              )}
             </div>
-
-            {/* Revenue badge */}
-            {monthlyRevenue>0&&(<div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:9,color:"#2a2a3a",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.08em"}}>Est. Monthly</div><div style={{fontSize:26,fontWeight:900,color:"#22d3a5",fontFamily:"monospace"}}>${monthlyRevenue.toFixed(0)}</div></div>
-            )}
           </div></div>
 
         {/* ── STAT CARDS ── */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:20}}><StatCard label="Win Rate"      value={`${stats.winRate}%`}      color={stats.winRate>=55?"#10b981":stats.winRate>=45?"#f59e0b":"#ef4444"}/><StatCard label="Consistency"   value={String(stats.consistency)} color={stats.consistency>=70?"#6366f1":"#9ca3af"}/><StatCard label="Avg RR"        value={String(stats.avgRR)}       color={stats.avgRR>=1.5?"#10b981":"#9ca3af"}/><StatCard label="Max Drawdown"  value={`${stats.maxDrawdown}%`}   color={stats.maxDrawdown<15?"#10b981":stats.maxDrawdown<25?"#f59e0b":"#ef4444"}/><StatCard label="Total PnL"     value={`${stats.totalPnl>=0?"+":""}${stats.totalPnl.toFixed(0)}`} color={stats.totalPnl>=0?"#10b981":"#ef4444"}/><StatCard label="30-Day Return" value={`${stats.monthlyReturn>=0?"+":""}${stats.monthlyReturn.toFixed(0)}`} color={stats.monthlyReturn>=0?"#10b981":"#ef4444"} sub="last 30 days"/><StatCard label="Trades"        value={String(stats.totalTrades)} color="#9ca3af"/><StatCard label="Followers"     value={String(followerCount)}     color="#6366f1"/></div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:20}}><StatCard label="Win Rate"      value={`${stats.winRate}%`}      color={stats.winRate>=55?"#10b981":stats.winRate>=45?"#f59e0b":"#ef4444"}/><StatCard label="Consistency"   value={String(stats.consistency)} color={stats.consistency>=70?"#6366f1":"#9ca3af"}/><StatCard label="Avg RR"        value={String(stats.avgRR)}       color={stats.avgRR>=1.5?"#10b981":"#9ca3af"}/><StatCard label="Max Drawdown"  value={`${stats.maxDrawdown}%`}   color={stats.maxDrawdown<15?"#10b981":stats.maxDrawdown<25?"#f59e0b":"#ef4444"}/><StatCard label="Total PnL"     value={`${stats.totalPnl>=0?"+":""}${stats.totalPnl.toFixed(0)}`} color={stats.totalPnl>=0?"#10b981":"#ef4444"}/><StatCard label="30-Day Return" value={`${stats.monthlyReturn>=0?"+":""}${stats.monthlyReturn.toFixed(0)}`} color={stats.monthlyReturn>=0?"#10b981":"#ef4444"} sub="last 30 days"/><StatCard label="Trades"        value={String(stats.totalTrades)} color="#9ca3af"/></div>
 
         {/* ── TABS ── */}
         <div style={{display:"flex",gap:0,marginBottom:20,borderBottom:"1px solid #2a2a3a"}}>
@@ -281,13 +183,6 @@ export default function TraderProfile(){
             {stats.equityCurve.length>2&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:4}}>Equity Curve</div><div style={{fontSize:11,color:"#2a2a3a",marginBottom:16}}>Cumulative PnL over {trades.length} trades</div><ResponsiveContainer width="100%" height={200}><AreaChart data={stats.equityCurve} margin={{top:5,right:5,left:-20,bottom:0}}><defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#10b981" stopOpacity={0.18}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs><XAxis dataKey="label" tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} interval="preserveStartEnd"/><YAxis tick={{fontSize:9,fill:"#2a2a3a"}} tickLine={false} axisLine={false} tickFormatter={v=>`${v>=0?"+":""}${(v as number).toFixed(0)}`}/><Tooltip content={<EquityTooltip/>}/><ReferenceLine y={0} stroke="#2a2a3a" strokeDasharray="4 4"/><Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2} fill="url(#eqGrad)" dot={false}/></AreaChart></ResponsiveContainer></div>
             )}
 
-            {/* Badges */}
-            {badges.length>0&&(<div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:14}}>Achievement Badges</div><div style={{display:"flex",flexWrap:"wrap",gap:10}}>
-                  {badges.map(b=>(<div key={b.id} title={b.desc} style={{display:"flex",alignItems:"center",gap:7,padding:"8px 14px",borderRadius:12,background:`${b.color}10`,border:`1px solid ${b.color}30`,cursor:"default"}}><span style={{fontSize:16}}>{b.icon}</span><span style={{fontSize:12,fontWeight:700,color:b.color}}>{b.label}</span></div>
-                  ))}
-                </div></div>
-            )}
-
             {/* Streaks */}
             <div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:16}}>Streaks</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
                 {[
@@ -297,27 +192,6 @@ export default function TraderProfile(){
                   {label:"Best Daily",   val:stats.bestTradeStreak,    color:"#a5b4fc",emoji:"⭐"},
                 ].map((s,i)=>(<div key={i} style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:14,padding:"14px",textAlign:"center"}}><div style={{fontSize:24,marginBottom:6}}>{s.emoji}</div><div style={{fontSize:28,fontWeight:900,fontFamily:"monospace",color:s.color,lineHeight:1}}>{s.val}</div><div style={{fontSize:10,color:"#2a2a3a",marginTop:6,fontWeight:600}}>{s.label} Streak</div></div>
                 ))}
-              </div></div>
-
-            {/* Rank Progression */}
-            <div style={{background:"#111118",border:"1px solid #2a2a3a",borderRadius:20,padding:"20px 22px"}}><div style={{fontSize:13,fontWeight:800,color:"#ffffff",marginBottom:16}}>Rank Progression</div><div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {[
-                  {label:"Beginner",        req:"Start trading",                   color:"#6b7280"},
-                  {label:"Active Trader",   req:"20+ trades",                      color:"#6366f1"},
-                  {label:"Consistent",      req:"50+ trades · 50%+ WR",            color:"#10b981"},
-                  {label:"Verified Trader", req:"100+ trades · 55%+ WR · 70+ score",color:"#a5b4fc"},
-                  {label:"Funded Trader",   req:"200+ trades · 60%+ WR · 80+ score",color:"#f59e0b"},
-                ].map((r,i)=>{
-                  const active=rank.label===r.label;
-                  const past=RANKS.indexOf(r.label)<RANKS.indexOf(rank.label);
-                  return(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,background:active?`${r.color}10`:"transparent",border:`1px solid ${active?r.color+"40":"#2a2a3a"}`}}><div style={{width:20,height:20,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,background:active||past?`${r.color}20`:"#111118",border:`1px solid ${active||past?r.color:"#1e2f4a"}`,color:active||past?r.color:"#2e3f5a"}}>
-                        {past?"✓":active?"●":"○"}
-                      </div><div style={{flex:1}}><span style={{fontSize:12,fontWeight:active?800:600,color:active?r.color:past?"#c8d8f0":"#2a2a3a"}}>{r.label}</span><span style={{fontSize:10,color:"#2e3f5a",marginLeft:8}}>{r.req}</span></div>
-                      {active&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,background:`${r.color}18`,color:r.color}}>Current</span>}
-                    </div>
-                  );
-                })}
               </div></div></div>
         )}
 
@@ -331,7 +205,7 @@ export default function TraderProfile(){
                       </tr></thead><tbody>
                       {recentTrades.map(t=>{
                         const pos=(t.pnl??0)>=0;
- return(<tr key={t.id} style={{borderBottom:"1px solid rgba(30,41,59,0.4)"}}><td style={{padding:"9px 14px",fontSize:11,fontWeight:700,color:"#ffffff",fontFamily:"monospace"}}>{t.pair}</td><td style={{padding:"9px 14px"}}><span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:t.type==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:t.type==="long"?"#10b981":"#ef4444",border:`1px solid ${t.type==="long"?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`}}>
+                        return(<tr key={t.id} style={{borderBottom:"1px solid rgba(30,41,59,0.4)"}}><td style={{padding:"9px 14px",fontSize:11,fontWeight:700,color:"#ffffff",fontFamily:"monospace"}}>{t.pair}</td><td style={{padding:"9px 14px"}}><span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:t.type==="long"?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",color:t.type==="long"?"#10b981":"#ef4444",border:`1px solid ${t.type==="long"?"rgba(52,211,153,0.2)":"rgba(248,113,113,0.2)"}`}}>
                                 {t.type==="long"?"▲ LONG":"▼ SHORT"}
                               </span></td><td style={{padding:"9px 14px",fontSize:11,color:"#6b7280",fontFamily:"monospace"}}>{t.entryPrice?.toFixed(2)??"-"}</td><td style={{padding:"9px 14px",fontSize:11,color:"#6b7280",fontFamily:"monospace"}}>{t.exitPrice?.toFixed(2)??"-"}</td><td style={{padding:"9px 14px",fontSize:12,fontWeight:700,color:pos?"#10b981":"#ef4444",fontFamily:"monospace"}}>{pos?"+":""}{(t.pnl??0).toFixed(2)}</td><td style={{padding:"9px 14px",fontSize:11,color:"#6b7280"}}>{t.strategy||"—"}</td><td style={{padding:"9px 14px",fontSize:11,color:"#2a2a3a"}}>{new Date(t.date).toLocaleDateString()}</td></tr>
                         );

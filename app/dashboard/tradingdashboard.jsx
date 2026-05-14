@@ -1279,7 +1279,7 @@ function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
             {preview && (
               <div>
                 {broker && (
-                  <div style={{ marginBottom:10, padding:"10px 14px", borderRadius:9, background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.3)", display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:16 }}></span><div><div style={{ fontSize:12, fontWeight:700, color:"#10b981" }}>Broker detected: {broker.name}</div><div style={{ fontSize:10, color:"#3a6a8a", marginTop:1 }}>These trades will be tagged as<strong style={{ color:"#10b981" }}> verified broker imports </strong>and count toward your rank progression.</div></div></div>
+                  <div style={{ marginBottom:10, padding:"10px 14px", borderRadius:9, background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.3)", display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:16 }}></span><div><div style={{ fontSize:12, fontWeight:700, color:"#10b981" }}>Broker detected: {broker.name}</div><div style={{ fontSize:10, color:"#3a6a8a", marginTop:1 }}>These trades will be tagged as<strong style={{ color:"#10b981" }}> verified broker imports</strong>.</div></div></div>
                 )}
                 {!broker && (
                   <div style={{ marginBottom:10, padding:"8px 12px", borderRadius:9, background:"rgba(245,158,11,0.06)", border:"1px solid rgba(245,158,11,0.2)", display:"flex", alignItems:"center", gap:8 }}><span style={{ fontSize:14 }}>️</span><div style={{ fontSize:11, color:"#6b7280" }}>Broker not recognised — trades imported as<strong> manual</strong>. Supported brokers: Tradovate, Apex, TopstepX, NinjaTrader, TradeLocker, IBKR.</div></div>
@@ -3455,7 +3455,7 @@ function AddAccountModal({ onAdd, onClose }) {
             <div style={{ display:"flex", flexDirection:"column", gap:12 }}><div><label style={lbl}>Prop Firm</label><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
                   {["Tradeify","Apex","TopstepX","Earn2Trade","FTMO","Other"].map(b =>(<button key={b} onClick={() => setBroker(b.toLowerCase())} style={{ padding:"7px 6px", borderRadius:8, fontSize:10, fontWeight:700, cursor:"pointer", border:`1px solid ${broker===b.toLowerCase()?"rgba(165,180,252,0.4)":"#2a2a3a"}`, background:broker===b.toLowerCase()?"rgba(165,180,252,0.1)":"#1a1a24", color:broker===b.toLowerCase()?"#a5b4fc":"#6b7280" }}>{b}</button>
                   ))}
-                </div></div><div><label style={lbl}>Account Size (USD)</label><div style={{ position:"relative" }}><span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#6b7280", fontWeight:700 }}>$</span><input type="number" style={{ ...inp, paddingLeft:24 }} value={balance} onChange={e => setBalance(e.target.value)} min="100" placeholder="100000" onKeyDown={e => e.key === "Enter" && submit()}/></div></div><div style={{ padding:"10px 12px", borderRadius:9, background:"rgba(165,180,252,0.06)", border:"1px solid rgba(165,180,252,0.2)", fontSize:11, color:"#6b7280", lineHeight:1.6 }}>Import your funded account trades via<strong style={{ color:"#a5b4fc" }}>CSV export</strong>from Tradovate. Trades tagged as<strong style={{ color:"#a5b4fc" }}>✓ BROKER</strong>count toward your verified rank.</div></div>
+                </div></div><div><label style={lbl}>Account Size (USD)</label><div style={{ position:"relative" }}><span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#6b7280", fontWeight:700 }}>$</span><input type="number" style={{ ...inp, paddingLeft:24 }} value={balance} onChange={e => setBalance(e.target.value)} min="100" placeholder="100000" onKeyDown={e => e.key === "Enter" && submit()}/></div></div><div style={{ padding:"10px 12px", borderRadius:9, background:"rgba(165,180,252,0.06)", border:"1px solid rgba(165,180,252,0.2)", fontSize:11, color:"#6b7280", lineHeight:1.6 }}>Import your funded account trades via<strong style={{ color:"#a5b4fc" }}>CSV export</strong>from Tradovate. Trades tagged as<strong style={{ color:"#a5b4fc" }}>✓ BROKER</strong>are marked as verified broker imports.</div></div>
           )}
 
           {err && (
@@ -3713,11 +3713,9 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
   }, [username]);
 
   const stats  = useMemo(() => computeTraderStats(username), [username, trades]);
-  const badges = useMemo(() => getPerformanceBadges(trades), [trades]);
   const isFollowing = copyTrading.isFollowing(username);
   const isSelf      = username === session.username;
   const rel         = copyTrading.follows.find(f => f.trader === username);
-  const followers   = countFollowers(username);
 
   const chartData = useMemo(() => {
     const sorted = [...trades].sort((a,b) => a.date - b.date);
@@ -3736,10 +3734,7 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
  return (<div style={{ position:"fixed", inset:0, zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}><div onClick={onClose} style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(6px)" }}/><div style={{ position:"relative", zIndex:10, width:"100%", maxWidth:720, maxHeight:"92vh", borderRadius:20, border:"1px solid #2a2a3a", background:"#111118", boxShadow:"0 30px 80px rgba(0,0,0,0.7)", display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
         {/* Header */}
-        <div style={{ padding:"20px 24px", borderBottom:"1px solid #2a2a3a", background:"linear-gradient(135deg,rgba(3,105,161,0.15),rgba(99,102,241,0.08))" }}><div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16 }}><div style={{ display:"flex", alignItems:"center", gap:16 }}><div style={{ width:56, height:56, borderRadius:"50%", background:"#6366f1", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, fontWeight:800, color:"#fff", flexShrink:0 }}>{displayName[0].toUpperCase()}</div><div><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>{displayName}</div><div style={{ fontSize:11, color:"#6b7280", fontFamily:"monospace" }}>@{username}</div><div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
-                  {badges.map(b =>(<span key={b.label} style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:20, background:b.bg, color:b.color, border:`1px solid ${b.color}30` }}>{b.emoji} {b.label}</span>
-                  ))}
-                </div></div></div><div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ padding:"20px 24px", borderBottom:"1px solid #2a2a3a", background:"linear-gradient(135deg,rgba(3,105,161,0.15),rgba(99,102,241,0.08))" }}><div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16 }}><div style={{ display:"flex", alignItems:"center", gap:16 }}><div style={{ width:56, height:56, borderRadius:"50%", background:"#6366f1", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, fontWeight:800, color:"#fff", flexShrink:0 }}>{displayName[0].toUpperCase()}</div><div><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>{displayName}</div><div style={{ fontSize:11, color:"#6b7280", fontFamily:"monospace" }}>@{username}</div></div></div><div style={{ display:"flex", alignItems:"center", gap:8 }}>
               {!isSelf && (
                 <button onClick={() => isFollowing ? copyTrading.unfollow(username) : copyTrading.follow(username)} style={{ display:"flex", alignItems:"center", gap:5, padding:"8px 16px", borderRadius:9, border:`1px solid ${isFollowing?"rgba(239,68,68,0.4)":"rgba(99,102,241,0.4)"}`, background:isFollowing?"rgba(239,68,68,0.08)":"rgba(99,102,241,0.08)", color:isFollowing?"#ef4444":"#6366f1", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                   {isFollowing ? <><UserMinus size={13}/>Unfollow</>:<><UserCheck size={13}/>Follow</>}
@@ -3748,13 +3743,12 @@ function TraderProfile({ username, displayName, session, copyTrading, onClose })
               <button onClick={onClose} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", padding:4 }}><X size={18}/></button></div></div>
 
           {/* Key stats row */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginTop:20 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginTop:20 }}>
             {[
               { label:"Score",     val: String(+(calculateScore(trades)).toFixed(0)),              color:"#6366f1" },
               { label:"PnL",       val: `${stats.totalPnl>=0?"+":""}${(stats.totalPnl??0).toFixed(2)}`, color: stats.totalPnl>=0?"#10b981":"#ef4444" },
               { label:"Win Rate",  val: `${stats.winRate}%`,                                       color: stats.winRate>=50?"#10b981":"#f59e0b" },
               { label:"Trades",    val: String(stats.totalTrades),                                  color:"#9ca3af" },
-              { label:"Followers", val: String(followers),                                          color:"#6366f1" },
             ].map(({ label,val,color }) =>(<div key={label} style={{ textAlign:"center", padding:"10px 8px", borderRadius:10, background:"rgba(17,24,39,0.6)", border:"1px solid rgba(30,45,62,0.8)" }}><div style={{ fontSize:8, color:"#374151", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:4 }}>{label}</div><div style={{ fontSize:15, fontWeight:800, fontFamily:"monospace", color }}>{val}</div></div>
             ))}
           </div>
@@ -3833,7 +3827,6 @@ function LeaderboardRow({ rank, trader, session, copyTrading, onViewProfile }) {
       <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}><div style={{ width:34, height:34, borderRadius:"50%", flexShrink:0, background:`#6366f1`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, color:"#fff" }}>{trader.displayName[0].toUpperCase()}</div><div style={{ minWidth:0 }}><div style={{ display:"flex", alignItems:"center", gap:6 }}><span style={{ fontSize:12, fontWeight:700, color:"#ffffff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{trader.displayName}</span>
             {isSelf && <span style={{ fontSize:8, color:"#6366f1", background:"rgba(99,102,241,0.1)", padding:"1px 5px", borderRadius:8, fontWeight:700 }}>You</span>}
           </div><div style={{ display:"flex", alignItems:"center", gap:5, marginTop:2, flexWrap:"wrap" }}>
-            {trader.badges.slice(0,2).map(b =><span key={b.label} style={{ fontSize:8, color:b.color, fontWeight:700 }}>{b.emoji} {b.label}</span>)}
             <span style={{ fontSize:9, color:"#374151" }}>@{trader.username}</span></div></div></div>
 
       {/* PnL */}
@@ -3886,8 +3879,6 @@ function CopyTradingPage({ session, copyTrading }) {
     return true;
   });
 
-  const followingCount = copyTrading.follows.length;
-
   const RANGE_OPTS = [
     { id:"day",   label:"24h" },
     { id:"week",  label:"7d"  },
@@ -3911,8 +3902,6 @@ function CopyTradingPage({ session, copyTrading }) {
 
       {/* Page header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:20, fontWeight:800, color:"#ffffff", display:"flex", alignItems:"center", gap:10 }}><Users size={20} style={{ color:"#6366f1" }}/>Social Trading</div><div style={{ fontSize:11, color:"#6b7280", marginTop:3 }}>Leaderboard · Follow top traders · Simulate copy trading</div></div><div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          {followingCount >0 && (<div style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:20, background:"rgba(99,102,241,0.08)", border:"1px solid rgba(99,102,241,0.2)" }}><Radio size={10} style={{ color:"#6366f1" }}/><span style={{ fontSize:11, fontWeight:700, color:"#6366f1" }}>Following {followingCount}</span></div>
-          )}
           <button onClick={() => setRefreshAt(Date.now())} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#6b7280", fontSize:11, cursor:"pointer" }}><RefreshCw size={11}/>Refresh</button></div></div>
 
       {/* Simulation notice */}
@@ -3935,7 +3924,7 @@ function CopyTradingPage({ session, copyTrading }) {
       <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
         {/* Tab switcher */}
         <div style={{ display:"flex", gap:2, borderBottom:"1px solid #2a2a3a" }}>
-          {[["leaderboard",` Leaderboard (${leaders.length})`],["following",`Following (${followingCount})`]].map(([id,label]) =>(<button key={id} onClick={()=>setTab(id)} style={{ padding:"6px 14px", border:"none", background:"transparent", fontSize:11, fontWeight:600, cursor:"pointer", color:tab===id?"#ffffff":"#6b7280", borderBottom:tab===id?"2px solid #6366f1":"2px solid transparent", marginBottom:-1, whiteSpace:"nowrap" }}>{label}</button>
+          {[["leaderboard",` Leaderboard (${leaders.length})`],["following","Following"]].map(([id,label]) =>(<button key={id} onClick={()=>setTab(id)} style={{ padding:"6px 14px", border:"none", background:"transparent", fontSize:11, fontWeight:600, cursor:"pointer", color:tab===id?"#ffffff":"#6b7280", borderBottom:tab===id?"2px solid #6366f1":"2px solid transparent", marginBottom:-1, whiteSpace:"nowrap" }}>{label}</button>
           ))}
         </div><div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:"auto", flexWrap:"wrap" }}>
           {/* Time range */}
