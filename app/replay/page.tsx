@@ -402,6 +402,73 @@ function topTheme(reviews: Review[]): string | null {
   return `Theme: "${sorted[0][0]}" mentioned in ${sorted[0][1]} reviews`;
 }
 
+// ───────────────────── session picker / scoring helpers ─────────────────────
+
+type SessionType = "quick" | "last" | "worst" | "custom";
+
+interface SessionResult {
+  tradeId: string;
+  correctIdentification: boolean;
+  matchedSetup: Triad | null;
+  quickConfidence: number;
+  isWin: boolean;
+  pnl: number;
+}
+
+interface Insight {
+  tone: "good" | "warning" | "bad";
+  message: string;
+}
+
+function getInsight(matchedSetup: Triad | null, quickConfidence: number, isWin: boolean, pnl: number): Insight | null {
+  if (matchedSetup === "yes" && isWin) return { tone: "good", message: "Clean execution. This is what consistency looks like." };
+  if (matchedSetup === "yes" && pnl < 0) return { tone: "warning", message: "Good setup, bad outcome. Losses happen — what matters is the process." };
+  if (matchedSetup === "no" && isWin) return { tone: "warning", message: "Lucky win — but taking trades outside your setup will hurt you long term." };
+  if (matchedSetup === "no" && pnl < 0) return { tone: "bad", message: "This is exactly why we stick to our setups. Avoid these." };
+  if (quickConfidence >= 4 && isWin) return { tone: "good", message: "Your instincts are sharp on this one." };
+  if (quickConfidence >= 4 && pnl < 0) return { tone: "bad", message: "High confidence on a losing trade — worth reviewing why." };
+  return null;
+}
+
+function isCorrectIdentification(matchedSetup: Triad | null, isWin: boolean, pnl: number): boolean {
+  if (matchedSetup === "yes" && isWin) return true;
+  if (matchedSetup === "no" && pnl < 0) return true;
+  return false;
+}
+
+function getTradeMs(t: Trade): number {
+  return typeof t.date === "number" ? t.date : new Date(t.date || 0).getTime();
+}
+
+function pickQuickReview(trades: Trade[]): Trade[] {
+  const pool = trades.filter((t) => Number.isFinite(getTradeMs(t)));
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, Math.min(5, shuffled.length));
+}
+
+function pickLastSession(trades: Trade[]): Trade[] {
+  if (!trades.length) return [];
+  const latest = getTradeMs(trades[0]);
+  if (!Number.isFinite(latest) || latest <= 0) return [];
+  const dayStart = new Date(latest).setHours(0, 0, 0, 0);
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+  return trades.filter((t) => {
+    const tm = getTradeMs(t);
+    return tm >= dayStart && tm < dayEnd;
+  });
+}
+
+function pickWorstTrades(trades: Trade[]): Trade[] {
+  return [...trades]
+    .filter((t) => Number.isFinite(Number(t.pnl)))
+    .sort((a, b) => Number(a.pnl ?? 0) - Number(b.pnl ?? 0))
+    .slice(0, Math.min(5, trades.length));
+}
+
 // ───────────────────── page ─────────────────────
 
 export default function ReplayPage() {
@@ -442,6 +509,16 @@ function ReplayPageInner() {
  const [revealed, setReveal] = useState(false);
  const [quickConfidence, setQuickConfidence] = useState(0);
 
+ // session picker / scoring
+ const [sessionType, setSessionType] = useState<SessionType | null>(null);
+ const [sessionTradeIds, setSessionTradeIds] = useState<string[]>([]);
+ const [customSize, setCustomSize] = useState(10);
+ const [streak, setStreak] = useState(0);
+ const [streakFlash, setStreakFlash] = useState<number | null>(null);
+ const [sessionResults, setSessionResults] = useState<SessionResult[]>([]);
+ const [insight, setInsight] = useState<Insight | null>(null);
+ const [shareCopied, setShareCopied] = useState(false);
+
   // ── Initial load ──
   useEffect(() => {
     try {
@@ -462,21 +539,19 @@ function ReplayPageInner() {
       const savedReviews = JSON.parse(localStorage.getItem(reviewsKey(u)) || "{}") || {};
       setReviews(savedReviews);
 
-      // if tradeId param present, start replay on that specific trade
-      let startIdx = -1;
+      // if tradeId param present, auto-start a single-trade session
       try {
         const params = new URLSearchParams(window.location.search);
         const tradeId = params.get("tradeId");
         if (tradeId) {
-          const found = sorted.findIndex((t) => String(t.id) === String(tradeId));
-          if (found >= 0) startIdx = found;
+          const found = sorted.find((t) => String(t.id) === String(tradeId));
+          if (found) {
+            setSessionType("custom");
+            setSessionTradeIds([found.id]);
+            setIdx(0);
+          }
         }
       } catch {}
-
-      // fallback: resume at first unreviewed trade
-      if (startIdx < 0) startIdx = sorted.findIndex((t) => !savedReviews[t.id]);
-      setIdx(startIdx >= 0 ? startIdx : sorted.length);
-      if (startIdx === -1 && sorted.length > 0) setDone(true);
     } catch (e) {
       console.warn("replay load failed", e);
     } finally {
@@ -484,7 +559,38 @@ function ReplayPageInner() {
     }
   }, []);
 
-  const current = trades[idx];
+  const sessionTrades = useMemo(() => {
+    if (!sessionTradeIds.length) return [];
+    const byId: Record<string, Trade> = {};
+    for (const t of trades) byId[t.id] = t;
+    return sessionTradeIds.map((id) => byId[id]).filter(Boolean) as Trade[];
+  }, [sessionTradeIds, trades]);
+
+  const lastSessionCount = useMemo(() => pickLastSession(trades).length, [trades]);
+
+  const startSession = useCallback((type: SessionType, sizeOverride?: number) => {
+    let selected: Trade[] = [];
+    if (type === "quick") selected = pickQuickReview(trades);
+    else if (type === "last") selected = pickLastSession(trades);
+    else if (type === "worst") selected = pickWorstTrades(trades);
+    else if (type === "custom") {
+      const n = Math.max(1, Math.min(sizeOverride ?? customSize, trades.length));
+      selected = trades.slice(0, n);
+    }
+    if (!selected.length) return;
+    setSessionType(type);
+    setSessionTradeIds(selected.map((t) => t.id));
+    setIdx(0);
+    setDone(false);
+    setStreak(0);
+    setStreakFlash(null);
+    setSessionResults([]);
+    setInsight(null);
+    setShareCopied(false);
+    setSlideDir("next");
+  }, [trades, customSize]);
+
+  const current = sessionTrades[idx];
 
   const { candles, loading: chartLoading, error: chartError } = useTradeChart(current, interval);
   const [hoverCandle, setHoverCandle] = useState<ChartRow | null>(null);
@@ -521,12 +627,12 @@ function ReplayPageInner() {
     });
   }, [current?.id]);
 
-  const total = trades.length;
+  const total = sessionTrades.length;
   const reviewedCount = useMemo(
-    () => trades.filter((t) =>reviews[t.id]).length,
- [trades, reviews]
- );
- const progressPct = total ? Math.round(((idx + (done ? 1 : 0)) / total) * 100) : 0;
+    () => sessionTrades.filter((t) => reviews[t.id]).length,
+    [sessionTrades, reviews]
+  );
+  const progressPct = total ? Math.round(((idx + (done ? 1 : 0)) / total) * 100) : 0;
 
  const sessionGrade = useMemo<Grade | null>(() => {
     const r = Object.values(reviews).filter((x) => x && x.grade);
@@ -547,6 +653,43 @@ function ReplayPageInner() {
     [reviews, username]
   );
 
+  const handleReveal = () => {
+    if (!current) return;
+    setReveal(true);
+    const pnlNum = Number(current.pnl ?? 0);
+    const winNow = pnlNum > 0;
+    const ins = getInsight(matchedSetup, quickConfidence, winNow, pnlNum);
+    setInsight(ins);
+    const correct = isCorrectIdentification(matchedSetup, winNow, pnlNum);
+    if (correct) {
+      const next = streak + 1;
+      setStreak(next);
+      if (next === 3 || next === 5 || next === 10) {
+        setStreakFlash(next);
+        setTimeout(() => setStreakFlash(null), 1800);
+      }
+    } else {
+      setStreak(0);
+    }
+  };
+
+  const recordSessionResult = (t: Trade) => {
+    const pnlNum = Number(t.pnl ?? 0);
+    const winNow = pnlNum > 0;
+    const correct = isCorrectIdentification(matchedSetup, winNow, pnlNum);
+    setSessionResults((prev) => {
+      const filtered = prev.filter((r) => r.tradeId !== t.id);
+      return [...filtered, {
+        tradeId: t.id,
+        correctIdentification: correct,
+        matchedSetup,
+        quickConfidence,
+        isWin: winNow,
+        pnl: pnlNum,
+      }];
+    });
+  };
+
   const handleNext = () => {
     if (!current || !canAdvance) return;
     const r: Review = {
@@ -561,72 +704,113 @@ function ReplayPageInner() {
       mistakes,
     };
     saveCurrent(r);
+    recordSessionResult(current);
     setSlideDir("next");
+    setInsight(null);
     if (idx + 1 >= total) setDone(true);
     else setIdx(idx + 1);
   };
 
   const handleSkip = () => {
     setSlideDir("next");
+    setInsight(null);
     if (idx + 1 >= total) setDone(true);
     else setIdx(idx + 1);
   };
 
   const handlePrev = () => {
     setSlideDir("prev");
+    setInsight(null);
     if (done) { setDone(false); setIdx(Math.max(0, total - 1)); return; }
     setIdx(Math.max(0, idx - 1));
   };
 
   const handleRestart = () => {
-    if (!username) return;
-    setReviews({});
-    try { localStorage.removeItem(reviewsKey(username)); } catch {}
     setDone(false);
     setIdx(0);
     setSlideDir("next");
+    setSessionType(null);
+    setSessionTradeIds([]);
+    setStreak(0);
+    setStreakFlash(null);
+    setSessionResults([]);
+    setInsight(null);
+    setShareCopied(false);
   };
 
-  // ── Summary ──
-  const reviewedList = useMemo(
-    () => Object.values(reviews).filter((r) => r && r.grade),
-    [reviews]
-  );
+  const handleResetAllReviews = () => {
+    if (!username) return;
+    setReviews({});
+    try { localStorage.removeItem(reviewsKey(username)); } catch {}
+    handleRestart();
+  };
 
-  const summary = useMemo(() => {
-    if (!reviewedList.length) return null;
-    const scoreAvg =
-      reviewedList.reduce((s, r) => s + (GRADE_SCORE[r.grade!] ?? 0), 0) /
-      reviewedList.length;
-    const avgGrade = SCORE_TO_GRADE(scoreAvg);
-    const matched = reviewedList.filter((r) => r.matchedSetup === "yes").length;
-    const matchedPct = Math.round((matched / reviewedList.length) * 100);
-    const ruled = reviewedList.filter((r) => r.followedRules === "yes").length;
-    const ruledPct = Math.round((ruled / reviewedList.length) * 100);
-    const avgConf =
-      reviewedList.reduce((s, r) => s + (r.confidence || 0), 0) / reviewedList.length;
+  // ── Session Summary ──
+  const sessionSummary = useMemo(() => {
+    if (!sessionResults.length) return null;
+    const total = sessionResults.length;
+    const correct = sessionResults.filter((r) => r.correctIdentification).length;
+    const wins = sessionResults.filter((r) => r.isWin);
+    const losses = sessionResults.filter((r) => !r.isWin);
+    const lossesOutsideSetup = losses.filter((r) => r.matchedSetup === "no").length;
+    const avgConfWin = wins.length
+      ? wins.reduce((s, r) => s + (r.quickConfidence || 0), 0) / wins.length
+      : 0;
+    const avgConfLoss = losses.length
+      ? losses.reduce((s, r) => s + (r.quickConfidence || 0), 0) / losses.length
+      : 0;
 
-    // best/worst by pnl among reviewed trades
-    const reviewedTrades = trades.filter((t) => reviews[t.id]);
-    let best: Trade | null = null;
-    let worst: Trade | null = null;
-    for (const t of reviewedTrades) {
-      const p = Number(t.pnl ?? 0);
-      if (best === null || p >Number(best.pnl ?? 0)) best = t;
- if (worst === null || p< Number(worst.pnl ?? 0)) worst = t;
+    // Score 0-100: setup accuracy (70 pts) + confidence calibration (30 pts)
+    const accuracyScore = (correct / total) * 70;
+    let calibScore = 0;
+    if (wins.length && losses.length) {
+      const calibRatio = Math.max(0, (avgConfWin - avgConfLoss) / 5);
+      calibScore = Math.min(30, calibRatio * 30 + 10);
+    } else {
+      calibScore = 20;
     }
+    const score = Math.round(accuracyScore + calibScore);
+
+    const confInsight = wins.length && losses.length
+      ? (avgConfWin > avgConfLoss
+          ? "winning trades — your gut is well calibrated"
+          : avgConfLoss > avgConfWin
+          ? "losing trades — your gut may be off"
+          : "evenly split — confidence didn't separate wins from losses")
+      : wins.length
+      ? "winning trades"
+      : "losing trades";
 
     return {
-      avgGrade,
-      matchedPct,
-      ruledPct,
-      avgConf: avgConf.toFixed(1),
-      lesson: topTheme(reviewedList),
-      count: reviewedList.length,
-      best,
-      worst,
+      total,
+      correct,
+      score,
+      lossesOutsideSetup,
+      lossesTotal: losses.length,
+      confInsight,
     };
-  }, [reviewedList, trades, reviews]);
+  }, [sessionResults]);
+
+  const buildShareText = useCallback(() => {
+    if (!sessionSummary) return "";
+    const pct = sessionSummary.lossesTotal
+      ? Math.round((sessionSummary.lossesOutsideSetup / sessionSummary.lossesTotal) * 100)
+      : 0;
+    const topLine = sessionSummary.lossesTotal && pct >= 50
+      ? `${pct}% of my losses were outside my setup.`
+      : `Setup accuracy: ${sessionSummary.correct}/${sessionSummary.total}.`;
+    return `Just completed a Nexyru trade review session 📊\nSetup accuracy: ${sessionSummary.correct}/${sessionSummary.total} · Score: ${sessionSummary.score}/100\nTop insight: ${topLine}`;
+  }, [sessionSummary]);
+
+  const handleShare = async () => {
+    const text = buildShareText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2200);
+    } catch {}
+  };
 
   // ───────────────────── render ─────────────────────
 
@@ -648,18 +832,42 @@ function ReplayPageInner() {
     );
   }
 
+  if (!sessionType) {
+    return (
+      <SessionPicker
+        totalTrades={trades.length}
+        lastSessionCount={lastSessionCount}
+        customSize={customSize}
+        onCustomSizeChange={setCustomSize}
+        onStart={startSession}
+      />
+    );
+  }
+
   if (done || idx >= total) {
     return (
-      <div style={shellStyle}><div style={{ width: "100%", maxWidth: 760 }}><ProgressBar idx={total} total={total} pct={100} sessionGrade={sessionGrade} done /><div style={{ ...cardStyle, marginTop: 18, padding: "36px 28px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#22d3a5", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>Replay Complete</div><div style={{ fontSize: 28, fontWeight: 900, color: "#ffffff", marginBottom: 28, letterSpacing: "-0.01em" }}>Session summary</div>
+      <div style={shellStyle}><div style={{ width: "100%", maxWidth: 760 }}>
+        <TopProgressBar pct={100} />
+        <ProgressBar idx={total} total={total} pct={100} sessionGrade={sessionGrade} streak={streak} streakFlash={streakFlash} done />
+        <div style={{ ...cardStyle, marginTop: 18, padding: "36px 28px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#22d3a5", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12 }}>Session Complete</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", marginBottom: 6, letterSpacing: "-0.01em" }}>Here's what you learned</div>
 
-            {summary ? (
-              <><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 }}><SummaryStat label="Session Grade" value={summary.avgGrade} color={GRADE_COLOR[summary.avgGrade]} big /><SummaryStat label="Setup Match" value={`${summary.matchedPct}%`} color={pctColor(summary.matchedPct)} /><SummaryStat label="Rules Followed" value={`${summary.ruledPct}%`} color={pctColor(summary.ruledPct)} /><SummaryStat label="Avg Confidence" value={summary.avgConf} color="#6366f1" /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14, marginBottom: 22 }}><BestWorstCard label="Best Trade" trade={summary.best} positive /><BestWorstCard label="Worst Trade" trade={summary.worst} positive={false} /></div><div style={{ background: "#111118", border: "1px solid #2a2a3a", borderRadius: 14, padding: "18px 20px", marginBottom: 22 }}><div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Top Lesson</div><div style={{ fontSize: 14, color: summary.lesson ? "#ffffff" : "#4a5a7a", lineHeight: 1.5, fontStyle: summary.lesson ? "normal" : "italic" }}>
-                    {summary.lesson || "Not enough notes yet — add reflections to surface patterns."}
-                  </div></div><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button onClick={handleRestart} style={{ ...primaryBtnStyle, flex: "1 1 200px" }}>Start New Session</button><a href="/dashboard" style={{ ...secondaryBtnStyle, flex: "1 1 140px", textAlign: "center" }}>Back to Dashboard</a></div></>) : (<div style={{ fontSize: 13, color: "#9ca3af" }}>
-                You skipped through without grading any trades.{" "}
-                <button onClick={handleRestart} style={{ background: "transparent", border: "none", color: "#6366f1", fontWeight: 700, cursor: "pointer", padding: 0 }}>Start over</button></div>
-            )}
-          </div></div></div>
+          {sessionSummary ? (
+            <SessionSummaryView
+              summary={sessionSummary}
+              onShare={handleShare}
+              shareCopied={shareCopied}
+              onReviewAgain={handleRestart}
+            />
+          ) : (
+            <div style={{ fontSize: 13, color: "#9ca3af", marginTop: 14 }}>
+              You skipped through without grading any trades.{" "}
+              <button onClick={handleRestart} style={{ background: "transparent", border: "none", color: "#6366f1", fontWeight: 700, cursor: "pointer", padding: 0 }}>Start over</button>
+            </div>
+          )}
+        </div>
+      </div></div>
     );
   }
 
@@ -685,7 +893,9 @@ function ReplayPageInner() {
           .replay-emotion-grid { grid-template-columns: repeat(2, 1fr) !important; }
           .replay-mistake-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
-      `}</style><div style={{ width: "100%", maxWidth: 760 }}><ProgressBar idx={idx} total={total} pct={Math.round(((idx) / total) * 100)} sessionGrade={sessionGrade} />
+      `}</style><div style={{ width: "100%", maxWidth: 760 }}>
+        <TopProgressBar pct={Math.round((idx / total) * 100)} />
+        <ProgressBar idx={idx} total={total} pct={Math.round(((idx) / total) * 100)} sessionGrade={sessionGrade} streak={streak} streakFlash={streakFlash} />
 
         {/* Sliding trade panel */}
         <div
@@ -861,36 +1071,30 @@ function ReplayPageInner() {
 
           {/* Review form */}
           <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
-              {revealed ? "Review this trade" : "Quick check before reveal"}
+              {revealed ? "Review this trade" : "Before we reveal…"}
             </div>
 
             {!revealed && (
               <div style={{ animation: "slideInNext 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both" }}>
-                <div style={{
-                  fontSize: 12,
-                  color: "#a5b4fc",
-                  background: "rgba(99,102,241,0.08)",
-                  border: "1px solid rgba(99,102,241,0.3)",
-                  borderRadius: 10,
-                  padding: "9px 12px",
-                  marginBottom: 18,
-                  fontWeight: 600,
-                }}>
-                  Answer these before you see how the trade played out.
-                </div>
-                <FormBlock label="Was this your setup?"><TriadRow value={matchedSetup} onChange={setMatchedSetup} /></FormBlock>
-                <FormBlock label={`Confidence — ${quickConfidence || "—"}/5`}>
+                <FormBlock label="Was this your setup?">
+                  <TriadRow value={matchedSetup} onChange={setMatchedSetup} big />
+                </FormBlock>
+                <FormBlock label={`How clear was this entry? — ${quickConfidence || "—"}/5`}>
                   <QuickConfidenceDots value={quickConfidence} onChange={setQuickConfidence} />
                 </FormBlock>
+                <div style={{ fontSize: 11, color: "#4a5a7a", marginTop: -6, marginBottom: 14, textAlign: "left" }}>
+                  Answer honestly — this feeds your psychology tracker.
+                </div>
                 <button
-                  onClick={() => setReveal(true)}
+                  onClick={handleReveal}
                   disabled={!matchedSetup || !quickConfidence}
                   style={{
                     ...primaryBtnStyle,
                     width: "100%",
-                    padding: "16px 20px",
+                    padding: "18px 20px",
+                    minHeight: 56,
                     fontSize: 14,
-                    marginTop: 8,
+                    marginTop: 4,
                     opacity: (matchedSetup && quickConfidence) ? 1 : 0.45,
                     cursor: (matchedSetup && quickConfidence) ? "pointer" : "not-allowed",
                   }}
@@ -917,6 +1121,7 @@ function ReplayPageInner() {
             )}
 
             {revealed && (<>
+            {insight && <InsightCard insight={insight} />}
             <div style={{
               fontSize: 12,
               color: "#a5b4fc",
@@ -1728,15 +1933,45 @@ function StatCell({ label, value, color }: { label: string; value: React.ReactNo
 }
 
 function ProgressBar({
-  idx, total, pct, sessionGrade, done,
-}: { idx: number; total: number; pct: number; sessionGrade: Grade | null; done?: boolean }) {
+  idx, total, pct, sessionGrade, streak, streakFlash, done,
+}: { idx: number; total: number; pct: number; sessionGrade: Grade | null; streak?: number; streakFlash?: number | null; done?: boolean }) {
   return (
-    <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><a href="/dashboard" style={{ fontSize: 11, color: "#4a5a7a", textDecoration: "none", fontWeight: 600 }}>← Dashboard</a><div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", letterSpacing: "0.04em" }}>️ Trade Replay</div></div><div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 700, fontFamily: "monospace", display: "flex", alignItems: "center", gap: 8 }}><span>Trade {done ? total : idx + 1} of {total}</span>
+    <div>
+      <style>{`
+        @keyframes streakFlash {
+          0% { transform: scale(1); color: #f59e0b; }
+          30% { transform: scale(1.35); color: #fbbf24; text-shadow: 0 0 18px rgba(251,191,36,0.7); }
+          100% { transform: scale(1); color: #f59e0b; text-shadow: none; }
+        }
+      `}</style>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <a href="/dashboard" style={{ fontSize: 11, color: "#4a5a7a", textDecoration: "none", fontWeight: 600 }}>← Dashboard</a>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", letterSpacing: "0.04em" }}>Trade Replay</div>
+        </div>
+        <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 700, fontFamily: "monospace", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>Trade {done ? total : idx + 1} of {total}</span>
+          {typeof streak === "number" && streak > 0 && (
+            <>
+              <span style={{ color: "#1e2540" }}>·</span>
+              <span
+                key={streakFlash ?? streak}
+                style={{
+                  color: "#f59e0b",
+                  fontWeight: 900,
+                  animation: streakFlash ? "streakFlash 0.9s ease-out" : undefined,
+                  display: "inline-block",
+                }}
+              >🔥 {streak} streak</span>
+            </>
+          )}
           {sessionGrade && (
             <><span style={{ color: "#1e2540" }}>·</span><span>Session Grade:{" "}
                 <span style={{ color: GRADE_COLOR[sessionGrade], fontWeight: 900 }}>{sessionGrade}</span></span></>
           )}
-        </div></div><div style={{
+        </div>
+      </div>
+      <div style={{
         height: 6,
         background: "#111118",
         border: "1px solid #2a2a3a",
@@ -1747,33 +1982,61 @@ function ProgressBar({
           height: "100%",
           background: "linear-gradient(90deg,#22d3a5,#6366f1)",
           transition: "width 0.4s ease",
-        }} /></div></div>
+        }} /></div>
+    </div>
   );
 }
 
-function TriadRow({ value, onChange }: { value: Triad | null; onChange: (v: Triad) => void }) {
+function TopProgressBar({ pct }: { pct: number }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}><TriadBtn label=" Yes"     active={value === "yes"}     color="#22d3a5" onClick={() => onChange("yes")} /><TriadBtn label="️ Partial" active={value === "partial"} color="#f59e0b" onClick={() => onChange("partial")} /><TriadBtn label=" No"      active={value === "no"}      color="#f43f5e" onClick={() => onChange("no")} /></div>
+    <div style={{
+      position: "fixed",
+      top: 0, left: 0, right: 0,
+      height: 3,
+      background: "#0a0a0f",
+      zIndex: 100,
+      pointerEvents: "none",
+    }}>
+      <div style={{
+        width: `${Math.max(0, Math.min(100, pct))}%`,
+        height: "100%",
+        background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
+        boxShadow: "0 0 12px rgba(99,102,241,0.6)",
+        transition: "width 0.5s cubic-bezier(0.22, 0.61, 0.36, 1)",
+      }} />
+    </div>
+  );
+}
+
+function TriadRow({ value, onChange, big }: { value: Triad | null; onChange: (v: Triad) => void; big?: boolean }) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <TriadBtn label="Yes"     active={value === "yes"}     color="#22d3a5" big={big} onClick={() => onChange("yes")} />
+      <TriadBtn label="Partial" active={value === "partial"} color="#f59e0b" big={big} onClick={() => onChange("partial")} />
+      <TriadBtn label="No"      active={value === "no"}      color="#f43f5e" big={big} onClick={() => onChange("no")} />
+    </div>
   );
 }
 
 function TriadBtn({
-  label, active, color, onClick,
-}: { label: string; active: boolean; color: string; onClick: () => void }) {
+  label, active, color, onClick, big,
+}: { label: string; active: boolean; color: string; onClick: () => void; big?: boolean }) {
   return (
     <button
       onClick={onClick}
       style={{
         flex: 1,
-        padding: "11px 10px",
-        borderRadius: 10,
+        padding: big ? "0 10px" : "11px 10px",
+        minHeight: big ? 56 : undefined,
+        borderRadius: big ? 14 : 10,
         border: `1px solid ${active ? color : "#1e2540"}`,
         background: active ? `${color}22` : "transparent",
         color: active ? color : "#9ca3af",
-        fontSize: 12,
-        fontWeight: 700,
+        fontSize: big ? 14 : 12,
+        fontWeight: 800,
         cursor: "pointer",
         transition: "all 0.15s",
+        boxShadow: active && big ? `0 0 0 2px ${color}33` : "none",
       }}
     >
       {label}
@@ -1907,6 +2170,297 @@ function BestWorstCard({ label, trade, positive }: { label: string; trade: Trade
 
 function pctColor(p: number) {
   return p >= 70 ? "#22d3a5" : p >= 40 ? "#f59e0b" : "#f43f5e";
+}
+
+// ───────────────────── session picker ─────────────────────
+
+function SessionPicker({
+  totalTrades, lastSessionCount, customSize, onCustomSizeChange, onStart,
+}: {
+  totalTrades: number;
+  lastSessionCount: number;
+  customSize: number;
+  onCustomSizeChange: (n: number) => void;
+  onStart: (type: SessionType, sizeOverride?: number) => void;
+}) {
+  const [showCustom, setShowCustom] = useState(false);
+  const maxCustom = Math.min(totalTrades, 50);
+
+  return (
+    <div style={shellStyle}>
+      <style>{`
+        @keyframes nxPickerIn {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .nx-session-card {
+          background: #111118;
+          border: 1px solid #1e2f4a;
+          border-radius: 18px;
+          padding: 22px 22px;
+          text-align: left;
+          cursor: pointer;
+          transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          color: inherit;
+          font-family: inherit;
+        }
+        .nx-session-card:hover {
+          transform: translateY(-3px);
+          border-color: rgba(99,102,241,0.55);
+          box-shadow: 0 12px 36px rgba(99,102,241,0.18);
+        }
+        .nx-session-card:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          transform: none;
+        }
+      `}</style>
+      <div style={{ width: "100%", maxWidth: 760, animation: "nxPickerIn 0.32s ease-out" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <a href="/dashboard" style={{ fontSize: 11, color: "#4a5a7a", textDecoration: "none", fontWeight: 600 }}>← Dashboard</a>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", letterSpacing: "0.04em" }}>Trade Replay</div>
+          </div>
+          <div style={{ fontSize: 11, color: "#4a5a7a", fontWeight: 700, fontFamily: "monospace" }}>
+            {totalTrades} trades available
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
+          Pick a session
+        </div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#ffffff", marginBottom: 22, letterSpacing: "-0.01em" }}>
+          What do you want to review today?
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+          <button className="nx-session-card" onClick={() => onStart("quick")}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#22d3a5", letterSpacing: "0.04em" }}>Quick Review</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>5 random trades</div>
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>~3 minutes. Spot patterns across your whole history.</div>
+          </button>
+
+          <button
+            className="nx-session-card"
+            onClick={() => onStart("last")}
+            disabled={lastSessionCount === 0}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#6366f1", letterSpacing: "0.04em" }}>Last Session</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>Most recent trading day</div>
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>
+              {lastSessionCount === 0 ? "No trades found." : `${lastSessionCount} trade${lastSessionCount === 1 ? "" : "s"} to review.`}
+            </div>
+          </button>
+
+          <button className="nx-session-card" onClick={() => onStart("worst")}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#f43f5e", letterSpacing: "0.04em" }}>Worst Trades</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>Your 5 biggest losses</div>
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>Learn from the trades that hurt the most.</div>
+          </button>
+
+          <button
+            className="nx-session-card"
+            onClick={() => setShowCustom((v) => !v)}
+            style={showCustom ? { borderColor: "rgba(99,102,241,0.55)" } : undefined}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#a5b4fc", letterSpacing: "0.04em" }}>Custom</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>Pick how many</div>
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>Choose 1–{maxCustom} most-recent trades.</div>
+          </button>
+        </div>
+
+        {showCustom && (
+          <div style={{ ...cardStyle, marginTop: 14, padding: "18px 20px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", marginBottom: 10, letterSpacing: "0.02em" }}>
+              How many recent trades? — {customSize}
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={maxCustom}
+              value={Math.min(customSize, maxCustom)}
+              onChange={(e) => onCustomSizeChange(Number(e.target.value))}
+              style={{ width: "100%", accentColor: "#6366f1" }}
+            />
+            <button
+              onClick={() => onStart("custom", customSize)}
+              style={{
+                ...primaryBtnStyle,
+                width: "100%",
+                padding: "16px 20px",
+                minHeight: 56,
+                fontSize: 14,
+                marginTop: 12,
+              }}
+            >
+              Start Custom Session →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InsightCard({ insight }: { insight: Insight }) {
+  const palette = {
+    good:    { bg: "linear-gradient(135deg, rgba(34,211,165,0.22), rgba(16,185,129,0.18))", border: "rgba(34,211,165,0.55)", accent: "#22d3a5" },
+    warning: { bg: "linear-gradient(135deg, rgba(245,158,11,0.22), rgba(217,119,6,0.18))", border: "rgba(245,158,11,0.55)", accent: "#f59e0b" },
+    bad:     { bg: "linear-gradient(135deg, rgba(244,63,94,0.22), rgba(190,18,60,0.18))", border: "rgba(244,63,94,0.55)", accent: "#f43f5e" },
+  }[insight.tone];
+  return (
+    <div style={{
+      animation: "nxInsightFade 0.5s ease-out both",
+      background: palette.bg,
+      border: `1px solid ${palette.border}`,
+      borderRadius: 14,
+      padding: "14px 16px",
+      marginBottom: 16,
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+    }}>
+      <style>{`
+        @keyframes nxInsightFade {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+      <div style={{
+        width: 6, alignSelf: "stretch",
+        borderRadius: 999,
+        background: palette.accent,
+        boxShadow: `0 0 12px ${palette.accent}`,
+      }} />
+      <div style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color: "#ffffff",
+        lineHeight: 1.4,
+      }}>{insight.message}</div>
+    </div>
+  );
+}
+
+function SessionSummaryView({
+  summary, onShare, shareCopied, onReviewAgain,
+}: {
+  summary: { total: number; correct: number; score: number; lossesOutsideSetup: number; lossesTotal: number; confInsight: string };
+  onShare: () => void;
+  shareCopied: boolean;
+  onReviewAgain: () => void;
+}) {
+  const scoreColor = summary.score >= 80 ? "#22d3a5" : summary.score >= 60 ? "#f59e0b" : "#f43f5e";
+  const lossPct = summary.lossesTotal ? Math.round((summary.lossesOutsideSetup / summary.lossesTotal) * 100) : 0;
+
+  return (
+    <>
+      <div style={{
+        marginTop: 18,
+        padding: "28px 24px",
+        background: "linear-gradient(135deg, #111118, #0a0a0f)",
+        border: `1px solid ${scoreColor}55`,
+        borderRadius: 18,
+        textAlign: "center",
+        boxShadow: `0 0 60px ${scoreColor}22`,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 8 }}>
+          Your Score
+        </div>
+        <div style={{
+          fontSize: 88,
+          fontWeight: 900,
+          color: scoreColor,
+          fontFamily: "ui-monospace, SFMono-Regular, monospace",
+          lineHeight: 1,
+          letterSpacing: "-0.04em",
+          textShadow: `0 0 40px ${scoreColor}44`,
+        }}>
+          {summary.score}
+          <span style={{ fontSize: 28, color: "#4a5a7a", fontWeight: 700 }}>/100</span>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginTop: 18 }}>
+        <InsightStatCard
+          accent="#22d3a5"
+          label="Setup Accuracy"
+          value={`You correctly identified ${summary.correct}/${summary.total} trades.`}
+        />
+        <InsightStatCard
+          accent="#6366f1"
+          label="Confidence Calibration"
+          value={`Your confidence was highest on ${summary.confInsight}.`}
+        />
+        <InsightStatCard
+          accent="#f43f5e"
+          label="Pattern Spotted"
+          value={
+            summary.lossesTotal
+              ? `${summary.lossesOutsideSetup} out of ${summary.lossesTotal} losing trades (${lossPct}%) were outside your setup.`
+              : "No losses in this session — nice run."
+          }
+        />
+      </div>
+
+      <button
+        onClick={onShare}
+        style={{
+          marginTop: 18,
+          width: "100%",
+          padding: "16px 20px",
+          minHeight: 56,
+          borderRadius: 14,
+          border: "1px solid rgba(99,102,241,0.45)",
+          background: shareCopied ? "rgba(34,211,165,0.15)" : "rgba(99,102,241,0.12)",
+          color: shareCopied ? "#22d3a5" : "#a5b4fc",
+          fontSize: 13,
+          fontWeight: 800,
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+          transition: "all 0.18s",
+        }}
+      >
+        {shareCopied ? "✓ Copied to clipboard" : "Share Session"}
+      </button>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+        <button onClick={onReviewAgain} style={{ ...primaryBtnStyle, flex: "1 1 200px", minHeight: 56 }}>Review Again</button>
+        <a href="/dashboard" style={{ ...secondaryBtnStyle, flex: "1 1 140px", textAlign: "center", minHeight: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>Back to Dashboard</a>
+      </div>
+    </>
+  );
+}
+
+function InsightStatCard({ accent, label, value }: { accent: string; label: string; value: string }) {
+  return (
+    <div style={{
+      background: "#111118",
+      border: `1px solid ${accent}33`,
+      borderRadius: 14,
+      padding: "16px 18px",
+      display: "flex",
+      gap: 14,
+      alignItems: "center",
+    }}>
+      <div style={{
+        width: 4, alignSelf: "stretch",
+        borderRadius: 999,
+        background: accent,
+      }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#4a5a7a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 14, color: "#ffffff", fontWeight: 600, lineHeight: 1.45 }}>
+          {value}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ───────────────────── styles ─────────────────────
