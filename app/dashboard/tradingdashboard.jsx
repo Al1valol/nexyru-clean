@@ -10,6 +10,7 @@ import {
   LogOut, User, UserPlus, Eye, EyeOff, FlaskConical,
   Calendar, ArrowUpRight, ArrowDownRight,
   Zap, Shield, Image, Webhook, Wallet, Check, TestTube2, Play,
+  CheckSquare, Bell, Trophy, Brain, Settings,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -635,13 +636,16 @@ function StatCard({ label, value, sub, pos, icon }) {
       onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 8px 22px ${glow}`; e.currentTarget.style.transform = "translateY(-1px)"; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "translateY(0)"; }}
     ><div style={{ position:"absolute", top:0, left:0, right:0, height:2, background:topAccent }}/><div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:10 }}><span style={{ fontSize:10, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.1em" }}>{label}</span><span style={{ color:topAccent, opacity:0.75 }}>{icon}</span></div><div style={{
-        fontSize:30,
+        fontSize:"clamp(16px, 4.2vw, 30px)",
         fontWeight:800,
         letterSpacing:"-0.5px",
         color:accent,
-        lineHeight:1,
+        lineHeight:1.1,
         fontFamily:'-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif',
         fontVariantNumeric:"tabular-nums",
+        whiteSpace:"nowrap",
+        overflow:"hidden",
+        textOverflow:"ellipsis",
       }}>{value}</div>
       {sub && <div style={{ fontSize:11, color:"#6b7280", marginTop:8, letterSpacing:"0.01em" }}>{sub}</div>}
     </div>
@@ -5719,11 +5723,6 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade, username }) {
         ))}
       </div>
 
-      {/* Selected day notes */}
-      {selected && username && (
-        <SelectedDayNotes username={username} dateKey={selected.key} dateLabel={selected.label}/>
-      )}
-
       {/* Selected day detail */}
       {selected && (
         <div style={{ borderRadius:12, border:"1px solid rgba(99,102,241,0.25)", background:"#111118", overflow:"hidden" }}><div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:"1px solid #2a2a3a" }}><div style={{ display:"flex", alignItems:"center", gap:8 }}><Calendar size={13} style={{ color:"#6366f1" }}/><span style={{ fontSize:13, fontWeight:700, color:"#ffffff" }}>{selected.label}</span><span style={{ fontSize:10, color:"#6b7280" }}>— {selected.trades.length} trade{selected.trades.length!==1?"s":""}</span>
@@ -7849,8 +7848,8 @@ function TradingDashboard({ session, onLogout }) {
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
             {supabaseUserId && <SyncIndicator status={syncStatus} />}
             <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
-            <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-              <Plus size={13}/><span className="hide-mobile">Log Trade</span>
+            <button onClick={()=>setShowHub(true)} className="hide-mobile" style={{ alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+              <Plus size={13}/><span>Log Trade</span>
             </button>
             <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24" }}>
               <a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}>
@@ -7875,7 +7874,7 @@ function TradingDashboard({ session, onLogout }) {
           <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", paddingTop:12 }}>
 
       {/* ── Bottom nav — mobile only (5 tabs: Dashboard, Journal, Notes, Tools, Settings) ── */}
-      <nav className="show-mobile" aria-label="Primary" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0f0f14", borderTop:"1px solid #1e1e2a", alignItems:"stretch", zIndex:50, paddingBottom:"env(safe-area-inset-bottom)" }}>
+      <nav className="show-mobile" aria-label="Primary" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0f0f14", borderTop:"1px solid #1e1e2a", alignItems:"stretch", zIndex:9999, paddingBottom:"env(safe-area-inset-bottom)" }}>
         {[
           { id:"dashboard", label:"Dashboard", icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>) },
           { id:"journal",   label:"Journal",   icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>) },
@@ -7899,42 +7898,44 @@ function TradingDashboard({ session, onLogout }) {
         <>
           {/* Dark overlay — tap to close */}
           <div className="show-mobile" onClick={() => setShowMobileTools(false)} aria-hidden="true"
-            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:998 }}/>
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:10000 }}/>
           {/* Bottom sheet */}
           <div className="show-mobile" role="dialog" aria-modal="true" aria-label="Tools"
             onTouchStart={handleToolsTouchStart} onTouchEnd={handleToolsTouchEnd}
-            style={{ position:"fixed", bottom:"calc(56px + env(safe-area-inset-bottom))", left:0, right:0, zIndex:999, maxHeight:"70vh", overflowY:"auto", background:"#0f0f14", borderRadius:"20px 20px 0 0", borderTop:"1px solid #1e1e2a", padding:16, boxShadow:"0 -10px 30px rgba(0,0,0,0.5)" }}>
+            style={{ position:"fixed", bottom:"calc(56px + env(safe-area-inset-bottom))", left:0, right:0, zIndex:10001, maxHeight:"70vh", overflowY:"auto", background:"#0f0f14", borderRadius:"20px 20px 0 0", borderTop:"1px solid #1e1e2a", padding:16, boxShadow:"0 -10px 30px rgba(0,0,0,0.5)" }}>
             <div style={{ width:40, height:4, borderRadius:2, background:"#2a2a3a", margin:"0 auto 12px" }}/>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
               <div style={{ fontSize:13, fontWeight:800, color:"#ffffff", letterSpacing:"-0.01em" }}>Tools</div>
               <button onClick={() => setShowMobileTools(false)} aria-label="Close tools" data-compact="true"
                 style={{ minHeight:0, width:32, height:32, borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
                 <X size={16}/>
               </button>
             </div>
-            {[
-              { heading:"Analyze", items:[
-                { href:"/psychology", emoji:"", label:"Psychology",   color:"#ec4899" },
-                { href:"/setups",     emoji:"", label:"Best Setups",  color:"#22c55e" },
-                { tab:"insights",     emoji:"", label:"Insights",     color:"#f59e0b" },
-              ]},
-              { heading:"Manage", items:[
-                { href:"/checklist", emoji:"", label:"Checklist",     color:"#22d3a5" },
-                { href:"/alerts",    emoji:"", label:"Alerts",        color:"#6366f1" },
-                { href:"/challenge", emoji:"", label:"Challenge",     color:"#a5b4fc" },
-              ]},
-              { heading:"Review", items:[
-                { href:"/replay",   emoji:"️", label:"Trade Review",  color:"#6366f1" },
-                { tab:"stratlab",   emoji:"", label:"Strategy Lab",  color:"#6366f1" },
-              ]},
-            ].map(section =>(<div key={section.heading} style={{ marginBottom:14 }}><div style={{ fontSize:9, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6 }}>{section.heading}</div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                {section.items.map(it =>(<a key={it.label}
-                     href={it.href ?? "#"}
-                     onClick={(e) => { if (it.tab) { e.preventDefault(); setTab(it.tab); setShowMobileTools(false); } else { setShowMobileTools(false); } }}
-                     style={{ minHeight:52, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"#1a1a24", border:"1px solid #2a2a3a", color:"#ffffff", fontSize:13, fontWeight:600, textDecoration:"none" }}><span style={{ fontSize:18 }}>{it.emoji}</span><span style={{ color: it.color }}>{it.label}</span></a>
-                ))}
-              </div></div>
-            ))}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              {[
+                { href:"/checklist", label:"Checklist",    color:"#22d3a5", icon:<CheckSquare size={18}/> },
+                { href:"/alerts",    label:"Alerts",       color:"#6366f1", icon:<Bell size={18}/> },
+                { href:"/challenge", label:"Challenge",    color:"#a5b4fc", icon:<Trophy size={18}/> },
+                { href:"/psychology",label:"Psychology",   color:"#ec4899", icon:<Brain size={18}/> },
+                { href:"/setups",    label:"Best Setups",  color:"#22c55e", icon:<Target size={18}/> },
+                { href:"/replay",    label:"Trade Review", color:"#6366f1", icon:<Play size={18}/> },
+                { tab:"insights",    label:"Insights",     color:"#f59e0b", icon:<BarChart2 size={18}/> },
+                { tab:"stratlab",    label:"Strategy Lab", color:"#a5b4fc", icon:<FlaskConical size={18}/> },
+                { href:"/notes",     label:"Daily Notes",  color:"#22c55e", icon:<BookOpen size={18}/> },
+                { href:"/settings",  label:"Settings",     color:"#9ca3af", icon:<Settings size={18}/> },
+              ].map(it => (
+                <a key={it.label}
+                  href={it.href ?? "#"}
+                  onClick={(e) => {
+                    if (it.tab) { e.preventDefault(); setTab(it.tab); }
+                    setShowMobileTools(false);
+                  }}
+                  style={{ minHeight:64, display:"flex", flexDirection:"column", alignItems:"flex-start", justifyContent:"center", gap:6, padding:"12px 14px", borderRadius:12, background:"#1a1a24", border:"1px solid #2a2a3a", color:"#ffffff", fontSize:13, fontWeight:600, textDecoration:"none" }}>
+                  <span style={{ color: it.color, display:"flex", alignItems:"center" }}>{it.icon}</span>
+                  <span style={{ color: "#ffffff", fontSize:13, fontWeight:700 }}>{it.label}</span>
+                </a>
+              ))}
+            </div>
           </div>
         </>
       )}
@@ -7988,10 +7989,11 @@ function TradingDashboard({ session, onLogout }) {
         .hide-mobile { display: flex !important; }
         .show-mobile { display: none !important; }
         .main-with-sidebar { margin-left: 56px; }
-        @media (max-width: 767px) {
+        @media (max-width: 768px) {
           .hide-mobile { display: none !important; }
           .show-mobile { display: flex !important; }
           .main-with-sidebar { margin-left: 0 !important; }
+          aside.hide-mobile { display: none !important; }
         }
       `}</style></div>
   );
