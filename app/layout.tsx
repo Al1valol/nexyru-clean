@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import ToastContainer from "@/components/Toast";
@@ -13,6 +13,12 @@ export const metadata: Metadata = {
   title: "Nexyru — The journal for funded traders",
   description:
     "Track challenge rules, find your edge, and understand your psychology. Built for Apex, TopstepX, FTMO, and other prop firms.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({

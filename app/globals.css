@@ -49,6 +49,14 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+main {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Tabular numbers everywhere numbers matter */
@@ -169,6 +177,17 @@ body {
 ::selection {
   background: rgba(99, 102, 241, 0.3);
   color: #fff;
+}
+
+/* ── Text wrapping (prevent mid-word cutoff on mobile) ────────── */
+main, main * {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+main .nx-flex-text,
+main [data-flex-text] {
+  min-width: 0;
 }
 
 /* ── Global mobile responsiveness ─────────────────────────────── */

@@ -2032,7 +2032,7 @@ function AnalyticsPanel({ trades }) {
   const streakLabel = stats.currentStreak > 0 ? `${stats.currentStreak}W` : stats.currentStreak < 0 ? `${Math.abs(stats.currentStreak)}L` : "—";
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10 }}><StatCard label="Total Trades" value={String(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/><StatCard label="Win Rate"     value={`${stats.winRate}%`}       sub={`PF ${stats.profitFactor}`}        pos={stats.winRate>=50}    icon={<Target size={14}/>}/><StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={stats.totalPnl>=0} icon={<TrendingUp size={14}/>}/><StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })} pos={true}  icon={<Award size={14}/>}/><StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0)}                 pos={false} icon={<TrendingDown size={14}/>}/><StatCard label="Streak"       value={streakLabel} sub={`Avg L: -${fmtMoney(stats.avgLoss ?? 0)}`} pos={stats.currentStreak>0?true:stats.currentStreak<0?false:null} icon={<Zap size={14}/>}/></div>
+    <div style={{ display:"flex", flexDirection:"column", gap:16, overflow:"hidden", minWidth:0, maxWidth:"100%" }}><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10, minWidth:0 }}><StatCard label="Total Trades" value={String(stats.totalTrades)} sub={`${stats.wins}W / ${stats.losses}L`} pos={null} icon={<Activity size={14}/>}/><StatCard label="Win Rate"     value={`${stats.winRate}%`}       sub={`PF ${stats.profitFactor}`}        pos={stats.winRate>=50}    icon={<Target size={14}/>}/><StatCard label="Total PnL"    value={fmtMoney(stats.totalPnl ?? 0, { signed:true })} sub={`Avg W: ${fmtMoney(stats.avgWin ?? 0, { signed:true })}`} pos={stats.totalPnl>=0} icon={<TrendingUp size={14}/>}/><StatCard label="Best Trade"   value={fmtMoney(stats.bestTrade ?? 0, { signed:true })} pos={true}  icon={<Award size={14}/>}/><StatCard label="Worst Trade"  value={fmtMoney(stats.worstTrade ?? 0)}                 pos={false} icon={<TrendingDown size={14}/>}/><StatCard label="Streak"       value={streakLabel} sub={`Avg L: -${fmtMoney(stats.avgLoss ?? 0)}`} pos={stats.currentStreak>0?true:stats.currentStreak<0?false:null} icon={<Zap size={14}/>}/></div>
       {chartData.length >1 && (<div style={{ borderRadius:12, border:"1px solid rgba(51,65,85,0.6)", background:"rgba(15,23,42,0.85)", padding:"16px 16px 8px" }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}><span style={{ fontSize:12, fontWeight:500, color:"#9ca3af" }}>Equity Curve</span><span style={{ fontSize:12, fontFamily:"monospace", fontWeight:700, color:lineClr }}>{finalPnl>=0?"+":""}{(finalPnl??0).toFixed(4)}</span></div><ResponsiveContainer width="100%" height={180}><AreaChart data={chartData} margin={{ top:4, right:4, left:-20, bottom:0 }}><defs><linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={lineClr} stopOpacity={0.25}/><stop offset="95%" stopColor={lineClr} stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(51,65,85,0.3)" vertical={false}/><XAxis dataKey="label" tick={{ fontSize:9, fill:"#6b7280" }} tickLine={false} axisLine={false}/><YAxis tick={{ fontSize:9, fill:"#6b7280" }} tickLine={false} axisLine={false}/><Tooltip contentStyle={{ background:"#111118", border:"1px solid #2a2a3a", borderRadius:8, fontSize:11 }} labelStyle={{ color:"#9ca3af" }} itemStyle={{ color:lineClr }}/><Area type="monotone" dataKey="cumPnl" stroke={lineClr} strokeWidth={2} fill="url(#cumGrad)" dot={false}/></AreaChart></ResponsiveContainer></div>
       )}
       {trades.length >= 5 && (<div style={{ borderRadius:12, border:"1px solid rgba(51,65,85,0.6)", background:"rgba(15,23,42,0.85)", padding:"16px 16px 8px" }}><div style={{ fontSize:12, fontWeight:500, color:"#9ca3af", marginBottom:14 }}>PnL by Day of Week</div><ResponsiveContainer width="100%" height={120}><BarChart data={byDay} margin={{ top:4, right:4, left:-20, bottom:0 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(51,65,85,0.3)" vertical={false}/><XAxis dataKey="day" tick={{ fontSize:9, fill:"#6b7280" }} tickLine={false} axisLine={false}/><YAxis tick={{ fontSize:9, fill:"#6b7280" }} tickLine={false} axisLine={false}/><Tooltip contentStyle={{ background:"#111118", border:"1px solid #2a2a3a", borderRadius:8, fontSize:11 }} labelStyle={{ color:"#9ca3af" }}/><Bar dataKey="pnl" fill="#6366f1" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
@@ -5647,9 +5647,6 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade, username }) {
         />
       )}
 
-      {/* Daily notes — today */}
-      {username && <DailyNotesCard username={username} dateKey={todayKey} dateLabel={todayLabel}/>}
-
       {/* Page header + nav */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:20, fontWeight:800, color:"#ffffff", display:"flex", alignItems:"center", gap:10 }}><Calendar size={20} style={{ color:"#6366f1" }}/>Trade Calendar</div><div style={{ fontSize:11, color:"#6b7280", marginTop:3 }}>Daily activity · green = profit · red = loss · click a day to drill in</div></div><div style={{ display:"flex", alignItems:"center", gap:6 }}><button onClick={prevMonth} style={{ width:32, height:32, borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>‹</button><div style={{ minWidth:170, textAlign:"center", fontSize:14, fontWeight:700, color:"#ffffff" }}>{MONTH_NAMES[month]} {year}</div><button onClick={nextMonth} style={{ width:32, height:32, borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>›</button><button onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }} style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#6b7280", fontSize:11, fontWeight:600, cursor:"pointer" }}>Today</button></div></div>
 
@@ -7460,6 +7457,24 @@ function TradingDashboard({ session, onLogout }) {
   const [editTrade,     setEditTrade]     = useState(null);
   const [showMobileTools, setShowMobileTools] = useState(false);
 
+  useEffect(() => {
+    if (!showMobileTools) return;
+    const onKey = (e) => { if (e.key === "Escape") setShowMobileTools(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showMobileTools]);
+
+  const toolsSheetTouch = useRef({ y: 0, dragging: false });
+  const handleToolsTouchStart = (e) => {
+    toolsSheetTouch.current = { y: e.touches[0].clientY, dragging: true };
+  };
+  const handleToolsTouchEnd = (e) => {
+    if (!toolsSheetTouch.current.dragging) return;
+    const endY = e.changedTouches[0].clientY;
+    if (endY - toolsSheetTouch.current.y > 60) setShowMobileTools(false);
+    toolsSheetTouch.current.dragging = false;
+  };
+
   // Cross-device sync state
   const [syncStatus,    setSyncStatus]    = useState("idle"); // "idle" | "syncing" | "saved" | "offline"
   const rawSupabaseUserId = session?.supabaseUserId ?? null;
@@ -7819,7 +7834,7 @@ function TradingDashboard({ session, onLogout }) {
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
 
         {/* ── Top bar ── */}
-        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:0, zIndex:40, flexShrink:0 }}>
+        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:0, zIndex:40, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
           {/* Breadcrumb */}
           <div style={{ flex:1, display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
             <span style={{ fontSize:13, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
@@ -7869,7 +7884,7 @@ function TradingDashboard({ session, onLogout }) {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
           <span>Notes</span>
         </a>
-        <button data-compact="true" onClick={()=>setShowMobileTools(true)} style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:showMobileTools?"var(--accent)":"#6b7280", fontSize:10, fontWeight:600 }}>
+        <button data-compact="true" onClick={()=>setShowMobileTools(v=>!v)} style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:showMobileTools?"var(--accent)":"#6b7280", fontSize:10, fontWeight:600 }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="5" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="19" cy="5" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="12" cy="19" r="1.5"/><circle cx="19" cy="19" r="1.5"/></svg>
           <span>Tools</span>
         </button>
@@ -7879,15 +7894,24 @@ function TradingDashboard({ session, onLogout }) {
         </a>
       </nav>
 
-      {/* Floating Action Button — Log Trade (mobile only) */}
-      <button className="show-mobile fab-log-trade" onClick={()=>setShowHub(true)} aria-label="Log Trade" data-compact="true" style={{ position:"fixed", right:16, bottom:"calc(56px + env(safe-area-inset-bottom) + 16px)", width:56, height:56, borderRadius:999, background:"var(--accent)", color:"#fff", border:"none", alignItems:"center", justifyContent:"center", boxShadow:"0 10px 25px rgba(99,102,241,0.45)", zIndex:60, cursor:"pointer" }}>
-        <Plus size={24}/>
-      </button>
-
       {/* Mobile Tools bottom sheet */}
       {showMobileTools && (
-        <div className="show-mobile" onClick={() => setShowMobileTools(false)}
-          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:100, display:"flex", alignItems:"flex-end" }}><div onClick={e => e.stopPropagation()} style={{ width:"100%", background:"#111118", borderTop:"1px solid #2a2a3a", borderRadius:"16px 16px 0 0", padding:"16px 16px calc(16px + env(safe-area-inset-bottom))", maxHeight:"75vh", overflowY:"auto" }}><div style={{ width:40, height:4, borderRadius:2, background:"#2a2a3a", margin:"0 auto 14px" }}/><div style={{ fontSize:13, fontWeight:800, color:"#ffffff", marginBottom:12, letterSpacing:"-0.01em" }}>Tools</div>
+        <>
+          {/* Dark overlay — tap to close */}
+          <div className="show-mobile" onClick={() => setShowMobileTools(false)} aria-hidden="true"
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:998 }}/>
+          {/* Bottom sheet */}
+          <div className="show-mobile" role="dialog" aria-modal="true" aria-label="Tools"
+            onTouchStart={handleToolsTouchStart} onTouchEnd={handleToolsTouchEnd}
+            style={{ position:"fixed", bottom:"calc(56px + env(safe-area-inset-bottom))", left:0, right:0, zIndex:999, maxHeight:"70vh", overflowY:"auto", background:"#0f0f14", borderRadius:"20px 20px 0 0", borderTop:"1px solid #1e1e2a", padding:16, boxShadow:"0 -10px 30px rgba(0,0,0,0.5)" }}>
+            <div style={{ width:40, height:4, borderRadius:2, background:"#2a2a3a", margin:"0 auto 12px" }}/>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:"#ffffff", letterSpacing:"-0.01em" }}>Tools</div>
+              <button onClick={() => setShowMobileTools(false)} aria-label="Close tools" data-compact="true"
+                style={{ minHeight:0, width:32, height:32, borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
+                <X size={16}/>
+              </button>
+            </div>
             {[
               { heading:"Analyze", items:[
                 { href:"/psychology", emoji:"", label:"Psychology",   color:"#ec4899" },
@@ -7904,14 +7928,15 @@ function TradingDashboard({ session, onLogout }) {
                 { tab:"stratlab",   emoji:"", label:"Strategy Lab",  color:"#6366f1" },
               ]},
             ].map(section =>(<div key={section.heading} style={{ marginBottom:14 }}><div style={{ fontSize:9, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6 }}>{section.heading}</div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                  {section.items.map(it =>(<a key={it.label}
-                       href={it.href ?? "#"}
-                       onClick={(e) => { if (it.tab) { e.preventDefault(); setTab(it.tab); setShowMobileTools(false); } else { setShowMobileTools(false); } }}
-                       style={{ minHeight:52, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"#1a1a24", border:"1px solid #2a2a3a", color:"#ffffff", fontSize:13, fontWeight:600, textDecoration:"none" }}><span style={{ fontSize:18 }}>{it.emoji}</span><span style={{ color: it.color }}>{it.label}</span></a>
-                  ))}
-                </div></div>
+                {section.items.map(it =>(<a key={it.label}
+                     href={it.href ?? "#"}
+                     onClick={(e) => { if (it.tab) { e.preventDefault(); setTab(it.tab); setShowMobileTools(false); } else { setShowMobileTools(false); } }}
+                     style={{ minHeight:52, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"#1a1a24", border:"1px solid #2a2a3a", color:"#ffffff", fontSize:13, fontWeight:600, textDecoration:"none" }}><span style={{ fontSize:18 }}>{it.emoji}</span><span style={{ color: it.color }}>{it.label}</span></a>
+                ))}
+              </div></div>
             ))}
-          </div></div>
+          </div>
+        </>
       )}
           {tab==="dashboard"  && <DashboardHome loading={tradesLoading} trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} username={session.username} onClearDemo={() => {
               setDemoMode(session.username, false);
