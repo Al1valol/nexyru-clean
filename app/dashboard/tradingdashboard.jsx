@@ -5794,7 +5794,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
               {activeAccount.name} · {trades.length} trade{trades.length!==1?"s":""}
             </div>
           )}
-        </div><div style={{ display:"flex", gap:8, alignItems:"center" }}>
+        </div><div className="hide-mobile" style={{ display:"flex", gap:8, alignItems:"center" }}>
           {inDemo && (
             <div style={{ fontSize:10, fontWeight:700, color:"#f59e0b", background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.25)", padding:"4px 10px", borderRadius:8 }}>Exit demo mode to add trades</div>
           )}
@@ -7947,16 +7947,24 @@ function TradingDashboard({ session, onLogout }) {
               paperAccts.addAccount(`$${(nextSize/1000).toFixed(0)}k Paper Account`, "paper", nextSize);
             }}/>}
           {tab==="journal" && (
-            <JournalPage
-              trades={activeTrades}
-              onEdit={t => setEditTrade(t)}
-              onDelete={deleteTrade}
-              onAdd={() => setShowForm(true)}
-              onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }}
-              onSaveTrade={saveTrade}
-              activeAccount={paperAccts.activeAccount}
-              username={session.username}
-            />
+            <>
+              <JournalPage
+                trades={activeTrades}
+                onEdit={t => setEditTrade(t)}
+                onDelete={deleteTrade}
+                onAdd={() => setShowForm(true)}
+                onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }}
+                onSaveTrade={saveTrade}
+                activeAccount={paperAccts.activeAccount}
+                username={session.username}
+              />
+              <button
+                className="show-mobile"
+                onClick={() => setShowForm(true)}
+                aria-label="Log Trade"
+                style={{ position:"fixed", bottom:"calc(72px + env(safe-area-inset-bottom))", right:16, width:52, height:52, borderRadius:"50%", background:"var(--accent)", border:"none", color:"#fff", fontSize:24, cursor:"pointer", zIndex:8000, alignItems:"center", justifyContent:"center", boxShadow:"0 4px 20px rgba(99,102,241,0.4)" }}
+              >+</button>
+            </>
           )}
           {tab==="strategies" && (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Strategy Performance</div><StrategyCards trades={activeTrades}/></div>
