@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 
 // ───────────────────────── types ─────────────────────────
 interface Trade {
@@ -593,6 +594,7 @@ export default function PsychologyPage() {
   return (
     <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}>
       <Sidebar activePath="/psychology" />
+      <MobileNav activePath="/psychology" />
       <main className="psych-main" style={{ flex:1, marginLeft:56, minHeight:"100vh", background:"#070b14", color:"#ffffff", padding:"32px 20px", fontFamily:"system-ui, -apple-system, sans-serif" }}><style>{`
         @media (max-width: 767px) {
           .psych-main { padding: 16px !important; }

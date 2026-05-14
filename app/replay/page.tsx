@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 
 // ───────────────────────── types ─────────────────────────
 
@@ -228,6 +229,7 @@ export default function ReviewPage() {
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#080808" }}>
       <Sidebar activePath="/replay" />
+      <MobileNav activePath="/replay" />
       <main style={{ flex: 1, marginLeft: 56 }}>
         <ReviewPageInner />
       </main>
@@ -1198,6 +1200,12 @@ function ReviewScreen({
         @keyframes fadeUp {
           0% { opacity: 0; transform: translateY(8px); }
           100% { opacity: 1; transform: translateY(0); }
+        }
+        @media (max-width: 767px) {
+          .replay-session-grid { grid-template-columns: 1fr 1fr !important; }
+          .replay-question-btn { width: 100% !important; min-height: 64px !important; }
+          .replay-grade-row { width: 100% !important; }
+          .replay-grade-btn { flex: 1 1 0 !important; min-height: 48px !important; }
         }
       `}</style>
     </div>

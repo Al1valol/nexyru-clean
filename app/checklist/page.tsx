@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 
 // ───────────────────────── types ─────────────────────────
 type Category = "must" | "good";
@@ -456,7 +457,7 @@ export default function ChecklistPage() {
   const progressPct = totalSteps >0 ? Math.round(((stepIndex) / totalSteps) * 100) : 0;
  const answeredCount = Object.keys(answers).length;
 
- return (<div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}><Sidebar activePath="/checklist" /><main style={{ flex:1, marginLeft:56, minHeight: "100vh", background: "#070b14", color: "#ffffff", fontFamily: "system-ui, -apple-system, sans-serif" }}><style>{`
+ return (<div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}><Sidebar activePath="/checklist" /><MobileNav activePath="/checklist" /><main style={{ flex:1, marginLeft:56, minHeight: "100vh", background: "#070b14", color: "#ffffff", fontFamily: "system-ui, -apple-system, sans-serif" }}><style>{`
         @keyframes cardSlideIn {
           from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }

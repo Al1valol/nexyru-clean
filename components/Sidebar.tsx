@@ -226,6 +226,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
 
   return (
     <aside
+      className="nx-desktop-sidebar"
       style={{
         position: "fixed",
         top: 0,

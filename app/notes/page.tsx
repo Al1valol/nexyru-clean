@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 
 const SESSION_KEY = "tradedesk_session_v1";
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -332,6 +333,7 @@ export default function NotesPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "#e5e7eb" }}>
       <Sidebar activePath="/notes" />
+      <MobileNav activePath="/notes" />
       <main style={{ marginLeft: 56, padding: "28px 32px", maxWidth: 1100 }}>
         <div style={{ marginBottom: 24, display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>

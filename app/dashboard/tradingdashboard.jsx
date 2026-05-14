@@ -7859,16 +7859,30 @@ function TradingDashboard({ session, onLogout }) {
           </div>
           <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", paddingTop:12 }}>
 
-      {/* ── Bottom nav — mobile only ── */}
-      <div className="show-mobile" style={{ position:"fixed", bottom:0, left:0, right:0, height:60, background:"#111118", borderTop:"1px solid #2a2a3a", display:"flex", alignItems:"stretch", zIndex:50, paddingBottom:"env(safe-area-inset-bottom)" }}>
+      {/* ── Bottom nav — mobile only (5 tabs: Dashboard, Journal, Notes, Tools, Settings) ── */}
+      <nav className="show-mobile" aria-label="Primary" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0f0f14", borderTop:"1px solid #1e1e2a", alignItems:"stretch", zIndex:50, paddingBottom:"env(safe-area-inset-bottom)" }}>
         {[
-          { id:"dashboard", label:"Dashboard" },
-          { id:"journal",   label:"Journal" },
-        ].map(({ id, label }) =>(<button key={id} onClick={()=>setTab(id)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:tab===id?"#6366f1":"#6b7280", fontSize:10, fontWeight:700 }}><span style={{ fontSize:18 }}>{id==="dashboard"?"":""}</span>
-            {label}
-          </button>
-        ))}
-        <button onClick={()=>setShowMobileTools(true)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:showMobileTools?"#6366f1":"#6b7280", fontSize:10, fontWeight:700 }}><span style={{ fontSize:18 }}></span>Tools</button><button onClick={()=>setShowHub(true)} style={{ flex:1, minHeight:44, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:"#6366f1", fontSize:10, fontWeight:700 }}><span style={{ fontSize:18 }}></span>Add</button></div>
+          { id:"dashboard", label:"Dashboard", icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>) },
+          { id:"journal",   label:"Journal",   icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>) },
+        ].map(({ id, label, icon }) =>(<button key={id} data-compact="true" onClick={()=>setTab(id)} style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:tab===id?"var(--accent)":"#6b7280", fontSize:10, fontWeight:600 }}>{icon}<span>{label}</span></button>))}
+        <a href="/notes" data-compact="true" style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, textDecoration:"none", color:"#6b7280", fontSize:10, fontWeight:600 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          <span>Notes</span>
+        </a>
+        <button data-compact="true" onClick={()=>setShowMobileTools(true)} style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:showMobileTools?"var(--accent)":"#6b7280", fontSize:10, fontWeight:600 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="5" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="19" cy="5" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="12" cy="19" r="1.5"/><circle cx="19" cy="19" r="1.5"/></svg>
+          <span>Tools</span>
+        </button>
+        <a href="/settings" data-compact="true" style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, textDecoration:"none", color:"#6b7280", fontSize:10, fontWeight:600 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+
+      {/* Floating Action Button — Log Trade (mobile only) */}
+      <button className="show-mobile fab-log-trade" onClick={()=>setShowHub(true)} aria-label="Log Trade" data-compact="true" style={{ position:"fixed", right:16, bottom:"calc(56px + env(safe-area-inset-bottom) + 16px)", width:56, height:56, borderRadius:999, background:"var(--accent)", color:"#fff", border:"none", alignItems:"center", justifyContent:"center", boxShadow:"0 10px 25px rgba(99,102,241,0.45)", zIndex:60, cursor:"pointer" }}>
+        <Plus size={24}/>
+      </button>
 
       {/* Mobile Tools bottom sheet */}
       {showMobileTools && (

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 import { createClient } from "@supabase/supabase-js";
 
 // ── Supabase ──
@@ -395,6 +396,7 @@ export default function SettingsPage() {
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#0a0a0f" }}>
       <Sidebar activePath="/settings" />
+      <MobileNav activePath="/settings" />
       <main
         className="settings-main"
         style={{
@@ -412,6 +414,31 @@ export default function SettingsPage() {
             .settings-main { padding: 16px !important; }
             .settings-grid { grid-template-columns: 1fr !important; }
             .settings-left-nav { position: static !important; }
+          }
+          @media (max-width: 767px) {
+            .settings-left-nav {
+              display: flex !important;
+              flex-direction: row !important;
+              overflow-x: auto !important;
+              overflow-y: hidden !important;
+              padding: 6px !important;
+              gap: 4px !important;
+              scrollbar-width: none;
+              -webkit-overflow-scrolling: touch;
+            }
+            .settings-left-nav::-webkit-scrollbar { display: none; }
+            .settings-left-nav button {
+              flex: 0 0 auto !important;
+              width: auto !important;
+              white-space: nowrap !important;
+              padding: 8px 14px !important;
+              border-left: none !important;
+              border-bottom: 2px solid transparent !important;
+              min-height: 40px !important;
+            }
+            .settings-left-nav button[style*="border-left: 2px solid"] {
+              border-bottom: 2px solid #6366f1 !important;
+            }
           }
           input:focus, textarea:focus, select:focus { border-color: #6366f1 !important; }
           input[type="range"]::-webkit-slider-thumb {

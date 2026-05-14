@@ -173,27 +173,109 @@ body {
 
 /* ── Global mobile responsiveness ─────────────────────────────── */
 @media (max-width: 767px) {
+  /* iOS auto-zoom prevention */
   input:not([type="checkbox"]):not([type="radio"]),
   textarea,
   select {
     font-size: 16px !important;
   }
 
-  [role="dialog"],
-  .modal,
-  .nx-modal {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 16px !important;
-    box-sizing: border-box;
+  /* Hide desktop sidebar entirely on mobile */
+  .nx-desktop-sidebar {
+    display: none !important;
   }
 
+  /* Zero the sidebar offset on the main element */
+  main {
+    margin-left: 0 !important;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Touch targets */
   button {
     min-height: 44px;
   }
 
+  a[role="button"],
+  button {
+    touch-action: manipulation;
+  }
+
   button.icon-btn,
-  button[data-compact="true"] {
+  button[data-compact="true"],
+  button[data-nosize="true"] {
     min-height: 0;
   }
+
+  /* Tables that should switch to card mode add data-mobile-cards */
+  table[data-mobile-cards="true"] thead {
+    display: none;
+  }
+  table[data-mobile-cards="true"],
+  table[data-mobile-cards="true"] tbody,
+  table[data-mobile-cards="true"] tr,
+  table[data-mobile-cards="true"] td {
+    display: block;
+    width: 100%;
+  }
+
+  /* Modals: full-screen on mobile when marked with nx-modal-mobile or similar */
+  .nx-modal-mobile,
+  [data-mobile-fullscreen="true"] {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Generic modal sizing */
+  [role="dialog"]:not([data-skip-mobile]),
+  .modal:not([data-skip-mobile]),
+  .nx-modal:not([data-skip-mobile]) {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* Floating action button helper */
+  .nx-fab {
+    position: fixed;
+    right: 16px;
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px) + 16px);
+    width: 56px;
+    height: 56px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 25px rgba(99, 102, 241, 0.45);
+    z-index: 80;
+    cursor: pointer;
+  }
+  .nx-fab:active { transform: scale(0.96); }
+}
+
+/* Mobile-card transformation utility for tables */
+.nx-mobile-card {
+  display: none;
+}
+@media (max-width: 767px) {
+  .nx-desktop-only { display: none !important; }
+  .nx-mobile-card { display: block; }
+  .nx-hide-mobile { display: none !important; }
+}
+@media (min-width: 768px) {
+  .nx-mobile-only { display: none !important; }
+}
+
+/* Floating action button always available */
+.nx-fab {
+  display: none;
 }

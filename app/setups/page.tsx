@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 
 // ───────────────────────── types ─────────────────────────
 interface Trade {
@@ -489,6 +490,7 @@ export default function SetupsPage() {
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#080808", fontFamily: FONT_STACK }}>
       <Sidebar activePath="/setups" />
+      <MobileNav activePath="/setups" />
       <main style={{ flex: 1, marginLeft: 56 }}>
         <div
           className="setups-main"
