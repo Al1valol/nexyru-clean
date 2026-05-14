@@ -88,6 +88,12 @@ const ICONS = {
       <line x1="17" y1="21" x2="17" y2="5" />
     </svg>
   ),
+  pencil: (
+    <svg {...ICON_PROPS}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
+  ),
   gear: (
     <svg {...ICON_PROPS}>
       <circle cx="12" cy="12" r="3" />
@@ -270,6 +276,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         {/* Group 1 — Main */}
         <SidebarItem icon={ICONS.dashboard} label="Dashboard" href="/dashboard" active={isActive("/dashboard")} />
         <SidebarItem icon={ICONS.journal} label="Journal" href="/dashboard?tab=journal" active={isActive("/dashboard?tab=journal")} />
+        <SidebarItem icon={ICONS.pencil} label="Notes" href="/notes" active={isActive("/notes")} />
 
         <SidebarDivider />
 

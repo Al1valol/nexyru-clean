@@ -1720,9 +1720,31 @@ function TradeDetail({ trade, onClose }) {
   );
 }
 
-function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
+function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport, username }) {
   const [err, setErr] = useState(false);
   const isMobile = useIsMobile();
+  const [notesModalDate, setNotesModalDate] = useState(null); // { key, label }
+  const [notesTick, setNotesTick] = useState(0);
+  useEffect(() => {
+    const h = () => setNotesTick(t => t + 1);
+    window.addEventListener("nexyruDailyNotesUpdate", h);
+    return () => window.removeEventListener("nexyruDailyNotesUpdate", h);
+  }, []);
+  const dateKeyForTrade = (t) => {
+    const d = new Date(t.date);
+    if (isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
+  const noteSet = useMemo(() => {
+    if (!username) return new Set();
+    const s = new Set();
+    trades.forEach(t => {
+      const k = dateKeyForTrade(t);
+      if (k && hasDailyNotes(username, k)) s.add(k);
+    });
+    return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades, username, notesTick]);
   if (err) return (
     <div style={{ padding:"24px", borderRadius:12, border:"1px dashed rgba(248,113,113,0.3)", textAlign:"center" }}><div style={{ fontSize:32, marginBottom:8 }}>️</div><div style={{ fontSize:13, fontWeight:700, color:"#ef4444", marginBottom:8 }}>Couldn't render trade table</div><button onClick={() => setErr(false)} style={{ padding:"7px 16px", borderRadius:8, border:"1px solid rgba(99,102,241,0.3)", background:"transparent", color:"#6366f1", fontSize:12, cursor:"pointer" }}>Retry</button></div>
   );
@@ -1813,6 +1835,9 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+      {notesModalDate && username && (
+        <DailyNotesModal username={username} dateKey={notesModalDate.key} dateLabel={notesModalDate.label} onClose={() => setNotesModalDate(null)}/>
+      )}
       {viewing && <TradeDetail trade={viewing} onClose={() => {
           // Refresh review for this trade when modal closes (skip for demo trades)
           if (viewing.source !== "demo") {
@@ -1867,8 +1892,9 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
                 {/* Bottom row */}
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, fontSize:11, color:"#6b7280" }}><span style={{ fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                     Entry {formatPrice(t.entryPrice)} → Exit {formatPrice(t.exitPrice)}
-                  </span><span style={{ whiteSpace:"nowrap", textAlign:"right", flexShrink:0 }}>
+                  </span><span style={{ whiteSpace:"nowrap", textAlign:"right", flexShrink:0, display:"inline-flex", alignItems:"center", gap:5, justifyContent:"flex-end" }}>
                     {dateLabel} · {sourceLabel}
+                    {username && (() => { const k = dateKeyForTrade(t); if (!k || !noteSet.has(k)) return null; return (<span onClick={(e) => { e.stopPropagation(); setNotesModalDate({ key: k, label: formatNotesDateLong(k) }); }} title="Daily notes for this day" style={{ padding:"1px 5px", borderRadius:5, border:"1px solid rgba(99,102,241,0.3)", background:"rgba(99,102,241,0.08)", color:"#a5b4fc", fontSize:10, lineHeight:1, cursor:"pointer" }}>📝</span>); })()}
                   </span></div>
                 {/* Action buttons */}
                 <div style={{ position:"absolute", top:8, right:8, display:"flex", gap:4 }} onClick={e => e.stopPropagation()}><button onClick={(e) => { e.stopPropagation(); window.location.href = `/replay?tradeId=${t.id}`; }} aria-label="Replay this trade" title="Replay this trade"
@@ -1924,7 +1950,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport }) {
                               {rev.followed_rules ? " rules" : " rules"}
                             </span></div>) : (<span style={{ fontSize:9, color:"#374151" }}>—</span>
                         )}
-                      </td><td style={{ ...td, color:"#6b7280", whiteSpace:"nowrap" }} onClick={()=>setViewing(t)}>{new Date(t.date).toLocaleDateString()}</td><td style={td}><div style={{ display:"flex", gap:4 }}><button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(99,102,241,0.25)", background:"rgba(99,102,241,0.06)", color:"#6366f1", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600, transition:"all 0.15s" }}><span></span></button><button onClick={(e)=>{ e.stopPropagation(); window.location.href = `/replay?tradeId=${t.id}`; }} title="Replay this trade" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(34,197,94,0.25)", background:"transparent", color:"#22c55e", cursor:"pointer", transition:"all 0.15s", display:"flex", alignItems:"center", justifyContent:"center" }} onMouseEnter={e=>e.currentTarget.style.background="rgba(34,197,94,0.08)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Play size={10}/></button><button onClick={()=>onEdit(t)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", cursor:"pointer", transition:"all 0.15s" }}><Edit2 size={10}/></button>
+                      </td><td style={{ ...td, color:"#6b7280", whiteSpace:"nowrap" }}><span onClick={()=>setViewing(t)} style={{ cursor:"pointer" }}>{new Date(t.date).toLocaleDateString()}</span>{username && (() => { const k = dateKeyForTrade(t); if (!k || !noteSet.has(k)) return null; return (<button onClick={(e) => { e.stopPropagation(); setNotesModalDate({ key: k, label: formatNotesDateLong(k) }); }} title="Daily notes for this day" aria-label="View daily notes" style={{ marginLeft:6, padding:"2px 6px", borderRadius:6, border:"1px solid rgba(99,102,241,0.3)", background:"rgba(99,102,241,0.08)", color:"#a5b4fc", cursor:"pointer", fontSize:11, lineHeight:1 }}>📝</button>); })()}</td><td style={td}><div style={{ display:"flex", gap:4 }}><button onClick={()=>onReview?.(t)} title="AI Review" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(99,102,241,0.25)", background:"rgba(99,102,241,0.06)", color:"#6366f1", cursor:"pointer", display:"flex", alignItems:"center", gap:3, fontSize:10, fontWeight:600, transition:"all 0.15s" }}><span></span></button><button onClick={(e)=>{ e.stopPropagation(); window.location.href = `/replay?tradeId=${t.id}`; }} title="Replay this trade" style={{ padding:"4px 8px", borderRadius:6, border:"1px solid rgba(34,197,94,0.25)", background:"transparent", color:"#22c55e", cursor:"pointer", transition:"all 0.15s", display:"flex", alignItems:"center", justifyContent:"center" }} onMouseEnter={e=>e.currentTarget.style.background="rgba(34,197,94,0.08)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Play size={10}/></button><button onClick={()=>onEdit(t)} style={{ padding:"4px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", cursor:"pointer", transition:"all 0.15s" }}><Edit2 size={10}/></button>
                           {confirmingTradeDelete === t.id ? (
                             <div style={{ display:"flex", gap:3 }}><button onClick={(e) => { e.stopPropagation(); setConfirmingTradeDelete(null); onDelete(t.id); }} title="Confirm delete" style={{ padding:"4px 7px", borderRadius:6, border:"1px solid #ef4444", background:"rgba(239,68,68,0.18)", color:"#ef4444", cursor:"pointer", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", gap:2 }}>✓ Delete</button><button onClick={(e) => { e.stopPropagation(); setConfirmingTradeDelete(null); }} title="Cancel" style={{ padding:"4px 7px", borderRadius:6, border:"1px solid #374151", background:"transparent", color:"#9ca3af", cursor:"pointer", fontSize:10, fontWeight:700 }}>✗</button></div>) : (<button
                               onClick={(e) => {
@@ -5292,6 +5318,255 @@ function DatePickerModal({ trade, onSave, onClose }) {
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_LABELS  = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const WEEKDAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MOODS = ["Focused","Confident","Neutral","Anxious","Distracted"];
+
+// ── Daily notes helpers (localStorage-backed) ────────────────
+function dailyNotesKey(username, dateStr) {
+  return `nexyru_daily_notes_${username}_${dateStr}`;
+}
+function loadDailyNotes(username, dateStr) {
+  if (!username || !dateStr) return null;
+  try {
+    const raw = localStorage.getItem(dailyNotesKey(username, dateStr));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function saveDailyNotesEntry(username, dateStr, data) {
+  if (!username || !dateStr) return;
+  try {
+    localStorage.setItem(dailyNotesKey(username, dateStr), JSON.stringify({ ...data, date: dateStr }));
+    window.dispatchEvent(new CustomEvent("nexyruDailyNotesUpdate"));
+  } catch {}
+}
+function hasDailyNotes(username, dateStr) {
+  const n = loadDailyNotes(username, dateStr);
+  return !!(n && (n.plan?.trim() || n.review?.trim() || n.mood));
+}
+function loadAllDailyNotes(username) {
+  if (!username) return [];
+  const prefix = `nexyru_daily_notes_${username}_`;
+  const list = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) {
+        try {
+          const obj = JSON.parse(localStorage.getItem(k) || "");
+          if (obj && obj.date) list.push(obj);
+        } catch {}
+      }
+    }
+  } catch {}
+  return list.sort((a,b) => (b.date || "").localeCompare(a.date || ""));
+}
+function todayKeyStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function formatNotesDateLong(dateStr) {
+  if (!dateStr) return "";
+  const [y,m,d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, (m||1)-1, d||1);
+  return `${WEEKDAY_NAMES[dt.getDay()]}, ${MONTH_NAMES[dt.getMonth()]} ${dt.getDate()}`;
+}
+
+// ── Mood pill ─────────────────────────────────────────────────
+function MoodBadge({ mood }) {
+  if (!mood) return null;
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", padding:"3px 9px", borderRadius:999, background:"rgba(99,102,241,0.12)", border:"1px solid rgba(99,102,241,0.35)", color:"#a5b4fc", fontSize:10, fontWeight:700, letterSpacing:"0.02em" }}>
+      {mood}
+    </span>
+  );
+}
+
+// ── Daily notes card (edit) ───────────────────────────────────
+function DailyNotesCard({ username, dateKey, dateLabel, autoFocus = false }) {
+  const [plan, setPlan]     = useState("");
+  const [review, setReview] = useState("");
+  const [mood, setMood]     = useState("");
+  const [saved, setSaved]   = useState(false);
+
+  useEffect(() => {
+    const d = loadDailyNotes(username, dateKey);
+    setPlan(d?.plan ?? "");
+    setReview(d?.review ?? "");
+    setMood(d?.mood ?? "");
+  }, [username, dateKey]);
+
+  const handleSave = () => {
+    saveDailyNotesEntry(username, dateKey, { plan, review, mood });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
+
+  const taStyle = {
+    width:"100%", height:120, padding:"10px 12px", borderRadius:9, boxSizing:"border-box",
+    background:"#0a0a0f", border:"1px solid #1e1e1e", color:"#e5e7eb",
+    fontSize:12, fontFamily:"inherit", resize:"vertical", outline:"none",
+    transition:"border-color 0.15s",
+  };
+  const onFocus = e => { e.target.style.borderColor = "#6366f1"; };
+  const onBlur  = e => { e.target.style.borderColor = "#1e1e1e"; };
+
+  return (
+    <div style={{ borderRadius:14, border:"1px solid #2a2a3a", background:"#111118", padding:18 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:8 }}>
+        <div>
+          <div style={{ fontSize:14, fontWeight:800, color:"#ffffff", display:"flex", alignItems:"center", gap:8 }}>
+            <BookOpen size={14} style={{ color:"#6366f1" }}/>Daily Notes
+          </div>
+          <div style={{ fontSize:11, color:"#6b7280", marginTop:3 }}>{dateLabel}</div>
+        </div>
+        {saved && (
+          <span style={{ fontSize:10, fontWeight:700, color:"#10b981", background:"rgba(16,185,129,0.1)", border:"1px solid rgba(16,185,129,0.3)", padding:"3px 10px", borderRadius:999 }}>
+            Saved
+          </span>
+        )}
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:12 }}>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>Pre-Session Plan</div>
+          <textarea
+            autoFocus={autoFocus}
+            value={plan}
+            onChange={e => setPlan(e.target.value)}
+            placeholder="What's your plan for today? Key levels, news events, max trades..."
+            onFocus={onFocus} onBlur={onBlur}
+            style={taStyle}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>Post-Session Review</div>
+          <textarea
+            value={review}
+            onChange={e => setReview(e.target.value)}
+            placeholder="How did the session go? What did you do well? What to improve?"
+            onFocus={onFocus} onBlur={onBlur}
+            style={taStyle}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginTop:14 }}>
+        <div style={{ fontSize:10, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Mood</div>
+        <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
+          {MOODS.map(m => {
+            const active = mood === m;
+            return (
+              <button key={m} onClick={() => setMood(active ? "" : m)}
+                style={{
+                  padding:"7px 14px", borderRadius:999, cursor:"pointer", fontSize:11, fontWeight:700,
+                  background: active ? "rgba(99,102,241,0.16)" : "#111111",
+                  border: active ? "1px solid #6366f1" : "1px solid #2a2a3a",
+                  color: active ? "#a5b4fc" : "#9ca3af",
+                  transition:"all 0.12s",
+                }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = "#1a1a1a"; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = "#111111"; }}
+              >{m}</button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"flex-end", marginTop:16 }}>
+        <button onClick={handleSave}
+          style={{ padding:"9px 20px", borderRadius:9, border:"none", background:"#6366f1", color:"#ffffff", fontSize:12, fontWeight:700, cursor:"pointer", transition:"background 0.15s" }}
+          onMouseEnter={e => e.currentTarget.style.background = "#4f46e5"}
+          onMouseLeave={e => e.currentTarget.style.background = "#6366f1"}
+        >Save Notes</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Selected-day notes panel (read-only + edit toggle) ────────
+function SelectedDayNotes({ username, dateKey, dateLabel }) {
+  const [editing, setEditing] = useState(false);
+  const [notes, setNotes] = useState(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    setNotes(loadDailyNotes(username, dateKey));
+  }, [username, dateKey, tick, editing]);
+
+  useEffect(() => {
+    const h = () => setTick(t => t + 1);
+    window.addEventListener("nexyruDailyNotesUpdate", h);
+    return () => window.removeEventListener("nexyruDailyNotesUpdate", h);
+  }, []);
+
+  if (editing) {
+    return (
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        <DailyNotesCard username={username} dateKey={dateKey} dateLabel={`Editing notes for ${dateLabel}`} autoFocus/>
+        <div style={{ display:"flex", justifyContent:"flex-end" }}>
+          <button onClick={() => setEditing(false)} style={{ padding:"7px 14px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:11, fontWeight:700, cursor:"pointer" }}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  const empty = !notes || (!notes.plan?.trim() && !notes.review?.trim() && !notes.mood);
+
+  return (
+    <div style={{ borderRadius:12, border:"1px solid #2a2a3a", background:"#111118", overflow:"hidden" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:"1px solid #2a2a3a" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <BookOpen size={13} style={{ color:"#6366f1" }}/>
+          <span style={{ fontSize:13, fontWeight:700, color:"#ffffff" }}>Notes for {dateLabel}</span>
+          {notes?.mood && <MoodBadge mood={notes.mood}/>}
+        </div>
+        <button onClick={() => setEditing(true)} style={{ padding:"5px 12px", borderRadius:7, border:"1px solid rgba(99,102,241,0.35)", background:"rgba(99,102,241,0.08)", color:"#a5b4fc", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+          {empty ? "Add Notes" : "Edit"}
+        </button>
+      </div>
+
+      {empty ? (
+        <div style={{ padding:"20px 16px", color:"#6b7280", fontSize:12 }}>
+          No notes for this day yet. Click "Add Notes" to write your pre-session plan or post-session review.
+        </div>
+      ) : (
+        <div style={{ padding:"14px 16px", display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:12 }}>
+          <div style={{ borderRadius:10, background:"#0a0a0f", border:"1px solid #1e1e1e", padding:"10px 12px" }}>
+            <div style={{ fontSize:9, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>Pre-Session Plan</div>
+            <div style={{ fontSize:12, color: notes.plan ? "#e5e7eb" : "#4b5563", whiteSpace:"pre-wrap", lineHeight:1.5 }}>
+              {notes.plan || "—"}
+            </div>
+          </div>
+          <div style={{ borderRadius:10, background:"#0a0a0f", border:"1px solid #1e1e1e", padding:"10px 12px" }}>
+            <div style={{ fontSize:9, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>Post-Session Review</div>
+            <div style={{ fontSize:12, color: notes.review ? "#e5e7eb" : "#4b5563", whiteSpace:"pre-wrap", lineHeight:1.5 }}>
+              {notes.review || "—"}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Daily notes modal (used from TradeTable) ──────────────────
+function DailyNotesModal({ username, dateKey, dateLabel, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:"20px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:720, maxHeight:"90vh", overflow:"auto", borderRadius:14, border:"1px solid #2a2a3a", background:"#0f0f14" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 18px", borderBottom:"1px solid #2a2a3a" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, fontWeight:700, color:"#ffffff" }}>
+            <BookOpen size={14} style={{ color:"#6366f1" }}/>Notes — {dateLabel}
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer" }}><X size={15}/></button>
+        </div>
+        <div style={{ padding:18 }}>
+          <DailyNotesCard username={username} dateKey={dateKey} dateLabel={dateLabel}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function isUnknownDate(trade) {
   // Screenshot trades where no date was extracted from the image
@@ -5310,12 +5585,15 @@ function groupByDay(trades) {
   return map;
 }
 
-function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
+function CalendarPage({ trades, onEditTrade, onSaveTrade, username }) {
   const today = new Date();
   const [year,        setYear]        = useState(today.getFullYear());
   const [month,       setMonth]       = useState(today.getMonth());
   const [selected,    setSelected]    = useState(null);
   const [datePicking, setDatePicking] = useState(null); // trade being date-picked
+
+  const todayKey   = todayKeyStr(today);
+  const todayLabel = `${WEEKDAY_NAMES[today.getDay()]}, ${MONTH_NAMES[today.getMonth()]} ${today.getDate()}`;
 
   const byDay = useMemo(() => groupByDay(trades), [trades]);
 
@@ -5368,6 +5646,9 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
           onSave={(updated) => { onSaveTrade(updated); setDatePicking(null); }}
         />
       )}
+
+      {/* Daily notes — today */}
+      {username && <DailyNotesCard username={username} dateKey={todayKey} dateLabel={todayLabel}/>}
 
       {/* Page header + nav */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:20, fontWeight:800, color:"#ffffff", display:"flex", alignItems:"center", gap:10 }}><Calendar size={20} style={{ color:"#6366f1" }}/>Trade Calendar</div><div style={{ fontSize:11, color:"#6b7280", marginTop:3 }}>Daily activity · green = profit · red = loss · click a day to drill in</div></div><div style={{ display:"flex", alignItems:"center", gap:6 }}><button onClick={prevMonth} style={{ width:32, height:32, borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>‹</button><div style={{ minWidth:170, textAlign:"center", fontSize:14, fontWeight:700, color:"#ffffff" }}>{MONTH_NAMES[month]} {year}</div><button onClick={nextMonth} style={{ width:32, height:32, borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>›</button><button onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }} style={{ padding:"5px 12px", borderRadius:7, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#6b7280", fontSize:11, fontWeight:600, cursor:"pointer" }}>Today</button></div></div>
@@ -5440,6 +5721,11 @@ function CalendarPage({ trades, onEditTrade, onSaveTrade }) {
           </div>
         ))}
       </div>
+
+      {/* Selected day notes */}
+      {selected && username && (
+        <SelectedDayNotes username={username} dateKey={selected.key} dateLabel={selected.label}/>
+      )}
 
       {/* Selected day detail */}
       {selected && (
@@ -5531,13 +5817,13 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
             style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}><Plus size={12}/>Log Trade</button></div></div>
 
       {/* Trades */}
-      <section><TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade} onAdd={inDemo ? undefined : onAdd} onImport={inDemo ? undefined : onCSV}/></section>
+      <section><TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade} onAdd={inDemo ? undefined : onAdd} onImport={inDemo ? undefined : onCSV} username={username}/></section>
 
       {/* Divider */}
       <div style={{ display:"flex", alignItems:"center", gap:12 }}><div style={{ flex:1, height:1, background:"#2a2a3a" }}/><span style={{ fontSize:10, fontWeight:700, color:"#374151", textTransform:"uppercase", letterSpacing:"0.07em", display:"flex", alignItems:"center", gap:5 }}><Calendar size={11}/>Calendar</span><div style={{ flex:1, height:1, background:"#2a2a3a" }}/></div>
 
       {/* Calendar */}
-      <section><CalendarPage trades={trades} onEditTrade={t => onEdit(t)} onSaveTrade={onSaveTrade}/></section>
+      <section><CalendarPage trades={trades} onEditTrade={t => onEdit(t)} onSaveTrade={onSaveTrade} username={username}/></section>
 
       {/* Divider */}
       <div style={{ display:"flex", alignItems:"center", gap:12 }}><div style={{ flex:1, height:1, background:"#2a2a3a" }}/><span style={{ fontSize:10, fontWeight:700, color:"#374151", textTransform:"uppercase", letterSpacing:"0.07em", display:"flex", alignItems:"center", gap:5 }}><BarChart2 size={11}/>Analytics</span><div style={{ flex:1, height:1, background:"#2a2a3a" }}/></div>
