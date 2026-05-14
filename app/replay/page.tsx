@@ -438,6 +438,10 @@ function ReplayPageInner() {
  const [emotion, setEmotion] = useState<EmotionKey | null>(null);
  const [mistakes, setMistakes] = useState<MistakeKey[]>([]);
 
+ // reveal mechanic
+ const [revealed, setReveal] = useState(false);
+ const [quickConfidence, setQuickConfidence] = useState(0);
+
   // ── Initial load ──
   useEffect(() => {
     try {
@@ -497,6 +501,8 @@ function ReplayPageInner() {
     setGrade(existing?.grade ?? null);
     setEmotion(existing?.emotion ?? null);
     setMistakes(existing?.mistakes ?? []);
+    setReveal(false);
+    setQuickConfidence(0);
     setSlideKey((k) => k + 1);
     setZoomOpen(false);
   }, [current?.id]);
@@ -797,6 +803,7 @@ function ReplayPageInner() {
               isWin={isWin}
               isLoss={isLoss}
               onZoom={() => setZoomOpen(true)}
+              revealed={revealed}
             /></div>
 
           {/* Stats row */}
@@ -807,10 +814,22 @@ function ReplayPageInner() {
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
             gap: 14,
-          }}><StatCell label="Entry" value={fmtPrice(entry)} color="#22d3a5" /><StatCell label="Exit" value={fmtPrice(exit)} color="#f43f5e" /><StatCell
+          }}><StatCell label="Entry" value={fmtPrice(entry)} color="#22d3a5" /><StatCell
+              label="Exit"
+              value={
+                <span style={{ opacity: revealed ? 1 : 0.4, transition: "opacity 0.4s ease" }}>
+                  {revealed ? fmtPrice(exit) : "?"}
+                </span>
+              }
+              color={revealed ? "#f43f5e" : "#4a5a7a"}
+            /><StatCell
               label="PnL"
-              value={`${pnl > 0 ? "+" : ""}${fmtMoney(pnl)}`}
-              color={pnlColor}
+              value={
+                <span style={{ opacity: revealed ? 1 : 0.4, transition: "opacity 0.4s ease" }}>
+                  {revealed ? `${pnl > 0 ? "+" : ""}${fmtMoney(pnl)}` : "?"}
+                </span>
+              }
+              color={revealed ? pnlColor : "#4a5a7a"}
             /><StatCell label="Duration" value="—" color="#9ca3af" /><StatCell
               label="Side"
               value={`${isLong ? "▲" : "▼"} ${sideUpper || "—"}`}
@@ -841,7 +860,63 @@ function ReplayPageInner() {
           )}
 
           {/* Review form */}
-          <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>Review this trade</div>
+          <div style={{ ...cardStyle, marginTop: 12, padding: "22px" }}><div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
+              {revealed ? "Review this trade" : "Quick check before reveal"}
+            </div>
+
+            {!revealed && (
+              <div style={{ animation: "slideInNext 0.32s cubic-bezier(0.22, 0.61, 0.36, 1) both" }}>
+                <div style={{
+                  fontSize: 12,
+                  color: "#a5b4fc",
+                  background: "rgba(99,102,241,0.08)",
+                  border: "1px solid rgba(99,102,241,0.3)",
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  marginBottom: 18,
+                  fontWeight: 600,
+                }}>
+                  Answer these before you see how the trade played out.
+                </div>
+                <FormBlock label="Was this your setup?"><TriadRow value={matchedSetup} onChange={setMatchedSetup} /></FormBlock>
+                <FormBlock label={`Confidence — ${quickConfidence || "—"}/5`}>
+                  <QuickConfidenceDots value={quickConfidence} onChange={setQuickConfidence} />
+                </FormBlock>
+                <button
+                  onClick={() => setReveal(true)}
+                  disabled={!matchedSetup || !quickConfidence}
+                  style={{
+                    ...primaryBtnStyle,
+                    width: "100%",
+                    padding: "16px 20px",
+                    fontSize: 14,
+                    marginTop: 8,
+                    opacity: (matchedSetup && quickConfidence) ? 1 : 0.45,
+                    cursor: (matchedSetup && quickConfidence) ? "pointer" : "not-allowed",
+                  }}
+                >Reveal Trade Result →</button>
+                {(!matchedSetup || !quickConfidence) && (
+                  <div style={{ marginTop: 10, fontSize: 11, color: "#4a5a7a", textAlign: "center" }}>
+                    Pick a setup match and confidence to reveal.
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+                  <button
+                    onClick={handlePrev}
+                    disabled={idx === 0}
+                    style={{
+                      ...secondaryBtnStyle,
+                      opacity: idx === 0 ? 0.4 : 1,
+                      cursor: idx === 0 ? "not-allowed" : "pointer",
+                      flex: "0 0 auto",
+                    }}
+                  >← Prev</button>
+                  <button onClick={handleSkip} style={{ ...secondaryBtnStyle, flex: 1 }}>Skip Trade</button>
+                </div>
+              </div>
+            )}
+
+            {revealed && (<>
             <div style={{
               fontSize: 12,
               color: "#a5b4fc",
@@ -984,6 +1059,7 @@ function ReplayPageInner() {
             {!canAdvance && (
               <div style={{ marginTop: 10, fontSize: 11, color: "#4a5a7a" }}>Pick setup, rules, and a grade to continue.</div>
             )}
+            </>)}
           </div></div></div>
 
       {zoomOpen && shot && (
@@ -997,7 +1073,7 @@ function ReplayPageInner() {
 
 function ChartArea({
   trade, shot, shotLoading, candles, chartLoading, chartError, onHover,
-  entry, exit, pnl, isWin, isLoss, onZoom,
+  entry, exit, pnl, isWin, isLoss, onZoom, revealed,
 }: {
   trade: Trade;
   shot: string | null;
@@ -1012,6 +1088,7 @@ function ChartArea({
   isWin: boolean;
   isLoss: boolean;
   onZoom: () => void;
+  revealed: boolean;
 }) {
   const HEIGHT = 500;
 
@@ -1022,7 +1099,7 @@ function ChartArea({
 
   if (candles && candles.length > 0) {
     return (
-      <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}><CandleChart trade={trade} candles={candles} height={HEIGHT} onHover={onHover} /></div>
+      <div style={{ position: "relative", background: "#060d1a", height: HEIGHT }}><CandleChart trade={trade} candles={candles} height={HEIGHT} onHover={onHover} revealed={revealed} /></div>
     );
   }
 
@@ -1085,22 +1162,24 @@ function ChartArea({
         pointerEvents: "none",
       }} />
 
-      {/* PnL badge — top center */}
+      {/* PnL badge — top center (hidden until revealed) */}
       <div style={{
         position: "absolute", top: 18, left: "50%", transform: "translateX(-50%)",
         padding: "10px 20px",
         borderRadius: 999,
-        background: pnlBg,
-        color: "#04121e",
+        background: revealed ? pnlBg : "rgba(13,22,40,0.85)",
+        color: revealed ? "#04121e" : "#4a5a7a",
         fontSize: 17,
         fontWeight: 900,
         letterSpacing: "-0.01em",
         fontFamily: "ui-monospace, SFMono-Regular, monospace",
-        boxShadow: `${pnlGlow}, inset 0 1px 0 rgba(255,255,255,0.25)`,
+        boxShadow: revealed ? `${pnlGlow}, inset 0 1px 0 rgba(255,255,255,0.25)` : "0 6px 20px rgba(0,0,0,0.4)",
         whiteSpace: "nowrap",
-        border: "1px solid rgba(255,255,255,0.18)",
+        border: revealed ? "1px solid rgba(255,255,255,0.18)" : "1px dashed #2a2a3a",
+        opacity: revealed ? 1 : 0.85,
+        transition: "background 0.4s ease, color 0.4s ease, opacity 0.4s ease, box-shadow 0.4s ease",
       }}>
-        {pnlPositive ? "+" : ""}{fmtMoney(pnl)}
+        {revealed ? `${pnlPositive ? "+" : ""}${fmtMoney(pnl)}` : "?"}
       </div>
 
       {/* Zoom button — top right */}
@@ -1153,8 +1232,8 @@ function ChartArea({
         </div>
       )}
 
-      {/* Exit badge — bottom right */}
-      {exit >0 && (<div style={{
+      {/* Exit badge — bottom right (hidden until revealed) */}
+      {exit > 0 && revealed && (<div style={{
           position: "absolute", bottom: 18, right: 18,
           padding: "9px 14px",
           borderRadius: 10,
@@ -1167,6 +1246,7 @@ function ChartArea({
           boxShadow: "0 6px 20px rgba(244,63,94,0.5), inset 0 1px 0 rgba(255,255,255,0.25)",
           border: "1px solid rgba(255,255,255,0.18)",
           whiteSpace: "nowrap",
+          animation: "slideInNext 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) both",
         }}>
           ▼ EXIT ${exit.toFixed(2)}
         </div>
@@ -1332,12 +1412,13 @@ function ChartSkeleton({ height }: { height: number }) {
 }
 
 function CandleChart({
-  trade, candles, height, onHover,
+  trade, candles, height, onHover, revealed,
 }: {
   trade: Trade;
   candles: ChartRow[];
   height: number;
   onHover: (c: ChartRow | null) => void;
+  revealed: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -1479,7 +1560,7 @@ function CandleChart({
         text: `▲ ENTRY $${entryPrice.toFixed(2)}`,
       });
     }
-    if (exitPrice > 0 && tradeSec > 0) {
+    if (exitPrice > 0 && tradeSec > 0 && revealed) {
       markers.push({
         time: entryTime,
         position: "aboveBar",
@@ -1504,7 +1585,7 @@ function CandleChart({
         axisLabelTextColor: "#0a1f17",
       });
     }
-    if (exitPrice > 0) {
+    if (exitPrice > 0 && revealed) {
       series.createPriceLine({
         price: exitPrice,
         color: "#ef4444",
@@ -1545,7 +1626,7 @@ function CandleChart({
       resizeObs.disconnect();
       chart.remove();
     };
-  }, [candles, entryPrice, exitPrice, tradeSec, height, onHover, pnl]);
+  }, [candles, entryPrice, exitPrice, tradeSec, height, onHover, pnl, revealed]);
 
   return (
     <div style={{ position: "relative", height, background: "#060d1a" }}><div ref={containerRef} style={{ width: "100%", height }} /></div>
@@ -1697,6 +1778,42 @@ function TriadBtn({
     >
       {label}
     </button>
+  );
+}
+
+function QuickConfidenceDots({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      {Array.from({ length: 5 }, (_, i) => i + 1).map((n) => {
+        const filled = n <= value;
+        return (
+          <button
+            key={n}
+            onClick={() => onChange(n)}
+            aria-label={`Set confidence to ${n}`}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              aspectRatio: "1 / 1",
+              maxWidth: 56,
+              borderRadius: "50%",
+              border: `1px solid ${filled ? "#6366f1" : "#1e2540"}`,
+              background: filled ? "#6366f1" : "transparent",
+              color: filled ? "#fff" : "#4a5a7a",
+              fontSize: 14,
+              fontWeight: 800,
+              fontFamily: "ui-monospace, SFMono-Regular, monospace",
+              cursor: "pointer",
+              padding: 0,
+              transition: "all 0.12s",
+              boxShadow: filled && n === value ? "0 0 0 3px #6366f133" : "none",
+            }}
+          >
+            {n}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
