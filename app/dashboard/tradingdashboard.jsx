@@ -5225,7 +5225,7 @@ function ToolsDropdown({ onSelectTab }) {
     {
       heading: "Review",
       items: [
-        { key:"replay",   href:"/replay",  emoji:"️", label:"Trade Replay",  color:"#6366f1" },
+        { key:"replay",   href:"/replay",  emoji:"️", label:"Trade Review",  color:"#6366f1" },
         { key:"stratlab", tab:"stratlab",  emoji:"", label:"Strategy Lab",  color:"#6366f1" },
       ],
     },
@@ -5594,7 +5594,7 @@ function OnboardingBanner({ onOpenImport, onDismiss }) {
   const steps = [
     { n:"1️⃣", label:"Import your trades",      cta:"Import CSV",        onClick: onOpenImport, href: null },
     { n:"2️⃣", label:"Set up your challenge",   cta:"Challenge Tracker", onClick: null,         href:"/challenge" },
-    { n:"3️⃣", label:"Review your trades",      cta:"Trade Replay",      onClick: null,         href:"/replay" },
+    { n:"3️⃣", label:"Review your trades",      cta:"Trade Review",      onClick: null,         href:"/replay" },
   ];
 
   return (
@@ -7151,7 +7151,7 @@ function TradingDashboard({ session, onLogout }) {
           <SidebarItem icon={SIDEBAR_ICONS.brain}     label="Psychology"    href="/psychology"/>
           <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups"/>
           <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"      active={tab==="insights"}  onClick={()=>setTab("insights")}/>
-          <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Replay"  href="/replay"/>
+          <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Review"  href="/replay"/>
 
           <SidebarDivider/>
 
@@ -7235,7 +7235,7 @@ function TradingDashboard({ session, onLogout }) {
                 { href:"/challenge", emoji:"", label:"Challenge",     color:"#a5b4fc" },
               ]},
               { heading:"Review", items:[
-                { href:"/replay",   emoji:"️", label:"Trade Replay",  color:"#6366f1" },
+                { href:"/replay",   emoji:"️", label:"Trade Review",  color:"#6366f1" },
                 { tab:"stratlab",   emoji:"", label:"Strategy Lab",  color:"#6366f1" },
               ]},
             ].map(section =>(<div key={section.heading} style={{ marginBottom:14 }}><div style={{ fontSize:9, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:6 }}>{section.heading}</div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>

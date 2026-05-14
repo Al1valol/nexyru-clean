@@ -286,7 +286,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         <SidebarItem icon={ICONS.brain} label="Psychology" href="/psychology" active={isActive("/psychology")} />
         <SidebarItem icon={ICONS.target} label="Best Setups" href="/setups" active={isActive("/setups")} />
         <SidebarItem icon={ICONS.chart} label="Insights" href="/dashboard?tab=insights" active={isActive("/dashboard?tab=insights")} />
-        <SidebarItem icon={ICONS.play} label="Trade Replay" href="/replay" active={isActive("/replay")} />
+        <SidebarItem icon={ICONS.play} label="Trade Review" href="/replay" active={isActive("/replay")} />
 
         <SidebarDivider />
 

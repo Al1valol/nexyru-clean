@@ -53,7 +53,7 @@ const FEATURES: {
   },
   {
     dot: COLORS.green,
-    title: "Trade Replay",
+    title: "Trade Review",
     desc: "Review every trade against a real chart. See your entry and exit on actual candles. Learn the way pro athletes watch film.",
   },
   {
@@ -107,7 +107,7 @@ const FREE_FEATURES = [
 const PRO_FEATURES = [
   "Everything in Free, unlimited",
   "Multiple challenge accounts (2, 3, 5+)",
-  "Full trade replay history",
+  "Full trade review history",
   "Unlimited AI strategy generations",
   "Weekly performance report",
   "Priority support",

@@ -629,7 +629,7 @@ export default function PsychologyPage() {
             <div style={{ fontSize:12, fontWeight:900, color:"#a5b4fc", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:10 }}>Get started in 2 steps</div>
             <ol style={{ margin:"0 0 10px", paddingLeft:22, color:"#e2e8f0", fontSize:14, lineHeight:1.7 }}>
               <li>Tag how you felt on your recent trades below</li>
-              <li>Use Trade Replay to review trades in detail</li>
+              <li>Use Trade Review to review trades in detail</li>
             </ol>
             <div style={{ fontSize:12, color:"#94a3b8", marginBottom:14 }}>The more you tag, the more patterns Nexyru finds.</div>
             <a href="/replay" style={{
@@ -642,7 +642,7 @@ export default function PsychologyPage() {
               fontWeight:800,
               textDecoration:"none",
               letterSpacing:"0.02em",
-            }}>Go to Trade Replay →</a>
+            }}>Go to Trade Review →</a>
           </section>
         )}
 
