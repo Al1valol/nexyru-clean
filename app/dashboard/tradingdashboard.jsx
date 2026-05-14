@@ -2820,6 +2820,18 @@ function computeAnalytics(trades) {
   const afterWinRate  = afterWinTotal  ? (afterWinWins  / afterWinTotal)  * 100 : 0;
   const afterLossRate = afterLossTotal ? (afterLossWins / afterLossTotal) * 100 : 0;
 
+  // Long vs Short
+  const longs  = sorted.filter(t => t.type === "long");
+  const shorts = sorted.filter(t => t.type === "short");
+  const sideStat = (arr) => {
+    const c = arr.length;
+    const w = arr.filter(t => (t.pnl ?? 0) > 0).length;
+    const p = arr.reduce((s,t) => s + (t.pnl ?? 0), 0);
+    return { count: c, wins: w, winRate: c ? (w / c) * 100 : 0, pnl: p, avg: c ? p / c : 0 };
+  };
+  const longStats  = sideStat(longs);
+  const shortStats = sideStat(shorts);
+
   // Monthly (last 6 months)
   const monthMap = {};
   sorted.forEach(t => {
@@ -2885,6 +2897,7 @@ function computeAnalytics(trades) {
     durationBuckets, bestDurationBucket,
     bySymbol,
     curStreak, longestWin, longestLoss, afterWinRate, afterLossRate, afterWinTotal, afterLossTotal,
+    longStats, shortStats,
     monthly,
     avgRR, expectedValue, sharpeLike, longestLossStreak: longestLoss, riskOfRuin,
     pnlBuckets,
@@ -2896,36 +2909,60 @@ function InsightsAnalyticsPage({ trades }) {
 
   if (!trades || trades.length === 0) {
     return (
-      <div style={{ padding:"64px 24px", borderRadius:14, border:"1px dashed #2a2a3a", textAlign:"center", color:"#6b7280" }}><div style={{ fontSize:42, marginBottom:14 }}></div><div style={{ fontSize:15, fontWeight:800, color:"#9ca3af", marginBottom:6 }}>No trades to analyze yet</div><div style={{ fontSize:12, color:"#6b7280" }}>Import trades to see your analytics</div></div>
+      <div style={{ padding:"64px 24px", borderRadius:12, border:"1px dashed #1a1a24", textAlign:"center", color:"#6b7280", background:"#0f0f14" }}><div style={{ fontSize:42, marginBottom:14 }}></div><div style={{ fontSize:15, fontWeight:800, color:"#9ca3af", marginBottom:6 }}>No trades to analyze yet</div><div style={{ fontSize:12, color:"#6b7280" }}>Import trades to see your analytics</div></div>
     );
   }
 
-  const sectionLabel = (text) =>(<div style={{ fontSize:10, color:"#6b7280", fontWeight:800, textTransform:"uppercase", letterSpacing:"0.14em", marginBottom:10 }}>{text}</div>
+  // ── Design tokens ────────────────────────────────────────────
+  const CARD_BG     = "#0f0f14";
+  const CARD_BORDER = "#1a1a24";
+  const INDIGO      = "#6366f1";
+  const INDIGO_SOFT = "rgba(99,102,241,0.08)";
+  const GREEN       = "#22c55e";
+  const RED         = "#ef4444";
+  const PURPLE      = "#a78bfa";
+  const BLUE        = "#3b82f6";
+  const MUTED       = "#6b7280";
+  const GRID        = "#1f1f2a";
+
+  const sectionLabel = (text) => (
+    <div style={{ fontSize:11, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.14em", marginBottom:14 }}>{text}</div>
   );
 
   const card = {
-    background:"linear-gradient(180deg,#111118,#111118)",
-    border:"1px solid #2a2a3a",
-    borderRadius:14,
-    padding:"18px 18px 16px",
+    background: CARD_BG,
+    border: `1px solid ${CARD_BORDER}`,
+    borderRadius: 12,
+    padding: 20,
   };
 
   const mono = { fontFamily:"'JetBrains Mono','SF Mono',ui-monospace,monospace" };
 
-  // ── ROW 1: Key stats ────────────────────────────────────────
+  // ── Date / hour formatting helpers ───────────────────────────
+  const fmtShortDate = (key) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, (m||1)-1, d||1).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+  };
+  const fmtHour = (h) => {
+    if (h === 0)  return "12am";
+    if (h === 12) return "12pm";
+    return h < 12 ? `${h}am` : `${h-12}pm`;
+  };
+
+  // ── ROW 1: Key stats ─────────────────────────────────────────
   const keyStats = [
-    { label:"Total Trades", value:a.n.toLocaleString(),                                             color:"#ffffff" },
-    { label:"Win Rate",     value:`${a.winRate.toFixed(1)}%`,                                       color:a.winRate>=50?"#10b981":"#ef4444" },
-    { label:"Profit Factor",value:a.profitFactor>=999?"∞":a.profitFactor.toFixed(2),                color:a.profitFactor>=1?"#10b981":"#ef4444" },
-    { label:"Avg Win",      value:fmtMoney(a.avgWin, { signed:true }),                              color:"#10b981" },
-    { label:"Avg Loss",     value:`-${fmtMoney(a.avgLoss)}`,                                        color:"#ef4444" },
-    { label:"Avg Hold",     value:fmtDuration(a.avgHoldMin),                                        color:"#9ca3af" },
-    { label:"Best Day",     value:fmtMoney(a.bestDay, { signed:true }),                             color:"#10b981" },
-    { label:"Worst Day",    value:fmtMoney(a.worstDay, { signed:true }),                            color:"#ef4444" },
+    { label:"Total Trades",  value:a.n.toLocaleString(),                                       color:"#ffffff", accent:INDIGO },
+    { label:"Total P&L",     value:fmtMoney(a.totalPnl, { signed:true }),                      color:a.totalPnl>=0?GREEN:RED, accent:a.totalPnl>=0?GREEN:RED },
+    { label:"Win Rate",      value:`${a.winRate.toFixed(1)}%`,                                 color:PURPLE,    accent:PURPLE },
+    { label:"Profit Factor", value:a.profitFactor>=999?"∞":a.profitFactor.toFixed(2),          color:BLUE,      accent:BLUE },
+    { label:"Avg Win",       value:fmtMoney(a.avgWin, { signed:true }),                        color:GREEN,     accent:GREEN },
+    { label:"Avg Loss",      value:`-${fmtMoney(a.avgLoss)}`,                                  color:RED,       accent:RED },
+    { label:"Best Day",      value:fmtMoney(a.bestDay, { signed:true }),                       color:GREEN,     accent:GREEN },
+    { label:"Worst Day",     value:fmtMoney(a.worstDay, { signed:true }),                      color:RED,       accent:RED },
   ];
 
   // ── Equity curve SVG ─────────────────────────────────────────
-  const eqW = 600, eqH = 220, eqPad = { l:8, r:50, t:14, b:24 };
+  const eqW = 600, eqH = 240, eqPad = { l:8, r:12, t:20, b:24 };
   const yVals = a.equity.map(p => p.y);
   const yMin = Math.min(0, ...(yVals.length ? yVals : [0]));
   const yMax = Math.max(0, ...(yVals.length ? yVals : [0]));
@@ -2937,233 +2974,561 @@ function InsightsAnalyticsPage({ trades }) {
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   }).join(" ");
   const lastEq = a.equity[a.equity.length - 1];
-  const eqColor = (lastEq?.y ?? 0) >= 0 ? "#10b981" : "#ef4444";
   const zeroY = eqH - eqPad.b - ((0 - yMin) / yRange) * (eqH - eqPad.t - eqPad.b);
+  const gridLevels = [0, 0.25, 0.5, 0.75, 1].map(p => ({
+    y: eqH - eqPad.b - p * (eqH - eqPad.t - eqPad.b),
+    pct: Math.round(p * 100),
+  }));
   const areaPath = a.equity.length
     ? `M ${eqPad.l},${zeroY} L ${eqPoints.split(" ").join(" L ")} L ${(eqPad.l + ((xMax-1) / Math.max(1, xMax-1)) * (eqW - eqPad.l - eqPad.r)).toFixed(2)},${zeroY} Z`
     : "";
+  const lastTotalColor = (lastEq?.y ?? 0) >= 0 ? GREEN : RED;
 
-  // ── Daily PnL bars ───────────────────────────────────────────
-  const dailyMaxAbs = Math.max(1, ...a.daily.map(d => Math.abs(d.pnl)));
-  const dailyDisplay = a.daily.slice(-30); // last 30 days
+  // ── Daily P&L bars ───────────────────────────────────────────
+  const dailyDisplay = a.daily.slice(-30);
+  const dailyMaxAbs = Math.max(1, ...dailyDisplay.map(d => Math.abs(d.pnl)));
 
   // ── Hourly chart ─────────────────────────────────────────────
   const hourMaxCount = Math.max(1, ...a.hourly.map(h => h.count));
+  const wrToColor = (wr, hasData) => {
+    if (!hasData) return "#1a1a24";
+    const t = Math.max(0, Math.min(1, wr / 100));
+    if (t >= 0.5) {
+      const k = (t - 0.5) * 2;
+      const r = Math.round(245 + (34 - 245) * k);
+      const g = Math.round(158 + (197 - 158) * k);
+      const b = Math.round(11 + (94 - 11) * k);
+      return `rgb(${r},${g},${b})`;
+    }
+    const k = t * 2;
+    const r = Math.round(239 + (245 - 239) * k);
+    const g = Math.round(68 + (158 - 68) * k);
+    const b = Math.round(68 + (11 - 68) * k);
+    return `rgb(${r},${g},${b})`;
+  };
 
-  // ── Day of week chart ────────────────────────────────────────
-  const dowMaxAbs = Math.max(1, ...a.byDow.map(d => Math.abs(d.avgPnl)));
+  // ── Day of week ──────────────────────────────────────────────
+  const dowsWithData = a.byDow.filter(d => d.count > 0);
+  const bestDow  = dowsWithData.length ? dowsWithData.reduce((b,d) => d.avgPnl > b.avgPnl ? d : b) : null;
+  const worstDow = dowsWithData.length ? dowsWithData.reduce((b,d) => d.avgPnl < b.avgPnl ? d : b) : null;
 
   // ── Win/Loss distribution ────────────────────────────────────
-  const wlTotal = a.wins.length + a.losses.length + a.breakeven.length;
-  const wRatio = a.avgLoss > 0 ? a.avgWin / a.avgLoss : a.avgWin > 0 ? 999 : 0;
+  const wlTotal = a.wins.length + a.losses.length;
+  const winPct  = wlTotal ? (a.wins.length / wlTotal) * 100 : 0;
+  const lossPct = wlTotal ? (a.losses.length / wlTotal) * 100 : 0;
+  const wRatio  = a.avgLoss > 0 ? a.avgWin / a.avgLoss : a.avgWin > 0 ? 999 : 0;
+
+  // ── Long vs Short ────────────────────────────────────────────
+  const sideEdge = (() => {
+    const lw = a.longStats.winRate, sw = a.shortStats.winRate;
+    if (a.longStats.count < 2 || a.shortStats.count < 2) return null;
+    const diff = Math.abs(lw - sw);
+    if (diff < 5) return null;
+    return { side: lw > sw ? "LONG" : "SHORT", pct: diff.toFixed(0) };
+  })();
 
   // ── Duration buckets ─────────────────────────────────────────
   const durMaxCount = Math.max(1, ...a.durationBuckets.map(b => b.count));
 
-  // ── Symbol max pnl for inline bars ───────────────────────────
+  // ── Symbol max pnl ───────────────────────────────────────────
   const symMaxAbs = Math.max(1, ...a.bySymbol.map(s => Math.abs(s.totalPnl)));
 
-  // ── PnL distribution max ─────────────────────────────────────
-  const pnlMaxCount = Math.max(1, ...a.pnlBuckets.map(b =>b.count));
+  // ── P&L distribution ─────────────────────────────────────────
+  const pnlMaxCount = Math.max(1, ...a.pnlBuckets.map(b => b.count));
 
- return (<div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+  // ── Best hour pill string ────────────────────────────────────
+  const bestHourPill = a.bestHour ? `Best hour: ${fmtHour(a.bestHour.hour)} (${a.bestHour.winRate.toFixed(0)}% win rate)` : "Not enough data";
+
+  // ── Streak text ──────────────────────────────────────────────
+  const streakCount = Math.abs(a.curStreak);
+  const streakIsWin = a.curStreak >= 0;
+  const streakText = `${streakCount} ${streakIsWin ? "win" : "loss"} streak`;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
 
       {/* ───── ROW 1: KEY STATS BAR ───── */}
-      <div style={{ ...card, padding:"16px 14px" }}><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:12 }}>
-          {keyStats.map(s =>(<div key={s.label} style={{ display:"flex", flexDirection:"column", gap:4, padding:"4px 8px", borderLeft:"1px solid #2a2a3a" }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>{s.label}</div><div style={{ ...mono, fontSize:18, fontWeight:800, color:s.color, lineHeight:1.1 }}>{s.value}</div></div>
-          ))}
-        </div></div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12 }} className="insights-stat-grid">
+        {keyStats.map(s => (
+          <div
+            key={s.label}
+            style={{
+              height: 80,
+              padding: "12px 16px",
+              background: CARD_BG,
+              border: `1px solid ${CARD_BORDER}`,
+              borderRadius: 12,
+              borderTop: `2px solid ${s.accent}`,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em" }}>{s.label}</div>
+            <div style={{ ...mono, fontSize:20, fontWeight:700, color:s.color, lineHeight:1.1, letterSpacing:"-0.01em" }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
 
       {/* ───── ROW 2: EQUITY CURVE + DAILY P&L ───── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }} className="insights-row-2"><div style={card}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }} className="insights-row-2">
+        <div style={card}>
           {sectionLabel("Equity Curve")}
-          <div style={{ position:"relative" }}><svg viewBox={`0 0 ${eqW} ${eqH}`} preserveAspectRatio="none" style={{ width:"100%", height:240, display:"block" }}><defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stopColor={eqColor} stopOpacity="0.35"/><stop offset="100%" stopColor={eqColor} stopOpacity="0"/></linearGradient></defs>
-              {/* zero baseline */}
-              <line x1={eqPad.l} x2={eqW-eqPad.r} y1={zeroY} y2={zeroY} stroke="#2a2a3a" strokeDasharray="3 3" strokeWidth="1"/>
+          <div style={{ position:"relative" }}>
+            <svg viewBox={`0 0 ${eqW} ${eqH}`} preserveAspectRatio="none" style={{ width:"100%", height:260, display:"block" }}>
+              <defs>
+                <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={INDIGO} stopOpacity="0.22"/>
+                  <stop offset="100%" stopColor={INDIGO} stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              {/* dashed grid */}
+              {gridLevels.map((g, i) => (
+                <line key={i} x1={eqPad.l} x2={eqW-eqPad.r} y1={g.y} y2={g.y} stroke={GRID} strokeDasharray="3 4" strokeWidth="1"/>
+              ))}
+              {/* zero baseline (solid) */}
+              <line x1={eqPad.l} x2={eqW-eqPad.r} y1={zeroY} y2={zeroY} stroke="#2a2a3a" strokeWidth="1"/>
               {/* fill */}
-              {a.equity.length >1 &&<path d={areaPath} fill="url(#eqGrad)"/>}
+              {a.equity.length > 1 && <path d={areaPath} fill="url(#eqGrad)"/>}
               {/* line */}
-              {a.equity.length >1 &&<polyline points={eqPoints} fill="none" stroke={eqColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>}
+              {a.equity.length > 1 && <polyline points={eqPoints} fill="none" stroke={INDIGO} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>}
               {/* end dot */}
               {lastEq && (() => {
                 const x = eqPad.l + ((lastEq.x - 1) / Math.max(1, xMax - 1)) * (eqW - eqPad.l - eqPad.r);
                 const y = eqH - eqPad.b - ((lastEq.y - yMin) / yRange) * (eqH - eqPad.t - eqPad.b);
-                return <circle cx={x} cy={y} r="3.5" fill={eqColor} stroke="#111118" strokeWidth="2"/>;
+                return <circle cx={x} cy={y} r="4" fill={INDIGO} stroke={CARD_BG} strokeWidth="2"/>;
               })()}
-            </svg><div style={{ position:"absolute", top:8, right:10, ...mono, fontSize:14, fontWeight:800, color:eqColor }}>
+            </svg>
+            {/* floating total badge */}
+            <div style={{ position:"absolute", top:8, right:10, padding:"6px 12px", background:"#080808", border:`1px solid ${CARD_BORDER}`, borderRadius:8, ...mono, fontSize:13, fontWeight:700, color:lastTotalColor, boxShadow:"0 4px 16px rgba(0,0,0,0.4)" }}>
               {fmtMoney(lastEq?.y ?? 0, { signed:true })}
-            </div><div style={{ position:"absolute", bottom:0, left:8, fontSize:9, color:"#374151" }}>Trade #1</div><div style={{ position:"absolute", bottom:0, right:10, fontSize:9, color:"#374151" }}>Trade #{a.n}</div></div></div><div style={card}>
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:10, color:MUTED, fontWeight:700 }}>
+              <span>Trade #1</span>
+              <span>Trade #{a.n}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={card}>
           {sectionLabel("Daily P&L")}
-          <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", height:200, gap:2, padding:"0 4px", borderBottom:"1px solid #2a2a3a" }}>
-            {dailyDisplay.length === 0 && <div style={{ width:"100%", textAlign:"center", color:"#374151", fontSize:11 }}>No daily data</div>}
-            {dailyDisplay.map(d => {
-              const h = (Math.abs(d.pnl) / dailyMaxAbs) * 90; // % of half height
-              const pos = d.pnl >= 0;
- return (<div key={d.date} title={`${d.date}: ${fmtMoney(d.pnl,{signed:true})} (${d.trades} trade${d.trades!==1?"s":""})`} style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", height:"100%", cursor:"pointer", minWidth:0 }}><div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-end", width:"100%", alignItems:"center" }}>
-                    {pos && <div style={{ width:"80%", height:`${h}%`, background:"linear-gradient(180deg,#10b981,#10b981)", borderRadius:"2px 2px 0 0", minHeight:1 }}/>}
-                  </div><div style={{ width:"100%", height:1, background:"#2a2a3a" }}/><div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", width:"100%", alignItems:"center" }}>
-                    {!pos && <div style={{ width:"80%", height:`${h}%`, background:"linear-gradient(0deg,#ef4444,#dc2626)", borderRadius:"0 0 2px 2px", minHeight:1 }}/>}
-                  </div></div>
-              );
-            })}
-          </div><div style={{ display:"flex", justifyContent:"space-between", marginTop:8, fontSize:9, color:"#374151" }}><span>{dailyDisplay[0]?.date ?? "—"}</span><span>{dailyDisplay.length} days{a.daily.length > dailyDisplay.length ? ` (last ${dailyDisplay.length} of ${a.daily.length})` : ""}</span><span>{dailyDisplay[dailyDisplay.length-1]?.date ?? "—"}</span></div></div></div>
-
-      {/* ───── ROW 3: PERFORMANCE BY TIME ───── */}
-      <div style={card}>
-        {sectionLabel("Performance by Time of Day")}
-        <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:180, paddingTop:20 }}>
-          {a.hourly.map(h => {
-            const wr = h.winRate;
-            const fillH = h.count > 0 ? Math.max(4, wr) : 0;
-            const isBest = a.bestHour && a.bestHour.hour === h.hour && h.count > 0;
-            const color = h.count === 0 ? "#2a2a3a" : wr >50 ? "#10b981" : "#ef4444";
- return (<div key={h.hour} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, position:"relative", minWidth:0 }}>
-                {isBest && <div style={{ position:"absolute", top:-18, fontSize:14 }}>⭐</div>}
-                <div style={{ width:"100%", height:120, display:"flex", alignItems:"flex-end", position:"relative" }}><div style={{ position:"absolute", top:-14, left:"50%", transform:"translateX(-50%)", fontSize:9, color:"#6b7280", fontWeight:700, ...mono }}>
-                    {h.count > 0 ? `${wr.toFixed(0)}%` : ""}
-                  </div><div title={`${h.label}: ${wr.toFixed(1)}% WR · ${h.count} trades · ${fmtMoney(h.pnl,{signed:true})}`} style={{ width:"100%", height:`${fillH}%`, background:color, borderRadius:"3px 3px 0 0", minHeight: h.count > 0 ? 4 : 0, transition:"height 0.2s" }}/></div><div style={{ fontSize:10, color:"#6b7280", fontWeight:700, ...mono }}>{h.label}</div><div style={{ fontSize:9, color:"#374151", ...mono }}>{h.count > 0 ? `${h.count}t` : "—"}</div></div>
-            );
-          })}
-        </div></div>
-
-      {/* ───── ROW 4: THREE COLUMNS ───── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 }} className="insights-row-4">
-
-        {/* LEFT: Day of Week */}
-        <div style={card}>
-          {sectionLabel("Performance by Day of Week")}
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {a.byDow.map(d => {
-              const pos = d.avgPnl >= 0;
- const w = (Math.abs(d.avgPnl) / dowMaxAbs) * 100;
- return (<div key={d.name} style={{ display:"grid", gridTemplateColumns:"36px 1fr 80px", gap:10, alignItems:"center" }}><div style={{ fontSize:11, fontWeight:800, color:"#9ca3af" }}>{d.name}</div><div style={{ height:20, background:"#111118", borderRadius:4, position:"relative", overflow:"hidden", border:"1px solid #2a2a3a" }}><div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", paddingLeft:6, fontSize:9, color:"#374151", ...mono }}>{d.count} trade{d.count!==1?"s":""}</div>
-                    {d.count >0 &&<div style={{ position:"absolute", left:0, top:0, bottom:0, width:`${w}%`, background: pos?"linear-gradient(90deg,rgba(52,211,153,0.6),rgba(52,211,153,0.25))":"linear-gradient(90deg,rgba(248,113,113,0.6),rgba(248,113,113,0.25))", borderRadius:4 }}/>}
-                  </div><div style={{ ...mono, fontSize:11, fontWeight:700, color: d.count===0 ? "#374151" : pos?"#10b981":"#ef4444", textAlign:"right" }}>
-                    {d.count > 0 ? fmtMoney(d.avgPnl,{signed:true}) : "—"}
-                  </div></div>
-              );
-            })}
-          </div></div>
-
-        {/* MIDDLE: Win/Loss Distribution */}
-        <div style={card}>
-          {sectionLabel("Win/Loss Distribution")}
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {[
-              { label:"Wins",      count:a.wins.length,      color:"#10b981", bg:"rgba(52,211,153,0.15)" },
-              { label:"Losses",    count:a.losses.length,    color:"#ef4444", bg:"rgba(248,113,113,0.15)" },
-              { label:"Breakeven", count:a.breakeven.length, color:"#9ca3af", bg:"rgba(148,163,184,0.15)" },
-            ].map(r => {
-              const pct = wlTotal ? (r.count / wlTotal) * 100 : 0;
-              return (
-                <div key={r.label}><div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"#9ca3af", marginBottom:3, fontWeight:700 }}><span>{r.label}</span><span style={mono}>{r.count} · {pct.toFixed(1)}%</span></div><div style={{ height:14, background:"#111118", borderRadius:3, overflow:"hidden", border:"1px solid #2a2a3a" }}><div style={{ height:"100%", width:`${pct}%`, background:r.color, transition:"width 0.3s" }}/></div></div>
-              );
-            })}
-          </div><div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid #2a2a3a", display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><div><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Avg Win</div><div style={{ ...mono, fontSize:13, fontWeight:800, color:"#10b981" }}>{fmtMoney(a.avgWin,{signed:true})}</div></div><div><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Avg Loss</div><div style={{ ...mono, fontSize:13, fontWeight:800, color:"#ef4444" }}>-{fmtMoney(a.avgLoss)}</div></div></div><div style={{ marginTop:12, padding:"10px 12px", background:"#111118", borderRadius:8, border:"1px solid #2a2a3a", textAlign:"center" }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:2 }}>Win/Loss Ratio</div><div style={{ ...mono, fontSize:24, fontWeight:800, color: wRatio>=1 ? "#10b981" : "#ef4444" }}>{wRatio>=999?"∞":wRatio.toFixed(2)}<span style={{ fontSize:14, color:"#6b7280" }}>:1</span></div></div></div>
-
-        {/* RIGHT: Trade Duration */}
-        <div style={card}>
-          {sectionLabel("Trade Duration Analysis")}
-          {a.hasHoldData ? (
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-              {a.durationBuckets.map(b => {
-                const isBest = a.bestDurationBucket && a.bestDurationBucket.label === b.label && b.count > 0;
-                const w = (b.count / durMaxCount) * 100;
-                const wrColor = b.count === 0 ? "#374151" : b.winRate >50 ? "#10b981" : "#ef4444";
- return (<div key={b.label} style={{ display:"grid", gridTemplateColumns:"80px 1fr 56px", gap:10, alignItems:"center" }}><div style={{ fontSize:11, fontWeight:700, color:"#9ca3af", display:"flex", alignItems:"center", gap:4 }}>
-                      {isBest && <span>⭐</span>}{b.label}
-                    </div><div style={{ height:18, background:"#111118", borderRadius:4, position:"relative", overflow:"hidden", border:"1px solid #2a2a3a" }}><div style={{ position:"absolute", left:0, top:0, bottom:0, width:`${w}%`, background: isBest ? "linear-gradient(90deg,rgba(245,158,11,0.6),rgba(245,158,11,0.25))" : "linear-gradient(90deg,rgba(99,102,241,0.5),rgba(99,102,241,0.2))" }}/><div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", paddingLeft:6, fontSize:9, color:"#9ca3af", ...mono, fontWeight:700 }}>{b.count} trade{b.count!==1?"s":""}</div></div><div style={{ ...mono, fontSize:11, fontWeight:700, color:wrColor, textAlign:"right" }}>
-                      {b.count > 0 ? `${b.winRate.toFixed(0)}%` : "—"}
-                    </div></div>
+          <div style={{ position:"relative", height:200, padding:"0 4px" }}>
+            {/* zero line */}
+            <div style={{ position:"absolute", left:4, right:4, top:"50%", height:1, background:"#2a2a3a" }}/>
+            <div style={{ display:"flex", alignItems:"stretch", justifyContent:"space-between", height:"100%", gap:4 }}>
+              {dailyDisplay.length === 0 && <div style={{ width:"100%", textAlign:"center", color:MUTED, fontSize:11, alignSelf:"center" }}>No daily data</div>}
+              {dailyDisplay.map(d => {
+                const h = (Math.abs(d.pnl) / dailyMaxAbs) * 45;
+                const pos = d.pnl >= 0;
+                return (
+                  <div
+                    key={d.date}
+                    title={`${fmtShortDate(d.date)} · ${fmtMoney(d.pnl,{signed:true})} · ${d.trades} trade${d.trades!==1?"s":""}`}
+                    style={{ flex:1, display:"flex", flexDirection:"column", height:"100%", minWidth:0, cursor:"pointer" }}
+                  >
+                    <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-end", alignItems:"center" }}>
+                      {pos && <div style={{ width:"75%", height:`${h * 2}%`, background:GREEN, borderRadius:"3px 3px 0 0", minHeight:2 }}/>}
+                    </div>
+                    <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-start", alignItems:"center" }}>
+                      {!pos && <div style={{ width:"75%", height:`${h * 2}%`, background:RED, borderRadius:"0 0 3px 3px", minHeight:2 }}/>}
+                    </div>
+                  </div>
                 );
               })}
-            </div>) : (<div style={{ padding:"32px 16px", textAlign:"center", color:"#6b7280", fontSize:11 }}><div style={{ fontSize:24, marginBottom:8, opacity:0.5 }}>⏱</div>No hold-time data on logged trades</div>
-          )}
-        </div></div>
+            </div>
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, fontSize:10, color:MUTED, fontWeight:700 }}>
+            <span>{dailyDisplay[0]?.date ? fmtShortDate(dailyDisplay[0].date) : "—"}</span>
+            <span>{dailyDisplay.length} day{dailyDisplay.length!==1?"s":""}</span>
+            <span>{dailyDisplay[dailyDisplay.length-1]?.date ? fmtShortDate(dailyDisplay[dailyDisplay.length-1].date) : "—"}</span>
+          </div>
+        </div>
+      </div>
 
-      {/* ───── ROW 5: PERFORMANCE BY SYMBOL ───── */}
+      {/* ───── ROW 3: PERFORMANCE BY TIME OF DAY ───── */}
+      <div style={card}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:18 }}>
+          <div style={{ fontSize:11, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.14em" }}>Performance by Time of Day</div>
+          <div style={{ padding:"6px 12px", borderRadius:8, background:"rgba(99,102,241,0.1)", border:`1px solid rgba(99,102,241,0.3)`, fontSize:11, fontWeight:700, color:INDIGO }}>
+            {bestHourPill}
+          </div>
+        </div>
+        <div style={{ position:"relative", height:200, paddingTop:24 }}>
+          {/* 50% breakeven line */}
+          <div style={{ position:"absolute", left:0, right:0, top:"calc(24px + 50%)", height:1, background:GRID, borderTop:`1px dashed ${GRID}` }}>
+            <span style={{ position:"absolute", right:0, top:-14, fontSize:9, color:MUTED, fontWeight:700, ...mono }}>50%</span>
+          </div>
+          <div style={{ display:"flex", alignItems:"flex-end", gap:8, height:"100%" }}>
+            {a.hourly.map(h => {
+              const wr = h.winRate;
+              const fillH = h.count > 0 ? Math.max(6, wr) : 0;
+              const isBest = a.bestHour && a.bestHour.hour === h.hour && h.count > 0;
+              const color = wrToColor(wr, h.count > 0);
+              return (
+                <div key={h.hour} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:6, minWidth:0 }}>
+                  <div style={{ ...mono, fontSize:11, fontWeight:700, color: h.count>0 ? (wr>=50?GREEN:RED) : "#374151", lineHeight:1 }}>
+                    {h.count > 0 ? `${wr.toFixed(0)}%` : ""}
+                  </div>
+                  <div style={{ flex:1, width:"100%", display:"flex", alignItems:"flex-end" }}>
+                    <div
+                      title={`${fmtHour(h.hour)}: ${wr.toFixed(1)}% WR · ${h.count} trades · ${fmtMoney(h.pnl,{signed:true})}`}
+                      style={{
+                        width:"100%",
+                        height:`${fillH}%`,
+                        background:color,
+                        borderRadius:"4px 4px 0 0",
+                        minHeight: h.count>0 ? 6 : 0,
+                        boxShadow: isBest ? `0 0 0 2px ${INDIGO}` : "none",
+                        transition:"height 0.2s",
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize:10, color:"#9ca3af", fontWeight:700, ...mono }}>{fmtHour(h.hour)}</div>
+                  <div style={{ fontSize:9, color:MUTED, ...mono }}>{h.count > 0 ? `${h.count} trade${h.count!==1?"s":""}` : "—"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ───── ROW 4: DAY OF WEEK ───── */}
+      <div>
+        <div style={{ fontSize:11, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.14em", marginBottom:14 }}>Performance by Day of Week</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12 }} className="insights-dow-grid">
+          {a.byDow.map(d => {
+            const pos = d.avgPnl >= 0;
+            const isBest  = bestDow  && bestDow.name  === d.name && d.count > 0;
+            const isWorst = worstDow && worstDow.name === d.name && d.count > 0 && d.avgPnl < 0;
+            const borderColor = isBest ? INDIGO : isWorst ? RED : CARD_BORDER;
+            return (
+              <div key={d.name} style={{
+                ...card,
+                border: `1px solid ${borderColor}`,
+                boxShadow: isBest ? `0 0 0 1px ${INDIGO}40` : "none",
+                padding: 18,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize:11, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:8 }}>{d.name}</div>
+                <div style={{ ...mono, fontSize:20, fontWeight:700, color: d.count===0 ? "#374151" : pos?GREEN:RED, lineHeight:1.1, marginBottom:6 }}>
+                  {d.count > 0 ? fmtMoney(d.avgPnl,{signed:true}) : "—"}
+                </div>
+                <div style={{ fontSize:10, color:MUTED, fontWeight:600 }}>
+                  {d.count} trade{d.count!==1?"s":""}{d.count>0 ? ` · ${d.winRate.toFixed(0)}% WR` : ""}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ───── ROW 5: WIN/LOSS + LONG/SHORT ───── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }} className="insights-row-5">
+
+        {/* Win/Loss Distribution */}
+        <div style={card}>
+          {sectionLabel("Win / Loss Distribution")}
+          {wlTotal === 0 ? (
+            <div style={{ padding:"24px", textAlign:"center", color:MUTED, fontSize:11 }}>No trades</div>
+          ) : (
+            <>
+              <div style={{ display:"flex", height:36, borderRadius:8, overflow:"hidden", border:`1px solid ${CARD_BORDER}` }}>
+                <div style={{
+                  width: `${winPct}%`,
+                  background: GREEN,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:12, fontWeight:700, color:"#031a0d",
+                  ...mono,
+                }}>
+                  {winPct >= 12 ? `${winPct.toFixed(1)}%` : ""}
+                </div>
+                <div style={{
+                  width: `${lossPct}%`,
+                  background: RED,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:12, fontWeight:700, color:"#1f0606",
+                  ...mono,
+                }}>
+                  {lossPct >= 12 ? `${lossPct.toFixed(1)}%` : ""}
+                </div>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", marginTop:8, fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>
+                <span>{a.wins.length} Wins</span>
+                <span>{a.losses.length} Losses{a.breakeven.length > 0 ? ` · ${a.breakeven.length} BE` : ""}</span>
+              </div>
+
+              <div style={{ marginTop:18, padding:"14px 16px", background:"#080808", borderRadius:10, border:`1px solid ${CARD_BORDER}`, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+                <div>
+                  <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:3 }}>Avg Win vs Avg Loss</div>
+                  <div style={{ ...mono, fontSize:13, fontWeight:700 }}>
+                    <span style={{ color:GREEN }}>{fmtMoney(a.avgWin,{signed:true})}</span>
+                    <span style={{ color:MUTED, margin:"0 8px" }}>vs</span>
+                    <span style={{ color:RED }}>-{fmtMoney(a.avgLoss)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop:12, padding:"16px", background:"#080808", borderRadius:10, border:`1px solid ${CARD_BORDER}`, textAlign:"center" }}>
+                <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:6 }}>Win / Loss Ratio</div>
+                <div style={{ ...mono, fontSize:32, fontWeight:700, color: wRatio>=1 ? GREEN : RED, lineHeight:1 }}>
+                  {wRatio>=999 ? "∞" : wRatio.toFixed(2)}
+                  <span style={{ fontSize:18, color:MUTED, marginLeft:2 }}>:1</span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Long vs Short */}
+        <div style={card}>
+          {sectionLabel("Long vs Short")}
+          {(a.longStats.count + a.shortStats.count) === 0 ? (
+            <div style={{ padding:"24px", textAlign:"center", color:MUTED, fontSize:11 }}>No directional trades logged</div>
+          ) : (
+            <>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                {[
+                  { name:"LONG",  stats:a.longStats,  color:GREEN, borderSide:"borderLeft" },
+                  { name:"SHORT", stats:a.shortStats, color:RED,   borderSide:"borderLeft" },
+                ].map(({ name, stats, color }) => (
+                  <div key={name} style={{
+                    padding:"16px",
+                    background:"#080808",
+                    borderRadius:10,
+                    border:`1px solid ${CARD_BORDER}`,
+                    borderLeft:`3px solid ${color}`,
+                  }}>
+                    <div style={{ fontSize:11, color, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.14em", marginBottom:12 }}>{name}</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                      <div>
+                        <div style={{ fontSize:9, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Trades</div>
+                        <div style={{ ...mono, fontSize:16, fontWeight:700, color:"#fff" }}>{stats.count}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:9, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Win Rate</div>
+                        <div style={{ ...mono, fontSize:16, fontWeight:700, color: stats.count===0 ? MUTED : stats.winRate>=50 ? GREEN : RED }}>
+                          {stats.count > 0 ? `${stats.winRate.toFixed(0)}%` : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:9, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>Total P&L</div>
+                        <div style={{ ...mono, fontSize:16, fontWeight:700, color: stats.pnl>=0 ? GREEN : RED }}>
+                          {stats.count > 0 ? fmtMoney(stats.pnl,{signed:true}) : "—"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {sideEdge && (
+                <div style={{ marginTop:14, padding:"12px 14px", background:"rgba(99,102,241,0.08)", border:"1px solid rgba(99,102,241,0.25)", borderRadius:10, textAlign:"center", fontSize:12, color:"#cbd5e1", fontWeight:600 }}>
+                  You are <span style={{ color:INDIGO, fontWeight:800 }}>{sideEdge.pct}%</span> better at <span style={{ color:INDIGO, fontWeight:800 }}>{sideEdge.side}</span> trades
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ───── ROW 6: STREAKS ───── */}
+      <div style={card}>
+        {sectionLabel("Streaks")}
+        <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr 1fr 1fr 1fr", gap:14 }} className="insights-streak-grid">
+          <div style={{
+            padding:"18px 20px",
+            background:"#080808",
+            borderRadius:10,
+            border:`1px solid ${CARD_BORDER}`,
+            borderLeft:`3px solid ${streakIsWin ? GREEN : RED}`,
+          }}>
+            <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:6 }}>Current Streak</div>
+            <div style={{ ...mono, fontSize:24, fontWeight:700, color: streakIsWin ? GREEN : RED, lineHeight:1.1 }}>{streakText}</div>
+          </div>
+          <div style={{ padding:"18px 20px", background:"#080808", borderRadius:10, border:`1px solid ${CARD_BORDER}` }}>
+            <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:6 }}>Longest Win</div>
+            <div style={{ ...mono, fontSize:22, fontWeight:700, color:GREEN }}>{a.longestWin} <span style={{ fontSize:11, color:MUTED, fontWeight:600 }}>trades</span></div>
+          </div>
+          <div style={{ padding:"18px 20px", background:"#080808", borderRadius:10, border:`1px solid ${CARD_BORDER}` }}>
+            <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:6 }}>Longest Loss</div>
+            <div style={{ ...mono, fontSize:22, fontWeight:700, color:RED }}>{a.longestLoss} <span style={{ fontSize:11, color:MUTED, fontWeight:600 }}>trades</span></div>
+          </div>
+          <div style={{ padding:"18px 20px", background:"#080808", borderRadius:10, border:`1px solid ${CARD_BORDER}` }}>
+            <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:6 }}>WR After Win</div>
+            <div style={{ ...mono, fontSize:22, fontWeight:700, color: a.afterWinRate>=50 ? GREEN : a.afterWinTotal===0 ? MUTED : RED }}>
+              {a.afterWinTotal > 0 ? `${a.afterWinRate.toFixed(0)}%` : "—"}
+            </div>
+            <div style={{ fontSize:10, color:MUTED, marginTop:2 }}>{a.afterWinTotal} sample{a.afterWinTotal!==1?"s":""}</div>
+          </div>
+          <div style={{ padding:"18px 20px", background:"#080808", borderRadius:10, border:`1px solid ${CARD_BORDER}` }}>
+            <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:6 }}>WR After Loss</div>
+            <div style={{ ...mono, fontSize:22, fontWeight:700, color: a.afterLossRate>=50 ? GREEN : a.afterLossTotal===0 ? MUTED : RED }}>
+              {a.afterLossTotal > 0 ? `${a.afterLossRate.toFixed(0)}%` : "—"}
+            </div>
+            <div style={{ fontSize:10, color:MUTED, marginTop:2 }}>{a.afterLossTotal} sample{a.afterLossTotal!==1?"s":""}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ───── ROW 7: SYMBOL TABLE ───── */}
       <div style={card}>
         {sectionLabel("Performance by Symbol")}
-        <div style={{ overflowX:"auto" }}><table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}><thead><tr style={{ borderBottom:"1px solid #2a2a3a" }}>
-                {["Symbol","Trades","Win Rate","Avg PnL","Total PnL","Profit Factor","Best","Worst"].map((h, i) =>(<th key={h} style={{ textAlign: i===0 ? "left" : "right", padding:"8px 10px", fontSize:10, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>{h}</th>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead>
+              <tr style={{ borderBottom:`1px solid ${CARD_BORDER}` }}>
+                {["Symbol","Trades","Win Rate","Avg PnL","Total PnL","Profit Factor","Best","Worst"].map((h, i) => (
+                  <th key={h} style={{ textAlign: i===0 ? "left" : "right", padding:"10px 12px", fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em" }}>{h}</th>
                 ))}
-              </tr></thead><tbody>
+              </tr>
+            </thead>
+            <tbody>
               {a.bySymbol.length === 0 && (
-                <tr><td colSpan={8} style={{ padding:24, textAlign:"center", color:"#374151" }}>No symbol data</td></tr>
+                <tr><td colSpan={8} style={{ padding:24, textAlign:"center", color:MUTED }}>No symbol data</td></tr>
               )}
               {a.bySymbol.map(s => {
                 const pos = s.totalPnl >= 0;
- const barW = (Math.abs(s.totalPnl) / symMaxAbs) * 100;
- return (<tr key={s.symbol} style={{ borderBottom:"1px solid #0f1828", background: pos ? "rgba(52,211,153,0.04)" : "rgba(248,113,113,0.04)" }}><td style={{ padding:"10px", fontWeight:800, color:"#ffffff" }}>{s.symbol}</td><td style={{ padding:"10px", textAlign:"right", ...mono, color:"#9ca3af" }}>{s.trades}</td><td style={{ padding:"10px", textAlign:"right", ...mono, color: s.winRate>=50?"#10b981":"#ef4444", fontWeight:700 }}>{s.winRate.toFixed(1)}%</td><td style={{ padding:"10px", textAlign:"right", ...mono, color: s.avgPnl>=0?"#10b981":"#ef4444" }}>{fmtMoney(s.avgPnl,{signed:true})}</td><td style={{ padding:"10px", textAlign:"right", ...mono, color: pos?"#10b981":"#ef4444", fontWeight:800, position:"relative" }}><div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:8 }}><div style={{ flex:1, maxWidth:80, height:6, background:"#111118", borderRadius:3, overflow:"hidden", border:"1px solid #2a2a3a" }}><div style={{ height:"100%", width:`${barW}%`, background: pos?"#10b981":"#ef4444", borderRadius:3 }}/></div><span>{fmtMoney(s.totalPnl,{signed:true})}</span></div></td><td style={{ padding:"10px", textAlign:"right", ...mono, color:"#9ca3af" }}>{s.profitFactor>=999?"∞":s.profitFactor.toFixed(2)}</td><td style={{ padding:"10px", textAlign:"right", ...mono, color:"#10b981" }}>{fmtMoney(s.best,{signed:true})}</td><td style={{ padding:"10px", textAlign:"right", ...mono, color:"#ef4444" }}>{fmtMoney(s.worst,{signed:true})}</td></tr>
+                const barW = (Math.abs(s.totalPnl) / symMaxAbs) * 100;
+                return (
+                  <tr key={s.symbol} style={{ borderBottom:`1px solid ${CARD_BORDER}` }}>
+                    <td style={{ padding:"12px", fontWeight:700, color:"#fff" }}>{s.symbol}</td>
+                    <td style={{ padding:"12px", textAlign:"right", ...mono, color:"#9ca3af" }}>{s.trades}</td>
+                    <td style={{ padding:"12px", textAlign:"right", ...mono, color: s.winRate>=50?GREEN:RED, fontWeight:700 }}>{s.winRate.toFixed(1)}%</td>
+                    <td style={{ padding:"12px", textAlign:"right", ...mono, color: s.avgPnl>=0?GREEN:RED }}>{fmtMoney(s.avgPnl,{signed:true})}</td>
+                    <td style={{ padding:"12px", textAlign:"right", ...mono, color: pos?GREEN:RED, fontWeight:700 }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10 }}>
+                        <div style={{ flex:1, maxWidth:80, height:5, background:"#080808", borderRadius:3, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${barW}%`, background: pos?GREEN:RED, borderRadius:3 }}/>
+                        </div>
+                        <span>{fmtMoney(s.totalPnl,{signed:true})}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding:"12px", textAlign:"right", ...mono, color:"#9ca3af" }}>{s.profitFactor>=999?"∞":s.profitFactor.toFixed(2)}</td>
+                    <td style={{ padding:"12px", textAlign:"right", ...mono, color:GREEN }}>{fmtMoney(s.best,{signed:true})}</td>
+                    <td style={{ padding:"12px", textAlign:"right", ...mono, color:RED }}>{fmtMoney(s.worst,{signed:true})}</td>
+                  </tr>
                 );
               })}
-            </tbody></table></div></div>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      {/* ───── ROW 6: STREAKS + MONTHLY ───── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }} className="insights-row-6">
-
-        {/* Streak analysis */}
+      {/* ───── ROW 8: DURATION + MONTHLY ───── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }} className="insights-row-6">
         <div style={card}>
-          {sectionLabel("Streak Analysis")}
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}><div style={{ padding:"14px 16px", background:"#111118", borderRadius:10, border:`1px solid ${a.curStreak>=0?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"}` }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>Current Streak</div><div style={{ ...mono, fontSize:22, fontWeight:800, color: a.curStreak>=0?"#10b981":"#ef4444" }}>
-                {Math.abs(a.curStreak)} {a.curStreak>=0?"win":"loss"}{Math.abs(a.curStreak)!==1?"es":""} in a row
-              </div></div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}><div style={{ padding:"12px", background:"#111118", borderRadius:8, border:"1px solid #2a2a3a" }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>Longest Win Streak</div><div style={{ ...mono, fontSize:18, fontWeight:800, color:"#10b981" }}>{a.longestWin}</div></div><div style={{ padding:"12px", background:"#111118", borderRadius:8, border:"1px solid #2a2a3a" }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>Longest Loss Streak</div><div style={{ ...mono, fontSize:18, fontWeight:800, color:"#ef4444" }}>{a.longestLoss}</div></div></div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}><div style={{ padding:"12px", background:"#111118", borderRadius:8, border:"1px solid #2a2a3a" }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>After Loss WR</div><div style={{ ...mono, fontSize:16, fontWeight:800, color: a.afterLossRate>=50?"#10b981":"#ef4444" }}>
-                  {a.afterLossTotal>0 ? `${a.afterLossRate.toFixed(0)}%` : "—"}
-                </div><div style={{ fontSize:9, color:"#6b7280", marginTop:2 }}>{a.afterLossTotal} sample{a.afterLossTotal!==1?"s":""}</div></div><div style={{ padding:"12px", background:"#111118", borderRadius:8, border:"1px solid #2a2a3a" }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:4 }}>After Win WR</div><div style={{ ...mono, fontSize:16, fontWeight:800, color: a.afterWinRate>=50?"#10b981":"#ef4444" }}>
-                  {a.afterWinTotal>0 ? `${a.afterWinRate.toFixed(0)}%` : "—"}
-                </div><div style={{ fontSize:9, color:"#6b7280", marginTop:2 }}>{a.afterWinTotal} sample{a.afterWinTotal!==1?"s":""}</div></div></div></div></div>
+          {sectionLabel("Trade Duration")}
+          {a.hasHoldData ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {a.durationBuckets.map(b => {
+                const isBest = a.bestDurationBucket && a.bestDurationBucket.label === b.label && b.count > 0;
+                const w = (b.count / durMaxCount) * 100;
+                const wrColor = b.count === 0 ? MUTED : b.winRate >= 50 ? GREEN : RED;
+                return (
+                  <div key={b.label} style={{ display:"grid", gridTemplateColumns:"90px 1fr 60px", gap:12, alignItems:"center" }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#9ca3af", display:"flex", alignItems:"center", gap:6 }}>
+                      {isBest && <span style={{ color:INDIGO }}>★</span>}{b.label}
+                    </div>
+                    <div style={{ height:18, background:"#080808", borderRadius:5, position:"relative", overflow:"hidden" }}>
+                      <div style={{ position:"absolute", left:0, top:0, bottom:0, width:`${w}%`, background: isBest ? INDIGO : "rgba(99,102,241,0.4)", borderRadius:5 }}/>
+                      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", paddingLeft:8, fontSize:10, color:"#fff", ...mono, fontWeight:700 }}>{b.count} trade{b.count!==1?"s":""}</div>
+                    </div>
+                    <div style={{ ...mono, fontSize:11, fontWeight:700, color:wrColor, textAlign:"right" }}>
+                      {b.count > 0 ? `${b.winRate.toFixed(0)}%` : "—"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding:"32px 16px", textAlign:"center", color:MUTED, fontSize:11 }}>No hold-time data on logged trades</div>
+          )}
+        </div>
 
-        {/* Monthly */}
         <div style={card}>
           {sectionLabel("Monthly Performance")}
           {a.monthly.length === 0 ? (
-            <div style={{ padding:"24px 16px", textAlign:"center", color:"#6b7280", fontSize:11 }}>No monthly data</div>) : (<div style={{ display:"flex", flexDirection:"column", gap:6 }}><div style={{ display:"grid", gridTemplateColumns:"1.4fr 0.7fr 0.9fr 1fr 0.5fr", gap:8, padding:"4px 10px", fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}><div>Month</div><div style={{textAlign:"right"}}>Trades</div><div style={{textAlign:"right"}}>Win Rate</div><div style={{textAlign:"right"}}>PnL</div><div style={{textAlign:"center"}}>—</div></div>
+            <div style={{ padding:"24px 16px", textAlign:"center", color:MUTED, fontSize:11 }}>No monthly data</div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {a.monthly.map(m => {
                 const pos = m.pnl >= 0;
- return (<div key={m.key} style={{ display:"grid", gridTemplateColumns:"1.4fr 0.7fr 0.9fr 1fr 0.5fr", gap:8, padding:"10px", borderRadius:8, background: pos?"rgba(52,211,153,0.05)":"rgba(248,113,113,0.05)", border: `1px solid ${pos?"rgba(52,211,153,0.15)":"rgba(248,113,113,0.15)"}`, alignItems:"center" }}><div style={{ fontSize:12, fontWeight:700, color:"#ffffff" }}>{m.label}</div><div style={{ ...mono, fontSize:11, color:"#9ca3af", textAlign:"right" }}>{m.trades}</div><div style={{ ...mono, fontSize:11, fontWeight:700, color:m.winRate>=50?"#10b981":"#ef4444", textAlign:"right" }}>{m.winRate.toFixed(0)}%</div><div style={{ ...mono, fontSize:12, fontWeight:800, color:pos?"#10b981":"#ef4444", textAlign:"right" }}>{fmtMoney(m.pnl,{signed:true})}</div><div style={{ fontSize:14, textAlign:"center", color:pos?"#10b981":"#ef4444" }}>{pos?"✓":"✗"}</div></div>
+                return (
+                  <div key={m.key} style={{
+                    display:"grid",
+                    gridTemplateColumns:"1.4fr 0.8fr 0.8fr 1fr",
+                    gap:8,
+                    padding:"12px 14px",
+                    borderRadius:8,
+                    background:"#080808",
+                    border:`1px solid ${CARD_BORDER}`,
+                    alignItems:"center",
+                  }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:"#fff" }}>{m.label}</div>
+                    <div style={{ ...mono, fontSize:11, color:"#9ca3af", textAlign:"right" }}>{m.trades} trade{m.trades!==1?"s":""}</div>
+                    <div style={{ ...mono, fontSize:11, fontWeight:700, color:m.winRate>=50?GREEN:RED, textAlign:"right" }}>{m.winRate.toFixed(0)}%</div>
+                    <div style={{ ...mono, fontSize:13, fontWeight:700, color:pos?GREEN:RED, textAlign:"right" }}>{fmtMoney(m.pnl,{signed:true})}</div>
+                  </div>
                 );
               })}
             </div>
           )}
-        </div></div>
+        </div>
+      </div>
 
-      {/* ───── ROW 7: RISK + P&L DISTRIBUTION ───── */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }} className="insights-row-7">
-
-        {/* Risk analysis */}
+      {/* ───── ROW 9: RISK + P&L DISTRIBUTION ───── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }} className="insights-row-7">
         <div style={card}>
           {sectionLabel("Risk Analysis")}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
             {[
-              { label:"Avg Risk/Reward", val:a.avgRR>0 ? `${a.avgRR.toFixed(2)}:1` : "—",                                color: a.avgRR>=2?"#10b981":a.avgRR>=1?"#f59e0b":"#ef4444" },
-              { label:"Expected Value",  val:fmtMoney(a.expectedValue,{signed:true}),                                    color: a.expectedValue>=0?"#10b981":"#ef4444" },
-              { label:"Sharpe-like",     val:a.sharpeLike>0 ? a.sharpeLike.toFixed(2) : a.sharpeLike.toFixed(2),         color: a.sharpeLike>=1?"#10b981":a.sharpeLike>=0?"#f59e0b":"#ef4444" },
-              { label:"Max Consec Losses", val:String(a.longestLossStreak),                                              color: a.longestLossStreak<=3?"#10b981":a.longestLossStreak<=6?"#f59e0b":"#ef4444" },
-              { label:"Risk of Ruin",    val:`${a.riskOfRuin.toFixed(2)}%`,                                              color: a.riskOfRuin<=5?"#10b981":a.riskOfRuin<=20?"#f59e0b":"#ef4444" },
-              { label:"Total P&L",       val:fmtMoney(a.totalPnl,{signed:true}),                                         color: a.totalPnl>=0?"#10b981":"#ef4444" },
-            ].map(s =>(<div key={s.label} style={{ padding:"12px", background:"#111118", borderRadius:8, border:"1px solid #2a2a3a" }}><div style={{ fontSize:9, color:"#6b7280", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:5 }}>{s.label}</div><div style={{ ...mono, fontSize:16, fontWeight:800, color:s.color }}>{s.val}</div></div>
+              { label:"Avg Risk/Reward", val:a.avgRR>0 ? `${a.avgRR.toFixed(2)}:1` : "—",       color: a.avgRR>=2?GREEN:a.avgRR>=1?"#f59e0b":RED },
+              { label:"Expected Value",  val:fmtMoney(a.expectedValue,{signed:true}),           color: a.expectedValue>=0?GREEN:RED },
+              { label:"Sharpe-like",     val:a.sharpeLike.toFixed(2),                           color: a.sharpeLike>=1?GREEN:a.sharpeLike>=0?"#f59e0b":RED },
+              { label:"Max Consec Losses", val:String(a.longestLossStreak),                     color: a.longestLossStreak<=3?GREEN:a.longestLossStreak<=6?"#f59e0b":RED },
+              { label:"Risk of Ruin",    val:`${a.riskOfRuin.toFixed(2)}%`,                     color: a.riskOfRuin<=5?GREEN:a.riskOfRuin<=20?"#f59e0b":RED },
+              { label:"Total P&L",       val:fmtMoney(a.totalPnl,{signed:true}),                color: a.totalPnl>=0?GREEN:RED },
+            ].map(s => (
+              <div key={s.label} style={{ padding:"14px", background:"#080808", borderRadius:8, border:`1px solid ${CARD_BORDER}` }}>
+                <div style={{ fontSize:10, color:MUTED, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:5 }}>{s.label}</div>
+                <div style={{ ...mono, fontSize:17, fontWeight:700, color:s.color }}>{s.val}</div>
+              </div>
             ))}
-          </div></div>
+          </div>
+        </div>
 
-        {/* PnL distribution */}
         <div style={card}>
           {sectionLabel("P&L Distribution")}
-          <div style={{ display:"flex", alignItems:"flex-end", height:160, gap:6, padding:"0 4px", borderBottom:"1px solid #2a2a3a", marginBottom:10 }}>
+          <div style={{ display:"flex", alignItems:"flex-end", height:180, gap:8, padding:"0 4px", borderBottom:`1px solid ${CARD_BORDER}`, marginBottom:10 }}>
             {a.pnlBuckets.map(b => {
               const h = (b.count / pnlMaxCount) * 100;
               return (
-                <div key={b.label} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", height:"100%", position:"relative", minWidth:0 }}><div style={{ ...mono, fontSize:10, fontWeight:700, color:"#9ca3af", marginBottom:4 }}>{b.count}</div><div title={`${b.label}: ${b.count} trade${b.count!==1?"s":""}`} style={{ width:"85%", height:`${h}%`, background:b.color, borderRadius:"3px 3px 0 0", minHeight: b.count>0?2:0, transition:"height 0.2s" }}/></div>
+                <div key={b.label} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", height:"100%", minWidth:0 }}>
+                  <div style={{ ...mono, fontSize:10, fontWeight:700, color:"#9ca3af", marginBottom:4 }}>{b.count}</div>
+                  <div
+                    title={`${b.label}: ${b.count} trade${b.count!==1?"s":""}`}
+                    style={{ width:"80%", height:`${h}%`, background:b.color, borderRadius:"4px 4px 0 0", minHeight: b.count>0?3:0 }}
+                  />
+                </div>
               );
             })}
-          </div><div style={{ display:"flex", gap:6, padding:"0 4px" }}>
-            {a.pnlBuckets.map(b =>(<div key={b.label} style={{ flex:1, fontSize:9, color:"#6b7280", textAlign:"center", fontWeight:700, ...mono, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.label}</div>
+          </div>
+          <div style={{ display:"flex", gap:8, padding:"0 4px" }}>
+            {a.pnlBuckets.map(b => (
+              <div key={b.label} style={{ flex:1, fontSize:9, color:MUTED, textAlign:"center", fontWeight:700, ...mono, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.label}</div>
             ))}
-          </div></div></div><style>{`
+          </div>
+        </div>
+      </div>
+
+      <style>{`
         @media (max-width: 900px) {
-          .insights-row-2, .insights-row-6, .insights-row-7 { grid-template-columns: 1fr !important; }
-          .insights-row-4 { grid-template-columns: 1fr !important; }
+          .insights-row-2, .insights-row-5, .insights-row-6, .insights-row-7 { grid-template-columns: 1fr !important; }
+          .insights-dow-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .insights-streak-grid { grid-template-columns: 1fr 1fr !important; }
         }
-      `}</style></div>
+      `}</style>
+    </div>
   );
 }
 
