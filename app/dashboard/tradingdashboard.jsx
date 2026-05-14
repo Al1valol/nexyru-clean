@@ -5804,13 +5804,13 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
             )}
             <button onClick={inDemo ? undefined : onCSV}
               title={inDemo ? "Exit demo mode to import trades" : "Import CSV"}
-              style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:`1px solid ${showImportHint ? "rgba(99,102,241,0.65)" : "rgba(99,102,241,0.25)"}`, background:inDemo?"#111118":"rgba(99,102,241,0.06)", color:inDemo?"#374151":"#6366f1", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1, animation: showImportHint ? "nexyruImportPulse 1.8s ease-in-out infinite" : undefined }}><Upload size={11}/>Import CSV</button>
+              style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:`1px solid ${showImportHint ? "rgba(99,102,241,0.65)" : "rgba(99,102,241,0.25)"}`, background:inDemo?"#111118":"rgba(99,102,241,0.06)", color:inDemo?"#374151":"#6366f1", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", textDecoration:"none", opacity:inDemo?0.5:1, animation: showImportHint ? "nexyruImportPulse 1.8s ease-in-out infinite" : undefined }} className="hide-mobile"><Upload size={11}/>Import CSV</button>
             {showImportHint && (
               <div style={{ position:"absolute", top:"calc(100% + 10px)", right:0, background:"#111118", border:"1px solid rgba(99,102,241,0.45)", borderRadius:8, padding:"7px 12px", fontSize:10, fontWeight:600, color:"#6366f1", whiteSpace:"nowrap", boxShadow:"0 8px 24px rgba(0,0,0,0.5)", zIndex:50 }}><div style={{ position:"absolute", top:-5, right:24, width:9, height:9, background:"#111118", borderLeft:"1px solid rgba(99,102,241,0.45)", borderTop:"1px solid rgba(99,102,241,0.45)", transform:"rotate(45deg)" }}/>Start here — import your trades</div>
             )}
           </div><button onClick={inDemo ? undefined : onAdd} disabled={inDemo}
             title={inDemo ? "Exit demo mode to log trades" : "Log Trade"}
-            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}><Plus size={12}/>Log Trade</button></div></div>
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }} className="hide-mobile"><Plus size={12}/>Log Trade</button></div></div>
 
       {/* Trades */}
       <section><TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade} onAdd={inDemo ? undefined : onAdd} onImport={inDemo ? undefined : onCSV} username={username}/></section>
