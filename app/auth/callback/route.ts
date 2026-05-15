@@ -18,8 +18,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(errorDescription || errorParam)}`);
   }
 
+  const successUrl = type === "recovery" ? `${origin}/reset-password` : `${origin}${next}`;
+
   const cookieStore = await cookies();
-  const response = NextResponse.redirect(`${origin}${next}`);
+  const response = NextResponse.redirect(successUrl);
 
   const supabase = createServerClient(SUPA_URL, SUPA_KEY, {
     cookies: {
@@ -36,13 +38,7 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      // Recovery flow: send to reset-password instead of dashboard
-      if (next === "/dashboard" && type === "recovery") {
-        return NextResponse.redirect(`${origin}/reset-password`);
-      }
-      return response;
-    }
+    if (!error) return response;
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message || "Could not verify email")}`);
   }
 
@@ -51,12 +47,7 @@ export async function GET(request: NextRequest) {
       type: type as "signup" | "recovery" | "invite" | "magiclink" | "email" | "email_change",
       token_hash: tokenHash,
     });
-    if (!error) {
-      if (type === "recovery") {
-        return NextResponse.redirect(`${origin}/reset-password`);
-      }
-      return response;
-    }
+    if (!error) return response;
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message || "Could not verify email")}`);
   }
 
