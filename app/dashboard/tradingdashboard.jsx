@@ -35,6 +35,65 @@ function getSupabaseClient() {
   return _supabaseClient;
 }
 
+// Resolve the current Supabase user id via the SDK so we never guess the
+// localStorage key name. Returns null when the user has no Supabase session
+// (e.g. localStorage-only accounts).
+async function getSupabaseUserId() {
+  try {
+    const supa = getSupabaseClient();
+    if (!supa) return null;
+    const { data } = await supa.auth.getSession();
+    return data?.session?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Push trades straight to Supabase REST using the *user's* JWT (not the
+// anon key) so RLS sees the real caller. Falls back to the anon key only
+// when there's no session yet. Returns true on success, false on failure.
+async function syncTradesToSupabase(trades, userId) {
+  if (!userId || !trades?.length) return false;
+  try {
+    let sessionToken = null;
+    try {
+      const supa = getSupabaseClient();
+      const { data } = supa ? await supa.auth.getSession() : { data: null };
+      sessionToken = data?.session?.access_token ?? null;
+    } catch {}
+    if (!sessionToken && typeof window !== "undefined") {
+      try {
+        const tokenData = localStorage.getItem("sb-xsrcaceydyqytbipvrok-auth-token");
+        sessionToken = tokenData ? JSON.parse(tokenData)?.access_token ?? null : null;
+      } catch {}
+    }
+    const authHeader = sessionToken ? `Bearer ${sessionToken}` : `Bearer ${SUPA_ANON_KEY}`;
+    const rows = trades
+      .filter(t => t && t.id !== undefined && t.id !== null)
+      .map(t => ({ id: String(t.id), user_id: userId, data: t }));
+    if (rows.length === 0) return true;
+    const res = await fetch(`${SUPA_URL}/rest/v1/trades?on_conflict=id,user_id`, {
+      method: "POST",
+      headers: {
+        apikey: SUPA_ANON_KEY,
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(rows),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Sync failed:", err);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("Sync error:", e);
+    return false;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════════════════════════════
@@ -7565,16 +7624,15 @@ function SidebarGroupLabel({ label }) {
 
 function SyncIndicator({ status }) {
   const cfg = {
-    syncing: { label: "Syncing…", color: "#9ca3af", bg: "rgba(156,163,175,0.08)", border: "rgba(156,163,175,0.25)", spin: true },
-    saved:   { label: "Saved",    color: "#10b981", bg: "rgba(16,185,129,0.08)",  border: "rgba(16,185,129,0.25)",  spin: false },
-    offline: { label: "Offline",  color: "#f59e0b", bg: "rgba(245,158,11,0.08)",  border: "rgba(245,158,11,0.25)",  spin: false },
-    idle:    { label: "Ready",    color: "#6b7280", bg: "transparent",            border: "transparent",            spin: false },
+    syncing: { label: "Syncing",                    color: "#9ca3af", bg: "rgba(156,163,175,0.08)", border: "rgba(156,163,175,0.25)", spin: true  },
+    saved:   { label: "Saved",                      color: "#10b981", bg: "rgba(16,185,129,0.08)",  border: "rgba(16,185,129,0.25)",  spin: false },
+    error:   { label: "Sync failed — will retry",   color: "#f59e0b", bg: "rgba(245,158,11,0.08)",  border: "rgba(245,158,11,0.25)",  spin: false },
   };
-  const c = cfg[status] ?? cfg.idle;
-  if (status === "idle") return null;
+  const c = cfg[status];
+  if (!c) return null; // idle / local → no indicator
   return (
     <div
-      title={status === "offline" ? "Sync failed — changes saved locally" : c.label}
+      title={c.label}
       className="hide-mobile"
       style={{
         display: "flex",
@@ -7652,7 +7710,13 @@ function TradingDashboard({ session, onLogout }) {
   };
 
   // Cross-device sync state
-  const [syncStatus,    setSyncStatus]    = useState("idle"); // "idle" | "syncing" | "saved" | "offline"
+  const [syncStatus,    setSyncStatus]    = useState("idle"); // "idle" | "local" | "syncing" | "saved" | "error"
+  const savedClearTimerRef = useRef(null);
+  const markSaved = useCallback(() => {
+    setSyncStatus("saved");
+    if (savedClearTimerRef.current) clearTimeout(savedClearTimerRef.current);
+    savedClearTimerRef.current = setTimeout(() => setSyncStatus("idle"), 2000);
+  }, []);
   // Resolve supabaseUserId from the Supabase SDK session — the SDK knows
   // its own storage key regardless of platform (fixes mobile Safari/Chrome
   // where the sb-*-auth-token name could differ across versions).
@@ -7785,6 +7849,7 @@ function TradingDashboard({ session, onLogout }) {
     // If we have a Supabase user, sync with the cloud
     if (!supabaseUserId) {
       initialSyncDoneRef.current = true;
+      setSyncStatus("local");
       return () => { cancelled = true; };
     }
 
@@ -7818,26 +7883,22 @@ function TradingDashboard({ session, onLogout }) {
             }
           }).catch(() => {});
           initialSyncDoneRef.current = true;
-          setSyncStatus("saved");
+          markSaved();
         } else if (localSaved.length > 0) {
           // First-time upload — push local trades to Supabase
           const stripped = localSaved.map(stripScreenshot);
-          const upRes = await fetch("/api/trades", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders },
-            body: JSON.stringify({ user_id: supabaseUserId, trades: stripped }),
-          });
+          const ok = await syncTradesToSupabase(stripped, supabaseUserId);
           initialSyncDoneRef.current = true;
           if (cancelled) return;
-          setSyncStatus(upRes.ok ? "saved" : "offline");
+          if (ok) markSaved(); else setSyncStatus("error");
         } else {
           initialSyncDoneRef.current = true;
-          setSyncStatus("saved");
+          markSaved();
         }
       } catch (e) {
         if (!cancelled) {
           initialSyncDoneRef.current = true;
-          setSyncStatus("offline");
+          setSyncStatus("error");
         }
       }
     })();
@@ -7859,23 +7920,9 @@ function TradingDashboard({ session, onLogout }) {
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
     setSyncStatus("syncing");
     pushTimerRef.current = setTimeout(async () => {
-      try {
-        const supa = getSupabaseClient();
-        const { data: { session: sbSession } = { session: null } } = supa ? await supa.auth.getSession() : { data: { session: null } };
-        const token = sbSession?.access_token;
-        const stripped = trades.map(stripScreenshot);
-        const res = await fetch("/api/trades", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ user_id: supabaseUserId, trades: stripped }),
-        });
-        setSyncStatus(res.ok ? "saved" : "offline");
-      } catch {
-        setSyncStatus("offline");
-      }
+      const stripped = trades.map(stripScreenshot);
+      const ok = await syncTradesToSupabase(stripped, supabaseUserId);
+      if (ok) markSaved(); else setSyncStatus("error");
     }, 600);
   }, [trades, session.username, supabaseUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -7928,6 +7975,23 @@ function TradingDashboard({ session, onLogout }) {
     });
     setShowForm(false); setShowCSV(false); setEditTrade(null);
   }, [copyTrading, paperAccts.activeAccount, session?.username]);
+
+  const handleImportTrades = useCallback(async (imported) => {
+    const acctId = paperAccts.activeAccount?.id ?? null;
+    const importedTrades = imported.map(t => ({ ...t, accountId: acctId }));
+    // Skip the debounced auto-sync — we sync explicitly below for snappy UX.
+    skipNextPushRef.current = true;
+    setTrades(prev => [...prev, ...importedTrades]);
+    const userId = await getSupabaseUserId();
+    if (!userId) {
+      setSyncStatus("local");
+      return;
+    }
+    setSyncStatus("syncing");
+    const stripped = importedTrades.map(stripScreenshot);
+    const success = await syncTradesToSupabase(stripped, userId);
+    if (success) markSaved(); else setSyncStatus("error");
+  }, [paperAccts.activeAccount?.id, markSaved]);
 
   const deleteTrade = useCallback((id) => {
     deleteScreenshot(id);
@@ -8008,7 +8072,7 @@ function TradingDashboard({ session, onLogout }) {
           onSkip={() => setShowAccountSetup(false)}
         />
       )}
-      {showCSV && <CSVUploader initialTab={csvInitialTab} onImport={(imported) => setTrades(prev => [...prev, ...imported.map(t => ({ ...t, accountId: paperAccts.activeAccount?.id ?? null }))])} onClose={() => setShowCSV(false)}/>}
+      {showCSV && <CSVUploader initialTab={csvInitialTab} onImport={handleImportTrades} onClose={() => setShowCSV(false)}/>}
       {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }} onScreenshot={() => { setCsvInitialTab("ai"); setShowCSV(true); }} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
 
