@@ -5795,7 +5795,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
               {activeAccount.name} · {trades.length} trade{trades.length!==1?"s":""}
             </div>
           )}
-        </div>{!isMobile && (<div style={{display:'flex', gap:8}}>
+        </div><div style={{display: isMobile ? 'none' : 'flex', gap:8}}>
           <div style={{ position:"relative" }}>
             {showImportHint && (
               <style>{`@keyframes nexyruImportPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.55), 0 0 0 0 rgba(99,102,241,0); } 50% { box-shadow: 0 0 0 6px rgba(99,102,241,0), 0 0 18px 2px rgba(99,102,241,0.45); } }`}</style>
@@ -5808,7 +5808,7 @@ function JournalPage({ trades, onEdit, onDelete, onAdd, onCSV, onSaveTrade, acti
             )}
           </div><button onClick={inDemo ? undefined : onAdd} disabled={inDemo}
             title={inDemo ? "Exit demo mode to log trades" : "Log Trade"}
-            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}><Plus size={12}/>Log Trade</button></div>)}</div>
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:8, border:"none", background:inDemo?"#111118":"var(--accent)", color:inDemo?"#374151":"#fff", fontSize:11, fontWeight:700, cursor:inDemo?"not-allowed":"pointer", opacity:inDemo?0.5:1 }}><Plus size={12}/>Log Trade</button></div></div>
 
       {/* Trades */}
       <section><TradeTable trades={trades} onEdit={onEdit} onDelete={onDelete} onReview={setReviewTrade} onAdd={inDemo ? undefined : onAdd} onImport={inDemo ? undefined : onCSV} username={username}/></section>
@@ -7869,7 +7869,7 @@ function TradingDashboard({ session, onLogout }) {
         </header>
 
         {/* ── Page content ── */}
-        <main style={{ flex:1, padding:"24px", paddingBottom:80, background:"#0a0a0f" }}>
+        <main style={{ flex:1, padding:"24px", paddingBottom: isMobile ? 70 : 0, background:"#0a0a0f" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
             <DemoBanner username={session.username} onClear={() => {
               setDemoMode(session.username, false);
@@ -7909,7 +7909,7 @@ function TradingDashboard({ session, onLogout }) {
           {/* Bottom sheet */}
           <div className="show-mobile" role="dialog" aria-modal="true" aria-label="Tools"
             onTouchStart={handleToolsTouchStart} onTouchEnd={handleToolsTouchEnd}
-            style={{ position:"fixed", bottom:"calc(56px + env(safe-area-inset-bottom))", left:0, right:0, zIndex:10001, maxHeight:"70vh", overflowY:"auto", background:"#0f0f14", borderRadius:"20px 20px 0 0", borderTop:"1px solid #1e1e2a", padding:16, boxShadow:"0 -10px 30px rgba(0,0,0,0.5)" }}>
+            style={{ position:"fixed", bottom:56, left:0, right:0, zIndex:10001, maxHeight:"70vh", overflowY:"auto", background:"#0f0f14", borderRadius:"20px 20px 0 0", borderTop:"1px solid #1e1e2a", padding:16, boxShadow:"0 -10px 30px rgba(0,0,0,0.5)" }}>
             <div style={{ width:40, height:4, borderRadius:2, background:"#2a2a3a", margin:"0 auto 12px" }}/>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
               <div style={{ fontSize:13, fontWeight:800, color:"#ffffff", letterSpacing:"-0.01em" }}>Tools</div>
@@ -7937,7 +7937,7 @@ function TradingDashboard({ session, onLogout }) {
                     if (it.tab) { e.preventDefault(); setTab(it.tab); }
                     setShowMobileTools(false);
                   }}
-                  style={{ height:64, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 14px", borderRadius:12, background:"#1a1a24", border:"1px solid #2a2a3a", color:"#ffffff", fontSize:13, fontWeight:700, textDecoration:"none" }}>
+                  style={{ height:64, display:"flex", flexDirection:"column", alignItems:"flex-start", justifyContent:"center", padding:"0 14px", borderRadius:12, background:"#1a1a24", border:"1px solid #2a2a3a", color:"#ffffff", fontSize:13, fontWeight:700, textDecoration:"none" }}>
                   {it.label}
                 </a>
               ))}
