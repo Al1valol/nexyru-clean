@@ -53,74 +53,19 @@ const Icons = {
       <circle cx="12" cy="7" r="4" />
     </svg>
   ),
-  challenge: (
-    <svg {...TAB_ICON_PROPS}>
-      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-      <path d="M4 22h16" />
-      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-      <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
-    </svg>
-  ),
-  psychology: (
-    <svg {...TAB_ICON_PROPS}>
-      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" />
-      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
-    </svg>
-  ),
-  target: (
-    <svg {...TAB_ICON_PROPS}>
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="6" />
-      <circle cx="12" cy="12" r="2" />
-    </svg>
-  ),
-  checklist: (
-    <svg {...TAB_ICON_PROPS}>
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M9 12l2 2 4-4" />
-    </svg>
-  ),
-  bell: (
-    <svg {...TAB_ICON_PROPS}>
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  ),
-  play: (
-    <svg {...TAB_ICON_PROPS}>
-      <polygon points="6 4 20 12 6 20 6 4" />
-    </svg>
-  ),
-  chart: (
-    <svg {...TAB_ICON_PROPS}>
-      <line x1="3" y1="21" x2="21" y2="21" />
-      <line x1="7" y1="21" x2="7" y2="13" />
-      <line x1="12" y1="21" x2="12" y2="9" />
-      <line x1="17" y1="21" x2="17" y2="5" />
-    </svg>
-  ),
-  flask: (
-    <svg {...TAB_ICON_PROPS}>
-      <path d="M9 2v6L3.5 18.5A2 2 0 0 0 5.3 21.5h13.4a2 2 0 0 0 1.8-3L15 8V2" />
-      <path d="M8 2h8" />
-      <path d="M6 14h12" />
-    </svg>
-  ),
 };
 
-type ToolItem = { label: string; href: string; icon: React.ReactNode };
+type ToolItem = { label: string; href: string };
 
 const TOOLS: ToolItem[] = [
-  { label: "Challenge", href: "/challenge", icon: Icons.challenge },
-  { label: "Psychology", href: "/psychology", icon: Icons.psychology },
-  { label: "Best Setups", href: "/setups", icon: Icons.target },
-  { label: "Checklist", href: "/checklist", icon: Icons.checklist },
-  { label: "Alerts", href: "/alerts", icon: Icons.bell },
-  { label: "Trade Review", href: "/replay", icon: Icons.play },
-  { label: "Insights", href: "/dashboard?tab=insights", icon: Icons.chart },
-  { label: "Strategy Lab", href: "/dashboard?tab=stratlab", icon: Icons.flask },
+  { href: "/checklist", label: "Checklist" },
+  { href: "/alerts", label: "Alerts" },
+  { href: "/challenge", label: "Challenge" },
+  { href: "/psychology", label: "Psychology" },
+  { href: "/setups", label: "Best Setups" },
+  { href: "/replay", label: "Trade Review" },
+  { href: "/notes", label: "Daily Notes" },
+  { href: "/settings", label: "Settings" },
 ];
 
 function isActiveHref(path: string | undefined, href: string): boolean {
@@ -233,16 +178,33 @@ function ToolsSheet({
         />
         <div
           style={{
-            fontSize: 12,
-            color: "#6b7280",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 700,
-            marginBottom: 14,
-            padding: "0 4px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 16,
           }}
         >
-          All Tools
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
+            Tools
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              background: "#1a1a24",
+              border: "1px solid #2a2a3a",
+              borderRadius: 8,
+              color: "#9ca3af",
+              width: 32,
+              height: 32,
+              cursor: "pointer",
+              fontSize: 18,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ×
+          </button>
         </div>
         <div
           style={{
@@ -258,33 +220,21 @@ function ToolsSheet({
               onClick={onClose}
               style={{
                 display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-start",
-                gap: 10,
-                padding: "16px 14px",
-                background: "#15151e",
-                border: "1px solid #1e1e2a",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 56,
                 borderRadius: 12,
+                background: "#1a1a24",
+                border: "1px solid #2a2a3a",
                 color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
                 textDecoration: "none",
-                minHeight: 88,
+                textAlign: "center",
+                padding: "12px 8px",
               }}
             >
-              <span
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 9,
-                  background: "rgba(99,102,241,0.12)",
-                  color: "#6366f1",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {t.icon}
-              </span>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{t.label}</span>
+              {t.label}
             </a>
           ))}
         </div>
@@ -393,7 +343,7 @@ export default function MobileNav({ activePath }: { activePath?: string }) {
         }}
       >
         <TabButton
-          label="Dashboard"
+          label="Home"
           icon={Icons.dashboard}
           href="/dashboard"
           active={isActiveHref(activePath, "/dashboard")}
