@@ -7721,6 +7721,10 @@ function TradingDashboard({ session, onLogout }) {
   // its own storage key regardless of platform (fixes mobile Safari/Chrome
   // where the sb-*-auth-token name could differ across versions).
   const [supabaseUserId, setSupabaseUserId] = useState(null);
+  // Bumped on SIGNED_IN so the trades effect re-runs even when the user id
+  // was already resolved — mobile Safari sometimes hands us the user id
+  // before the access token is usable against /api/trades.
+  const [authRefreshKey, setAuthRefreshKey] = useState(0);
   useEffect(() => {
     let cancelled = false;
     const supa = getSupabaseClient();
@@ -7733,8 +7737,9 @@ function TradingDashboard({ session, onLogout }) {
         if (!cancelled) setSupabaseUserId(null);
       }
     })();
-    const { data: sub } = supa.auth.onAuthStateChange((_evt, s) => {
+    const { data: sub } = supa.auth.onAuthStateChange((evt, s) => {
       setSupabaseUserId(s?.user?.id ?? null);
+      if (evt === "SIGNED_IN") setAuthRefreshKey(k => k + 1);
     });
     return () => {
       cancelled = true;
@@ -7854,7 +7859,7 @@ function TradingDashboard({ session, onLogout }) {
     }
 
     setSyncStatus("syncing");
-    (async () => {
+    const attemptFetch = async (retryCount = 0) => {
       try {
         const supa = getSupabaseClient();
         const { data: { session: sbSession } = { session: null } } = supa ? await supa.auth.getSession() : { data: { session: null } };
@@ -7884,6 +7889,11 @@ function TradingDashboard({ session, onLogout }) {
           }).catch(() => {});
           initialSyncDoneRef.current = true;
           markSaved();
+        } else if (retryCount < 3) {
+          // Mobile Safari: the access token may still be propagating, so an
+          // empty result can be a false negative. Retry before falling back
+          // to uploading local data (which would overwrite the cloud).
+          setTimeout(() => { if (!cancelled) attemptFetch(retryCount + 1); }, 1500);
         } else if (localSaved.length > 0) {
           // First-time upload — push local trades to Supabase
           const stripped = localSaved.map(stripScreenshot);
@@ -7901,10 +7911,11 @@ function TradingDashboard({ session, onLogout }) {
           setSyncStatus("error");
         }
       }
-    })();
+    };
+    attemptFetch();
 
     return () => { cancelled = true; };
-  }, [session.username, supabaseUserId]);
+  }, [session.username, supabaseUserId, authRefreshKey]);
 
   // Persist on change: localStorage immediately, Supabase debounced
   useEffect(() => {
