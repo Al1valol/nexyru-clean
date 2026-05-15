@@ -773,6 +773,42 @@ function AccountSection({
     kind: "info",
   });
 
+  const [newEmail, setNewEmail] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [showEmailForm, setShowEmailForm] = useState(false);
+
+  const sendEmailChange = async () => {
+    setEmailMsg("");
+    const trimmed = newEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailStatus("error");
+      setEmailMsg("Enter a valid email address");
+      return;
+    }
+    if (trimmed === (session.email || "").trim().toLowerCase()) {
+      setEmailStatus("error");
+      setEmailMsg("That's already your email");
+      return;
+    }
+    setEmailStatus("sending");
+    try {
+      const { error } = await supabase.auth.updateUser({ email: trimmed });
+      if (error) {
+        setEmailStatus("error");
+        setEmailMsg(error.message);
+        return;
+      }
+      setEmailStatus("sent");
+      setEmailMsg(
+        "Check your new email inbox to confirm the change. Your email won't update until you click the link."
+      );
+    } catch (e) {
+      setEmailStatus("error");
+      setEmailMsg((e as Error).message || "Failed to send verification email");
+    }
+  };
+
   const changePassword = async () => {
     setFlash({ msg: "", kind: "info" });
     if (!newPw || newPw.length < 6) {
@@ -836,16 +872,69 @@ function AccountSection({
           <button
             type="button"
             style={btnSecondary}
-            onClick={() =>
-              setFlash({
-                msg: "Contact support to change your email",
-                kind: "info",
-              })
-            }
+            onClick={() => {
+              setShowEmailForm((v) => !v);
+              setEmailStatus("idle");
+              setEmailMsg("");
+              setNewEmail("");
+            }}
           >
-            Change Email
+            {showEmailForm ? "Cancel" : "Change"}
           </button>
         </div>
+
+        {showEmailForm && (
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            <input
+              type="email"
+              placeholder="New email address"
+              style={input}
+              value={newEmail}
+              onChange={(e) => {
+                setNewEmail(e.target.value);
+                if (emailStatus === "error" || emailStatus === "sent") {
+                  setEmailStatus("idle");
+                  setEmailMsg("");
+                }
+              }}
+              autoComplete="email"
+              disabled={emailStatus === "sending" || emailStatus === "sent"}
+            />
+            {emailMsg && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color:
+                    emailStatus === "error"
+                      ? "#ef4444"
+                      : emailStatus === "sent"
+                      ? "#22c55e"
+                      : "#9ca3af",
+                  lineHeight: 1.5,
+                }}
+              >
+                {emailMsg}
+              </div>
+            )}
+            <button
+              type="button"
+              style={{
+                ...btnPrimary,
+                opacity: emailStatus === "sending" || emailStatus === "sent" ? 0.6 : 1,
+                width: "fit-content",
+              }}
+              onClick={sendEmailChange}
+              disabled={emailStatus === "sending" || emailStatus === "sent"}
+            >
+              {emailStatus === "sending"
+                ? "Sending..."
+                : emailStatus === "sent"
+                ? "Verification sent"
+                : "Send verification email"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Password */}
