@@ -7754,7 +7754,7 @@ function TradingDashboard({ session, onLogout }) {
     return trades.filter(t => t.accountId === id || (!t.accountId && isDefault));
   }, [trades, paperAccts.activeAccount, paperAccts.accounts]);
 
-  if (isMobile) {
+  if (typeof window !== "undefined" && window.innerWidth < 768 || isMobile) {
     return (
       <>
         <MobileDashboard
