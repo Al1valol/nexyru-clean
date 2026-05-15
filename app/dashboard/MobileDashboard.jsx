@@ -123,6 +123,79 @@ export default function MobileDashboard({
                 </div>
               </div>
             ))}
+
+            {/* STATS SECTION */}
+            <div style={{ marginTop: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Your Stats</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {[
+                  { label: 'Total PnL', value: (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }), color: totalPnl >= 0 ? '#22c55e' : '#ef4444' },
+                  { label: 'Win Rate', value: winRate + '%', color: '#a78bfa' },
+                  { label: 'Total Trades', value: activeTrades.length, color: '#fff' },
+                  { label: 'Profit Factor', value: (() => { const w = activeTrades.filter(t => (t.pnl || 0) > 0).reduce((s, t) => s + (t.pnl || 0), 0); const l = Math.abs(activeTrades.filter(t => (t.pnl || 0) < 0).reduce((s, t) => s + (t.pnl || 0), 0)); return l > 0 ? (w / l).toFixed(2) : 'N/A'; })(), color: '#38bdf8' },
+                  { label: 'Avg Win', value: (() => { const w = activeTrades.filter(t => (t.pnl || 0) > 0); return w.length ? '+$' + (w.reduce((s, t) => s + (t.pnl || 0), 0) / w.length).toFixed(2) : '$0'; })(), color: '#22c55e' },
+                  { label: 'Avg Loss', value: (() => { const l = activeTrades.filter(t => (t.pnl || 0) < 0); return l.length ? '-$' + Math.abs(l.reduce((s, t) => s + (t.pnl || 0), 0) / l.length).toFixed(2) : '$0'; })(), color: '#ef4444' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ background: '#111', border: '1px solid #1e1e2a', borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* CALENDAR SECTION */}
+            {(() => {
+              const tradesByDate = activeTrades.reduce((acc, t) => {
+                const d = new Date(t.date).toDateString();
+                if (!acc[d]) acc[d] = { pnl: 0, count: 0 };
+                acc[d].pnl += (t.pnl || 0);
+                acc[d].count++;
+                return acc;
+              }, {});
+
+              const now = new Date();
+              const year = now.getFullYear();
+              const month = now.getMonth();
+              const daysInMonth = new Date(year, month + 1, 0).getDate();
+              const firstDay = new Date(year, month, 1).getDay();
+              const monthName = now.toLocaleString('default', { month: 'long' });
+
+              return (
+                <div style={{ marginTop: 4, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                    {monthName} {year}
+                  </div>
+                  <div style={{ background: '#111', border: '1px solid #1e1e2a', borderRadius: 12, padding: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: 8 }}>
+                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                        <div key={i} style={{ textAlign: 'center', fontSize: 10, color: '#6b7280', fontWeight: 600 }}>{d}</div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
+                      {Array.from({ length: firstDay }).map((_, i) => <div key={'e' + i} />)}
+                      {Array.from({ length: daysInMonth }).map((_, i) => {
+                        const day = i + 1;
+                        const dateStr = new Date(year, month, day).toDateString();
+                        const dayData = tradesByDate[dateStr];
+                        const isToday = day === now.getDate();
+                        const color = dayData ? (dayData.pnl >= 0 ? '#22c55e' : '#ef4444') : 'transparent';
+                        return (
+                          <div key={day} style={{
+                            textAlign: 'center', padding: '4px 2px', borderRadius: 6,
+                            background: dayData ? (dayData.pnl >= 0 ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)') : 'transparent',
+                            border: isToday ? '1px solid #6366f1' : '1px solid transparent',
+                          }}>
+                            <div style={{ fontSize: 11, color: dayData ? color : '#374151', fontWeight: isToday ? 700 : 400 }}>{day}</div>
+                            {dayData && <div style={{ fontSize: 8, color, marginTop: 1 }}>{dayData.count}t</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
