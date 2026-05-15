@@ -229,7 +229,7 @@ function computeTraderStats(username) {
 // ═══════════════════════════════════════════════════════════════
 
 function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false);
   useEffect(() => {
     const check = () =>setIsMobile(window.innerWidth< breakpoint);
     check();
