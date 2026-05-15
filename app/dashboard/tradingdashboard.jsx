@@ -285,6 +285,26 @@ function useAuth() {
       const raw = localStorage.getItem(SESSION_KEY);
       if (raw) {
         const s = JSON.parse(raw);
+        // Self-heal: /auth/callback (email verify, password reset) sets sb-* auth
+        // storage but never updates SESSION_KEY, and pre-supabaseUserId sessions
+        // exist from older deploys. Recover the id from the live token so the
+        // cross-device sync useEffect can actually fire.
+        if (!s.supabaseUserId) {
+          try {
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (!k || !k.startsWith("sb-") || !k.endsWith("-auth-token")) continue;
+              const tok = JSON.parse(localStorage.getItem(k) || "{}");
+              const uid = tok?.user?.id || tok?.currentSession?.user?.id;
+              if (uid) {
+                s.supabaseUserId = uid;
+                s.googleAuth = true;
+                localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+                break;
+              }
+            }
+          } catch {}
+        }
         if (s.googleAuth) { setSession(s); setHydrated(true); return; }
         const accounts = JSON.parse(localStorage.getItem(AUTH_KEY) || "{}");
         if (accounts[s.username]) setSession(s);
