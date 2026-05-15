@@ -7768,61 +7768,134 @@ function TradingDashboard({ session, onLogout }) {
           </div>
         </div>
 
-        {/* MOBILE CONTENT */}
-        <div style={{padding:'16px'}}>
+        {/* MOBILE CONTENT - tab based */}
+        <div style={{padding:'16px', paddingBottom:80}}>
 
-          {/* Account card */}
-          <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:16, marginBottom:16}}>
-            <div style={{fontSize:11, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4}}>
-              {paperAccts?.activeAccount?.name || 'Paper Account'}
-            </div>
-            <div style={{fontSize:28, fontWeight:800, color:'#fff', marginBottom:8}}>
-              ${(paperAccts?.activeAccount?.balance || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-              {[
-                {label:'PnL', value: '+$' + (activeTrades.reduce((s,t)=>s+(t.pnl||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}), color:'#22c55e'},
-                {label:'Win Rate', value: activeTrades.length ? Math.round(activeTrades.filter(t=>(t.pnl||0)>0).length/activeTrades.length*100)+'%' : '0%', color:'#a78bfa'},
-                {label:'Trades', value: activeTrades.length, color:'#fff'},
-                {label:'Best Trade', value: activeTrades.length ? '+$'+(Math.max(...activeTrades.map(t=>t.pnl||0))).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '$0', color:'#22c55e'},
-              ].map(s => (
-                <div key={s.label} style={{background:'#1a1a24', borderRadius:8, padding:'10px 12px'}}>
-                  <div style={{fontSize:10, color:'#6b7280', textTransform:'uppercase', marginBottom:2}}>{s.label}</div>
-                  <div style={{fontSize:16, fontWeight:700, color:s.color}}>{s.value}</div>
+          {/* DASHBOARD TAB */}
+          {tab === 'dashboard' && (
+            <div>
+              {/* Account card */}
+              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:16, marginBottom:12}}>
+                <div style={{fontSize:11, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4}}>
+                  {paperAccts?.activeAccount?.name || 'Paper Account'}
                 </div>
-              ))}
-            </div>
-          </div>
+                <div style={{fontSize:32, fontWeight:800, color:'#fff', marginBottom:12}}>
+                  ${(paperAccts?.activeAccount?.balance || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}
+                </div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                  {[
+                    {label:'Total PnL', value:(activeTrades.reduce((s,t)=>s+(t.pnl||0),0)>=0?'+':'')+activeTrades.reduce((s,t)=>s+(t.pnl||0),0).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2}), color: activeTrades.reduce((s,t)=>s+(t.pnl||0),0)>=0?'#22c55e':'#ef4444'},
+                    {label:'Win Rate', value: activeTrades.length ? Math.round(activeTrades.filter(t=>(t.pnl||0)>0).length/activeTrades.length*100)+'%' : '0%', color:'#a78bfa'},
+                    {label:'Total Trades', value: activeTrades.length, color:'#fff'},
+                    {label:'Best Trade', value: activeTrades.length ? '+$'+(Math.max(...activeTrades.map(t=>t.pnl||0))).toFixed(2) : '$0', color:'#22c55e'},
+                  ].map(s => (
+                    <div key={s.label} style={{background:'#1a1a24', borderRadius:8, padding:'10px 12px'}}>
+                      <div style={{fontSize:10, color:'#6b7280', textTransform:'uppercase', marginBottom:2}}>{s.label}</div>
+                      <div style={{fontSize:15, fontWeight:700, color:s.color, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-          {/* Recent Trades */}
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:11, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8}}>Recent Trades</div>
-            {activeTrades.slice(0,10).map(t => (
-              <div key={t.id} style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:10, padding:'12px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-                <div>
-                  <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
-                    <span style={{fontSize:12, fontWeight:700, color:'#fff'}}>{t.pair||t.symbol}</span>
-                    <span style={{fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, background:t.type==='long'?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)', color:t.type==='long'?'#22c55e':'#ef4444'}}>
-                      {t.type?.toUpperCase()}
-                    </span>
+              {/* Recent Trades */}
+              <div style={{fontSize:11, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8}}>Recent Trades</div>
+              {activeTrades.slice(0,8).map(t => (
+                <div key={t.id} style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:10, padding:'12px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                  <div style={{minWidth:0, flex:1}}>
+                    <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
+                      <span style={{fontSize:13, fontWeight:700, color:'#fff'}}>{t.pair||t.symbol}</span>
+                      <span style={{fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, background:t.type==='long'?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)', color:t.type==='long'?'#22c55e':'#ef4444', flexShrink:0}}>
+                        {t.type?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{fontSize:11, color:'#6b7280'}}>{new Date(t.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
                   </div>
-                  <div style={{fontSize:11, color:'#6b7280'}}>
-                    {new Date(t.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
-                  </div>
-                </div>
-                <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:15, fontWeight:700, color:(t.pnl||0)>=0?'#22c55e':'#ef4444'}}>
+                  <div style={{fontSize:15, fontWeight:700, color:(t.pnl||0)>=0?'#22c55e':'#ef4444', flexShrink:0, marginLeft:12}}>
                     {(t.pnl||0)>=0?'+':''}{(t.pnl||0).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2})}
                   </div>
                 </div>
+              ))}
+              {activeTrades.length === 0 && (
+                <div style={{background:'#111', border:'1px dashed #2a2a3a', borderRadius:10, padding:32, textAlign:'center'}}>
+                  <div style={{color:'#6b7280', fontSize:13, marginBottom:16}}>No trades yet</div>
+                  <button onClick={() => setShowHub(true)} style={{padding:'10px 20px', borderRadius:8, border:'1px solid rgba(99,102,241,0.4)', background:'transparent', color:'#6366f1', fontSize:13, fontWeight:600, cursor:'pointer', marginRight:8}}>Import CSV</button>
+                  <button onClick={() => setShowForm(true)} style={{padding:'10px 20px', borderRadius:8, border:'none', background:'var(--accent)', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer'}}>Log Trade</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* JOURNAL TAB */}
+          {tab === 'journal' && (
+            <div>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:18, fontWeight:700, color:'#fff'}}>Journal</div>
+                  <div style={{fontSize:12, color:'#6b7280'}}>{activeTrades.length} trades</div>
+                </div>
+                <button onClick={() => setShowHub(true)} style={{padding:'8px 14px', borderRadius:8, border:'1px solid rgba(99,102,241,0.4)', background:'transparent', color:'#6366f1', fontSize:12, fontWeight:600, cursor:'pointer'}}>Import CSV</button>
               </div>
-            ))}
-            {activeTrades.length === 0 && (
-              <div style={{background:'#111', border:'1px dashed #2a2a3a', borderRadius:10, padding:24, textAlign:'center', color:'#6b7280', fontSize:13}}>
-                No trades yet — import a CSV to get started
+              {activeTrades.slice(0, 50).map(t => (
+                <div key={t.id} style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:10, padding:'12px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                  <div style={{minWidth:0, flex:1}}>
+                    <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
+                      <span style={{fontSize:13, fontWeight:700, color:'#fff'}}>{t.pair||t.symbol}</span>
+                      <span style={{fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4, background:t.type==='long'?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)', color:t.type==='long'?'#22c55e':'#ef4444', flexShrink:0}}>
+                        {t.type?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{fontSize:11, color:'#6b7280'}}>{new Date(t.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})} · {t.strategy||'No strategy'}</div>
+                  </div>
+                  <div style={{display:'flex', alignItems:'center', gap:8, flexShrink:0, marginLeft:12}}>
+                    <div style={{fontSize:15, fontWeight:700, color:(t.pnl||0)>=0?'#22c55e':'#ef4444'}}>
+                      {(t.pnl||0)>=0?'+':''}{(t.pnl||0).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2})}
+                    </div>
+                    <button onClick={() => deleteTrade(t.id)} style={{background:'transparent', border:'none', color:'#374151', cursor:'pointer', padding:4, fontSize:16}}>×</button>
+                  </div>
+                </div>
+              ))}
+              {activeTrades.length === 0 && (
+                <div style={{background:'#111', border:'1px dashed #2a2a3a', borderRadius:10, padding:32, textAlign:'center'}}>
+                  <div style={{color:'#6b7280', fontSize:13, marginBottom:16}}>Your journal is empty</div>
+                  <button onClick={() => setShowHub(true)} style={{padding:'10px 20px', borderRadius:8, border:'1px solid rgba(99,102,241,0.4)', background:'transparent', color:'#6366f1', fontSize:13, fontWeight:600, cursor:'pointer'}}>Import CSV</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* INSIGHTS TAB */}
+          {tab === 'insights' && (
+            <div>
+              <div style={{fontSize:18, fontWeight:700, color:'#fff', marginBottom:16}}>Insights</div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:16}}>
+                {[
+                  {label:'Win Rate', value: activeTrades.length ? Math.round(activeTrades.filter(t=>(t.pnl||0)>0).length/activeTrades.length*100)+'%' : '0%'},
+                  {label:'Profit Factor', value: (() => { const w=activeTrades.filter(t=>(t.pnl||0)>0).reduce((s,t)=>s+t.pnl,0); const l=Math.abs(activeTrades.filter(t=>(t.pnl||0)<0).reduce((s,t)=>s+t.pnl,0)); return l>0?(w/l).toFixed(2):'N/A'; })()},
+                  {label:'Avg Win', value: (() => { const w=activeTrades.filter(t=>(t.pnl||0)>0); return w.length ? '+$'+(w.reduce((s,t)=>s+t.pnl,0)/w.length).toFixed(2) : '$0'; })()},
+                  {label:'Avg Loss', value: (() => { const l=activeTrades.filter(t=>(t.pnl||0)<0); return l.length ? '-$'+Math.abs(l.reduce((s,t)=>s+t.pnl,0)/l.length).toFixed(2) : '$0'; })()},
+                ].map(s => (
+                  <div key={s.label} style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:10, padding:'12px 14px'}}>
+                    <div style={{fontSize:10, color:'#6b7280', textTransform:'uppercase', marginBottom:4}}>{s.label}</div>
+                    <div style={{fontSize:18, fontWeight:700, color:'#fff'}}>{s.value}</div>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
+              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:10, padding:16, textAlign:'center', color:'#6b7280', fontSize:13}}>
+                View full insights on desktop for charts and detailed analysis
+              </div>
+            </div>
+          )}
+
+          {/* STRATEGY LAB TAB */}
+          {tab === 'stratlab' && (
+            <div>
+              <div style={{fontSize:18, fontWeight:700, color:'#fff', marginBottom:16}}>Strategy Lab</div>
+              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:10, padding:24, textAlign:'center'}}>
+                <div style={{color:'#6b7280', fontSize:13, marginBottom:16}}>Strategy Lab is optimized for desktop.</div>
+                <div style={{color:'#6b7280', fontSize:12}}>Open Nexyru on your computer to build and backtest strategies.</div>
+              </div>
+            </div>
+          )}
 
         </div>
 
