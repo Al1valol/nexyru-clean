@@ -16,7 +16,24 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, BarChart, Bar,
 } from "recharts";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import MobileDashboard from "./MobileDashboard";
+
+// ── Supabase browser client — single instance so storage stays consistent
+// across the App. Using the SDK avoids guessing the localStorage key name,
+// which is the root cause of mobile Safari/Chrome cross-device sync misses.
+const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://xsrcaceydyqytbipvrok.supabase.co";
+const SUPA_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A";
+
+let _supabaseClient = null;
+function getSupabaseClient() {
+  if (typeof window === "undefined") return null;
+  if (_supabaseClient) return _supabaseClient;
+  _supabaseClient = createSupabaseClient(SUPA_URL, SUPA_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  });
+  return _supabaseClient;
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -250,67 +267,74 @@ function useAuth() {
   const [pendingGoogle, setPendingGoogle] = useState(null);
 
   useEffect(() => {
-    // Check URL hash for Google OAuth token first
-    const hash = window.location.hash;
-    if (hash.includes("access_token=")) {
-      try {
-        const params = new URLSearchParams(hash.slice(1));
-        const token = params.get("access_token");
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        const email = payload.email || "";
-        const autoUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "");
-        const displayName = payload.user_metadata?.full_name || autoUsername;
-        const supabaseUserId = payload.sub || null;
-        const googleData = { email, displayName, token, autoUsername, supabaseUserId };
-        window.history.replaceState(null, "", "/dashboard");
-        if (supabaseUserId) {
-          try { localStorage.setItem("nexyru_supabase_user_id", supabaseUserId); } catch {}
-        }
-        // Check if user already has a chosen username
-        const existing = localStorage.getItem(`nexyru_google_username_${email}`);
-        if (existing) {
-          const s = { username: existing, displayName, email, googleAuth: true, supabaseUserId };
-          localStorage.setItem(SESSION_KEY, JSON.stringify(s));
-          setSession(s);
-        } else {
-          setPendingGoogle(googleData);
-          setNeedsUsername(true);
-        }
-        setHydrated(true);
-        return;
-      } catch(e) { console.error("OAuth parse error", e); }
-    }
-    // Check existing session
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const s = JSON.parse(raw);
-        // Self-heal: /auth/callback (email verify, password reset) sets sb-* auth
-        // storage but never updates SESSION_KEY, and pre-supabaseUserId sessions
-        // exist from older deploys. Recover the id from the live token so the
-        // cross-device sync useEffect can actually fire.
-        if (!s.supabaseUserId) {
-          try {
-            for (let i = 0; i < localStorage.length; i++) {
-              const k = localStorage.key(i);
-              if (!k || !k.startsWith("sb-") || !k.endsWith("-auth-token")) continue;
-              const tok = JSON.parse(localStorage.getItem(k) || "{}");
-              const uid = tok?.user?.id || tok?.currentSession?.user?.id;
-              if (uid) {
-                s.supabaseUserId = uid;
-                s.googleAuth = true;
-                localStorage.setItem(SESSION_KEY, JSON.stringify(s));
-                break;
-              }
+    let cancelled = false;
+    (async () => {
+      // Check URL hash for Google OAuth token first
+      const hash = window.location.hash;
+      if (hash.includes("access_token=")) {
+        try {
+          const params = new URLSearchParams(hash.slice(1));
+          const token = params.get("access_token");
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          const email = payload.email || "";
+          const autoUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "");
+          const displayName = payload.user_metadata?.full_name || autoUsername;
+          const supabaseUserId = payload.sub || null;
+          const googleData = { email, displayName, token, autoUsername, supabaseUserId };
+          window.history.replaceState(null, "", "/dashboard");
+          if (supabaseUserId) {
+            try { localStorage.setItem("nexyru_supabase_user_id", supabaseUserId); } catch {}
+          }
+          // Check if user already has a chosen username
+          const existing = localStorage.getItem(`nexyru_google_username_${email}`);
+          if (existing) {
+            const s = { username: existing, displayName, email, googleAuth: true, supabaseUserId };
+            localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+            if (!cancelled) setSession(s);
+          } else {
+            if (!cancelled) {
+              setPendingGoogle(googleData);
+              setNeedsUsername(true);
             }
-          } catch {}
-        }
-        if (s.googleAuth) { setSession(s); setHydrated(true); return; }
-        const accounts = JSON.parse(localStorage.getItem(AUTH_KEY) || "{}");
-        if (accounts[s.username]) setSession(s);
+          }
+          if (!cancelled) setHydrated(true);
+          return;
+        } catch(e) { console.error("OAuth parse error", e); }
       }
-    } catch {}
-    setHydrated(true);
+
+      // Self-heal supabaseUserId from the Supabase SDK's session, which
+      // works across all browsers (mobile Safari/Chrome) without needing
+      // to know the exact localStorage key name.
+      let recoveredId = null;
+      try {
+        const supa = getSupabaseClient();
+        if (supa) {
+          const { data } = await supa.auth.getSession();
+          recoveredId = data?.session?.user?.id ?? null;
+        }
+      } catch {}
+
+      // Check existing session
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (!s.supabaseUserId && recoveredId) {
+            s.supabaseUserId = recoveredId;
+            s.googleAuth = true;
+            try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch {}
+          }
+          if (s.googleAuth) {
+            if (!cancelled) { setSession(s); setHydrated(true); }
+            return;
+          }
+          const accounts = JSON.parse(localStorage.getItem(AUTH_KEY) || "{}");
+          if (accounts[s.username] && !cancelled) setSession(s);
+        }
+      } catch {}
+      if (!cancelled) setHydrated(true);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const confirmUsername = useCallback((username) => {
@@ -3885,87 +3909,214 @@ function AddAccountModal({ onAdd, onClose }) {
   );
 }
 
+// ── Account type display helpers (used by switcher + mobile sheet) ──
+const ACCOUNT_TYPE_META = {
+  paper:  { label: "PAPER",  color: "#9ca3af", bg: "rgba(156,163,175,0.15)" },
+  funded: { label: "FUNDED", color: "#22c55e", bg: "rgba(34,197,94,0.15)"  },
+  real:   { label: "LIVE",   color: "#3b82f6", bg: "rgba(59,130,246,0.15)" },
+};
+function accountTypeMeta(type) { return ACCOUNT_TYPE_META[type] || ACCOUNT_TYPE_META.paper; }
+
 // ── AccountSwitcher (top bar dropdown) ────────────────────────
-function AccountSwitcher({ accounts, activeAccount, onSwitch, onAdd, trades }) {
-  const [open, setOpen] = useState(false);
+function AccountSwitcher({ accounts, activeAccount, onSwitch, onAddAccount, onDelete, trades }) {
+  const [open, setOpen]               = useState(false);
+  const [confirmDelId, setConfirmDel] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName]         = useState("");
+  const [newType, setNewType]         = useState("paper");
+  const [newBalance, setNewBalance]   = useState("10000");
+  const [addErr, setAddErr]           = useState("");
   const ref = useRef(null);
 
   useEffect(() => {
     if (!open) return;
-    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setConfirmDel(null); setShowAddForm(false); } };
     document.addEventListener("mousedown", fn);
     return () => document.removeEventListener("mousedown", fn);
   }, [open]);
 
   if (!activeAccount) return null;
 
-  const pnl     = activeAccount.balance - activeAccount.startingBalance;
-  const pnlPct  = activeAccount.startingBalance > 0 ? (pnl / activeAccount.startingBalance * 100) : 0;
-  const pnlPos  = pnl >= 0;
- const typeClr = activeAccount.type === "real" ? "#10b981" : activeAccount.type === "funded" ? "#a5b4fc" : "#6366f1";
- const canUpgrade = checkUpgradeEligible(activeAccount);
+  const pnl       = activeAccount.balance - activeAccount.startingBalance;
+  const pnlPct    = activeAccount.startingBalance > 0 ? (pnl / activeAccount.startingBalance * 100) : 0;
+  const pnlPos    = pnl >= 0;
+  const typeClr   = accountTypeMeta(activeAccount.type).color;
+  const canUpgrade = checkUpgradeEligible(activeAccount);
 
- return (<div ref={ref} style={{ position:"relative", flexShrink:0 }}>
+  const resetAddForm = () => {
+    setShowAddForm(false);
+    setNewName(""); setNewType("paper"); setNewBalance("10000"); setAddErr("");
+  };
+
+  const submitAdd = () => {
+    if (!newName.trim()) return setAddErr("Account name is required.");
+    const bal = parseFloat(newBalance);
+    if (!bal || bal <= 0) return setAddErr("Starting balance must be positive.");
+    if (bal > 10_000_000) return setAddErr("Starting balance too large.");
+    onAddAccount?.(newName, newType, bal);
+    resetAddForm();
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} style={{ position:"relative", flexShrink:0 }}>
       {/* Trigger button */}
-      <button onClick={() => setOpen(v => !v)} style={{
+      <button onClick={() => { setOpen(v => !v); setConfirmDel(null); }} style={{
         display:"flex", alignItems:"center", gap:10, padding:"6px 12px", borderRadius:9,
         border:`1px solid ${open ? typeClr + "50" : "#2a2a3a"}`,
         background: open ? typeClr + "08" : "#1a1a24",
         cursor:"pointer", transition:"all 0.15s",
       }}>
-        {/* Account type dot — pulse if upgrade available */}
-        <span style={{ width:7, height:7, borderRadius:"50%", background: canUpgrade ? "#f59e0b" : typeClr, flexShrink:0, animation: canUpgrade ? "pulse 1.5s infinite" : "none" }}/><div style={{ textAlign:"left", lineHeight:1.2 }}><div style={{ fontSize:10, fontWeight:600, color:"#6b7280", whiteSpace:"nowrap", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", letterSpacing:"0.01em" }}>
+        <span style={{ width:7, height:7, borderRadius:"50%", background: canUpgrade ? "#f59e0b" : typeClr, flexShrink:0, animation: canUpgrade ? "pulse 1.5s infinite" : "none" }}/>
+        <div style={{ textAlign:"left", lineHeight:1.2 }}>
+          <div style={{ fontSize:10, fontWeight:600, color:"#6b7280", whiteSpace:"nowrap", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", letterSpacing:"0.01em" }}>
             {activeAccount.name} {canUpgrade ? "⬆️" : ""}
-          </div><div style={{ marginTop:2, fontSize:12, fontWeight:700, color: pnlPos ? "#10b981" : "#ef4444", letterSpacing:"-0.01em", fontVariantNumeric:"tabular-nums" }}>
+          </div>
+          <div style={{ marginTop:2, fontSize:12, fontWeight:700, color: pnlPos ? "#10b981" : "#ef4444", letterSpacing:"-0.01em", fontVariantNumeric:"tabular-nums" }}>
             ${activeAccount.balance.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 })}
-            <span style={{ opacity:0.8, marginLeft:5, fontWeight:600 }}>{pnlPos?"+":""}{pnlPct.toFixed(1)}%</span></div></div><ChevronDown size={13} strokeWidth={2.5} style={{ color:"#6b7280", transform:open?"rotate(180deg)":"none", transition:"transform 0.2s", flexShrink:0 }}/></button>
+            <span style={{ opacity:0.8, marginLeft:5, fontWeight:600 }}>{pnlPos?"+":""}{pnlPct.toFixed(1)}%</span>
+          </div>
+        </div>
+        <ChevronDown size={13} strokeWidth={2.5} style={{ color:"#6b7280", transform:open?"rotate(180deg)":"none", transition:"transform 0.2s", flexShrink:0 }}/>
+      </button>
 
       {/* Dropdown */}
       {open && (
         <div style={{
           position:"absolute", top:"calc(100% + 6px)", right:0,
-          width:260, borderRadius:12, border:"1px solid #2a2a3a",
+          width:300, borderRadius:12, border:"1px solid #2a2a3a",
           background:"#111118", boxShadow:"0 16px 48px rgba(0,0,0,0.5)",
           zIndex:200, overflow:"hidden",
         }}>
-          {/* Header */}
           <div style={{ padding:"10px 14px", borderBottom:"1px solid #2a2a3a", fontSize:9, fontWeight:700, color:"#374151", textTransform:"uppercase", letterSpacing:"0.07em" }}>Trading Accounts</div>
 
           {/* Account list */}
-          <div style={{ maxHeight:280, overflowY:"auto" }}>
+          <div style={{ maxHeight:300, overflowY:"auto" }}>
             {accounts.map(acc => {
-              const ap    = acc.balance - acc.startingBalance;
-              const apPct = acc.startingBalance > 0 ? (ap / acc.startingBalance * 100) : 0;
-              const apPos = ap >= 0;
-              const tc    = acc.type === "funded" ? "#a5b4fc" : "#6366f1";
+              const meta  = accountTypeMeta(acc.type);
               const isAct = acc.id === activeAccount.id;
-              const accTrades = trades.filter(t =>t.accountId === acc.id);
- return (<button key={acc.id} onClick={() => { onSwitch(acc.id); setOpen(false); }} style={{
-                  width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
-                  border:"none", cursor:"pointer", textAlign:"left",
-                  background: isAct ? tc + "10" : "transparent",
-                  borderLeft: isAct ? `2px solid ${tc}` : "2px solid transparent",
-                  transition:"background 0.12s",
-                }}
-                onMouseEnter={e => { if (!isAct) e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
-                onMouseLeave={e => { if (!isAct) e.currentTarget.style.background = "transparent"; }}
-                >
-                  {/* Icon */}
-                  <div style={{ width:32, height:32, borderRadius:8, background: isAct ? tc+"20" : "#2a2a3a", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><span style={{ fontSize:14 }}>{acc.type === "funded" ? "" : ""}</span></div>
-                  {/* Info */}
-                  <div style={{ flex:1, minWidth:0 }}><div style={{ display:"flex", alignItems:"center", gap:5 }}><span style={{ fontSize:11, fontWeight:700, color:"#ffffff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{acc.name}</span><span style={{ fontSize:8, fontWeight:700, color:tc, background:tc+"15", padding:"1px 5px", borderRadius:8, flexShrink:0 }}>{acc.type}</span></div><div style={{ display:"flex", alignItems:"center", gap:6, marginTop:2 }}><span style={{ fontSize:10, fontFamily:"monospace", color:"#9ca3af" }}>${acc.balance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</span><span style={{ fontSize:9, fontFamily:"monospace", color: apPos?"#10b981":"#ef4444" }}>{apPos?"+":""}{apPct.toFixed(1)}%</span><span style={{ fontSize:9, color:"#374151" }}>·</span><span style={{ fontSize:9, color:"#374151" }}>{accTrades.length} trades</span></div></div>
-                  {isAct && <Check size={13} style={{ color:tc, flexShrink:0 }}/>}
-                </button>
+              const isOnlyOne = accounts.length <= 1;
+              const confirming = confirmDelId === acc.id;
+
+              return (
+                <div key={acc.id} style={{
+                  display:"flex", alignItems:"center", padding:"10px 12px",
+                  background: isAct ? meta.color + "10" : "transparent",
+                  borderLeft: isAct ? `2px solid ${meta.color}` : "2px solid transparent",
+                  borderBottom: "1px solid #1a1a24",
+                }}>
+                  {/* Check column */}
+                  <div style={{ width:18, display:"flex", justifyContent:"center", flexShrink:0 }}>
+                    {isAct && <Check size={13} style={{ color: meta.color }}/>}
+                  </div>
+
+                  {/* Click-to-switch body */}
+                  <button onClick={() => { onSwitch(acc.id); setOpen(false); }} style={{
+                    flex:1, minWidth:0, display:"flex", flexDirection:"column",
+                    alignItems:"flex-start", gap:3, padding:"0 8px",
+                    border:"none", background:"transparent", cursor:"pointer", textAlign:"left",
+                  }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, width:"100%" }}>
+                      <span style={{ fontSize:12, fontWeight:700, color:"#ffffff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1, minWidth:0 }}>{acc.name}</span>
+                      <span style={{ fontSize:8, fontWeight:800, color:meta.color, background:meta.bg, padding:"2px 6px", borderRadius:8, flexShrink:0, letterSpacing:"0.05em" }}>{meta.label}</span>
+                    </div>
+                    <div style={{ fontSize:11, fontFamily:"monospace", color:"#9ca3af" }}>
+                      ${acc.balance.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    </div>
+                  </button>
+
+                  {/* Delete column */}
+                  {confirming ? (
+                    <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+                      <button onClick={() => { onDelete?.(acc.id); setConfirmDel(null); }} style={{
+                        padding:"4px 8px", borderRadius:6, border:"none",
+                        background:"#ef4444", color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer",
+                      }}>Yes</button>
+                      <button onClick={() => setConfirmDel(null)} style={{
+                        padding:"4px 8px", borderRadius:6, border:"1px solid #2a2a3a",
+                        background:"transparent", color:"#9ca3af", fontSize:10, fontWeight:600, cursor:"pointer",
+                      }}>No</button>
+                    </div>
+                  ) : (
+                    !isOnlyOne && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDel(acc.id); }}
+                        title="Delete account"
+                        style={{
+                          padding:6, borderRadius:6, border:"none", background:"transparent",
+                          color:"#6b7280", cursor:"pointer", display:"flex", flexShrink:0,
+                        }}
+                      ><Trash size={13}/></button>
+                    )
+                  )}
+                </div>
               );
             })}
           </div>
 
-          {/* Add account */}
-          <div style={{ padding:"8px 12px", borderTop:"1px solid #2a2a3a" }}><button onClick={() => { onAdd(); setOpen(false); }} style={{
-              width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-              padding:"8px", borderRadius:8, border:"1px dashed #2a2a3a",
-              background:"transparent", color:"#6366f1", fontSize:11, fontWeight:700, cursor:"pointer",
-            }}><Plus size={12}/>New Account</button></div></div>
+          {/* Add account: inline form OR trigger button */}
+          {showAddForm ? (
+            <div style={{ padding:"12px 14px", borderTop:"1px solid #2a2a3a", display:"flex", flexDirection:"column", gap:10 }}>
+              <input
+                autoFocus
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="Account name (e.g. Apex $50k Eval)"
+                onKeyDown={e => e.key === "Enter" && submitAdd()}
+                style={{ width:"100%", padding:"8px 10px", borderRadius:7, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none", boxSizing:"border-box" }}
+              />
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                {[
+                  { id:"paper",  label:"Paper"  },
+                  { id:"funded", label:"Funded" },
+                  { id:"real",   label:"Live"   },
+                ].map(t => {
+                  const m = accountTypeMeta(t.id);
+                  const sel = newType === t.id;
+                  return (
+                    <button key={t.id} onClick={() => setNewType(t.id)} style={{
+                      padding:"7px 6px", borderRadius:999, fontSize:10, fontWeight:700,
+                      border:`1px solid ${sel ? m.color : "#2a2a3a"}`,
+                      background: sel ? m.bg : "transparent",
+                      color: sel ? m.color : "#9ca3af",
+                      cursor:"pointer",
+                    }}>{t.label}</button>
+                  );
+                })}
+              </div>
+              <div style={{ position:"relative" }}>
+                <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:12, color:"#6b7280", fontWeight:700 }}>$</span>
+                <input
+                  type="number"
+                  value={newBalance}
+                  onChange={e => setNewBalance(e.target.value)}
+                  placeholder="Starting balance"
+                  onKeyDown={e => e.key === "Enter" && submitAdd()}
+                  style={{ width:"100%", padding:"8px 10px 8px 22px", borderRadius:7, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none", boxSizing:"border-box" }}
+                />
+              </div>
+              {addErr && <div style={{ fontSize:11, color:"#ef4444" }}>{addErr}</div>}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                <button onClick={resetAddForm} style={{
+                  padding:"6px 10px", border:"none", background:"transparent",
+                  color:"#9ca3af", fontSize:11, fontWeight:600, cursor:"pointer",
+                }}>Cancel</button>
+                <button onClick={submitAdd} style={{
+                  padding:"7px 14px", borderRadius:8, border:"none",
+                  background:"#6366f1", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer",
+                }}>Create</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding:"8px 12px", borderTop:"1px solid #2a2a3a" }}>
+              <button onClick={() => setShowAddForm(true)} style={{
+                width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+                padding:"8px", borderRadius:8, border:"1px dashed #2a2a3a",
+                background:"transparent", color:"#6366f1", fontSize:11, fontWeight:700, cursor:"pointer",
+              }}><Plus size={12}/>Add Account</button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -7502,21 +7653,30 @@ function TradingDashboard({ session, onLogout }) {
 
   // Cross-device sync state
   const [syncStatus,    setSyncStatus]    = useState("idle"); // "idle" | "syncing" | "saved" | "offline"
-  const rawSupabaseUserId = session?.supabaseUserId ?? null;
-  // Only treat as a real Supabase session if an sb- auth token exists in localStorage.
-  // localStorage-only accounts may carry a stale supabaseUserId but no active session,
-  // in which case sync would always fail and falsely show "Offline".
-  const hasSupabaseSession = (() => {
-    if (typeof window === "undefined") return false;
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith("sb-")) return true;
+  // Resolve supabaseUserId from the Supabase SDK session — the SDK knows
+  // its own storage key regardless of platform (fixes mobile Safari/Chrome
+  // where the sb-*-auth-token name could differ across versions).
+  const [supabaseUserId, setSupabaseUserId] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const supa = getSupabaseClient();
+    if (!supa) return;
+    (async () => {
+      try {
+        const { data } = await supa.auth.getSession();
+        if (!cancelled) setSupabaseUserId(data?.session?.user?.id ?? null);
+      } catch {
+        if (!cancelled) setSupabaseUserId(null);
       }
-    } catch {}
-    return false;
-  })();
-  const supabaseUserId = (rawSupabaseUserId && hasSupabaseSession) ? rawSupabaseUserId : null;
+    })();
+    const { data: sub } = supa.auth.onAuthStateChange((_evt, s) => {
+      setSupabaseUserId(s?.user?.id ?? null);
+    });
+    return () => {
+      cancelled = true;
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, []);
   const initialSyncDoneRef = useRef(false);
   const skipNextPushRef = useRef(false);
   const pushTimerRef = useRef(null);
@@ -7631,7 +7791,15 @@ function TradingDashboard({ session, onLogout }) {
     setSyncStatus("syncing");
     (async () => {
       try {
-        const res = await fetch(`/api/trades?user_id=${encodeURIComponent(supabaseUserId)}`, { cache: "no-store" });
+        const supa = getSupabaseClient();
+        const { data: { session: sbSession } = { session: null } } = supa ? await supa.auth.getSession() : { data: { session: null } };
+        const token = sbSession?.access_token;
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+        const res = await fetch(`/api/trades?user_id=${encodeURIComponent(supabaseUserId)}`, {
+          cache: "no-store",
+          headers: authHeaders,
+        });
         if (!res.ok) throw new Error(`status ${res.status}`);
         const body = await res.json();
         const remote = Array.isArray(body.trades) ? body.trades : [];
@@ -7656,7 +7824,7 @@ function TradingDashboard({ session, onLogout }) {
           const stripped = localSaved.map(stripScreenshot);
           const upRes = await fetch("/api/trades", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...authHeaders },
             body: JSON.stringify({ user_id: supabaseUserId, trades: stripped }),
           });
           initialSyncDoneRef.current = true;
@@ -7692,10 +7860,16 @@ function TradingDashboard({ session, onLogout }) {
     setSyncStatus("syncing");
     pushTimerRef.current = setTimeout(async () => {
       try {
+        const supa = getSupabaseClient();
+        const { data: { session: sbSession } = { session: null } } = supa ? await supa.auth.getSession() : { data: { session: null } };
+        const token = sbSession?.access_token;
         const stripped = trades.map(stripScreenshot);
         const res = await fetch("/api/trades", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ user_id: supabaseUserId, trades: stripped }),
         });
         setSyncStatus(res.ok ? "saved" : "offline");
@@ -7781,6 +7955,10 @@ function TradingDashboard({ session, onLogout }) {
           trades={activeTrades}
           session={session}
           activeAccount={paperAccts?.activeAccount}
+          accounts={paperAccts?.accounts || []}
+          onSwitchAccount={paperAccts.setActiveAccount}
+          onAddAccount={paperAccts.addAccount}
+          onDeleteAccount={paperAccts.deleteAccount}
           onAddTrade={() => setShowForm(true)}
           onImport={() => setShowHub(true)}
           showForm={showForm}
@@ -7891,7 +8069,14 @@ function TradingDashboard({ session, onLogout }) {
           {/* Right: account selector + Log Trade + avatar */}
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
             {supabaseUserId && <SyncIndicator status={syncStatus} />}
-            <AccountSwitcher accounts={paperAccts.accounts} activeAccount={paperAccts.activeAccount} onSwitch={paperAccts.setActiveAccount} onAdd={() => setShowAddAcct(true)} trades={trades}/>
+            <AccountSwitcher
+              accounts={paperAccts.accounts}
+              activeAccount={paperAccts.activeAccount}
+              onSwitch={paperAccts.setActiveAccount}
+              onAddAccount={paperAccts.addAccount}
+              onDelete={paperAccts.deleteAccount}
+              trades={trades}
+            />
             {!isMobile && (
               <button onClick={()=>setShowHub(true)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:8, border:"none", background:"var(--accent)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
                 <Plus size={13}/><span>Log Trade</span>

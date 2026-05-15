@@ -1,9 +1,20 @@
 import React, { useState } from 'react';
 
+const ACCT_TYPE_META = {
+  paper:  { label: 'PAPER',  color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' },
+  funded: { label: 'FUNDED', color: '#22c55e', bg: 'rgba(34,197,94,0.15)'  },
+  real:   { label: 'LIVE',   color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+};
+const acctMeta = (t) => ACCT_TYPE_META[t] || ACCT_TYPE_META.paper;
+
 export default function MobileDashboard({
   trades,
   session,
   activeAccount,
+  accounts = [],
+  onSwitchAccount,
+  onAddAccount,
+  onDeleteAccount,
   onAddTrade,
   onImport,
   showForm,
@@ -11,6 +22,29 @@ export default function MobileDashboard({
 }) {
   const [tab, setTab] = useState('home');
   const [showTools, setShowTools] = useState(false);
+  const [showAccounts, setShowAccounts] = useState(false);
+  const [confirmDelId, setConfirmDelId] = useState(null);
+  const [showAddForm, setShowAddForm]   = useState(false);
+  const [newName, setNewName]           = useState('');
+  const [newType, setNewType]           = useState('paper');
+  const [newBalance, setNewBalance]     = useState('10000');
+  const [addErr, setAddErr]             = useState('');
+
+  const closeAccounts = () => {
+    setShowAccounts(false);
+    setConfirmDelId(null);
+    setShowAddForm(false);
+    setNewName(''); setNewType('paper'); setNewBalance('10000'); setAddErr('');
+  };
+
+  const submitAdd = () => {
+    if (!newName.trim()) return setAddErr('Account name is required.');
+    const bal = parseFloat(newBalance);
+    if (!bal || bal <= 0) return setAddErr('Starting balance must be positive.');
+    if (bal > 10_000_000) return setAddErr('Starting balance too large.');
+    onAddAccount?.(newName, newType, bal);
+    closeAccounts();
+  };
 
   const activeTrades = trades || [];
   const totalPnl = activeTrades.reduce((s, t) => s + (t.pnl || 0), 0);
@@ -48,7 +82,26 @@ export default function MobileDashboard({
         {tab === 'home' && (
           <div>
             <div style={{ ...s.card, marginBottom: 12 }}>
-              <div style={s.label}>{activeAccount?.name || 'Paper Account'}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div style={s.label}>{activeAccount?.name || 'Paper Account'}</div>
+                  {activeAccount?.type && (
+                    <span style={{ fontSize: 8, fontWeight: 800, color: acctMeta(activeAccount.type).color, background: acctMeta(activeAccount.type).bg, padding: '2px 6px', borderRadius: 8, letterSpacing: '0.05em', marginBottom: 4 }}>
+                      {acctMeta(activeAccount.type).label}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowAccounts(true)}
+                  aria-label="Manage accounts"
+                  style={{ background: 'transparent', border: 'none', color: '#6b7280', padding: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                </button>
+              </div>
               <div style={{ fontSize: 30, fontWeight: 800, color: '#fff', marginBottom: 12 }}>
                 ${(activeAccount?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
@@ -233,6 +286,142 @@ export default function MobileDashboard({
           <span>Profile</span>
         </a>
       </nav>
+
+      {/* ACCOUNTS SHEET */}
+      {showAccounts && (
+        <>
+          <div onClick={closeAccounts} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 10000 }} />
+          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10001, maxHeight: '85vh', overflowY: 'auto', background: '#0f0f14', borderRadius: '20px 20px 0 0', borderTop: '1px solid #1e1e2a', padding: 20 }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: '#2a2a3a', margin: '0 auto 16px' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>Accounts</span>
+              <button onClick={closeAccounts} style={{ background: '#1a1a24', border: '1px solid #2a2a3a', borderRadius: 8, color: '#9ca3af', width: 32, height: 32, cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+
+            {/* Account list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+              {accounts.map(acc => {
+                const meta  = acctMeta(acc.type);
+                const isAct = acc.id === activeAccount?.id;
+                const isOnlyOne = accounts.length <= 1;
+                const confirming = confirmDelId === acc.id;
+                return (
+                  <div key={acc.id} style={{
+                    display: 'flex', alignItems: 'center', padding: '10px 12px',
+                    background: isAct ? meta.color + '14' : '#1a1a24',
+                    border: `1px solid ${isAct ? meta.color + '40' : '#2a2a3a'}`,
+                    borderRadius: 10,
+                  }}>
+                    <div style={{ width: 18, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+                      {isAct && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={meta.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { onSwitchAccount?.(acc.id); closeAccounts(); }}
+                      style={{ flex: 1, minWidth: 0, padding: '0 8px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 3 }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{acc.name}</span>
+                        <span style={{ fontSize: 8, fontWeight: 800, color: meta.color, background: meta.bg, padding: '2px 6px', borderRadius: 8, flexShrink: 0, letterSpacing: '0.05em' }}>{meta.label}</span>
+                      </div>
+                      <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#9ca3af' }}>
+                        ${(acc.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </button>
+                    {confirming ? (
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <button onClick={() => { onDeleteAccount?.(acc.id); setConfirmDelId(null); }} style={{
+                          padding: '5px 10px', borderRadius: 6, border: 'none',
+                          background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        }}>Yes</button>
+                        <button onClick={() => setConfirmDelId(null)} style={{
+                          padding: '5px 10px', borderRadius: 6, border: '1px solid #2a2a3a',
+                          background: 'transparent', color: '#9ca3af', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        }}>No</button>
+                      </div>
+                    ) : (
+                      !isOnlyOne && (
+                        <button
+                          onClick={() => setConfirmDelId(acc.id)}
+                          aria-label="Delete account"
+                          style={{ padding: 8, borderRadius: 8, border: 'none', background: 'transparent', color: '#6b7280', cursor: 'pointer', display: 'flex', flexShrink: 0 }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6"/><path d="M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                          </svg>
+                        </button>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Add account: inline form OR trigger button */}
+            {showAddForm ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px', background: '#1a1a24', borderRadius: 10, border: '1px solid #2a2a3a' }}>
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="Account name (e.g. Apex $50k Eval)"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #2a2a3a', background: '#0f0f14', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  {[
+                    { id: 'paper',  label: 'Paper'  },
+                    { id: 'funded', label: 'Funded' },
+                    { id: 'real',   label: 'Live'   },
+                  ].map(t => {
+                    const m = acctMeta(t.id);
+                    const sel = newType === t.id;
+                    return (
+                      <button key={t.id} onClick={() => setNewType(t.id)} style={{
+                        padding: '8px 6px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                        border: `1px solid ${sel ? m.color : '#2a2a3a'}`,
+                        background: sel ? m.bg : 'transparent',
+                        color: sel ? m.color : '#9ca3af',
+                        cursor: 'pointer',
+                      }}>{t.label}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#6b7280', fontWeight: 700 }}>$</span>
+                  <input
+                    type="number"
+                    value={newBalance}
+                    onChange={e => setNewBalance(e.target.value)}
+                    placeholder="Starting balance"
+                    style={{ width: '100%', padding: '10px 12px 10px 24px', borderRadius: 8, border: '1px solid #2a2a3a', background: '#0f0f14', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                {addErr && <div style={{ fontSize: 11, color: '#ef4444' }}>{addErr}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <button onClick={() => { setShowAddForm(false); setNewName(''); setNewBalance('10000'); setAddErr(''); }} style={{
+                    padding: '8px 12px', border: 'none', background: 'transparent',
+                    color: '#9ca3af', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  }}>Cancel</button>
+                  <button onClick={submitAdd} style={{
+                    padding: '9px 18px', borderRadius: 8, border: 'none',
+                    background: '#6366f1', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  }}>Create</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowAddForm(true)} style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '12px', borderRadius: 10, border: '1px dashed #2a2a3a',
+                background: 'transparent', color: '#6366f1', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}>+ Add Account</button>
+            )}
+          </div>
+        </>
+      )}
 
       {/* TOOLS SHEET */}
       {showTools && (
