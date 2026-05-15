@@ -7828,13 +7828,8 @@ function TradingDashboard({ session, onLogout }) {
           {/* JOURNAL TAB */}
           {tab === 'journal' && (
             <div>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
-                <div>
-                  <div style={{fontSize:18, fontWeight:700, color:'#fff'}}>Journal</div>
-                  <div style={{fontSize:12, color:'#6b7280'}}>{activeTrades.length} trades</div>
-                </div>
-                <button onClick={() => setShowHub(true)} style={{padding:'8px 14px', borderRadius:8, border:'1px solid rgba(99,102,241,0.4)', background:'transparent', color:'#6366f1', fontSize:12, fontWeight:600, cursor:'pointer'}}>Import CSV</button>
-              </div>
+              <div style={{fontSize:18, fontWeight:700, color:'#fff', marginBottom:4}}>Journal</div>
+              <div style={{fontSize:12, color:'#6b7280', marginBottom:12}}>{activeTrades.length} trades</div>
               {activeTrades.slice(0, 50).map(t => (
                 <div key={t.id} style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:10, padding:'12px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between'}}>
                   <div style={{minWidth:0, flex:1}}>
@@ -7929,15 +7924,26 @@ function TradingDashboard({ session, onLogout }) {
           </a>
         </nav>
 
-        {/* TOOLS SHEET */}
+        {/* TOOLS SHEET — root level, always present when showMobileTools is true */}
         {showMobileTools && (
           <>
-            <div onClick={() => setShowMobileTools(false)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:10000}}/>
-            <div style={{position:'fixed', bottom:56, left:0, right:0, zIndex:10001, maxHeight:'75vh', overflowY:'auto', background:'#0f0f14', borderRadius:'20px 20px 0 0', borderTop:'1px solid #1e1e2a', padding:16}}>
+            <div
+              onClick={() => setShowMobileTools(false)}
+              style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:10000}}
+            />
+            <div style={{
+              position:'fixed', bottom:56, left:0, right:0,
+              zIndex:10001, maxHeight:'75vh', overflowY:'auto',
+              background:'#0f0f14', borderRadius:'20px 20px 0 0',
+              borderTop:'1px solid #1e1e2a', padding:20
+            }}>
               <div style={{width:36, height:4, borderRadius:2, background:'#2a2a3a', margin:'0 auto 16px'}}/>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-                <span style={{color:'#fff', fontWeight:700, fontSize:14}}>Tools</span>
-                <button onClick={() => setShowMobileTools(false)} style={{background:'#1a1a24', border:'1px solid #2a2a3a', borderRadius:8, color:'#9ca3af', width:32, height:32, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16}}>✕</button>
+                <span style={{color:'#fff', fontWeight:700, fontSize:15}}>Tools</span>
+                <button
+                  onClick={() => setShowMobileTools(false)}
+                  style={{background:'#1a1a24', border:'1px solid #2a2a3a', borderRadius:8, color:'#9ca3af', width:32, height:32, cursor:'pointer', fontSize:18, display:'flex', alignItems:'center', justifyContent:'center'}}
+                >×</button>
               </div>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
                 {[
@@ -7955,8 +7961,17 @@ function TradingDashboard({ session, onLogout }) {
                   <a
                     key={item.label}
                     href={item.href || '#'}
-                    onClick={e => { if(item.tab){e.preventDefault(); setTab(item.tab);} setShowMobileTools(false); }}
-                    style={{display:'flex', alignItems:'center', justifyContent:'center', minHeight:56, borderRadius:12, background:'#1a1a24', border:'1px solid #2a2a3a', color:'#fff', fontSize:13, fontWeight:600, textDecoration:'none', textAlign:'center', padding:'12px 8px'}}
+                    onClick={e => {
+                      if (item.tab) { e.preventDefault(); setTab(item.tab); }
+                      setShowMobileTools(false);
+                    }}
+                    style={{
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      minHeight:56, borderRadius:12,
+                      background:'#1a1a24', border:'1px solid #2a2a3a',
+                      color:'#fff', fontSize:13, fontWeight:600,
+                      textDecoration:'none', textAlign:'center', padding:'12px 8px'
+                    }}
                   >
                     {item.label}
                   </a>
@@ -8100,71 +8115,6 @@ function TradingDashboard({ session, onLogout }) {
           </div>
           <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", paddingTop:12 }}>
 
-      {/* ── Bottom nav — mobile only (5 tabs: Dashboard, Journal, Notes, Tools, Settings) ── */}
-      <nav className="show-mobile" aria-label="Primary" style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:"#0f0f14", borderTop:"1px solid #1e1e2a", alignItems:"stretch", zIndex:9999, paddingBottom:"env(safe-area-inset-bottom)" }}>
-        {[
-          { id:"dashboard", label:"Dashboard", icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>) },
-          { id:"journal",   label:"Journal",   icon:(<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>) },
-        ].map(({ id, label, icon }) =>(<button key={id} data-compact="true" onClick={()=>setTab(id)} style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:tab===id?"var(--accent)":"#6b7280", fontSize:10, fontWeight:600 }}>{icon}<span>{label}</span></button>))}
-        <a href="/notes" data-compact="true" style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, textDecoration:"none", color:"#6b7280", fontSize:10, fontWeight:600 }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-          <span>Notes</span>
-        </a>
-        <button data-compact="true" onClick={()=>setShowMobileTools(v=>!v)} style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, border:"none", background:"transparent", cursor:"pointer", color:showMobileTools?"var(--accent)":"#6b7280", fontSize:10, fontWeight:600 }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="5" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="19" cy="5" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="12" cy="19" r="1.5"/><circle cx="19" cy="19" r="1.5"/></svg>
-          <span>Tools</span>
-        </button>
-        <a href="/settings" data-compact="true" style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, textDecoration:"none", color:"#6b7280", fontSize:10, fontWeight:600 }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span>Settings</span>
-        </a>
-      </nav>
-
-      {/* Mobile Tools bottom sheet */}
-      {showMobileTools && (
-        <>
-          {/* Dark overlay — tap to close */}
-          <div className="show-mobile" onClick={() => setShowMobileTools(false)} aria-hidden="true"
-            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:10000 }}/>
-          {/* Bottom sheet */}
-          <div className="show-mobile" role="dialog" aria-modal="true" aria-label="Tools"
-            onTouchStart={handleToolsTouchStart} onTouchEnd={handleToolsTouchEnd}
-            style={{ position:"fixed", bottom:56, left:0, right:0, zIndex:10001, maxHeight:"70vh", overflowY:"auto", background:"#0f0f14", borderRadius:"20px 20px 0 0", borderTop:"1px solid #1e1e2a", padding:16, boxShadow:"0 -10px 30px rgba(0,0,0,0.5)" }}>
-            <div style={{ width:40, height:4, borderRadius:2, background:"#2a2a3a", margin:"0 auto 12px" }}/>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:"#ffffff", letterSpacing:"-0.01em" }}>Tools</div>
-              <button onClick={() => setShowMobileTools(false)} aria-label="Close tools" data-compact="true"
-                style={{ minHeight:0, width:32, height:32, borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
-                <X size={16}/>
-              </button>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-              {[
-                { href:"/checklist", label:"Checklist" },
-                { href:"/alerts", label:"Alerts" },
-                { href:"/challenge", label:"Challenge" },
-                { href:"/psychology", label:"Psychology" },
-                { href:"/setups", label:"Best Setups" },
-                { href:"/replay", label:"Trade Review" },
-                { href:"/notes", label:"Daily Notes" },
-                { href:"/settings", label:"Settings" },
-                { tab:"insights", label:"Insights" },
-                { tab:"stratlab", label:"Strategy Lab" },
-              ].map(it => (
-                <a key={it.label}
-                  href={it.href ?? "#"}
-                  onClick={(e) => {
-                    if (it.tab) { e.preventDefault(); setTab(it.tab); }
-                    setShowMobileTools(false);
-                  }}
-                  style={{ height:64, display:"flex", flexDirection:"column", alignItems:"flex-start", justifyContent:"center", padding:"0 14px", borderRadius:12, background:"#1a1a24", border:"1px solid #2a2a3a", color:"#ffffff", fontSize:13, fontWeight:700, textDecoration:"none" }}>
-                  {it.label}
-                </a>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
           {tab==="dashboard"  && <DashboardHome loading={tradesLoading} trades={activeTrades} allTrades={trades} onAddTrade={()=>setShowForm(true)} onOpenImport={()=>setShowHub(true)} activeAccount={paperAccts.activeAccount} username={session.username} onClearDemo={() => {
               setDemoMode(session.username, false);
               saveUserTrades(session.username, []);
