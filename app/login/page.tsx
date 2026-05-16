@@ -67,13 +67,12 @@ export default function LoginPage() {
           password,
         });
         if (err) {
-          const msg = err.message?.toLowerCase() ?? "";
-          if (msg.includes("not confirmed") || msg.includes("email not")) {
-            setError("Please verify your email before signing in");
-          } else if (msg.includes("invalid") || msg.includes("credentials")) {
-            setError("Invalid email or password");
+          if (err.message.includes("Invalid login credentials")) {
+            setError("Incorrect email or password. Please try again.");
+          } else if (err.message.includes("Email not confirmed")) {
+            setError("Please verify your email before signing in. Check your inbox.");
           } else {
-            setError(err.message || "Sign in failed");
+            setError(err.message);
           }
           setLoading(false);
           return;
@@ -89,14 +88,20 @@ export default function LoginPage() {
           },
         });
         if (err) {
-          const msg = err.message?.toLowerCase() ?? "";
-          if (msg.includes("already") || msg.includes("registered") || msg.includes("exists")) {
-            setError("Email already in use");
-          } else if (msg.includes("password")) {
+          if (err.message.includes("User already registered")) {
+            setError("An account with this email already exists. Please sign in instead.");
+          } else if (err.message.toLowerCase().includes("password")) {
             setError("Password must be at least 6 characters");
           } else {
-            setError(err.message || "Sign up failed");
+            setError(err.message);
           }
+          setLoading(false);
+          return;
+        }
+        // Supabase's "Confirm email" setting returns success even for existing
+        // emails (privacy feature). Detect duplicate via empty identities array.
+        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          setError("An account with this email already exists. Please sign in instead.");
           setLoading(false);
           return;
         }
@@ -315,7 +320,7 @@ export default function LoginPage() {
               {loading && (
                 <span style={{ width: 16, height: 16, border: "2px solid #2a2a3a", borderTopColor: "#ffffff", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
               )}
-              {loading ? "Please wait…" : step === "signin" ? "Sign in" : "Sign up"}
+              {loading ? "Please wait…" : step === "signin" ? "Sign in" : "Create account"}
             </button>
 
             {step === "signin" && (
@@ -337,12 +342,22 @@ export default function LoginPage() {
                 setInfo("");
                 setStep((s) => (s === "signin" ? "signup" : "signin"));
               }}
-              style={linkBtn}
+              style={{
+                ...linkBtn,
+                marginTop: 16,
+                padding: "12px",
+                borderRadius: 10,
+                border: "1px solid rgba(99,102,241,0.35)",
+                background: "rgba(99,102,241,0.06)",
+                color: "#e5e7eb",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
             >
               {step === "signin" ? (
-                <>Don&apos;t have an account? <span style={{ color: "#6366f1", fontWeight: 700 }}>Sign up</span></>
+                <>Don&apos;t have an account? <span style={{ color: "#a5b4fc", fontWeight: 800 }}>Sign up →</span></>
               ) : (
-                <>Already have an account? <span style={{ color: "#6366f1", fontWeight: 700 }}>Sign in</span></>
+                <>Already have an account? <span style={{ color: "#a5b4fc", fontWeight: 800 }}>Sign in →</span></>
               )}
             </button>
 
