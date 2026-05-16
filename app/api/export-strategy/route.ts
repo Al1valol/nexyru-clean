@@ -4,7 +4,21 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic();
 
 const FORMAT_INSTRUCTIONS: Record<string, string> = {
-  pinescript: "Generate a complete Pine Script version 6 strategy script for TradingView. Start with //@version=6 and use strategy() declaration. Use Pine Script v6 syntax - note that v6 uses var keyword differently, input() functions have changed to input.int(), input.float(), input.bool() etc. Include all indicators, entry conditions with strategy.entry(), exit conditions with strategy.exit() or strategy.close(). Add clear comments explaining each section. Make it syntactically correct and ready to paste directly into TradingView Pine Script editor.",
+  pinescript: `Generate a complete Pine Script version 6 strategy for TradingView.
+
+CRITICAL RULES for Pine Script v6 syntax:
+- First line must be: //@version=6
+- Use strategy("Strategy Name", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+- Input functions: input.int(), input.float(), input.bool(), input.string()
+- Indicators: ta.ema(), ta.sma(), ta.rsi(), ta.macd(), ta.vwap() etc
+- Entry: strategy.entry("Long", strategy.long) or strategy.entry("Short", strategy.short)
+- Exit: strategy.exit("Exit Long", "Long", stop=stopPrice, limit=targetPrice) or strategy.close("Long")
+- Conditions use := for assignment inside if blocks
+- Use var keyword for persistent variables
+- All parentheses MUST be properly closed
+- No syntax errors - double check every function call has opening AND closing parenthesis
+
+Generate the complete script with proper v6 syntax, all parentheses matched, ready to paste into TradingView.`,
   ninjatrader: "Generate a complete NinjaScript strategy for NinjaTrader 8 in C#. Include proper namespace, class declaration extending Strategy, OnBarUpdate method, and all entry/exit logic. Add comments. Make it ready to compile in NinjaTrader.",
   python: "Generate a complete Python backtesting script using pandas and numpy. Include data loading placeholder, indicator calculations, signal generation based on the conditions, and basic performance metrics (win rate, total return, sharpe). Make it ready to run.",
 };
@@ -54,9 +68,14 @@ Take profit: ${strategy.tpPct ?? 4}%
     });
 
     const first = message.content[0];
-    const code = first && first.type === "text" ? first.text : "";
+    let code = first && first.type === "text" ? first.text : "";
     if (!code) {
       return NextResponse.json({ error: "Empty response from AI" }, { status: 502 });
+    }
+
+    // Ensure version header is correct (Pine Script only)
+    if (format === "pinescript" && !code.startsWith("//@version=6")) {
+      code = "//@version=6\n" + code.replace(/\/\/@version=\d+\n?/, "");
     }
 
     return NextResponse.json({ code });
