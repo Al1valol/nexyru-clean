@@ -6,7 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
 import { useUserPlan, type Plan } from "@/lib/plan";
 
-type FeatureItem = { kind: "ok" | "no" | "soon"; label: string };
+type FeatureItem = { kind: "ok" | "no" | "soon"; label: string; description?: string };
 
 const FREE_FEATURES: FeatureItem[] = [
   { kind: "ok", label: "Journal (50 trades)" },
@@ -34,29 +34,65 @@ const PRO_FEATURES: FeatureItem[] = [
 
 const ELITE_FEATURES: FeatureItem[] = [
   { kind: "ok", label: "Everything in Pro, unlimited" },
-  { kind: "ok", label: "Unlimited AI usage" },
+  { kind: "ok", label: "Unlimited AI strategy generations" },
   { kind: "ok", label: "Unlimited screenshot imports" },
   { kind: "ok", label: "Unlimited challenge accounts" },
   { kind: "ok", label: "Priority support" },
-  { kind: "ok", label: "Early access to new features" },
-  { kind: "soon", label: "Strategy code export" },
-  { kind: "soon", label: "Weekly PDF report" },
-  { kind: "soon", label: "Mentor/coach access" },
+  {
+    kind: "soon",
+    label: "Strategy Code Export",
+    description: "Export your strategy as Pine Script, NinjaScript, or Python. Ready to paste into TradingView or NinjaTrader.",
+  },
+  {
+    kind: "soon",
+    label: "Weekly PDF Report",
+    description: "Auto-generated performance report every Monday. Win rate, psychology score, top mistakes, and key insights delivered to your inbox.",
+  },
+  {
+    kind: "soon",
+    label: "Mentor/Coach Access",
+    description: "Share a read-only link of your journal with your trading coach. They see your trades, stats, and psychology patterns.",
+  },
+  {
+    kind: "soon",
+    label: "Multi-Account Dashboard",
+    description: "See all your funded accounts side by side. Apex + TopstepX + FTMO on one screen.",
+  },
+  {
+    kind: "soon",
+    label: "Daily Loss Alerts",
+    description: "Get a push notification before you breach your daily limit. Save your funded account automatically.",
+  },
+  {
+    kind: "soon",
+    label: "AI Trade Analysis",
+    description: "Upload your trade screenshot and get instant AI feedback on your entry quality, timing, and risk management.",
+  },
+  {
+    kind: "soon",
+    label: "Broker CSV Auto-Detection",
+    description: "Drop any broker CSV and we detect the format automatically. Apex, Rithmic, NinjaTrader, TradingView — all supported.",
+  },
 ];
 
 const IS_EMAIL = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
 function FeatureRow({ item }: { item: FeatureItem }) {
   const colors = {
-    ok:   { glyph: "✓", color: "#e5e7eb",       icon: "#10b981" },
-    no:   { glyph: "✗", color: "#6b7280",       icon: "#4b5563" },
-    soon: { glyph: "→", color: "#9ca3af",       icon: "#a78bfa" },
+    ok:   { glyph: "✓", color: "#e5e7eb", icon: "#10b981" },
+    no:   { glyph: "✗", color: "#6b7280", icon: "#4b5563" },
+    soon: { glyph: "→", color: "#d1d5db", icon: "#6366f1" },
   };
   const c = colors[item.kind];
   return (
     <li style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: c.color, lineHeight: 1.45 }}>
       <span style={{ color: c.icon, fontWeight: 800, marginTop: 1, flexShrink: 0, width: 12 }}>{c.glyph}</span>
-      <span>{item.label}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        <span style={{ fontWeight: item.description ? 600 : 400, color: item.description ? "#f3f4f6" : c.color }}>{item.label}</span>
+        {item.description && (
+          <span style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.5 }}>{item.description}</span>
+        )}
+      </div>
     </li>
   );
 }
@@ -105,6 +141,31 @@ function PopularBadge() {
       }}
     >
       Most Popular
+    </div>
+  );
+}
+
+function MostValueBadge() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: -10,
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontSize: 9,
+        fontWeight: 800,
+        padding: "4px 10px",
+        borderRadius: 999,
+        background: "linear-gradient(135deg, #f59e0b, #d97706)",
+        color: "#1a1a0f",
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        boxShadow: "0 4px 16px rgba(245,158,11,0.45)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      Most Value
     </div>
   );
 }
@@ -228,22 +289,29 @@ function WaitlistForm({ storageKey }: { storageKey: string }) {
 type PricingCardProps = {
   tier: Plan;
   title: string;
+  subtitle?: string;
   price: string;
   cadence: string;
   features: FeatureItem[];
   cta: React.ReactNode;
   current: boolean;
-  popular?: boolean;
+  badge?: "popular" | "value" | null;
   comingSoon?: boolean;
   borderColor: string;
   glow?: string;
+  urgencyNote?: string;
 };
 
-function PricingCard({ tier, title, price, cadence, features, cta, current, popular, comingSoon, borderColor, glow }: PricingCardProps) {
+function PricingCard({ tier, title, subtitle, price, cadence, features, cta, current, badge, comingSoon, borderColor, glow, urgencyNote }: PricingCardProps) {
+  const isElite = tier === "elite";
+  const titleColor = isElite ? "#f59e0b" : tier === "pro" ? "#a5b4fc" : "#9ca3af";
+
   return (
     <div
       style={{
-        background: "linear-gradient(180deg, rgba(255,255,255,0.02), #0f0f17)",
+        background: isElite
+          ? "linear-gradient(180deg, rgba(245,158,11,0.06) 0%, rgba(245,158,11,0.015) 35%, #0f0f17 100%)"
+          : "linear-gradient(180deg, rgba(255,255,255,0.02), #0f0f17)",
         border: `1px solid ${borderColor}`,
         borderRadius: 16,
         padding: 28,
@@ -251,37 +319,80 @@ function PricingCard({ tier, title, price, cadence, features, cta, current, popu
         boxShadow: glow ?? "none",
         display: "flex",
         flexDirection: "column",
-        opacity: comingSoon && !current ? 0.92 : 1,
+        opacity: comingSoon && !current && !badge ? 0.92 : 1,
+        overflow: "hidden",
       }}
     >
-      {popular && <PopularBadge />}
+      {isElite && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 110,
+            background: "radial-gradient(ellipse at top, rgba(245,158,11,0.18), transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+
+      {badge === "popular" && <PopularBadge />}
+      {badge === "value" && <MostValueBadge />}
       {current && <CurrentBadge />}
-      {comingSoon && !current && <ComingSoonBadge />}
+      {comingSoon && !current && !badge && <ComingSoonBadge />}
 
-      <div
-        style={{
-          fontSize: 12,
-          color: tier === "elite" ? "#fcd34d" : tier === "pro" ? "#a5b4fc" : "#9ca3af",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          fontWeight: 700,
-          marginBottom: 8,
-        }}
-      >
-        {title}
+      <div style={{ position: "relative" }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: titleColor,
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
+            fontWeight: 800,
+            marginBottom: subtitle ? 4 : 8,
+          }}
+        >
+          {title}
+        </div>
+        {subtitle && (
+          <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 14, lineHeight: 1.5 }}>
+            {subtitle}
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 20 }}>
+          <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{price}</span>
+          <span style={{ fontSize: 13, color: "#6b7280" }}>{cadence}</span>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>{cta}</div>
+
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+          {features.map((f) => (
+            <FeatureRow key={f.label} item={f} />
+          ))}
+        </ul>
+
+        {urgencyNote && (
+          <div
+            style={{
+              marginTop: 18,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "rgba(245,158,11,0.08)",
+              border: "1px solid rgba(245,158,11,0.3)",
+              fontSize: 11,
+              color: "#fcd34d",
+              fontWeight: 600,
+              lineHeight: 1.5,
+              textAlign: "center",
+            }}
+          >
+            {urgencyNote}
+          </div>
+        )}
       </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 20 }}>
-        <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{price}</span>
-        <span style={{ fontSize: 13, color: "#6b7280" }}>{cadence}</span>
-      </div>
-
-      <div style={{ marginBottom: 18 }}>{cta}</div>
-
-      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-        {features.map((f) => (
-          <FeatureRow key={f.label} item={f} />
-        ))}
-      </ul>
     </div>
   );
 }
@@ -358,7 +469,7 @@ export default function PricingPage() {
             features={PRO_FEATURES}
             cta={<WaitlistForm storageKey="nexyru_waitlist_pro" />}
             current={plan === "pro"}
-            popular
+            badge="popular"
             comingSoon={plan !== "pro"}
             borderColor="rgba(99,102,241,0.55)"
             glow="0 10px 40px rgba(99,102,241,0.12)"
@@ -367,14 +478,17 @@ export default function PricingPage() {
           <PricingCard
             tier="elite"
             title="Elite"
+            subtitle="For serious funded traders who want every edge"
             price="$39"
             cadence="/month"
             features={ELITE_FEATURES}
             cta={<WaitlistForm storageKey="nexyru_waitlist_elite" />}
             current={plan === "elite"}
+            badge="value"
             comingSoon={plan !== "elite"}
-            borderColor="rgba(168,85,247,0.55)"
-            glow="0 10px 40px rgba(168,85,247,0.12)"
+            borderColor="rgba(245,158,11,0.4)"
+            glow="0 10px 40px rgba(245,158,11,0.15)"
+            urgencyNote="Early waitlist members lock in $29/mo when Pro launches — $10 savings forever."
           />
         </div>
 
