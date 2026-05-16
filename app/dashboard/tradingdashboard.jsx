@@ -7838,7 +7838,45 @@ function TradingDashboard({ session, onLogout }) {
     setTradesLoading(true);
     initialSyncDoneRef.current = false;
 
-    const localSaved = loadUserTrades(session.username) ?? [];
+    // The local session username and the email-derived username can diverge
+    // (e.g. local signup as "bad" but Google email is calemax5@gmail.com).
+    // Trades may have been saved under any of these keys depending on which
+    // device/flow created them, so check all candidates and use whichever
+    // bucket has the most trades.
+    const localSession = (() => {
+      try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "{}"); }
+      catch { return {}; }
+    })();
+    const localUsername = localSession.username || session.username;
+    const cachedEmail = localSession.email || "";
+    const cachedEmailUsername = cachedEmail
+      ? cachedEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "")
+      : null;
+
+    const readKey = (key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : null;
+      } catch { return null; }
+    };
+    const pickBest = (keys) => {
+      let best = [];
+      for (const k of keys) {
+        if (!k) continue;
+        const arr = readKey(k);
+        if (arr && arr.length > best.length) best = arr;
+      }
+      return best;
+    };
+
+    const initialKeys = [
+      localUsername && accountKey(localUsername),
+      cachedEmailUsername && accountKey(cachedEmailUsername),
+      "tradedesk_trades_synced_v1",
+    ];
+    const localSaved = pickBest(initialKeys);
     setTrades(localSaved);
     setTradesLoading(false);
 
@@ -7865,7 +7903,12 @@ function TradingDashboard({ session, onLogout }) {
         const { data: { session: sbSession } = { session: null } } = supa ? await supa.auth.getSession() : { data: { session: null } };
         const token = sbSession?.access_token;
         const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        const sbEmail = sbSession?.user?.email || "";
+        const emailUsername = sbEmail
+          ? sbEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "")
+          : null;
 
+        // The POST/GET path always uses the Supabase UUID, never a username.
         const res = await fetch(`/api/trades?user_id=${encodeURIComponent(supabaseUserId)}`, {
           cache: "no-store",
           headers: authHeaders,
@@ -7876,8 +7919,32 @@ function TradingDashboard({ session, onLogout }) {
         if (cancelled) return;
 
         if (remote.length > 0) {
-          // Cloud wins on a new device — overwrite local
-          saveUserTrades(session.username, remote);
+          // Cloud wins on a new device — write under every key the next load
+          // might check, so the local-first path can't miss the cloud trades.
+          remote.forEach(t => { if (t.screenshot) saveScreenshot(t.id, t.screenshot); });
+          const payload = JSON.stringify(remote.map(stripScreenshot));
+          const writeKeys = new Set();
+          if (localUsername) writeKeys.add(accountKey(localUsername));
+          if (emailUsername) writeKeys.add(accountKey(emailUsername));
+          if (cachedEmailUsername) writeKeys.add(accountKey(cachedEmailUsername));
+          writeKeys.add("tradedesk_trades_synced_v1");
+          for (const k of writeKeys) {
+            try { localStorage.setItem(k, payload); } catch {}
+          }
+
+          // Heal the local session so a future reload knows it's signed in
+          // and can map back to the Supabase UUID without another OAuth round.
+          try {
+            const cur = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}");
+            localStorage.setItem(SESSION_KEY, JSON.stringify({
+              ...cur,
+              isLoggedIn: true,
+              userId: supabaseUserId,
+              supabaseUserId,
+              ...(sbEmail && !cur.email ? { email: sbEmail } : {}),
+            }));
+          } catch {}
+
           skipNextPushRef.current = true;
           setTrades(remote);
           // Rehydrate any screenshots that exist locally in IDB (best-effort)
