@@ -4,7 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic();
 
 const FORMAT_INSTRUCTIONS: Record<string, string> = {
-  pinescript: "Generate a complete Pine Script v5 strategy script for TradingView. Include //@version=5, strategy() declaration, all indicators, entry and exit conditions. Add comments explaining each section. Make it ready to paste directly into TradingView.",
+  pinescript: "Generate a complete Pine Script version 6 strategy script for TradingView. Start with //@version=6 and use strategy() declaration. Use Pine Script v6 syntax - note that v6 uses var keyword differently, input() functions have changed to input.int(), input.float(), input.bool() etc. Include all indicators, entry conditions with strategy.entry(), exit conditions with strategy.exit() or strategy.close(). Add clear comments explaining each section. Make it syntactically correct and ready to paste directly into TradingView Pine Script editor.",
   ninjatrader: "Generate a complete NinjaScript strategy for NinjaTrader 8 in C#. Include proper namespace, class declaration extending Strategy, OnBarUpdate method, and all entry/exit logic. Add comments. Make it ready to compile in NinjaTrader.",
   python: "Generate a complete Python backtesting script using pandas and numpy. Include data loading placeholder, indicator calculations, signal generation based on the conditions, and basic performance metrics (win rate, total return, sharpe). Make it ready to run.",
 };

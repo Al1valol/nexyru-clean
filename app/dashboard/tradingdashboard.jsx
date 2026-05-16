@@ -7589,41 +7589,60 @@ function StrategyLabPage({ session, trades }) {
           setExportLoading(false);
         };
 
+        const FORMAT_OPTIONS = [
+          { id:"pinescript",  label:"Pine Script", version:"v6", desc:"TradingView" },
+          { id:"ninjatrader", label:"NinjaScript", version:"C#", desc:"NinjaTrader 8" },
+          { id:"python",      label:"Python",      version:"3.x", desc:"pandas / numpy" },
+        ];
+        const currentFmt = FORMAT_OPTIONS.find(f => f.id === exportFormat) ?? FORMAT_OPTIONS[0];
+        const codeLines = exportCode ? exportCode.split("\n") : [];
+
         return (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:16, padding:24, maxWidth:640, width:"90%", maxHeight:"80vh", overflow:"auto" }}>
+          <div onClick={() => { setExportStrategy(null); setExportCode(""); }} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+            <style>{`@keyframes export-dot { 0%,80%,100% { opacity:0.2 } 40% { opacity:1 } }`}</style>
+            <div onClick={(e) => e.stopPropagation()} style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:16, padding:24, maxWidth:720, width:"100%", maxHeight:"85vh", overflow:"auto", boxShadow:"0 30px 80px rgba(0,0,0,0.6)" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-                <h3 style={{ color:"#fff", fontSize:16, fontWeight:700, margin:0 }}>Export Strategy Code</h3>
-                <button onClick={() => { setExportStrategy(null); setExportCode(""); }} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", fontSize:20 }}>×</button>
+                <div>
+                  <h3 style={{ color:"#fff", fontSize:17, fontWeight:700, margin:0, letterSpacing:"-0.01em" }}>Export Strategy Code</h3>
+                  <div style={{ fontSize:11, color:"#6b7280", marginTop:3 }}>Generate ready-to-run code for your favorite platform</div>
+                </div>
+                <button onClick={() => { setExportStrategy(null); setExportCode(""); }} style={{ background:"#1a1a24", border:"1px solid #2a2a3a", borderRadius:8, color:"#9ca3af", width:32, height:32, cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>×</button>
               </div>
 
-              {/* Format selector */}
+              {/* Format selector — large cards */}
               <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", marginBottom:8 }}>Export Format</div>
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {[
-                    { id:"pinescript",  label:"Pine Script v5", desc:"TradingView" },
-                    { id:"ninjatrader", label:"NinjaScript",    desc:"NinjaTrader 8" },
-                    { id:"python",      label:"Python",         desc:"Backtesting" },
-                  ].map(f => (
-                    <button key={f.id} onClick={() => { setExportFormat(f.id); setExportCode(""); }} style={{
-                      padding:"8px 14px", borderRadius:8,
-                      border:`1px solid ${exportFormat===f.id?"rgba(99,102,241,0.6)":"#2a2a3a"}`,
-                      background: exportFormat===f.id?"rgba(99,102,241,0.1)":"transparent",
-                      color: exportFormat===f.id?"#6366f1":"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer"
-                    }}>
-                      {f.label} <span style={{ fontSize:10, opacity:0.7 }}>· {f.desc}</span>
-                    </button>
-                  ))}
+                <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10, fontWeight:700 }}>Export Format</div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10 }}>
+                  {FORMAT_OPTIONS.map(f => {
+                    const isActive = exportFormat === f.id;
+                    return (
+                      <button key={f.id} onClick={() => { setExportFormat(f.id); setExportCode(""); }} style={{
+                        padding:"14px 12px", borderRadius:10, textAlign:"left",
+                        border:`1px solid ${isActive ? "rgba(99,102,241,0.6)" : "#2a2a3a"}`,
+                        background: isActive ? "rgba(99,102,241,0.08)" : "#0f0f17",
+                        cursor:"pointer", transition:"all 0.15s",
+                      }}>
+                        <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:4 }}>
+                          <div style={{ fontSize:14, fontWeight:800, color: isActive ? "#fff" : "#d1d5db", letterSpacing:"-0.01em" }}>{f.label}</div>
+                          <div style={{ fontSize:9, fontWeight:700, color: isActive ? "#6366f1" : "#4b5563", fontFamily:"monospace" }}>{f.version}</div>
+                        </div>
+                        <div style={{ fontSize:10, color: isActive ? "#9ca3af" : "#6b7280" }}>{f.desc}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Strategy summary */}
-              <div style={{ background:"#1a1a24", borderRadius:8, padding:12, marginBottom:16 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:"#fff", marginBottom:8 }}>{exportStrategy.name}</div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                  {allConds.map((c, i) => (
-                    <span key={i} style={{ fontSize:10, padding:"2px 8px", borderRadius:4, background:"#2a2a3a", color:"#9ca3af" }}>{condLabel(c)}</span>
+              <div style={{ background:"#0f0f17", border:"1px solid #1e1e2a", borderRadius:10, padding:14, marginBottom:16 }}>
+                <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:6 }}>Strategy</div>
+                <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginBottom:10, letterSpacing:"-0.01em" }}>{exportStrategy.name}</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                  {entryConds.map((c, i) => (
+                    <span key={`e${i}`} style={{ fontSize:10, padding:"3px 8px", borderRadius:6, background:"rgba(52,211,153,0.08)", color:"#10b981", border:"1px solid rgba(52,211,153,0.2)", fontWeight:600 }}>▲ {condLabel(c)}</span>
+                  ))}
+                  {exitConds.map((c, i) => (
+                    <span key={`x${i}`} style={{ fontSize:10, padding:"3px 8px", borderRadius:6, background:"rgba(239,68,68,0.08)", color:"#ef4444", border:"1px solid rgba(239,68,68,0.2)", fontWeight:600 }}>▼ {condLabel(c)}</span>
                   ))}
                   {!allConds.length && (
                     <span style={{ fontSize:10, color:"#374151", fontStyle:"italic" }}>No conditions defined</span>
@@ -7631,36 +7650,71 @@ function StrategyLabPage({ session, trades }) {
                 </div>
               </div>
 
-              {/* Generate button */}
-              {!exportCode && (
+              {/* Generate button / loading state */}
+              {!exportCode && !exportLoading && (
                 <button
                   onClick={handleGenerate}
-                  disabled={exportLoading}
-                  style={{ width:"100%", padding:12, borderRadius:10, border:"none", background:"#6366f1", color:"#fff", fontSize:14, fontWeight:700, cursor:exportLoading?"not-allowed":"pointer", opacity:exportLoading?0.7:1 }}
+                  style={{ width:"100%", padding:14, borderRadius:10, border:"none", background:"linear-gradient(135deg, #6366f1, #8b5cf6)", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", letterSpacing:"-0.01em", boxShadow:"0 4px 16px rgba(99,102,241,0.3)" }}
                 >
-                  {exportLoading ? "Generating code..." : `Generate ${exportFormat === "pinescript" ? "Pine Script" : exportFormat === "ninjatrader" ? "NinjaScript" : "Python"} Code`}
+                  Generate {currentFmt.label} Code
                 </button>
               )}
 
+              {exportLoading && (
+                <div style={{ width:"100%", padding:"28px 14px", borderRadius:10, background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.2)", display:"flex", flexDirection:"column", alignItems:"center", gap:14 }}>
+                  <span style={{ width:32, height:32, border:"3px solid #1e1e2a", borderTopColor:"#6366f1", borderRadius:"50%", display:"inline-block", animation:"spin 0.7s linear infinite" }}/>
+                  <div style={{ fontSize:13, fontWeight:600, color:"#e2e8f0", display:"flex", alignItems:"center", gap:2 }}>
+                    Generating your code
+                    <span style={{ display:"inline-block", marginLeft:6, color:"#6366f1", animation:"export-dot 1.4s infinite", animationDelay:"0s" }}>•</span>
+                    <span style={{ display:"inline-block", color:"#6366f1", animation:"export-dot 1.4s infinite", animationDelay:"0.2s" }}>•</span>
+                    <span style={{ display:"inline-block", color:"#6366f1", animation:"export-dot 1.4s infinite", animationDelay:"0.4s" }}>•</span>
+                  </div>
+                  <div style={{ fontSize:10, color:"#6b7280" }}>This usually takes 5-15 seconds</div>
+                </div>
+              )}
+
               {/* Generated code */}
-              {exportCode && (
+              {exportCode && !exportLoading && (
                 <div>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                    <div style={{ fontSize:12, color:"#6b7280" }}>Generated code — ready to use</div>
-                    <div style={{ display:"flex", gap:8 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
+                    <div style={{ fontSize:11, color:"#10b981", display:"flex", alignItems:"center", gap:6, fontWeight:600 }}>
+                      <span style={{ width:6, height:6, borderRadius:"50%", background:"#10b981" }}/>
+                      Generated · {codeLines.length} lines
+                    </div>
+                    <div style={{ display:"flex", gap:6 }}>
                       <button
                         onClick={() => navigator.clipboard.writeText(exportCode)}
                         style={{ padding:"6px 12px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#6366f1", fontSize:11, fontWeight:600, cursor:"pointer" }}
                       >Copy</button>
+                      <button
+                        onClick={() => {
+                          const ext = exportFormat === "pinescript" ? ".pine" : exportFormat === "ninjatrader" ? ".cs" : ".py";
+                          const blob = new Blob([exportCode], { type:"text/plain" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = (exportStrategy?.name || "strategy").replace(/\s+/g, "_") + ext;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        style={{ padding:"6px 12px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#22c55e", fontSize:11, fontWeight:600, cursor:"pointer" }}
+                      >Download</button>
                       <button
                         onClick={() => setExportCode("")}
                         style={{ padding:"6px 12px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:11, cursor:"pointer" }}
                       >Regenerate</button>
                     </div>
                   </div>
-                  <pre style={{ background:"#0a0a0f", border:"1px solid #1e1e2a", borderRadius:8, padding:16, fontSize:11, color:"#e2e8f0", overflow:"auto", maxHeight:400, whiteSpace:"pre-wrap", wordBreak:"break-word", margin:0 }}>
-                    {exportCode}
-                  </pre>
+                  <div style={{ background:"#0a0a0f", border:"1px solid #1e1e2a", borderRadius:8, overflow:"hidden", display:"flex", maxHeight:420, minHeight:200 }}>
+                    <div aria-hidden style={{ padding:"14px 10px", borderRight:"1px solid #1e1e2a", color:"#4b5563", textAlign:"right", userSelect:"none", fontSize:11, fontFamily:"ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight:1.55, background:"#08080d", flexShrink:0 }}>
+                      {codeLines.map((_, i) => (
+                        <div key={i}>{i + 1}</div>
+                      ))}
+                    </div>
+                    <pre style={{ flex:1, fontSize:11, color:"#e2e8f0", overflow:"auto", whiteSpace:"pre", margin:0, padding:"14px 16px", fontFamily:"ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight:1.55 }}>
+                      {exportCode}
+                    </pre>
+                  </div>
                 </div>
               )}
             </div>
