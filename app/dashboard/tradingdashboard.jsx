@@ -18,7 +18,7 @@ import {
 } from "recharts";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import MobileDashboard from "./MobileDashboard";
-import { getUserPlan, getLimit, trackDailyUsage, incrementUsage } from "@/lib/plan";
+import { getUserPlan, getLimit, trackDailyUsage, incrementUsage, useUserPlan } from "@/lib/plan";
 
 // ── Supabase browser client — single instance so storage stays consistent
 // across the App. Using the SDK avoids guessing the localStorage key name,
@@ -7803,6 +7803,24 @@ function SyncIndicator({ status }) {
 //  MAIN TRADING DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 
+function ProUpgradeCard({ feature }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", padding: "40px 16px" }}>
+      <div style={{ background: "#111", border: "1px solid #1e1e2a", borderRadius: 16, padding: 32, maxWidth: 420, textAlign: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 8 }}>
+          {feature} is a Pro feature
+        </div>
+        <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 20, lineHeight: 1.5 }}>
+          Upgrade to Nexyru Pro to unlock this and all other advanced tools.
+        </div>
+        <a href="/pricing" style={{ display: "inline-block", padding: "11px 22px", borderRadius: 10, background: "#6366f1", color: "#fff", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+          See Pricing →
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function TradingDashboard({ session, onLogout }) {
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
@@ -7812,6 +7830,7 @@ function TradingDashboard({ session, onLogout }) {
     return () => window.removeEventListener('resize', check);
   }, []);
   const [tab,           setTab]           = useState("dashboard");
+  const userPlan = useUserPlan();
   const [trades,        setTrades]        = useState([]);
   const [tradesLoading, setTradesLoading] = useState(true);
   const [showForm,      setShowForm]      = useState(false);
@@ -8552,9 +8571,15 @@ function TradingDashboard({ session, onLogout }) {
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Strategy Performance</div><StrategyCards trades={activeTrades}/></div>
           )}
           {tab==="insights"   && (
-            <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Insights</div><InsightsAnalyticsPage trades={activeTrades}/></div>
+            userPlan === "free"
+              ? <ProUpgradeCard feature="Advanced Insights" />
+              : <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Insights</div><InsightsAnalyticsPage trades={activeTrades}/></div>
           )}
-          {tab==="stratlab"   && <StrategyLabPage session={session} trades={activeTrades}/>}
+          {tab==="stratlab"   && (
+            userPlan === "free"
+              ? <ProUpgradeCard feature="Strategy Lab" />
+              : <StrategyLabPage session={session} trades={activeTrades}/>
+          )}
           {tab==="copy" && <CopyTradingPage session={session} copyTrading={copyTrading}/> }
           </div>
         </main>
