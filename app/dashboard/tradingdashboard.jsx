@@ -8368,6 +8368,7 @@ function TradingDashboard({ session, onLogout }) {
           <SidebarItem icon={SIDEBAR_ICONS.checklist} label="Checklist"     href="/checklist"/>
           <SidebarItem icon={SIDEBAR_ICONS.bell}      label="Alerts"        href="/alerts" pro/>
           <SidebarItem icon={SIDEBAR_ICONS.trophy}    label="Challenge"     href="/challenge"/>
+          <SidebarItem icon={SIDEBAR_ICONS.pencil}    label="Daily Notes"   href="/notes" pro/>
 
           <SidebarDivider/>
 
@@ -8377,7 +8378,6 @@ function TradingDashboard({ session, onLogout }) {
           <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups" pro/>
           <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"      active={tab==="insights"}  onClick={()=>setTab("insights")}/>
           <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Review"  href="/replay"/>
-          <SidebarItem icon={SIDEBAR_ICONS.pencil} label="Daily Notes" href="/notes" pro/>
 
           <SidebarDivider/>
 

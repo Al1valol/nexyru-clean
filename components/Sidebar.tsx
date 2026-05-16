@@ -320,7 +320,6 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         {/* Group 1 — Main */}
         <SidebarItem icon={ICONS.dashboard} label="Dashboard" href="/dashboard" active={isActive("/dashboard")} />
         <SidebarItem icon={ICONS.journal} label="Journal" href="/dashboard?tab=journal" active={isActive("/dashboard?tab=journal")} />
-        <SidebarItem icon={ICONS.pencil} label="Daily Notes" href="/notes" active={isActive("/notes")} pro />
 
         <SidebarDivider />
 
@@ -329,6 +328,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         <SidebarItem icon={ICONS.checklist} label="Checklist" href="/checklist" active={isActive("/checklist")} />
         <SidebarItem icon={ICONS.bell} label="Alerts" href="/alerts" active={isActive("/alerts")} pro />
         <SidebarItem icon={ICONS.trophy} label="Challenge" href="/challenge" active={isActive("/challenge")} />
+        <SidebarItem icon={ICONS.pencil} label="Daily Notes" href="/notes" active={isActive("/notes")} pro />
 
         <SidebarDivider />
 
