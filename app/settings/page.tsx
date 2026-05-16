@@ -783,17 +783,21 @@ function AccountSection({
   const [showEmailForm, setShowEmailForm] = useState(false);
 
   const [resetStatus, setResetStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [resetMsg, setResetMsg] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
 
-  const sendResetLink = async () => {
-    setResetMsg("");
+  const handlePasswordReset = async () => {
     setResetStatus("sending");
     try {
-      const { data: { session: sb } } = await supabase.auth.getSession();
-      const email = sb?.user?.email || session.email || "";
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(
+        "https://xsrcaceydyqytbipvrok.supabase.co",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A"
+      );
+      const { data: { session } } = await supabase.auth.getSession();
+      const email = session?.user?.email;
       if (!email) {
         setResetStatus("error");
-        setResetMsg("Could not find your email. Please sign in again.");
+        setResetMessage("No email found. Please log in again.");
         return;
       }
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -801,14 +805,14 @@ function AccountSection({
       });
       if (error) {
         setResetStatus("error");
-        setResetMsg("Could not send reset email. Try again.");
-        return;
+        setResetMessage("Could not send reset email. Try again.");
+      } else {
+        setResetStatus("sent");
+        setResetMessage(`Reset link sent to ${email} — check your inbox.`);
       }
-      setResetStatus("sent");
-      setResetMsg(`Reset link sent to ${email} — check your inbox`);
     } catch {
       setResetStatus("error");
-      setResetMsg("Could not send reset email. Try again.");
+      setResetMessage("Something went wrong. Try again.");
     }
   };
 
@@ -982,7 +986,7 @@ function AccountSection({
         </div>
         <button
           type="button"
-          onClick={sendResetLink}
+          onClick={handlePasswordReset}
           disabled={resetStatus === "sending" || resetStatus === "sent"}
           style={{
             padding: "8px 14px",
@@ -1003,7 +1007,7 @@ function AccountSection({
             ? "Sent"
             : "Send password reset email"}
         </button>
-        {resetMsg && (
+        {resetMessage && (
           <div
             style={{
               marginTop: 10,
@@ -1013,7 +1017,7 @@ function AccountSection({
               lineHeight: 1.5,
             }}
           >
-            {resetMsg}
+            {resetMessage}
           </div>
         )}
       </div>
