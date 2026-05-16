@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import MobileNav from "@/components/MobileNav";
 import { createClient } from "@supabase/supabase-js";
 
 // ── Supabase ──
@@ -396,7 +395,6 @@ export default function SettingsPage() {
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#0a0a0f" }}>
       <Sidebar activePath="/settings" />
-      <MobileNav activePath="/settings" />
       <main
         className="settings-main"
         style={{
@@ -453,6 +451,9 @@ export default function SettingsPage() {
           }
         `}</style>
         <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+          <a href="/dashboard" style={{display:'flex', alignItems:'center', gap:6, color:'#6b7280', fontSize:13, textDecoration:'none', marginBottom:16}}>
+            ← Back to Dashboard
+          </a>
           <header style={{ marginBottom: 24 }}>
             <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0, letterSpacing: "-0.02em" }}>
               Settings

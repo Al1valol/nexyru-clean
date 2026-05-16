@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 const TAB_ICON_PROPS = {
   width: 22,
   height: 22,
@@ -28,50 +26,25 @@ const Icons = {
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   ),
-  notes: (
+  calendar: (
     <svg {...TAB_ICON_PROPS}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+      <path d="M8 2v4" />
+      <path d="M16 2v4" />
+      <path d="M3 10h18" />
+      <rect x="3" y="4" width="18" height="18" rx="2" />
     </svg>
   ),
-  tools: (
+  gear: (
     <svg {...TAB_ICON_PROPS}>
-      <circle cx="5" cy="5" r="1.5" />
-      <circle cx="12" cy="5" r="1.5" />
-      <circle cx="19" cy="5" r="1.5" />
-      <circle cx="5" cy="12" r="1.5" />
-      <circle cx="12" cy="12" r="1.5" />
-      <circle cx="19" cy="12" r="1.5" />
-      <circle cx="5" cy="19" r="1.5" />
-      <circle cx="12" cy="19" r="1.5" />
-      <circle cx="19" cy="19" r="1.5" />
-    </svg>
-  ),
-  profile: (
-    <svg {...TAB_ICON_PROPS}>
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   ),
 };
 
-type ToolItem = { label: string; href: string };
-
-const TOOLS: ToolItem[] = [
-  { href: "/checklist", label: "Checklist" },
-  { href: "/alerts", label: "Alerts" },
-  { href: "/challenge", label: "Challenge" },
-  { href: "/psychology", label: "Psychology" },
-  { href: "/setups", label: "Best Setups" },
-  { href: "/replay", label: "Trade Review" },
-  { href: "/notes", label: "Daily Notes" },
-  { href: "/settings", label: "Settings" },
-];
-
 function isActiveHref(path: string | undefined, href: string): boolean {
   if (!path) return false;
   if (href === path) return true;
-  // Treat /dashboard active for any /dashboard path that isn't journal/insights/stratlab
   if (
     href === "/dashboard" &&
     path.startsWith("/dashboard") &&
@@ -84,225 +57,18 @@ function isActiveHref(path: string | undefined, href: string): boolean {
   return false;
 }
 
-function isToolsActive(path?: string): boolean {
-  if (!path) return false;
-  return TOOLS.some((t) => path === t.href || path.startsWith(t.href.split("?")[0]));
-}
-
-function ToolsSheet({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
-  const [dragY, setDragY] = useState(0);
-
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-      setDragY(0);
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
-
-  return (
-    <>
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.5)",
-          backdropFilter: "blur(4px)",
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? "auto" : "none",
-          transition: "opacity 0.2s ease",
-          zIndex: 199,
-        }}
-        aria-hidden={!open}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Tools"
-        style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "#0f0f14",
-          borderTopLeftRadius: 18,
-          borderTopRightRadius: 18,
-          borderTop: "1px solid #1e1e2a",
-          padding: "8px 16px 24px",
-          transform: open
-            ? `translateY(${dragY}px)`
-            : "translateY(100%)",
-          transition: touchStartY ? "none" : "transform 0.25s ease",
-          zIndex: 200,
-          boxShadow: "0 -20px 50px rgba(0,0,0,0.4)",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
-          maxHeight: "85vh",
-          overflowY: "auto",
-        }}
-        onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
-        onTouchMove={(e) => {
-          if (touchStartY != null) {
-            const delta = e.touches[0].clientY - touchStartY;
-            if (delta > 0) setDragY(delta);
-          }
-        }}
-        onTouchEnd={() => {
-          if (dragY > 80) {
-            onClose();
-          } else {
-            setDragY(0);
-          }
-          setTouchStartY(null);
-        }}
-      >
-        <div
-          style={{
-            width: 40,
-            height: 4,
-            borderRadius: 999,
-            background: "#2a2a3a",
-            margin: "8px auto 16px",
-          }}
-        />
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
-            Tools
-          </span>
-          <button
-            onClick={onClose}
-            style={{
-              background: "#1a1a24",
-              border: "1px solid #2a2a3a",
-              borderRadius: 8,
-              color: "#9ca3af",
-              width: 32,
-              height: 32,
-              cursor: "pointer",
-              fontSize: 18,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            ×
-          </button>
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-          }}
-        >
-          {TOOLS.map((t) => (
-            <a
-              key={t.href}
-              href={t.href}
-              onClick={onClose}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: 56,
-                borderRadius: 12,
-                background: "#1a1a24",
-                border: "1px solid #2a2a3a",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-                textDecoration: "none",
-                textAlign: "center",
-                padding: "12px 8px",
-              }}
-            >
-              {t.label}
-            </a>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
 function TabButton({
   label,
   icon,
   href,
   active,
-  onClick,
 }: {
   label: string;
   icon: React.ReactNode;
-  href?: string;
+  href: string;
   active: boolean;
-  onClick?: () => void;
 }) {
   const color = active ? "var(--accent)" : "#6b7280";
-  const content = (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 2,
-        color,
-        height: "100%",
-        flex: 1,
-        textDecoration: "none",
-        background: "none",
-        border: "none",
-        padding: 0,
-        cursor: "pointer",
-        minWidth: 0,
-      }}
-    >
-      {icon}
-      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>
-        {label}
-      </span>
-    </div>
-  );
-  if (onClick) {
-    return (
-      <button
-        onClick={onClick}
-        aria-label={label}
-        data-compact="true"
-        style={{
-          flex: 1,
-          background: "none",
-          border: "none",
-          padding: 0,
-          color,
-          minHeight: 0,
-          height: "100%",
-          cursor: "pointer",
-        }}
-      >
-        {content}
-      </button>
-    );
-  }
   return (
     <a
       href={href}
@@ -315,14 +81,29 @@ function TabButton({
         display: "flex",
       }}
     >
-      {content}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2,
+          color,
+          height: "100%",
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        {icon}
+        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>
+          {label}
+        </span>
+      </div>
     </a>
   );
 }
 
 export default function MobileNav({ activePath }: { activePath?: string }) {
-  const [toolsOpen, setToolsOpen] = useState(false);
-
   return (
     <>
       <nav
@@ -355,25 +136,18 @@ export default function MobileNav({ activePath }: { activePath?: string }) {
           active={activePath === "/dashboard?tab=journal"}
         />
         <TabButton
-          label="Notes"
-          icon={Icons.notes}
-          href="/notes"
-          active={activePath === "/notes"}
-        />
-        <TabButton
-          label="Tools"
-          icon={Icons.tools}
-          onClick={() => setToolsOpen(true)}
-          active={toolsOpen || isToolsActive(activePath)}
+          label="Calendar"
+          icon={Icons.calendar}
+          href="/dashboard"
+          active={false}
         />
         <TabButton
           label="Settings"
-          icon={Icons.profile}
+          icon={Icons.gear}
           href="/settings"
           active={activePath === "/settings"}
         />
       </nav>
-      <ToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} />
       <style>{`
         @media (max-width: 767px) {
           .nx-mobile-nav { display: flex !important; }
