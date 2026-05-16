@@ -7243,6 +7243,10 @@ function StrategyLabPage({ session, trades }) {
   const [expanded,   setExpanded]   = useState(null);
   const [justCloned,   setJustCloned]   = useState(null);  // id of newly cloned card
   const [confirmingDelete,  setConfirmingDelete]  = useState(null); // strategy.id awaiting confirm
+  const [exportStrategy, setExportStrategy] = useState(null);
+  const [exportFormat,   setExportFormat]   = useState("pinescript");
+  const [exportCode,     setExportCode]     = useState("");
+  const [exportLoading,  setExportLoading]  = useState(false);
 
   // ── Clone — instant duplicate, auto-open editor ───────────
   const cloneStrategy = (source) => {
@@ -7479,6 +7483,8 @@ function StrategyLabPage({ session, trades }) {
               {/* Action buttons */}
               <button onClick={() => runBacktest(s)} disabled={isRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, border:"none", background:isRunning?"#2a2a3a":"#6366f1", color:isRunning?"#374151":"#fff", fontSize:10, fontWeight:700, cursor:isRunning?"not-allowed":"pointer", flexShrink:0 }}>
                 {isRunning ? <><span style={{ display:"inline-block", width:10, height:10, border:"2px solid #374151", borderTopColor:"#6366f1", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>Running…</>:<><Play size={10}/>Backtest</>}
+              </button><button onClick={() => { setExportStrategy(s); setExportCode(""); setExportFormat("pinescript"); }} style={{ padding:"5px 12px", borderRadius:7, border:"1px solid rgba(99,102,241,0.4)", background:"transparent", color:"#6366f1", fontSize:10, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+                Export Code
               </button><button onClick={() => { setEditing(s); setShowForm(true); }} style={{ padding:"5px 8px", borderRadius:7, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", cursor:"pointer", flexShrink:0 }}><Edit2 size={11}/></button>
               {confirmingDelete === s.id ? (
                 <div style={{ display:"flex", gap:4, flexShrink:0 }}><button onClick={() => { setConfirmingDelete(null); deleteStrategy(s.id); }} style={{ padding:"5px 9px", borderRadius:7, border:"1px solid #ef4444", background:"rgba(239,68,68,0.15)", color:"#ef4444", fontSize:10, fontWeight:700, cursor:"pointer" }}>✓ Delete</button><button onClick={() => setConfirmingDelete(null)} style={{ padding:"5px 9px", borderRadius:7, border:"1px solid #374151", background:"transparent", color:"#9ca3af", fontSize:10, fontWeight:700, cursor:"pointer" }}>✗</button></div>) : (<button onClick={() => { setConfirmingDelete(s.id); setTimeout(() => setConfirmingDelete(curr => curr === s.id ? null : curr), 3000); }} style={{ padding:"5px 8px", borderRadius:7, border:"1px solid rgba(239,68,68,0.2)", background:"transparent", color:"#ef4444", cursor:"pointer", flexShrink:0 }}><Trash size={11}/></button>
@@ -7542,6 +7548,125 @@ function StrategyLabPage({ session, trades }) {
           </div>
         );
       })}
+
+      {/* ── Export Code modal ── */}
+      {exportStrategy && (() => {
+        const condLabel = (c) => {
+          const def = RULE_CONDITIONS.find(d => d.id === c.id);
+          return def ? def.label : c.id;
+        };
+        const entryConds = exportStrategy.rules?.entryConds ?? [];
+        const exitConds  = exportStrategy.rules?.exitConds  ?? [];
+        const allConds = [...entryConds, ...exitConds];
+
+        const handleGenerate = async () => {
+          setExportLoading(true);
+          try {
+            const res = await fetch("/api/export-strategy", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                format: exportFormat,
+                strategy: {
+                  name: exportStrategy.name,
+                  entryConds: entryConds.map(c => ({ id: c.id, value: c.value, label: condLabel(c) })),
+                  exitConds:  exitConds.map(c  => ({ id: c.id, value: c.value, label: condLabel(c) })),
+                  slPct:   exportStrategy.rules?.slPct,
+                  tpPct:   exportStrategy.rules?.tpPct,
+                  riskPct: exportStrategy.rules?.riskPct,
+                },
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              setExportCode("Error: " + (data?.error ?? `HTTP ${res.status}`));
+            } else {
+              setExportCode(data.code ?? "Error: empty response");
+            }
+          } catch (e) {
+            setExportCode("Error: " + (e?.message ?? String(e)));
+          }
+          setExportLoading(false);
+        };
+
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:16, padding:24, maxWidth:640, width:"90%", maxHeight:"80vh", overflow:"auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                <h3 style={{ color:"#fff", fontSize:16, fontWeight:700, margin:0 }}>Export Strategy Code</h3>
+                <button onClick={() => { setExportStrategy(null); setExportCode(""); }} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", fontSize:20 }}>×</button>
+              </div>
+
+              {/* Format selector */}
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", marginBottom:8 }}>Export Format</div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {[
+                    { id:"pinescript",  label:"Pine Script v5", desc:"TradingView" },
+                    { id:"ninjatrader", label:"NinjaScript",    desc:"NinjaTrader 8" },
+                    { id:"python",      label:"Python",         desc:"Backtesting" },
+                  ].map(f => (
+                    <button key={f.id} onClick={() => { setExportFormat(f.id); setExportCode(""); }} style={{
+                      padding:"8px 14px", borderRadius:8,
+                      border:`1px solid ${exportFormat===f.id?"rgba(99,102,241,0.6)":"#2a2a3a"}`,
+                      background: exportFormat===f.id?"rgba(99,102,241,0.1)":"transparent",
+                      color: exportFormat===f.id?"#6366f1":"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer"
+                    }}>
+                      {f.label} <span style={{ fontSize:10, opacity:0.7 }}>· {f.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Strategy summary */}
+              <div style={{ background:"#1a1a24", borderRadius:8, padding:12, marginBottom:16 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"#fff", marginBottom:8 }}>{exportStrategy.name}</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                  {allConds.map((c, i) => (
+                    <span key={i} style={{ fontSize:10, padding:"2px 8px", borderRadius:4, background:"#2a2a3a", color:"#9ca3af" }}>{condLabel(c)}</span>
+                  ))}
+                  {!allConds.length && (
+                    <span style={{ fontSize:10, color:"#374151", fontStyle:"italic" }}>No conditions defined</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Generate button */}
+              {!exportCode && (
+                <button
+                  onClick={handleGenerate}
+                  disabled={exportLoading}
+                  style={{ width:"100%", padding:12, borderRadius:10, border:"none", background:"#6366f1", color:"#fff", fontSize:14, fontWeight:700, cursor:exportLoading?"not-allowed":"pointer", opacity:exportLoading?0.7:1 }}
+                >
+                  {exportLoading ? "Generating code..." : `Generate ${exportFormat === "pinescript" ? "Pine Script" : exportFormat === "ninjatrader" ? "NinjaScript" : "Python"} Code`}
+                </button>
+              )}
+
+              {/* Generated code */}
+              {exportCode && (
+                <div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <div style={{ fontSize:12, color:"#6b7280" }}>Generated code — ready to use</div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(exportCode)}
+                        style={{ padding:"6px 12px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#6366f1", fontSize:11, fontWeight:600, cursor:"pointer" }}
+                      >Copy</button>
+                      <button
+                        onClick={() => setExportCode("")}
+                        style={{ padding:"6px 12px", borderRadius:6, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:11, cursor:"pointer" }}
+                      >Regenerate</button>
+                    </div>
+                  </div>
+                  <pre style={{ background:"#0a0a0f", border:"1px solid #1e1e2a", borderRadius:8, padding:16, fontSize:11, color:"#e2e8f0", overflow:"auto", maxHeight:400, whiteSpace:"pre-wrap", wordBreak:"break-word", margin:0 }}>
+                    {exportCode}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
