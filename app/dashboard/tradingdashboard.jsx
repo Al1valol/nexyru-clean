@@ -2367,6 +2367,24 @@ function AITradeReview({ trade, allTrades, onClose }) {
   const local = useMemo(() => gradeTradeLocally(trade, allTrades), [trade, allTrades]);
 
   const getAIReview = async () => {
+    // Plan gate. getUserPlan() already resolves the admin email override to
+    // "elite", so admin accounts bypass these checks entirely.
+    const plan = getUserPlan();
+    if (plan === "free") {
+      setAiReview("AI trade review is a Pro feature. Upgrade to Pro to unlock AI analysis of your trades.");
+      return;
+    }
+    if (plan === "pro") {
+      const today = new Date().toDateString();
+      const usageKey = `nexyru_ai_usage_${today}`;
+      const used = parseInt(localStorage.getItem(usageKey) || "0", 10);
+      if (used >= 10) {
+        setAiReview("You have used your 10 AI reviews today. Upgrade to Elite for unlimited.");
+        return;
+      }
+      localStorage.setItem(usageKey, String(used + 1));
+    }
+
     setLoading(true);
     try {
       const rr = local.rr ? `${local.rr.toFixed(2)}:1` : "unknown";
