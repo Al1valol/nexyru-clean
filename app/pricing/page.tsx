@@ -126,7 +126,7 @@ function PopularBadge() {
     <div
       style={{
         position: "absolute",
-        top: -10,
+        top: -14,
         left: "50%",
         transform: "translateX(-50%)",
         fontSize: 9,
@@ -151,7 +151,7 @@ function MostValueBadge() {
     <div
       style={{
         position: "absolute",
-        top: -10,
+        top: -14,
         left: "50%",
         transform: "translateX(-50%)",
         fontSize: 9,
@@ -323,7 +323,8 @@ function PricingCard({ tier, title, subtitle, price, cadence, features, cta, cur
         display: "flex",
         flexDirection: "column",
         opacity: comingSoon && !current && !badge ? 0.92 : 1,
-        overflow: "hidden",
+        overflow: "visible",
+        marginTop: badge ? 20 : 0,
       }}
     >
       {isElite && (
@@ -337,6 +338,8 @@ function PricingCard({ tier, title, subtitle, price, cadence, features, cta, cur
             height: 110,
             background: "radial-gradient(ellipse at top, rgba(245,158,11,0.18), transparent 70%)",
             pointerEvents: "none",
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
           }}
         />
       )}
@@ -451,6 +454,7 @@ export default function PricingPage() {
             gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: 18,
             alignItems: "stretch",
+            paddingTop: 24,
           }}
         >
           <PricingCard
