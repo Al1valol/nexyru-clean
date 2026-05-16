@@ -782,64 +782,41 @@ function AccountSection({
   const [emailMsg, setEmailMsg] = useState("");
   const [showEmailForm, setShowEmailForm] = useState(false);
 
-  const [resetStatus, setResetStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [resetMessage, setResetMessage] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem("sb-xsrcaceydyqytbipvrok-auth-token");
+      const parsed = token ? JSON.parse(token) : null;
+      const email =
+        parsed?.user?.email ||
+        parsed?.currentSession?.user?.email ||
+        session.email ||
+        "";
+      setUserEmail(email);
+    } catch {
+      setUserEmail(session.email || "");
+    }
+  }, [session.email]);
 
   const handlePasswordReset = async () => {
-    setResetStatus("sending");
+    if (!userEmail) return;
+    setResetLoading(true);
     try {
-      // Get email from multiple sources
-      let email: string | null = null;
-
-      // Try Supabase session first
-      try {
-        const { data: { session: sb } } = await supabase.auth.getSession();
-        email = sb?.user?.email ?? null;
-      } catch {}
-
-      // Fallback to the Supabase localStorage token directly
-      if (!email) {
-        try {
-          const token = localStorage.getItem("sb-xsrcaceydyqytbipvrok-auth-token");
-          if (token) {
-            const parsed = JSON.parse(token);
-            email = parsed?.user?.email || parsed?.currentSession?.user?.email || null;
-          }
-        } catch {}
-      }
-
-      // Fallback to the app's local session blob
-      if (!email) {
-        try {
-          const local = JSON.parse(localStorage.getItem("tradedesk_session_v1") || "{}");
-          email = local?.email ?? null;
-        } catch {}
-      }
-
-      // Fallback to the session prop
-      if (!email) email = session.email ?? null;
-
-      if (!email) {
-        setResetStatus("error");
-        setResetMessage("Could not find your email. Please sign out and sign back in.");
-        return;
-      }
-
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: "https://www.nexyru.com/auth/callback?type=recovery",
+      const res = await fetch("/api/send-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail }),
       });
-
-      if (error) {
-        setResetStatus("error");
-        setResetMessage("Could not send reset email. Try again.");
-      } else {
-        setResetStatus("sent");
-        setResetMessage(`Reset link sent to ${email} — check your inbox.`);
-      }
+      const data = await res.json();
+      if (data.ok) setResetSent(true);
+      else alert("Error: " + data.error);
     } catch (e) {
-      setResetStatus("error");
-      setResetMessage("Something went wrong: " + (e as Error).message);
+      alert("Error: " + (e as Error).message);
     }
+    setResetLoading(false);
   };
 
   const sendEmailChange = async () => {
@@ -1003,48 +980,45 @@ function AccountSection({
 
       {/* Reset password by email */}
       <div style={{ marginBottom: 18 }}>
-        <div style={{ ...label, fontSize: 13, color: "#fff", marginBottom: 6 }}>
+        <div style={{ ...label, fontSize: 13, color: "#fff", marginBottom: 10 }}>
           Forgot your current password?
         </div>
-        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 10, lineHeight: 1.5 }}>
-          We&apos;ll email a reset link to{" "}
-          <span style={{ color: "#e5e7eb", fontWeight: 600 }}>{session.email || "your email"}</span>.
-        </div>
-        <button
-          type="button"
-          onClick={handlePasswordReset}
-          disabled={resetStatus === "sending" || resetStatus === "sent"}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 8,
-            background: "transparent",
-            border: "1px solid rgba(99,102,241,0.55)",
-            color: "#a5b4fc",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: resetStatus === "sending" || resetStatus === "sent" ? "default" : "pointer",
-            opacity: resetStatus === "sending" || resetStatus === "sent" ? 0.6 : 1,
-            width: "fit-content",
-          }}
-        >
-          {resetStatus === "sending"
-            ? "Sending..."
-            : resetStatus === "sent"
-            ? "Sent"
-            : "Send password reset email"}
-        </button>
-        {resetMessage && (
+        {resetSent ? (
           <div
             style={{
-              marginTop: 10,
-              fontSize: 12,
-              fontWeight: 600,
-              color: resetStatus === "error" ? "#ef4444" : "#22c55e",
-              lineHeight: 1.5,
+              color: "#22c55e",
+              fontSize: 13,
+              padding: "10px 14px",
+              background: "rgba(34,197,94,0.1)",
+              borderRadius: 8,
+              border: "1px solid rgba(34,197,94,0.2)",
             }}
           >
-            {resetMessage}
+            Reset link sent to {userEmail} — check your inbox
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handlePasswordReset}
+            disabled={resetLoading || !userEmail}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1px solid rgba(99,102,241,0.4)",
+              background: "transparent",
+              color: "#6366f1",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: resetLoading || !userEmail ? "default" : "pointer",
+              opacity: resetLoading || !userEmail ? 0.6 : 1,
+            }}
+          >
+            {resetLoading
+              ? "Sending..."
+              : userEmail
+              ? `Send reset link to ${userEmail}`
+              : "Send password reset email"}
+          </button>
         )}
       </div>
 
