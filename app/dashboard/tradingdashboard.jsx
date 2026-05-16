@@ -18,7 +18,7 @@ import {
 } from "recharts";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import MobileDashboard from "./MobileDashboard";
-import { getUserPlan, getLimit, trackDailyUsage, incrementUsage, useUserPlan } from "@/lib/plan";
+import { getUserPlan, getLimit, trackDailyUsage, incrementUsage, useUserPlan, isAdminEmail, applyAdminPlanForEmail } from "@/lib/plan";
 
 // ── Supabase browser client — single instance so storage stays consistent
 // across the App. Using the SDK avoids guessing the localStorage key name,
@@ -3926,6 +3926,8 @@ function usePaperAccounts(username) {
   }, [username]);
 
   const addAccount = useCallback((name, type, startingBalance) => {
+    const limit = getLimit("maxChallengeAccounts");
+    if (accounts.length >= limit) return { limitExceeded: true, limit };
     const acc = {
       id:              `acct_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
       name:            name.trim() || (type === "paper" ? "Paper Account" : "Funded Account"),
@@ -7831,6 +7833,11 @@ function TradingDashboard({ session, onLogout }) {
   }, []);
   const [tab,           setTab]           = useState("dashboard");
   const userPlan = useUserPlan();
+  // isAdminEmail uses the lib/plan ADMIN_EMAILS list — admins always get elite,
+  // computed synchronously from the session prop so the gate doesn't flash on
+  // first render before useUserPlan() reads from localStorage.
+  const isAdmin = isAdminEmail(session?.email);
+  const effectivePlan = isAdmin ? "elite" : userPlan;
   const [trades,        setTrades]        = useState([]);
   const [tradesLoading, setTradesLoading] = useState(true);
   const [showForm,      setShowForm]      = useState(false);
@@ -7900,6 +7907,7 @@ function TradingDashboard({ session, onLogout }) {
     const { data: sub } = supa.auth.onAuthStateChange((evt, s) => {
       setSupabaseUserId(s?.user?.id ?? null);
       if (evt === "SIGNED_IN") {
+        applyAdminPlanForEmail(s?.user?.email);
         setAuthRefreshKey(k => k + 1);
         // Force-upload every local trade bucket so older trades (CSV imports
         // logged pre-sign-in, or trades saved under a different username on
@@ -7922,6 +7930,21 @@ function TradingDashboard({ session, onLogout }) {
 
   const copyTrading  = useCopyTrading(session.username);
   const paperAccts   = usePaperAccounts(session.username);
+
+  const [accountLimitMsg, setAccountLimitMsg] = useState("");
+  const tryAddAccount = useCallback((name, type, size) => {
+    const result = paperAccts.addAccount(name, type, size);
+    if (result && result.limitExceeded) {
+      const plan = getUserPlan();
+      const upsell = plan === "pro"
+        ? "Pro plan allows 3 challenge accounts. Upgrade to Elite for unlimited."
+        : "Free plan allows 1 challenge account. Upgrade to Pro for 3 accounts or Elite for unlimited.";
+      setAccountLimitMsg(upsell);
+      setTimeout(() => setAccountLimitMsg(""), 6000);
+      return null;
+    }
+    return result;
+  }, [paperAccts]);
 
   // Apply saved theme + accent on mount
   useEffect(() => {
@@ -8336,7 +8359,7 @@ function TradingDashboard({ session, onLogout }) {
           activeAccountId={paperAccts?.activeAccount?.id}
           accounts={paperAccts?.accounts || []}
           onSwitchAccount={(id) => { paperAccts.setActiveAccount(id); }}
-          onAddAccount={paperAccts.addAccount}
+          onAddAccount={tryAddAccount}
           onDeleteAccount={paperAccts.deleteAccount}
           onAddTrade={() => setShowForm(true)}
           onImport={() => setShowHub(true)}
@@ -8410,7 +8433,7 @@ function TradingDashboard({ session, onLogout }) {
               : type === "live"
               ? `Live Account ($${(size/1000).toFixed(0)}k)`
               : `Paper Account ($${(size/1000).toFixed(0)}k)`;
-            const acct = paperAccts.addAccount(name, type, size);
+            const acct = tryAddAccount(name, type, size);
             // Save funded challenge rules to localStorage
             if (fundedInfo && acct) {
               localStorage.setItem(
@@ -8424,7 +8447,7 @@ function TradingDashboard({ session, onLogout }) {
       )}
       {showCSV && <CSVUploader initialTab={csvInitialTab} onImport={handleImportTrades} onClose={() => setShowCSV(false)}/>}
       {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }} onScreenshot={() => { setCsvInitialTab("ai"); setShowCSV(true); }} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
-      {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
+      {showAddAcct && <AddAccountModal onAdd={tryAddAccount} onClose={() => setShowAddAcct(false)}/>}
 
       {/* ── Left Sidebar (desktop) ── */}
       <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
@@ -8517,7 +8540,7 @@ function TradingDashboard({ session, onLogout }) {
               accounts={paperAccts.accounts}
               activeAccount={paperAccts.activeAccount}
               onSwitch={paperAccts.setActiveAccount}
-              onAddAccount={paperAccts.addAccount}
+              onAddAccount={tryAddAccount}
               onDelete={paperAccts.deleteAccount}
               trades={trades}
             />
@@ -8545,6 +8568,25 @@ function TradingDashboard({ session, onLogout }) {
               setTrades([]);
               setShowAccountSetup(true);
             }}/>
+            {accountLimitMsg && (
+              <div style={{
+                marginBottom: 12,
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "rgba(245,158,11,0.10)",
+                border: "1px solid rgba(245,158,11,0.35)",
+                color: "#fcd34d",
+                fontSize: 12,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}>
+                <span>{accountLimitMsg}</span>
+                <a href="/pricing" style={{ color: "#a5b4fc", fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }}>See pricing →</a>
+              </div>
+            )}
           </div>
           <div key={tab} className="page-enter" style={{ maxWidth:1200, margin:"0 auto", paddingTop:12 }}>
 
@@ -8553,7 +8595,7 @@ function TradingDashboard({ session, onLogout }) {
               saveUserTrades(session.username, []);
               setTrades([]);
             }} onUpgradeAccount={(nextSize) => {
-              paperAccts.addAccount(`$${(nextSize/1000).toFixed(0)}k Paper Account`, "paper", nextSize);
+              tryAddAccount(`$${(nextSize/1000).toFixed(0)}k Paper Account`, "paper", nextSize);
             }}/>}
           {tab==="journal" && (
             <JournalPage
@@ -8571,12 +8613,12 @@ function TradingDashboard({ session, onLogout }) {
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Strategy Performance</div><StrategyCards trades={activeTrades}/></div>
           )}
           {tab==="insights"   && (
-            userPlan === "free"
+            effectivePlan === "free"
               ? <ProUpgradeCard feature="Advanced Insights" />
               : <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Insights</div><InsightsAnalyticsPage trades={activeTrades}/></div>
           )}
           {tab==="stratlab"   && (
-            userPlan === "free"
+            effectivePlan === "free"
               ? <ProUpgradeCard feature="Strategy Lab" />
               : <StrategyLabPage session={session} trades={activeTrades}/>
           )}
