@@ -66,7 +66,7 @@ export const LIMITS = {
   free: {
     maxTrades: 50,
     maxChallengeAccounts: 1,
-    aiUsesPerDay: 0,
+    aiUsesPerDay: 1,
     screenshotImportsPerDay: 1,
     tradeReviewHistory: 3,
     hasInsights: false,

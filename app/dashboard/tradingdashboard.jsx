@@ -6980,7 +6980,12 @@ function StrategyFormModal({ initial, onSave, onClose }) {
     if (!aiPrompt.trim()) return;
     const usage = trackDailyUsage("aiUsesPerDay");
     if (!usage.canUse) {
-      setAiErr(`You've used your ${usage.limit} free AI generation${usage.limit === 1 ? "" : "s"} today. Upgrade to Pro for unlimited.`);
+      const plan = getUserPlan();
+      setAiErr(
+        plan === "pro"
+          ? "You've used your 10 daily AI generations. Upgrade to Elite for unlimited."
+          : "You've used your 1 free AI generation today. Upgrade to Pro for 10/day or Elite for unlimited."
+      );
       return;
     }
     setAiLoading(true); setAiErr("");
