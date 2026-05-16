@@ -825,7 +825,7 @@ function StatCard({ label, value, sub, pos, icon }) {
       onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 8px 22px ${glow}`; e.currentTarget.style.transform = "translateY(-1px)"; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "translateY(0)"; }}
     ><div style={{ position:"absolute", top:0, left:0, right:0, height:2, background:topAccent }}/><div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:10 }}><span style={{ fontSize:10, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.1em" }}>{label}</span><span style={{ color:topAccent, opacity:0.75 }}>{icon}</span></div><div style={{
-        fontSize:"clamp(16px, 4.2vw, 30px)",
+        fontSize:"clamp(16px, 2.5vw, 28px)",
         fontWeight:800,
         letterSpacing:"-0.5px",
         color:accent,
@@ -835,7 +835,7 @@ function StatCard({ label, value, sub, pos, icon }) {
         whiteSpace:"nowrap",
         overflow:"hidden",
         textOverflow:"ellipsis",
-      }}>{value}</div>
+      }} title={String(value)}>{value}</div>
       {sub && <div style={{ fontSize:11, color:"#6b7280", marginTop:8, letterSpacing:"0.01em" }}>{sub}</div>}
     </div>
   );
@@ -2028,7 +2028,7 @@ function TradeTable({ trades, onEdit, onDelete, onReview, onAdd, onImport, usern
   const toggleSort = k => { if (sortK===k) setSortD(d=>d==="asc"?"desc":"asc"); else { setSortK(k); setSortD("desc"); } };
   const SIcon = ({ c }) =>c!==sortK ?<ChevronsUpDown size={10} style={{ color:"#6b7280" }}/>: sortD==="asc" ?<ChevronUp size={10} style={{ color:"#6366f1" }}/>:<ChevronDown size={10} style={{ color:"#6366f1" }}/>;
   const th = { padding:"10px 14px", textAlign:"left", fontSize:10, fontWeight:700, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.08em", cursor:"pointer", userSelect:"none", whiteSpace:"nowrap", borderBottom:"1px solid rgba(30,41,59,0.8)", background:"rgba(10,15,30,0.98)" };
-  const td = { padding:"11px 14px", fontSize:11, borderBottom:"1px solid rgba(30,41,59,0.4)" };
+  const td = { padding:"11px 14px", fontSize:11, borderBottom:"1px solid rgba(30,41,59,0.4)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:200 };
   const sysFont = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif';
   const sel = { padding:"5px 10px", borderRadius:7, background:"#1a1a24", border:"1px solid #2a2a3a", fontSize:11, color:"#9ca3af", cursor:"pointer", outline:"none" };
 
@@ -3161,7 +3161,7 @@ function InsightsAnalyticsPage({ trades }) {
     padding: 20,
   };
 
-  const mono = { fontFamily:"'JetBrains Mono','SF Mono',ui-monospace,monospace" };
+  const mono = { fontFamily:"'JetBrains Mono','SF Mono',ui-monospace,monospace", whiteSpace:"nowrap" };
 
   // ── Date / hour formatting helpers ───────────────────────────
   const fmtShortDate = (key) => {
@@ -4303,17 +4303,20 @@ function AccountStatsCard({ activeAccount, trades }) {
       background:`linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)), linear-gradient(135deg, ${typeClr}08, rgba(13,17,32,0.92))`,
     }}>
       {/* Account header */}
-      <div style={{ padding: isMobile ? "12px 14px" : "14px 18px", borderBottom:`1px solid ${typeClr}18`, display:"flex", alignItems: isMobile ? "flex-start" : "center", justifyContent:"space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 10 : 0 }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ fontSize:18 }}>{activeAccount.type === "funded" ? "" : ""}</span><div><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em" }}>{activeAccount.name}</div><div style={{ fontSize:10, fontWeight:700, color:typeClr, textTransform:"uppercase", letterSpacing:"0.1em", marginTop:2 }}>{activeAccount.type} account</div></div></div><div style={{ textAlign: isMobile ? "left" : "right", width: isMobile ? "100%" : "auto" }}><div style={{
-            fontSize: isMobile ? 22 : 24,
+      <div style={{ padding: isMobile ? "12px 14px" : "14px 18px", borderBottom:`1px solid ${typeClr}18`, display:"flex", alignItems: isMobile ? "flex-start" : "center", justifyContent:"space-between", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 10 : 12, minWidth:0 }}><div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}><span style={{ fontSize:18 }}>{activeAccount.type === "funded" ? "" : ""}</span><div style={{ minWidth:0 }}><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{activeAccount.name}</div><div style={{ fontSize:10, fontWeight:700, color:typeClr, textTransform:"uppercase", letterSpacing:"0.1em", marginTop:2 }}>{activeAccount.type} account</div></div></div><div style={{ textAlign: isMobile ? "left" : "right", width: isMobile ? "100%" : "auto", minWidth:0 }}><div style={{
+            fontSize:"clamp(14px, 2vw, 22px)",
             fontWeight:800,
             letterSpacing:"-0.5px",
             color:"#ffffff",
             lineHeight:1,
             fontFamily:sysFont,
             fontVariantNumeric:"tabular-nums",
-          }}>
+            whiteSpace:"nowrap",
+            overflow:"hidden",
+            textOverflow:"ellipsis",
+          }} title={fmtMoney(activeAccount.balance)}>
             {fmtMoney(activeAccount.balance)}
-          </div><div style={{ fontSize:11, color:perfClr, marginTop:4, fontWeight:600, fontVariantNumeric:"tabular-nums" }}>
+          </div><div style={{ fontSize:11, color:perfClr, marginTop:4, fontWeight:600, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap" }}>
             {fmtPct(pnlPct, { signed:true })} return
           </div></div></div>
       {/* Mini stats */}
@@ -4321,15 +4324,19 @@ function AccountStatsCard({ activeAccount, trades }) {
         {miniStats.map(({ label,val,color }, idx, arr) =>(<div key={label} style={{
             textAlign:"center",
             padding:"4px 10px",
+            minWidth:0,
             borderRight: isMobile ? (idx % 2 === 0 ? "1px solid rgba(30,41,59,0.4)" : "none") : (idx < arr.length-1 ? "1px solid rgba(30,41,59,0.4)" : "none"),
           }}><div style={{ fontSize:9, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:5, fontWeight:700 }}>{label}</div><div style={{
-              fontSize:14,
+              fontSize:"clamp(12px, 1.6vw, 16px)",
               fontWeight:700,
               color,
               letterSpacing:"-0.01em",
               fontFamily:sysFont,
               fontVariantNumeric:"tabular-nums",
-            }}>{val}</div></div>
+              whiteSpace:"nowrap",
+              overflow:"hidden",
+              textOverflow:"ellipsis",
+            }} title={String(val)}>{val}</div></div>
         ))}
       </div></div>
   );
@@ -6642,13 +6649,14 @@ function DashboardHome({ trades, allTrades, onAddTrade, onOpenImport, activeAcco
  return (<div key={t.id}
                    style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px", borderBottom: i === recent.length-1 ? "none" : "1px solid rgba(30,41,59,0.5)", cursor:"pointer", transition:"background 0.12s", minHeight:56 }}
                    onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.025)"}
-                   onMouseLeave={e=>e.currentTarget.style.background=""}><div style={{ display:"flex", alignItems:"center", gap:12 }}><span style={{ width:8, height:8, borderRadius:"50%", background:dotClr, boxShadow:`0 0 8px ${dotClr}80`, flexShrink:0 }}/><div><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em" }}>{t.pair}</div><div style={{ fontSize:11, color:"#6b7280", marginTop:2 }}>{t.strategy ? `${t.strategy} · ` : ""}{new Date(t.date).toLocaleDateString()}</div></div></div><div style={{ textAlign:"right" }}><div style={{
+                   onMouseLeave={e=>e.currentTarget.style.background=""}><div style={{ display:"flex", alignItems:"center", gap:12, minWidth:0 }}><span style={{ width:8, height:8, borderRadius:"50%", background:dotClr, boxShadow:`0 0 8px ${dotClr}80`, flexShrink:0 }}/><div style={{ minWidth:0 }}><div style={{ fontSize:14, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.pair}</div><div style={{ fontSize:11, color:"#6b7280", marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.strategy ? `${t.strategy} · ` : ""}{new Date(t.date).toLocaleDateString()}</div></div></div><div style={{ textAlign:"right", flexShrink:0 }}><div style={{
                     fontSize:15,
                     fontWeight:700,
                     color:w?"#10b981":"#ef4444",
                     letterSpacing:"-0.01em",
                     fontFamily:'-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif',
                     fontVariantNumeric:"tabular-nums",
+                    whiteSpace:"nowrap",
                   }}>{fmtMoney(t.pnl ?? 0, { signed:true })}</div>
                   {showPct && (
                     <div style={{ fontSize:11, color:w?"#10b981":"#ef4444", opacity:0.65, marginTop:2, fontVariantNumeric:"tabular-nums" }}>{fmtPct(pct, { signed:true })}</div>

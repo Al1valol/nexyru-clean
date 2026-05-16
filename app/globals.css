@@ -307,3 +307,15 @@ main [data-flex-text] {
 @media (min-width: 769px) {
   .show-mobile { display: none !important; }
 }
+
+/* Number display — prevent dollar/PnL values from breaking layout */
+.dashboard-number {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
