@@ -20,6 +20,8 @@ const COLORS = {
   green: "#22c55e",
   greenDim: "rgba(34,197,94,0.12)",
   red: "#ef4444",
+  amber: "#f59e0b",
+  amberDim: "rgba(245,158,11,0.12)",
 };
 
 const PROP_FIRMS = [
@@ -93,25 +95,177 @@ const STEPS = [
   },
 ];
 
-const FREE_FEATURES = [
-  "Trade journal — up to 100 trades",
-  "Challenge tracker — 1 account",
-  "Psychology tracker",
-  "Best setup finder",
-  "Pre-trade checklist",
-  "Trade replay — last 10 trades",
-  "AI strategy builder — 3 uses/day",
-  "Syncs across all devices",
+type Feature = { kind: "ok" | "no" | "soon"; label: string };
+
+const FREE_FEATURES: Feature[] = [
+  { kind: "ok", label: "Journal — 50 trades" },
+  { kind: "ok", label: "Challenge tracker — 1 account" },
+  { kind: "ok", label: "Pre-trade checklist" },
+  { kind: "ok", label: "Basic stats" },
+  { kind: "ok", label: "Screenshot import — 1/day" },
+  { kind: "ok", label: "Trade Review — 3 trades" },
+  { kind: "no", label: "AI features (upgrade required)" },
 ];
 
-const PRO_FEATURES = [
-  "Everything in Free, unlimited",
-  "Multiple challenge accounts (2, 3, 5+)",
-  "Full trade review history",
-  "Unlimited AI strategy generations",
-  "Weekly performance report",
-  "Priority support",
+const PRO_FEATURES: Feature[] = [
+  { kind: "ok", label: "Everything in Free, unlimited" },
+  { kind: "ok", label: "Psychology tracker" },
+  { kind: "ok", label: "Best setup finder" },
+  { kind: "ok", label: "Full trade review history" },
+  { kind: "ok", label: "Daily notes" },
+  { kind: "ok", label: "All alerts" },
+  { kind: "ok", label: "Advanced insights & charts" },
+  { kind: "ok", label: "AI strategy builder — 10/day" },
+  { kind: "ok", label: "Screenshot import — 20/day" },
+  { kind: "ok", label: "3 challenge accounts" },
+  { kind: "ok", label: "CSV export" },
 ];
+
+const ELITE_FEATURES: Feature[] = [
+  { kind: "ok",   label: "Everything in Pro, unlimited" },
+  { kind: "ok",   label: "Unlimited AI strategy generations" },
+  { kind: "ok",   label: "Unlimited screenshot imports" },
+  { kind: "ok",   label: "Unlimited challenge accounts" },
+  { kind: "ok",   label: "Priority support" },
+  { kind: "soon", label: "Strategy Code Export — Pine Script, NinjaScript & Python" },
+  { kind: "soon", label: "Weekly PDF Performance Report" },
+  { kind: "soon", label: "Mentor/Coach read-only journal sharing" },
+  { kind: "soon", label: "Multi-Account Dashboard" },
+  { kind: "soon", label: "Daily Loss Push Notifications" },
+  { kind: "soon", label: "AI Trade Screenshot Analysis" },
+  { kind: "soon", label: "Broker CSV Auto-Detection" },
+];
+
+// ─── Pricing card for the landing page ────────────────────────────
+type LPBadge = { label: string; color: string; bg?: string; border?: string; gradient?: string; shadow?: string };
+
+type PricingCardLPProps = {
+  tier: "free" | "pro" | "elite";
+  price: string;
+  cadence: string;
+  priceCaption?: { text: string; color: string };
+  cornerBadge?: LPBadge;
+  topBadge?: LPBadge;
+  features: Feature[];
+  cta: React.ReactNode;
+  footerNote?: { text: string; color: string; bg: string; border: string };
+  borderColor: string;
+  background: string;
+  boxShadow?: string;
+};
+
+function FeatureRowLP({ item }: { item: Feature }) {
+  const palette = {
+    ok:   { glyph: "✓", color: COLORS.text,    icon: COLORS.green },
+    no:   { glyph: "✗", color: COLORS.textMuted, icon: COLORS.textFaint },
+    soon: { glyph: "→", color: "#d1d5db",      icon: COLORS.amber },
+  };
+  const p = palette[item.kind];
+  return (
+    <li style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 14, color: p.color, lineHeight: 1.5, marginBottom: 12 }}>
+      <span style={{ color: p.icon, fontWeight: 800, marginTop: 1, flexShrink: 0, width: 12 }}>{p.glyph}</span>
+      <span>{item.label}</span>
+    </li>
+  );
+}
+
+function PricingCardLP({ price, cadence, priceCaption, cornerBadge, topBadge, features, cta, footerNote, borderColor, background, boxShadow }: PricingCardLPProps) {
+  return (
+    <div
+      style={{
+        background,
+        border: `1px solid ${borderColor}`,
+        borderRadius: 16,
+        padding: 32,
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
+        boxShadow: boxShadow ?? "none",
+      }}
+    >
+      {topBadge && (
+        <div
+          style={{
+            position: "absolute",
+            top: -10,
+            left: "50%",
+            transform: "translateX(-50%)",
+            fontSize: 9,
+            fontWeight: 800,
+            padding: "4px 12px",
+            borderRadius: 999,
+            background: topBadge.gradient ?? topBadge.bg ?? "transparent",
+            color: topBadge.color,
+            letterSpacing: "0.08em",
+            boxShadow: topBadge.shadow ?? "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {topBadge.label}
+        </div>
+      )}
+
+      {cornerBadge && (
+        <span
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "4px 10px",
+            borderRadius: 999,
+            background: cornerBadge.bg ?? "transparent",
+            color: cornerBadge.color,
+            border: cornerBadge.border ? `1px solid ${cornerBadge.border}` : "none",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {cornerBadge.label}
+        </span>
+      )}
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ fontSize: 40, fontWeight: 800, color: COLORS.text, letterSpacing: "-0.02em" }}>{price}</span>
+          <span style={{ color: COLORS.textMuted, fontSize: 15 }}>{cadence}</span>
+        </div>
+        {priceCaption && (
+          <div style={{ marginTop: 6, fontSize: 12, color: priceCaption.color, fontWeight: 600 }}>
+            {priceCaption.text}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 24 }}>{cta}</div>
+
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, flex: 1 }}>
+        {features.map((f) => (
+          <FeatureRowLP key={f.label} item={f} />
+        ))}
+      </ul>
+
+      {footerNote && (
+        <div
+          style={{
+            marginTop: 18,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: footerNote.bg,
+            border: `1px solid ${footerNote.border}`,
+            fontSize: 12,
+            color: footerNote.color,
+            fontWeight: 600,
+            lineHeight: 1.5,
+            textAlign: "center",
+          }}
+        >
+          {footerNote.text}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TRADES = [
   { sym: "NQ1!", dir: "LONG", pnl: 312.5, grade: "A" },
@@ -121,8 +275,19 @@ const TRADES = [
 
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
-  const [waitlistEmail, setWaitlistEmail] = useState("");
-  const [waitlistJoined, setWaitlistJoined] = useState(false);
+  const [proEmail, setProEmail] = useState("");
+  const [proJoined, setProJoined] = useState(false);
+  const [eliteEmail, setEliteEmail] = useState("");
+  const [eliteJoined, setEliteJoined] = useState(false);
+
+  useEffect(() => {
+    try {
+      const pro = JSON.parse(localStorage.getItem("nexyru_waitlist_pro") || "[]");
+      if (Array.isArray(pro) && pro.length) setProJoined(true);
+      const elite = JSON.parse(localStorage.getItem("nexyru_waitlist_elite") || "[]");
+      if (Array.isArray(elite) && elite.length) setEliteJoined(true);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -131,18 +296,30 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  function joinWaitlist(e: React.FormEvent) {
-    e.preventDefault();
-    const email = waitlistEmail.trim();
-    if (!email || !email.includes("@")) return;
+  function saveWaitlist(storageKey: string, email: string): boolean {
+    const value = email.trim().toLowerCase();
+    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return false;
     try {
-      const raw = localStorage.getItem("nexyru_waitlist");
+      const raw = localStorage.getItem(storageKey);
       const list: string[] = raw ? JSON.parse(raw) : [];
-      if (!list.includes(email)) list.push(email);
-      localStorage.setItem("nexyru_waitlist", JSON.stringify(list));
+      if (!list.includes(value)) list.push(value);
+      localStorage.setItem(storageKey, JSON.stringify(list));
     } catch {}
-    setWaitlistJoined(true);
-    setWaitlistEmail("");
+    return true;
+  }
+
+  function joinPro(e: React.FormEvent) {
+    e.preventDefault();
+    if (!saveWaitlist("nexyru_waitlist_pro", proEmail)) return;
+    setProJoined(true);
+    setProEmail("");
+  }
+
+  function joinElite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!saveWaitlist("nexyru_waitlist_elite", eliteEmail)) return;
+    setEliteJoined(true);
+    setEliteEmail("");
   }
 
   return (
@@ -651,222 +828,86 @@ export default function LandingPage() {
         </div>
       </section>
 
+
       {/* ─── PRICING ───────────────────────────────────────────────── */}
       <section id="pricing" style={{ padding: "100px 24px" }}>
-        <div style={{ maxWidth: 800, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 56 }}>
-            <div className="nx-label" style={sectionLabel}>
+        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <div style={{ fontSize: 11, color: COLORS.accent, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 12, fontWeight: 700 }}>
               PRICING
             </div>
-            <h2
-              style={{
-                fontSize: "clamp(28px, 4vw, 40px)",
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-                color: COLORS.text,
-                margin: "16px 0 12px",
-              }}
-            >
-              Start free. Upgrade when you&apos;re ready.
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 800, letterSpacing: "-0.02em", color: COLORS.text, margin: "0 0 12px" }}>
+              Simple, fair pricing.
             </h2>
             <p style={{ color: COLORS.textDim, fontSize: 16, margin: 0 }}>
-              No credit card required to get started.
+              Start free. Upgrade when you&apos;re ready.
             </p>
           </div>
 
           <div className="nx-pricing-grid">
-            {/* FREE */}
-            <div
-              style={{
-                background: COLORS.surface,
-                border: `1px solid ${COLORS.border}`,
-                borderRadius: 16,
-                padding: 32,
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <div style={{ marginBottom: 24 }}>
-                <div
+            {/* ── FREE ─────────────────────────── */}
+            <PricingCardLP
+              tier="free"
+              price="$0"
+              cadence="/forever"
+              cornerBadge={{ label: "FREE", color: COLORS.textDim, bg: "rgba(255,255,255,0.04)", border: COLORS.border }}
+              features={FREE_FEATURES}
+              cta={
+                <Link
+                  href="/login"
                   style={{
-                    color: COLORS.text,
+                    display: "block",
+                    textAlign: "center",
+                    background: "transparent",
+                    color: COLORS.accent,
+                    border: `1px solid ${COLORS.accent}`,
+                    borderRadius: 10,
+                    padding: "12px 18px",
                     fontSize: 14,
                     fontWeight: 600,
-                    marginBottom: 12,
-                    letterSpacing: "0.02em",
+                    textDecoration: "none",
                   }}
                 >
-                  FREE
-                </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 40,
-                      fontWeight: 700,
-                      color: COLORS.text,
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
-                    $0
-                  </span>
-                  <span style={{ color: COLORS.textMuted, fontSize: 15 }}>/mo</span>
-                </div>
-              </div>
+                  Get started free
+                </Link>
+              }
+              borderColor={COLORS.border}
+              background={COLORS.surface}
+            />
 
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, flex: 1 }}>
-                {FREE_FEATURES.map((f) => (
-                  <li
-                    key={f}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      color: COLORS.text,
-                      fontSize: 14,
-                      lineHeight: 1.5,
-                      marginBottom: 12,
-                    }}
-                  >
-                    <span style={{ color: COLORS.green, fontWeight: 600 }}>✓</span>
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                href="/login"
-                style={{
-                  marginTop: 28,
-                  display: "block",
-                  textAlign: "center",
-                  background: "transparent",
-                  color: COLORS.accent,
-                  border: `1px solid ${COLORS.accent}`,
-                  borderRadius: 10,
-                  padding: "12px 18px",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  textDecoration: "none",
-                  transition: "background 150ms ease",
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = COLORS.accentDim)
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "transparent")
-                }
-              >
-                Get started free
-              </Link>
-            </div>
-
-            {/* PRO */}
-            <div
-              style={{
-                background: COLORS.surface,
-                border: `1px solid ${COLORS.borderHover}`,
-                borderRadius: 16,
-                padding: 32,
-                opacity: 0.85,
-                position: "relative",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  top: 16,
-                  right: 16,
-                  background: COLORS.accentDim,
-                  color: COLORS.accent,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  letterSpacing: "0.06em",
-                  border: `1px solid ${COLORS.accent}33`,
-                }}
-              >
-                COMING SOON
-              </span>
-
-              <div style={{ marginBottom: 24 }}>
-                <div
-                  style={{
-                    color: COLORS.text,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    marginBottom: 12,
-                    letterSpacing: "0.02em",
-                  }}
-                >
-                  PRO
-                </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 40,
-                      fontWeight: 700,
-                      color: COLORS.text,
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
-                    $19
-                  </span>
-                  <span style={{ color: COLORS.textMuted, fontSize: 15 }}>/mo</span>
-                </div>
-              </div>
-
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, flex: 1 }}>
-                {PRO_FEATURES.map((f) => (
-                  <li
-                    key={f}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      color: COLORS.text,
-                      fontSize: 14,
-                      lineHeight: 1.5,
-                      marginBottom: 12,
-                    }}
-                  >
-                    <span style={{ color: COLORS.accent, fontWeight: 700, marginTop: 2 }}>
-                      —
-                    </span>
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div style={{ marginTop: 28 }}>
-                {waitlistJoined ? (
+            {/* ── PRO ──────────────────────────── */}
+            <PricingCardLP
+              tier="pro"
+              price="$19"
+              cadence="/month"
+              priceCaption={{ text: "Coming soon — join the waitlist", color: COLORS.textDim }}
+              topBadge={{ label: "MOST POPULAR", color: "#fff", gradient: "linear-gradient(135deg, #6366f1, #8b5cf6)", shadow: "0 4px 16px rgba(99,102,241,0.4)" }}
+              features={PRO_FEATURES}
+              cta={
+                proJoined ? (
                   <div
                     style={{
                       textAlign: "center",
                       color: COLORS.green,
                       fontSize: 14,
-                      fontWeight: 500,
-                      padding: "12px 18px",
+                      fontWeight: 600,
+                      padding: "12px 16px",
                       background: COLORS.greenDim,
-                      border: `1px solid ${COLORS.green}44`,
+                      border: `1px solid rgba(34,197,94,0.3)`,
                       borderRadius: 10,
                     }}
                   >
-                    You&apos;re on the list!
+                    You&apos;re on the list! 🎉
                   </div>
                 ) : (
-                  <form
-                    onSubmit={joinWaitlist}
-                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                  >
+                  <form onSubmit={joinPro} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <input
                       type="email"
-                      value={waitlistEmail}
-                      onChange={(e) => setWaitlistEmail(e.target.value)}
+                      value={proEmail}
+                      onChange={(e) => setProEmail(e.target.value)}
                       placeholder="you@email.com"
                       required
+                      aria-label="Pro waitlist email"
                       style={{
                         flex: 1,
                         minWidth: 0,
@@ -885,26 +926,96 @@ export default function LandingPage() {
                         background: COLORS.accent,
                         color: "#fff",
                         fontSize: 14,
-                        fontWeight: 500,
-                        padding: "10px 16px",
+                        fontWeight: 600,
+                        padding: "10px 18px",
                         borderRadius: 8,
                         border: "none",
                         cursor: "pointer",
-                        transition: "background 150ms ease",
                       }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#4f46e5")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = COLORS.accent)
-                      }
                     >
-                      Join waitlist
+                      Join
                     </button>
                   </form>
-                )}
-              </div>
-            </div>
+                )
+              }
+              borderColor="rgba(99,102,241,0.5)"
+              background={COLORS.surface}
+              boxShadow="0 0 30px rgba(99,102,241,0.1)"
+            />
+
+            {/* ── ELITE ────────────────────────── */}
+            <PricingCardLP
+              tier="elite"
+              price="$39"
+              cadence="/month"
+              priceCaption={{ text: "Early waitlist → lock in $29/mo forever", color: COLORS.amber }}
+              topBadge={{ label: "MOST VALUE", color: "#1a1a0f", gradient: "linear-gradient(135deg, #f59e0b, #d97706)", shadow: "0 4px 16px rgba(245,158,11,0.45)" }}
+              features={ELITE_FEATURES}
+              cta={
+                eliteJoined ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      color: COLORS.amber,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      padding: "12px 16px",
+                      background: COLORS.amberDim,
+                      border: `1px solid rgba(245,158,11,0.3)`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    You&apos;re on the list! 🎉
+                  </div>
+                ) : (
+                  <form onSubmit={joinElite} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="email"
+                      value={eliteEmail}
+                      onChange={(e) => setEliteEmail(e.target.value)}
+                      placeholder="you@email.com"
+                      required
+                      aria-label="Elite waitlist email"
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        background: COLORS.bg,
+                        border: `1px solid ${COLORS.border}`,
+                        color: COLORS.text,
+                        fontSize: 14,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      style={{
+                        background: COLORS.amber,
+                        color: "#1a1a0f",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        padding: "10px 18px",
+                        borderRadius: 8,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Join Elite
+                    </button>
+                  </form>
+                )
+              }
+              footerNote={{
+                text: "Join now — early members lock in $29/mo when we launch",
+                color: COLORS.amber,
+                bg: COLORS.amberDim,
+                border: "rgba(245,158,11,0.3)",
+              }}
+              borderColor="rgba(245,158,11,0.4)"
+              background="linear-gradient(135deg, #111111, #0f0e08)"
+              boxShadow="0 0 30px rgba(245,158,11,0.08)"
+            />
           </div>
         </div>
       </section>
@@ -1098,8 +1209,9 @@ export default function LandingPage() {
         }
         .nx-pricing-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 20px;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 24px;
+          align-items: stretch;
         }
         @media (max-width: 880px) {
           .nx-hero-grid {
