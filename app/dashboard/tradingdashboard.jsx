@@ -8240,8 +8240,9 @@ function TradingDashboard({ session, onLogout }) {
           trades={activeTrades}
           session={session}
           activeAccount={paperAccts?.activeAccount}
+          activeAccountId={paperAccts?.activeAccount?.id}
           accounts={paperAccts?.accounts || []}
-          onSwitchAccount={paperAccts.setActiveAccount}
+          onSwitchAccount={(id) => { paperAccts.setActiveAccount(id); }}
           onAddAccount={paperAccts.addAccount}
           onDeleteAccount={paperAccts.deleteAccount}
           onAddTrade={() => setShowForm(true)}
