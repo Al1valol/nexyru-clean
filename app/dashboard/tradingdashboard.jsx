@@ -1199,9 +1199,14 @@ function parseCSV(text) {
   return { trades, broker };
 }
 
-function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
+function CSVUploader({ onImport, onClose, initialTab = "csv", tradeCount = 0 }) {
   // ── Tab state (CSV import vs. AI screenshot import) ──
   const [tab, setTab] = useState(initialTab === "ai" ? "ai" : "csv");
+
+  // Plan-based trade cap (Infinity for pro/elite). getLimit() routes through
+  // getUserPlan() which already applies the admin email override.
+  const tradeLimit = getLimit("maxTrades");
+  const atTradeLimit = tradeLimit !== Infinity && tradeCount >= tradeLimit;
 
   // ── CSV flow state ──
   const [preview,   setPreview]   = useState(null);
@@ -1327,7 +1332,11 @@ function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
     if (!queue.length) return;
     const usage = trackDailyUsage("screenshotImportsPerDay");
     if (!usage.canUse) {
-      setAiProgress({ current: 0, total: 0, label: `You've used your ${usage.limit} free screenshot import${usage.limit === 1 ? "" : "s"} today. Upgrade to Pro for unlimited.` });
+      const plan = getUserPlan();
+      const msg = plan === "pro"
+        ? "You have used your 20 screenshot imports today. Upgrade to Elite for unlimited."
+        : "You have used your 1 free screenshot import today. Upgrade to Pro for 20/day or Elite for unlimited.";
+      setAiProgress({ current: 0, total: 0, label: msg });
       return;
     }
     incrementUsage("screenshotImportsPerDay");
@@ -1465,7 +1474,14 @@ function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
 
         {/* ── CSV TAB ── */}
         {tab === "csv" && step === "csv" && (
-          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:16 }}><div style={{ padding:"12px 16px", borderRadius:10, background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.15)", fontSize:11, color:"#6b7280", lineHeight:1.7 }}><strong style={{ color:"#6366f1" }}>Supported brokers:</strong> MT4/MT5, TradingView, cTrader, Interactive Brokers, Oanda, and any CSV-exporting platform.<br/><strong style={{ color:"#9ca3af" }}>Required columns:</strong> pair/symbol, entry price, exit price, direction/type.</div>
+          <div style={{ flex:1, overflowY:"auto", padding:20, display:"flex", flexDirection:"column", gap:16 }}>
+            {atTradeLimit && (
+              <div style={{ padding:"12px 16px", borderRadius:10, background:"rgba(245,158,11,0.10)", border:"1px solid rgba(245,158,11,0.35)", fontSize:12, color:"#fcd34d", lineHeight:1.6, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
+                <span>You have {tradeCount} trades. Free plan limit is {tradeLimit}. Upgrade to Pro to import more.</span>
+                <a href="/pricing" style={{ color:"#a5b4fc", fontWeight:800, textDecoration:"none", whiteSpace:"nowrap" }}>See pricing →</a>
+              </div>
+            )}
+            <div style={{ padding:"12px 16px", borderRadius:10, background:"rgba(99,102,241,0.05)", border:"1px solid rgba(99,102,241,0.15)", fontSize:11, color:"#6b7280", lineHeight:1.7 }}><strong style={{ color:"#6366f1" }}>Supported brokers:</strong> MT4/MT5, TradingView, cTrader, Interactive Brokers, Oanda, and any CSV-exporting platform.<br/><strong style={{ color:"#9ca3af" }}>Required columns:</strong> pair/symbol, entry price, exit price, direction/type.</div>
             {!preview && (
               <div onClick={() => fileRef.current?.click()} style={{ padding:"40px 20px", borderRadius:12, border:"2px dashed #2a2a3a", cursor:"pointer", textAlign:"center", background:"#1a1a24" }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor="#6366f1"; e.currentTarget.style.background="rgba(99,102,241,0.04)"; }}
@@ -1653,8 +1669,8 @@ function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
           {tab === "csv" && step === "csv" && !preview && (
             <button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button>
           )}
-          {tab === "csv" && step === "csv" && preview && <><button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button><button onClick={() => setStep("screenshots")} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Next — Add Screenshots →</button></>}
-          {tab === "csv" && step === "screenshots" && <><button onClick={() => setStep("csv")} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>← Back</button><button onClick={doImport} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#9ca3af", fontSize:12, fontWeight:600, cursor:"pointer" }}>Skip & Import</button><button onClick={doImport} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.2)" }}>
+          {tab === "csv" && step === "csv" && preview && <><button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>Cancel</button><button onClick={() => setStep("screenshots")} disabled={atTradeLimit} title={atTradeLimit ? `Free plan limit is ${tradeLimit} trades` : undefined} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background: atTradeLimit ? "#3a3a4a" : "#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor: atTradeLimit ? "not-allowed" : "pointer", opacity: atTradeLimit ? 0.6 : 1 }}>Next — Add Screenshots →</button></>}
+          {tab === "csv" && step === "screenshots" && <><button onClick={() => setStep("csv")} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"transparent", color:"#6b7280", fontSize:12, fontWeight:600, cursor:"pointer" }}>← Back</button><button onClick={doImport} disabled={atTradeLimit} style={{ flex:1, padding:"10px", borderRadius:9, border:"1px solid #2a2a3a", background:"#1a1a24", color: atTradeLimit ? "#4b5563" : "#9ca3af", fontSize:12, fontWeight:600, cursor: atTradeLimit ? "not-allowed" : "pointer", opacity: atTradeLimit ? 0.6 : 1 }}>Skip & Import</button><button onClick={doImport} disabled={atTradeLimit} title={atTradeLimit ? `Free plan limit is ${tradeLimit} trades` : undefined} style={{ flex:2, padding:"10px", borderRadius:9, border:"none", background: atTradeLimit ? "#3a3a4a" : "#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor: atTradeLimit ? "not-allowed" : "pointer", opacity: atTradeLimit ? 0.6 : 1, boxShadow: atTradeLimit ? "none" : "0 4px 16px rgba(99,102,241,0.2)" }}>
               Import {preview.length} Trades{shotCount > 0 ? ` + ${shotCount} Screenshot${shotCount!==1?"s":""}` : ""}
             </button></>}
 
@@ -8316,8 +8332,15 @@ function TradingDashboard({ session, onLogout }) {
     const limit = getLimit("maxTrades");
     // Skip the debounced auto-sync — we sync explicitly below for snappy UX.
     skipNextPushRef.current = true;
+    // Read latest trade count inside the updater (closure-captured `trades`
+    // would be stale because trades isn't in this useCallback's deps).
+    let blocked = false;
     let truncated = 0;
     setTrades(prev => {
+      if (limit !== Infinity && prev.length >= limit) {
+        blocked = true;
+        return prev;
+      }
       const remaining = Math.max(0, limit - prev.length);
       if (remaining < importedTrades.length) {
         truncated = importedTrades.length - remaining;
@@ -8325,6 +8348,10 @@ function TradingDashboard({ session, onLogout }) {
       const accepted = remaining === Infinity ? importedTrades : importedTrades.slice(0, remaining);
       return [...prev, ...accepted];
     });
+    if (blocked) {
+      toast(`You have reached the ${limit} trade limit on the free plan. Upgrade to Pro for unlimited trades.`, "warning");
+      return;
+    }
     if (truncated > 0) {
       toast(`Imported within free plan limit. ${truncated} trade${truncated === 1 ? "" : "s"} skipped — upgrade to Pro for unlimited.`, "warning");
     }
@@ -8463,7 +8490,7 @@ function TradingDashboard({ session, onLogout }) {
           onSkip={() => setShowAccountSetup(false)}
         />
       )}
-      {showCSV && <CSVUploader initialTab={csvInitialTab} onImport={handleImportTrades} onClose={() => setShowCSV(false)}/>}
+      {showCSV && <CSVUploader initialTab={csvInitialTab} onImport={handleImportTrades} onClose={() => setShowCSV(false)} tradeCount={trades.length}/>}
       {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }} onScreenshot={() => { setCsvInitialTab("ai"); setShowCSV(true); }} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={tryAddAccount} onClose={() => setShowAddAcct(false)}/>}
 
