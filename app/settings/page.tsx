@@ -784,6 +784,7 @@ function AccountSection({
 
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
   const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
@@ -802,8 +803,8 @@ function AccountSection({
   }, [session.email]);
 
   const handlePasswordReset = async () => {
-    if (!userEmail) return;
     setResetLoading(true);
+    setResetMessage("");
     try {
       const res = await fetch("/api/send-reset", {
         method: "POST",
@@ -811,10 +812,14 @@ function AccountSection({
         body: JSON.stringify({ email: userEmail }),
       });
       const data = await res.json();
-      if (data.ok) setResetSent(true);
-      else alert("Error: " + data.error);
-    } catch (e) {
-      alert("Error: " + (e as Error).message);
+      if (data.ok) {
+        setResetSent(true);
+        setResetMessage(`Reset link sent to ${userEmail} — check your inbox.`);
+      } else {
+        setResetMessage("Could not send reset email. Try again.");
+      }
+    } catch {
+      setResetMessage("Something went wrong. Try again.");
     }
     setResetLoading(false);
   };
@@ -994,31 +999,46 @@ function AccountSection({
               border: "1px solid rgba(34,197,94,0.2)",
             }}
           >
-            Reset link sent to {userEmail} — check your inbox
+            {resetMessage || `Reset link sent to ${userEmail} — check your inbox.`}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={handlePasswordReset}
-            disabled={resetLoading || !userEmail}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 8,
-              border: "1px solid rgba(99,102,241,0.4)",
-              background: "transparent",
-              color: "#6366f1",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: resetLoading || !userEmail ? "default" : "pointer",
-              opacity: resetLoading || !userEmail ? 0.6 : 1,
-            }}
-          >
-            {resetLoading
-              ? "Sending..."
-              : userEmail
-              ? `Send reset link to ${userEmail}`
-              : "Send password reset email"}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={resetLoading || !userEmail}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: "1px solid rgba(99,102,241,0.4)",
+                background: "transparent",
+                color: "#6366f1",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: resetLoading || !userEmail ? "default" : "pointer",
+                opacity: resetLoading || !userEmail ? 0.6 : 1,
+              }}
+            >
+              {resetLoading
+                ? "Sending..."
+                : userEmail
+                ? `Send reset link to ${userEmail}`
+                : "Send password reset email"}
+            </button>
+            {resetMessage && (
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#ef4444",
+                  lineHeight: 1.5,
+                }}
+              >
+                {resetMessage}
+              </div>
+            )}
+          </>
         )}
       </div>
 
