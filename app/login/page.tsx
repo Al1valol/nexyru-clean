@@ -120,6 +120,15 @@ export default function LoginPage() {
             });
           } catch {}
         }
+        // Fire-and-forget welcome email via Resend (bypasses Supabase SMTP)
+        fetch("/api/send-welcome", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: cleanEmail,
+            name: cleanEmail.split("@")[0],
+          }),
+        }).catch(() => {});
         if (data.session) {
           persistSession(user);
           window.location.href = "/dashboard";
