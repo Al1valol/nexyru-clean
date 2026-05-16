@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
 import { useUserPlan, type Plan } from "@/lib/plan";
+import { submitWaitlist, type WaitlistPlan } from "@/lib/waitlist";
 
 type FeatureItem = { kind: "ok" | "no" | "soon"; label: string; description?: string };
 
@@ -193,10 +194,16 @@ function ComingSoonBadge() {
   );
 }
 
-function WaitlistForm({ storageKey }: { storageKey: string }) {
+const STORAGE_KEY_FOR: Record<WaitlistPlan, string> = {
+  pro:   "nexyru_waitlist_pro",
+  elite: "nexyru_waitlist_elite",
+};
+
+function WaitlistForm({ plan }: { plan: WaitlistPlan }) {
   const [email, setEmail] = useState("");
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState("");
+  const storageKey = STORAGE_KEY_FOR[plan];
 
   useEffect(() => {
     try {
@@ -208,20 +215,16 @@ function WaitlistForm({ storageKey }: { storageKey: string }) {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const value = email.trim().toLowerCase();
-    if (!IS_EMAIL(value)) {
+    if (!IS_EMAIL(email)) {
       setError("Enter a valid email");
       return;
     }
-    try {
-      const list: string[] = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      if (!list.includes(value)) list.push(value);
-      localStorage.setItem(storageKey, JSON.stringify(list));
-      setJoined(true);
-      setEmail("");
-    } catch {
-      setError("Could not save to waitlist");
+    if (!submitWaitlist(plan, email)) {
+      setError("Enter a valid email");
+      return;
     }
+    setJoined(true);
+    setEmail("");
   };
 
   if (joined) {
@@ -467,7 +470,7 @@ export default function PricingPage() {
             price="$19"
             cadence="/month"
             features={PRO_FEATURES}
-            cta={<WaitlistForm storageKey="nexyru_waitlist_pro" />}
+            cta={<WaitlistForm plan="pro" />}
             current={plan === "pro"}
             badge="popular"
             comingSoon={plan !== "pro"}
@@ -482,7 +485,7 @@ export default function PricingPage() {
             price="$39"
             cadence="/month"
             features={ELITE_FEATURES}
-            cta={<WaitlistForm storageKey="nexyru_waitlist_elite" />}
+            cta={<WaitlistForm plan="elite" />}
             current={plan === "elite"}
             badge="value"
             comingSoon={plan !== "elite"}

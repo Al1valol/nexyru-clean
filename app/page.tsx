@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { submitWaitlist } from "@/lib/waitlist";
 
 const COLORS = {
   bg: "#080808",
@@ -296,28 +297,16 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  function saveWaitlist(storageKey: string, email: string): boolean {
-    const value = email.trim().toLowerCase();
-    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return false;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      const list: string[] = raw ? JSON.parse(raw) : [];
-      if (!list.includes(value)) list.push(value);
-      localStorage.setItem(storageKey, JSON.stringify(list));
-    } catch {}
-    return true;
-  }
-
   function joinPro(e: React.FormEvent) {
     e.preventDefault();
-    if (!saveWaitlist("nexyru_waitlist_pro", proEmail)) return;
+    if (!submitWaitlist("pro", proEmail)) return;
     setProJoined(true);
     setProEmail("");
   }
 
   function joinElite(e: React.FormEvent) {
     e.preventDefault();
-    if (!saveWaitlist("nexyru_waitlist_elite", eliteEmail)) return;
+    if (!submitWaitlist("elite", eliteEmail)) return;
     setEliteJoined(true);
     setEliteEmail("");
   }
