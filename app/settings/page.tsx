@@ -788,21 +788,47 @@ function AccountSection({
   const handlePasswordReset = async () => {
     setResetStatus("sending");
     try {
-      const { createClient } = await import("@supabase/supabase-js");
-      const supabase = createClient(
-        "https://xsrcaceydyqytbipvrok.supabase.co",
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A"
-      );
-      const { data: { session } } = await supabase.auth.getSession();
-      const email = session?.user?.email;
+      // Get email from multiple sources
+      let email: string | null = null;
+
+      // Try Supabase session first
+      try {
+        const { data: { session: sb } } = await supabase.auth.getSession();
+        email = sb?.user?.email ?? null;
+      } catch {}
+
+      // Fallback to the Supabase localStorage token directly
+      if (!email) {
+        try {
+          const token = localStorage.getItem("sb-xsrcaceydyqytbipvrok-auth-token");
+          if (token) {
+            const parsed = JSON.parse(token);
+            email = parsed?.user?.email || parsed?.currentSession?.user?.email || null;
+          }
+        } catch {}
+      }
+
+      // Fallback to the app's local session blob
+      if (!email) {
+        try {
+          const local = JSON.parse(localStorage.getItem("tradedesk_session_v1") || "{}");
+          email = local?.email ?? null;
+        } catch {}
+      }
+
+      // Fallback to the session prop
+      if (!email) email = session.email ?? null;
+
       if (!email) {
         setResetStatus("error");
-        setResetMessage("No email found. Please log in again.");
+        setResetMessage("Could not find your email. Please sign out and sign back in.");
         return;
       }
+
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: "https://www.nexyru.com/auth/callback?type=recovery",
       });
+
       if (error) {
         setResetStatus("error");
         setResetMessage("Could not send reset email. Try again.");
@@ -810,9 +836,9 @@ function AccountSection({
         setResetStatus("sent");
         setResetMessage(`Reset link sent to ${email} — check your inbox.`);
       }
-    } catch {
+    } catch (e) {
       setResetStatus("error");
-      setResetMessage("Something went wrong. Try again.");
+      setResetMessage("Something went wrong: " + (e as Error).message);
     }
   };
 
