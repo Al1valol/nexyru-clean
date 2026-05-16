@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-export default function MobileDashboard({ trades, session, activeAccount, onAddTrade, onImport }) {
+export default function MobileDashboard({ trades, session, activeAccount, accounts, onSwitchAccount, onAddAccount, onAddTrade, onImport }) {
   const [tab, setTab] = useState('overview');
-  const [showTools, setShowTools] = useState(false);
+  const [showAccounts, setShowAccounts] = useState(false);
 
   const activeTrades = trades || [];
   const totalPnl = activeTrades.reduce((s,t) => s+(t.pnl||0), 0);
+  const startingBalance = activeAccount?.startingBalance ?? 100000;
+  const displayBalance = startingBalance + totalPnl;
   const wins = activeTrades.filter(t => (t.pnl||0) > 0);
   const losses = activeTrades.filter(t => (t.pnl||0) < 0);
   const winRate = activeTrades.length ? Math.round(wins.length/activeTrades.length*100) : 0;
@@ -75,13 +77,18 @@ export default function MobileDashboard({ trades, session, activeAccount, onAddT
         {/* OVERVIEW TAB */}
         {tab === 'overview' && (
           <div>
-            {/* Big balance card */}
-            <div style={{...s.card, padding:20, marginBottom:12, background:'linear-gradient(135deg, #111111, #0f0f18)'}}>
-              <div style={{fontSize:11, color:s.muted, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6}}>
-                {activeAccount?.name || 'Paper Account'}
+            {/* Big balance card - tappable to switch accounts */}
+            <div onClick={() => setShowAccounts(true)} style={{...s.card, padding:20, marginBottom:12, background:'linear-gradient(135deg, #111111, #0f0f18)', cursor:'pointer', position:'relative'}}>
+              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6}}>
+                <div style={{fontSize:11, color:s.muted, textTransform:'uppercase', letterSpacing:'0.08em'}}>
+                  {activeAccount?.name || 'Paper Account'}
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={s.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
               </div>
               <div style={{fontSize:36, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', marginBottom:4}}>
-                ${(activeAccount?.balance || 100000).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}
+                ${displayBalance.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}
               </div>
               <div style={{fontSize:14, color: totalPnl>=0 ? s.green : s.red, fontWeight:600}}>
                 {fmt(totalPnl)} all time
@@ -266,43 +273,65 @@ export default function MobileDashboard({ trades, session, activeAccount, onAddT
             {label}
           </button>
         ))}
-        <button onClick={() => setShowTools(v=>!v)} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3, border:'none', background:'transparent', cursor:'pointer', color: showTools ? '#6366f1' : '#6b7280', fontSize:10, fontWeight:600}}>
+        <a href="/settings" style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:3, textDecoration:'none', color:'#6b7280', fontSize:10, fontWeight:600}}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="5" cy="5" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="19" cy="5" r="1.5"/>
-            <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
-            <circle cx="5" cy="19" r="1.5"/><circle cx="12" cy="19" r="1.5"/><circle cx="19" cy="19" r="1.5"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-          Tools
-        </button>
+          Settings
+        </a>
       </nav>
 
-      {/* TOOLS SHEET */}
-      {showTools && (
+      {/* ACCOUNTS SHEET */}
+      {showAccounts && (
         <>
-          <div onClick={() => setShowTools(false)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:10000}}/>
-          <div style={{position:'fixed', bottom:60, left:0, right:0, zIndex:10001, background:'#0f0f14', borderRadius:'20px 20px 0 0', borderTop:'1px solid #1e1e2a', padding:20, maxHeight:'70vh', overflowY:'auto'}}>
+          <div onClick={() => setShowAccounts(false)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:10000}}/>
+          <div style={{position:'fixed', bottom:0, left:0, right:0, zIndex:10001, background:'#0f0f14', borderRadius:'20px 20px 0 0', borderTop:'1px solid #1e1e2a', padding:20, maxHeight:'70vh', overflowY:'auto', paddingBottom:'calc(20px + env(safe-area-inset-bottom))'}}>
             <div style={{width:36, height:4, borderRadius:2, background:'#2a2a3a', margin:'0 auto 16px'}}/>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-              <span style={{color:'#fff', fontWeight:700, fontSize:15}}>Tools</span>
-              <button onClick={() => setShowTools(false)} style={{background:'#1a1a24', border:'1px solid #2a2a3a', borderRadius:8, color:'#9ca3af', width:32, height:32, cursor:'pointer', fontSize:18, display:'flex', alignItems:'center', justifyContent:'center'}}>×</button>
+              <span style={{color:'#fff', fontWeight:700, fontSize:15}}>Switch Account</span>
+              <button onClick={() => setShowAccounts(false)} style={{background:'#1a1a24', border:'1px solid #2a2a3a', borderRadius:8, color:'#9ca3af', width:32, height:32, cursor:'pointer', fontSize:18, display:'flex', alignItems:'center', justifyContent:'center'}}>×</button>
             </div>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-              {[
-                {href:'/challenge', label:'Challenge Tracker'},
-                {href:'/psychology', label:'Psychology'},
-                {href:'/setups', label:'Best Setups'},
-                {href:'/checklist', label:'Checklist'},
-                {href:'/alerts', label:'Alerts'},
-                {href:'/replay', label:'Trade Review'},
-                {href:'/notes', label:'Daily Notes'},
-                {href:'/settings', label:'Settings'},
-              ].map(item => (
-                <a key={item.label} href={item.href} onClick={() => setShowTools(false)}
-                  style={{display:'flex', alignItems:'center', justifyContent:'center', minHeight:56, borderRadius:12, background:'#1a1a24', border:'1px solid #2a2a3a', color:'#fff', fontSize:13, fontWeight:600, textDecoration:'none', textAlign:'center', padding:'12px 8px'}}>
-                  {item.label}
-                </a>
-              ))}
+            <div style={{display:'flex', flexDirection:'column', gap:8, marginBottom:12}}>
+              {(accounts || []).map(acc => {
+                const isActive = acc.id === activeAccount?.id;
+                const typeColor = acc.type === 'funded' ? '#22c55e' : '#9ca3af';
+                const typeBg = acc.type === 'funded' ? 'rgba(34,197,94,0.12)' : 'rgba(156,163,175,0.12)';
+                return (
+                  <button key={acc.id} onClick={() => { onSwitchAccount && onSwitchAccount(acc.id); setShowAccounts(false); }} style={{
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    padding:'14px 16px', borderRadius:12,
+                    background: isActive ? 'rgba(99,102,241,0.12)' : '#1a1a24',
+                    border: `1px solid ${isActive ? s.accent : '#2a2a3a'}`,
+                    cursor:'pointer', textAlign:'left', width:'100%'
+                  }}>
+                    <div style={{minWidth:0, flex:1}}>
+                      <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4}}>
+                        <span style={{fontSize:14, fontWeight:700, color:'#fff'}}>{acc.name}</span>
+                        <span style={{fontSize:9, padding:'2px 6px', borderRadius:4, background:typeBg, color:typeColor, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em'}}>
+                          {acc.type}
+                        </span>
+                      </div>
+                      <div style={{fontSize:13, color:s.muted, fontWeight:600}}>
+                        ${(acc.balance || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}
+                      </div>
+                    </div>
+                    {isActive && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={s.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
             </div>
+            <button onClick={() => { setShowAccounts(false); onAddAccount && onAddAccount('New Paper Account', 'paper', 100000); }} style={{
+              width:'100%', padding:'14px 16px', borderRadius:12,
+              background:'transparent', border:`1px dashed ${s.accent}`,
+              color:s.accent, fontSize:13, fontWeight:700, cursor:'pointer'
+            }}>
+              + New Account
+            </button>
           </div>
         </>
       )}
