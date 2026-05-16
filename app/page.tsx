@@ -280,6 +280,15 @@ export default function LandingPage() {
   const [proJoined, setProJoined] = useState(false);
   const [eliteEmail, setEliteEmail] = useState("");
   const [eliteJoined, setEliteJoined] = useState(false);
+  const [betaBannerOpen, setBetaBannerOpen] = useState(true);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("nexyru_beta_banner_dismissed") === "1") {
+        setBetaBannerOpen(false);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
@@ -321,20 +330,50 @@ export default function LandingPage() {
       }}
     >
       {/* ─── Beta banner ───────────────────────────────────────────── */}
-      <div
-        style={{
-          width: "100%",
-          background: "rgba(99,102,241,0.12)",
-          borderBottom: "1px solid rgba(99,102,241,0.25)",
-          padding: "8px 16px",
-          textAlign: "center",
-          fontSize: 13,
-          color: "#a5b4fc",
-          fontWeight: 500,
-        }}
-      >
-        🧪 Nexyru is currently in beta — expect occasional bugs as we improve the product
-      </div>
+      {betaBannerOpen && (
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            background: "rgba(99,102,241,0.12)",
+            borderBottom: "1px solid rgba(99,102,241,0.25)",
+            padding: "8px 40px",
+            textAlign: "center",
+            fontSize: 13,
+            color: "#a5b4fc",
+            fontWeight: 500,
+          }}
+        >
+          🧪 Nexyru is currently in beta — expect occasional bugs as we improve the product
+          <button
+            onClick={() => {
+              setBetaBannerOpen(false);
+              try { localStorage.setItem("nexyru_beta_banner_dismissed", "1"); } catch {}
+            }}
+            aria-label="Dismiss beta banner"
+            title="Dismiss"
+            style={{
+              position: "absolute",
+              right: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: "#a5b4fc",
+              fontSize: 18,
+              lineHeight: 1,
+              padding: "2px 8px",
+              borderRadius: 4,
+              opacity: 0.75,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.75")}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* ─── NAV ───────────────────────────────────────────────────── */}
       <nav

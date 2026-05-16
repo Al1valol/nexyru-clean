@@ -7822,6 +7822,15 @@ function TradingDashboard({ session, onLogout }) {
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [editTrade,     setEditTrade]     = useState(null);
   const [showMobileTools, setShowMobileTools] = useState(false);
+  const [betaBannerOpen, setBetaBannerOpen] = useState(true);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("nexyru_beta_banner_dismissed") === "1") {
+        setBetaBannerOpen(false);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (!showMobileTools) return;
@@ -8321,22 +8330,43 @@ function TradingDashboard({ session, onLogout }) {
     );
   }
 
+  const bannerOffset = betaBannerOpen ? 28 : 0;
+
   return (
-    <div style={{ minHeight:"100vh", background:"#0a0a0f", fontFamily:"system-ui,-apple-system,sans-serif", color:"#ffffff", paddingTop:28 }}>
+    <div style={{ minHeight:"100vh", background:"#0a0a0f", fontFamily:"system-ui,-apple-system,sans-serif", color:"#ffffff", paddingTop:bannerOffset }}>
 
       {/* Beta banner */}
-      <div style={{
-        position:"fixed", top:0, left:0, right:0, zIndex:60,
-        background:"rgba(99,102,241,0.15)",
-        borderBottom:"1px solid rgba(99,102,241,0.3)",
-        padding:"6px 16px", textAlign:"center",
-        fontSize:12, color:"#a5b4fc", fontWeight:500,
-        letterSpacing:"0.01em",
-        backdropFilter:"blur(8px)",
-        WebkitBackdropFilter:"blur(8px)",
-      }}>
-        🧪 Nexyru is in beta — you may encounter bugs. <a href="mailto:support@nexyru.com" style={{ color:"#6366f1", textDecoration:"underline" }}>Report an issue</a>
-      </div>
+      {betaBannerOpen && (
+        <div style={{
+          position:"fixed", top:0, left:0, right:0, zIndex:60,
+          background:"rgba(99,102,241,0.15)",
+          borderBottom:"1px solid rgba(99,102,241,0.3)",
+          padding:"6px 36px 6px 16px", textAlign:"center",
+          fontSize:12, color:"#a5b4fc", fontWeight:500,
+          letterSpacing:"0.01em",
+          backdropFilter:"blur(8px)",
+          WebkitBackdropFilter:"blur(8px)",
+        }}>
+          🧪 Nexyru is in beta — you may encounter bugs. <a href="mailto:support@nexyru.com" style={{ color:"#6366f1", textDecoration:"underline" }}>Report an issue</a>
+          <button
+            onClick={() => {
+              setBetaBannerOpen(false);
+              try { localStorage.setItem("nexyru_beta_banner_dismissed", "1"); } catch {}
+            }}
+            aria-label="Dismiss beta banner"
+            title="Dismiss"
+            style={{
+              position:"absolute", right:8, top:"50%", transform:"translateY(-50%)",
+              background:"transparent", border:"none", cursor:"pointer",
+              color:"#a5b4fc", fontSize:16, lineHeight:1,
+              padding:"2px 6px", borderRadius:4,
+              opacity:0.75, transition:"opacity 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.75")}
+          >×</button>
+        </div>
+      )}
 
       {/* Modals */}
       {(showForm || editTrade) && <TradeForm initial={editTrade} strategies={strategies} onSave={saveTrade} onClose={() => { setShowForm(false); setEditTrade(null); }}/>}
@@ -8378,7 +8408,7 @@ function TradingDashboard({ session, onLogout }) {
       {showAddAcct && <AddAccountModal onAdd={paperAccts.addAccount} onClose={() => setShowAddAcct(false)}/>}
 
       {/* ── Left Sidebar (desktop) ── */}
-      <aside className="hide-mobile" style={{ position:"fixed", top:28, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
+      <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
         {/* Logo mark */}
         <a href="/" aria-label="Nexyru" style={{ width:36, height:36, borderRadius:9, background:"linear-gradient(135deg,#6366f1,#4f46e5)", display:"flex", alignItems:"center", justifyContent:"center", textDecoration:"none", marginBottom:14, flexShrink:0, fontWeight:900, color:"#fff", fontSize:16, letterSpacing:"-0.02em" }}>N</a>
 
@@ -8422,7 +8452,7 @@ function TradingDashboard({ session, onLogout }) {
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
 
         {/* ── Top bar ── */}
-        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:28, zIndex:40, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
+        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:40, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
           {/* Breadcrumb */}
           <div style={{ flex:1, display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
             <span style={{ fontSize:13, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
