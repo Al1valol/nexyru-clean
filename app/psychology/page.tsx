@@ -595,9 +595,9 @@ export default function PsychologyPage() {
     <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}>
       <Sidebar activePath="/psychology" />
       <MobileNav activePath="/psychology" />
-      <main className="psych-main" style={{ flex:1, marginLeft:56, minHeight:"100vh", background:"#070b14", color:"#ffffff", padding:"32px 20px", fontFamily:"system-ui, -apple-system, sans-serif" }}><style>{`
+      <main className="psych-main" style={{ flex:1, marginLeft:56, minHeight:"100vh", background:"#070b14", color:"#ffffff", padding:"32px 20px", paddingBottom:72, fontFamily:"system-ui, -apple-system, sans-serif" }}><style>{`
         @media (max-width: 767px) {
-          .psych-main { padding: 16px !important; }
+          .psych-main { padding: 16px 16px 72px !important; }
           .psych-overview-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
           .psych-overview-stats { grid-template-columns: repeat(3, 1fr) !important; }
           .psych-emotion-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }

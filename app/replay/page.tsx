@@ -230,7 +230,7 @@ export default function ReviewPage() {
     <div style={{ display: "flex", minHeight: "100vh", background: "#080808" }}>
       <Sidebar activePath="/replay" />
       <MobileNav activePath="/replay" />
-      <main style={{ flex: 1, marginLeft: 56 }}>
+      <main style={{ flex: 1, marginLeft: 56, paddingBottom: 72 }}>
         <ReviewPageInner />
       </main>
     </div>

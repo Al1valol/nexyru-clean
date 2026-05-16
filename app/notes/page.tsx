@@ -334,7 +334,7 @@ export default function NotesPage() {
     <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "#e5e7eb" }}>
       <Sidebar activePath="/notes" />
       <MobileNav activePath="/notes" />
-      <main style={{ marginLeft: 56, padding: "28px 32px", maxWidth: 1100 }}>
+      <main style={{ marginLeft: 56, padding: "28px 32px", paddingBottom: 72, maxWidth: 1100 }}>
         <div style={{ marginBottom: 24, display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 26, fontWeight: 800, color: "#ffffff", margin: 0, letterSpacing: "-0.02em" }}>Daily Notes</h1>

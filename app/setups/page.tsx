@@ -491,7 +491,7 @@ export default function SetupsPage() {
     <div style={{ display: "flex", minHeight: "100vh", background: "#080808", fontFamily: FONT_STACK }}>
       <Sidebar activePath="/setups" />
       <MobileNav activePath="/setups" />
-      <main style={{ flex: 1, marginLeft: 56 }}>
+      <main style={{ flex: 1, marginLeft: 56, paddingBottom: 72 }}>
         <div
           className="setups-main"
           style={{

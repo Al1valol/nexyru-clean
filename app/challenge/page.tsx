@@ -1055,7 +1055,7 @@ export default function ChallengePage() {
   }
 
   return (
-    <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}><Sidebar activePath="/challenge" /><MobileNav activePath="/challenge" /><main style={{ flex:1, marginLeft:56 }}><div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,-apple-system,sans-serif" }}><style>{`
+    <div style={{ display:"flex", minHeight:"100vh", background:"#0a0a0f" }}><Sidebar activePath="/challenge" /><MobileNav activePath="/challenge" /><main style={{ flex:1, marginLeft:56, paddingBottom:72 }}><div style={{ minHeight:"100vh", background:"#060d1a", color:"#c8d8f0", fontFamily:"system-ui,-apple-system,sans-serif" }}><style>{`
         @media (max-width: 767px) {
           .firm-grid { grid-template-columns: 1fr 1fr !important; }
           .rings-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }

@@ -606,7 +606,7 @@ export default function AlertsPage() {
     <div style={{ display: "flex", minHeight: "100vh", background: "#080808" }}>
       <Sidebar activePath="/alerts" />
       <MobileNav activePath="/alerts" />
-      <main style={{ flex: 1, marginLeft: 56 }}>
+      <main style={{ flex: 1, marginLeft: 56, paddingBottom: 72 }}>
         <div style={{ minHeight: "100vh", background: "#080808", color: "#ffffff", fontFamily: "system-ui, -apple-system, sans-serif" }}>
 
           {/* Top bar */}
