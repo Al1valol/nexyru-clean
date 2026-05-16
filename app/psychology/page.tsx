@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
+import { useUserPlan } from "@/lib/plan";
+import { ProGatePage } from "@/components/ProGate";
 
 // ───────────────────────── types ─────────────────────────
 interface Trade {
@@ -129,6 +131,12 @@ const sectionTitle = (color: string, label: string) =>(<div style={{ fontSize:11
 
 // ───────────────────────── page ─────────────────────────
 export default function PsychologyPage() {
+  const plan = useUserPlan();
+  if (plan === "free") return <ProGatePage feature="Psychology Tracker" activePath="/psychology" />;
+  return <PsychologyPageInner />;
+}
+
+function PsychologyPageInner() {
   const [username, setUsername] = useState("guest");
   const [trades, setTrades] = useState<Trade[]>([]);
  const [reviews, setReviews] = useState<Record<string, Review>>({});

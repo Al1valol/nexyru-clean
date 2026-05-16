@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import MobileDashboard from "./MobileDashboard";
+import { getUserPlan, getLimit, trackDailyUsage, incrementUsage } from "@/lib/plan";
 
 // ── Supabase browser client — single instance so storage stays consistent
 // across the App. Using the SDK avoids guessing the localStorage key name,
@@ -1324,6 +1325,12 @@ function CSVUploader({ onImport, onClose, initialTab = "csv" }) {
     aiCancelRef.current = false;
     const queue = aiImages.filter(i => i.status === "idle" || i.status === "error");
     if (!queue.length) return;
+    const usage = trackDailyUsage("screenshotImportsPerDay");
+    if (!usage.canUse) {
+      setAiProgress({ current: 0, total: 0, label: `You've used your ${usage.limit} free screenshot import${usage.limit === 1 ? "" : "s"} today. Upgrade to Pro for unlimited.` });
+      return;
+    }
+    incrementUsage("screenshotImportsPerDay");
     setAiProcessing(true);
     setAiProgress({ current: 0, total: queue.length, label: `Analysing screenshot 1 of ${queue.length}…` });
 
@@ -6971,8 +6978,14 @@ function StrategyFormModal({ initial, onSave, onClose }) {
 
   const generateFromAI = async () => {
     if (!aiPrompt.trim()) return;
+    const usage = trackDailyUsage("aiUsesPerDay");
+    if (!usage.canUse) {
+      setAiErr(`You've used your ${usage.limit} free AI generation${usage.limit === 1 ? "" : "s"} today. Upgrade to Pro for unlimited.`);
+      return;
+    }
     setAiLoading(true); setAiErr("");
     try {
+      incrementUsage("aiUsesPerDay");
       const res = await fetch("/api/generate-strategy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -7638,6 +7651,18 @@ const SIDEBAR_ICONS = {
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
     </svg>
   ),
+  pencil: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+    </svg>
+  ),
+  tag: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+      <line x1="7" y1="7" x2="7.01" y2="7"/>
+    </svg>
+  ),
 };
 
 const TAB_LABELS = {
@@ -7649,7 +7674,7 @@ const TAB_LABELS = {
   copy:       "Copy Trading",
 };
 
-function SidebarItem({ icon, label, active, onClick, href }) {
+function SidebarItem({ icon, label, active, onClick, href, pro }) {
   const [hover, setHover] = useState(false);
   const bg    = active ? "#1e1e2a" : (hover ? "#1a1a24" : "transparent");
   const color = active ? "var(--accent)" : (hover ? "#ffffff" : "#6b7280");
@@ -7665,16 +7690,20 @@ function SidebarItem({ icon, label, active, onClick, href }) {
     textDecoration:"none",
     display:"flex", alignItems:"center", justifyContent:"center",
     transition:"background 0.15s, color 0.15s",
+    position:"relative",
   };
+  const dot = pro && (
+    <span aria-hidden style={{ position:"absolute", top:4, right:4, width:6, height:6, borderRadius:"50%", background:"#6366f1", boxShadow:"0 0 0 2px #0f0f14" }}/>
+  );
   return (
     <div
       style={{ position:"relative", display:"flex", justifyContent:"center" }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}>
       {href ? (
-        <a href={href} aria-label={label} style={commonStyle}>{icon}</a>
+        <a href={href} aria-label={label} style={commonStyle}>{icon}{dot}</a>
       ) : (
-        <button type="button" onClick={onClick} aria-label={label} style={commonStyle}>{icon}</button>
+        <button type="button" onClick={onClick} aria-label={label} style={commonStyle}>{icon}{dot}</button>
       )}
       {hover && (
         <span style={{
@@ -7682,8 +7711,13 @@ function SidebarItem({ icon, label, active, onClick, href }) {
           background:"#1e1e2a", border:"1px solid #2a2a3a", borderRadius:6,
           padding:"4px 10px", fontSize:12, color:"#fff", whiteSpace:"nowrap",
           pointerEvents:"none", zIndex:100, boxShadow:"0 4px 14px rgba(0,0,0,0.5)",
-          fontWeight:600,
-        }}>{label}</span>
+          fontWeight:600, display:"flex", alignItems:"center", gap:6,
+        }}>
+          {label}
+          {pro && (
+            <span style={{ fontSize:9, fontWeight:800, padding:"1px 6px", borderRadius:999, background:"rgba(99,102,241,0.18)", border:"1px solid rgba(99,102,241,0.4)", color:"#a5b4fc", letterSpacing:"0.06em" }}>PRO</span>
+          )}
+        </span>
       )}
     </div>
   );
@@ -8168,6 +8202,11 @@ function TradingDashboard({ session, onLogout }) {
     );
     setTrades(prev => {
       const exists = prev.find(t => t.id === trade.id);
+      const limit = getLimit("maxTrades");
+      if (!exists && prev.length >= limit) {
+        toast(`You've reached the ${limit} trade limit on the free plan. Upgrade to Pro for unlimited trades.`, "warning");
+        return prev;
+      }
       const next   = exists ? prev.map(t => t.id===trade.id ? trade : t) : [...prev, trade];
       if (!exists && !trade.copiedFrom) {
         copyTrading.broadcastTrade(trade);
@@ -8192,9 +8231,21 @@ function TradingDashboard({ session, onLogout }) {
   const handleImportTrades = useCallback(async (imported) => {
     const acctId = paperAccts.activeAccount?.id ?? null;
     const importedTrades = imported.map(t => ({ ...t, accountId: acctId }));
+    const limit = getLimit("maxTrades");
     // Skip the debounced auto-sync — we sync explicitly below for snappy UX.
     skipNextPushRef.current = true;
-    setTrades(prev => [...prev, ...importedTrades]);
+    let truncated = 0;
+    setTrades(prev => {
+      const remaining = Math.max(0, limit - prev.length);
+      if (remaining < importedTrades.length) {
+        truncated = importedTrades.length - remaining;
+      }
+      const accepted = remaining === Infinity ? importedTrades : importedTrades.slice(0, remaining);
+      return [...prev, ...accepted];
+    });
+    if (truncated > 0) {
+      toast(`Imported within free plan limit. ${truncated} trade${truncated === 1 ? "" : "s"} skipped — upgrade to Pro for unlimited.`, "warning");
+    }
     const userId = await getSupabaseUserId();
     if (!userId) {
       setSyncStatus("local");
@@ -8315,17 +8366,18 @@ function TradingDashboard({ session, onLogout }) {
           {/* Group 2 — Daily */}
           <SidebarGroupLabel label="Daily"/>
           <SidebarItem icon={SIDEBAR_ICONS.checklist} label="Checklist"     href="/checklist"/>
-          <SidebarItem icon={SIDEBAR_ICONS.bell}      label="Alerts"        href="/alerts"/>
+          <SidebarItem icon={SIDEBAR_ICONS.bell}      label="Alerts"        href="/alerts" pro/>
           <SidebarItem icon={SIDEBAR_ICONS.trophy}    label="Challenge"     href="/challenge"/>
 
           <SidebarDivider/>
 
           {/* Group 3 — Analyze */}
           <SidebarGroupLabel label="Analyze"/>
-          <SidebarItem icon={SIDEBAR_ICONS.brain}     label="Psychology"    href="/psychology"/>
-          <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups"/>
+          <SidebarItem icon={SIDEBAR_ICONS.brain}     label="Psychology"    href="/psychology" pro/>
+          <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups" pro/>
           <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"      active={tab==="insights"}  onClick={()=>setTab("insights")}/>
           <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Review"  href="/replay"/>
+          <SidebarItem icon={SIDEBAR_ICONS.pencil} label="Daily Notes" href="/notes" pro/>
 
           <SidebarDivider/>
 
@@ -8334,7 +8386,8 @@ function TradingDashboard({ session, onLogout }) {
           <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab"  active={tab==="stratlab"}  onClick={()=>setTab("stratlab")}/>
         </nav>
 
-        {/* Settings at bottom */}
+        {/* Pricing + Settings at bottom */}
+        <SidebarItem icon={SIDEBAR_ICONS.tag} label="Pricing" href="/pricing"/>
         <SidebarItem icon={SIDEBAR_ICONS.gear} label="Settings" href="/settings"/>
       </aside>
 

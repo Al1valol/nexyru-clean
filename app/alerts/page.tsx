@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
+import { useUserPlan } from "@/lib/plan";
+import { ProGatePage } from "@/components/ProGate";
 
 // ── Types ─────────────────────────────────────────────────────────
 type AlertType =
@@ -400,6 +402,12 @@ const relativeTime = (ts: number | null): string => {
 
 // ── Page ──────────────────────────────────────────────────────────
 export default function AlertsPage() {
+  const plan = useUserPlan();
+  if (plan === "free") return <ProGatePage feature="Alerts" activePath="/alerts" />;
+  return <AlertsPageInner />;
+}
+
+function AlertsPageInner() {
   const [loaded, setLoaded] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [strategies, setStrategies] = useState<SavedStrategy[]>([]);

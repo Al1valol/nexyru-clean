@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
+import { useUserPlan } from "@/lib/plan";
+import { ProGatePage } from "@/components/ProGate";
 
 const SESSION_KEY = "tradedesk_session_v1";
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -270,6 +272,12 @@ function NoteCard({
 }
 
 export default function NotesPage() {
+  const plan = useUserPlan();
+  if (plan === "free") return <ProGatePage feature="Daily Notes" activePath="/notes" />;
+  return <NotesPageInner />;
+}
+
+function NotesPageInner() {
   const [username, setUsername] = useState("");
   const [notes, setNotes] = useState<DailyNote[]>([]);
   const [pnlByDate, setPnlByDate] = useState<Record<string, number>>({});

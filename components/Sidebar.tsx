@@ -94,6 +94,12 @@ const ICONS = {
       <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
     </svg>
   ),
+  tag: (
+    <svg {...ICON_PROPS}>
+      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+      <line x1="7" y1="7" x2="7.01" y2="7" />
+    </svg>
+  ),
   gear: (
     <svg {...ICON_PROPS}>
       <circle cx="12" cy="12" r="3" />
@@ -107,11 +113,13 @@ function SidebarItem({
   label,
   href,
   active,
+  pro,
 }: {
   icon: React.ReactNode;
   label: string;
   href: string;
   active: boolean;
+  pro?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const bg = active ? "#1e1e2a" : hover ? "#1a1a24" : "transparent";
@@ -140,9 +148,25 @@ function SidebarItem({
           alignItems: "center",
           justifyContent: "center",
           transition: "background 0.15s, color 0.15s",
+          position: "relative",
         }}
       >
         {icon}
+        {pro && (
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "#6366f1",
+              boxShadow: "0 0 0 2px #0f0f14",
+            }}
+          />
+        )}
       </a>
       {hover && (
         <span
@@ -162,9 +186,28 @@ function SidebarItem({
             zIndex: 100,
             boxShadow: "0 4px 14px rgba(0,0,0,0.5)",
             fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
           {label}
+          {pro && (
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 800,
+                padding: "1px 6px",
+                borderRadius: 999,
+                background: "rgba(99,102,241,0.18)",
+                border: "1px solid rgba(99,102,241,0.4)",
+                color: "#a5b4fc",
+                letterSpacing: "0.06em",
+              }}
+            >
+              PRO
+            </span>
+          )}
         </span>
       )}
     </div>
@@ -277,22 +320,22 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         {/* Group 1 — Main */}
         <SidebarItem icon={ICONS.dashboard} label="Dashboard" href="/dashboard" active={isActive("/dashboard")} />
         <SidebarItem icon={ICONS.journal} label="Journal" href="/dashboard?tab=journal" active={isActive("/dashboard?tab=journal")} />
-        <SidebarItem icon={ICONS.pencil} label="Notes" href="/notes" active={isActive("/notes")} />
+        <SidebarItem icon={ICONS.pencil} label="Daily Notes" href="/notes" active={isActive("/notes")} pro />
 
         <SidebarDivider />
 
         {/* Group 2 — Daily */}
         <SidebarGroupLabel label="Daily" />
         <SidebarItem icon={ICONS.checklist} label="Checklist" href="/checklist" active={isActive("/checklist")} />
-        <SidebarItem icon={ICONS.bell} label="Alerts" href="/alerts" active={isActive("/alerts")} />
+        <SidebarItem icon={ICONS.bell} label="Alerts" href="/alerts" active={isActive("/alerts")} pro />
         <SidebarItem icon={ICONS.trophy} label="Challenge" href="/challenge" active={isActive("/challenge")} />
 
         <SidebarDivider />
 
         {/* Group 3 — Analyze */}
         <SidebarGroupLabel label="Analyze" />
-        <SidebarItem icon={ICONS.brain} label="Psychology" href="/psychology" active={isActive("/psychology")} />
-        <SidebarItem icon={ICONS.target} label="Best Setups" href="/setups" active={isActive("/setups")} />
+        <SidebarItem icon={ICONS.brain} label="Psychology" href="/psychology" active={isActive("/psychology")} pro />
+        <SidebarItem icon={ICONS.target} label="Best Setups" href="/setups" active={isActive("/setups")} pro />
         <SidebarItem icon={ICONS.chart} label="Insights" href="/dashboard?tab=insights" active={isActive("/dashboard?tab=insights")} />
         <SidebarItem icon={ICONS.play} label="Trade Review" href="/replay" active={isActive("/replay")} />
 
@@ -303,6 +346,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         <SidebarItem icon={ICONS.flask} label="Strategy Lab" href="/dashboard?tab=stratlab" active={isActive("/dashboard?tab=stratlab")} />
       </nav>
 
+      <SidebarItem icon={ICONS.tag} label="Pricing" href="/pricing" active={isActive("/pricing")} />
       <SidebarItem icon={ICONS.gear} label="Settings" href="/settings" active={isActive("/settings")} />
     </aside>
   );

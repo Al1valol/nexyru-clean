@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
+import { useUserPlan } from "@/lib/plan";
+import { ProGatePage } from "@/components/ProGate";
 
 // ───────────────────────── types ─────────────────────────
 interface Trade {
@@ -159,6 +161,12 @@ const td: React.CSSProperties = {
 
 // ───────────────────────── page ─────────────────────────
 export default function SetupsPage() {
+  const plan = useUserPlan();
+  if (plan === "free") return <ProGatePage feature="Best Setup Finder" activePath="/setups" />;
+  return <SetupsPageInner />;
+}
+
+function SetupsPageInner() {
   const [, setUsername] = useState("guest");
   const [trades, setTrades] = useState<Trade[]>([]);
   const [mounted, setMounted] = useState(false);
