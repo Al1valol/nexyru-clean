@@ -4,79 +4,310 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
-import { useUserPlan } from "@/lib/plan";
+import { useUserPlan, type Plan } from "@/lib/plan";
 
-const FREE_FEATURES = [
-  "Trade journal (100 trades)",
-  "Challenge tracker (1 account)",
-  "Pre-trade checklist",
-  "AI strategy builder (1/day)",
-  "Screenshot import (3/day)",
-  "Trade Review (5 trades)",
-  "Sync across devices",
+type FeatureItem = { kind: "ok" | "no" | "soon"; label: string };
+
+const FREE_FEATURES: FeatureItem[] = [
+  { kind: "ok", label: "Journal (50 trades)" },
+  { kind: "ok", label: "Challenge tracker (1 account)" },
+  { kind: "ok", label: "Pre-trade checklist" },
+  { kind: "ok", label: "Basic stats" },
+  { kind: "ok", label: "Screenshot import (1/day)" },
+  { kind: "ok", label: "Trade Review (3 trades)" },
+  { kind: "no", label: "AI features (upgrade required)" },
 ];
 
-const PRO_FEATURES = [
-  "Everything in Free, unlimited",
-  "Psychology tracker",
-  "Best setup finder",
-  "Full trade review",
-  "Daily notes",
-  "All alert types",
-  "Advanced insights",
-  "CSV export",
-  "Multiple challenge accounts",
+const PRO_FEATURES: FeatureItem[] = [
+  { kind: "ok", label: "Everything in Free, unlimited" },
+  { kind: "ok", label: "Psychology tracker" },
+  { kind: "ok", label: "Best setup finder" },
+  { kind: "ok", label: "Full trade review" },
+  { kind: "ok", label: "Daily notes" },
+  { kind: "ok", label: "All alerts" },
+  { kind: "ok", label: "Advanced insights" },
+  { kind: "ok", label: "AI strategy builder (10/day)" },
+  { kind: "ok", label: "Screenshot import (20/day)" },
+  { kind: "ok", label: "3 challenge accounts" },
+  { kind: "ok", label: "CSV export" },
 ];
 
-function CheckIcon({ color }: { color: string }) {
+const ELITE_FEATURES: FeatureItem[] = [
+  { kind: "ok", label: "Everything in Pro, unlimited" },
+  { kind: "ok", label: "Unlimited AI usage" },
+  { kind: "ok", label: "Unlimited screenshot imports" },
+  { kind: "ok", label: "Unlimited challenge accounts" },
+  { kind: "ok", label: "Priority support" },
+  { kind: "ok", label: "Early access to new features" },
+  { kind: "soon", label: "Strategy code export" },
+  { kind: "soon", label: "Weekly PDF report" },
+  { kind: "soon", label: "Mentor/coach access" },
+];
+
+const IS_EMAIL = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+
+function FeatureRow({ item }: { item: FeatureItem }) {
+  const colors = {
+    ok:   { glyph: "✓", color: "#e5e7eb",       icon: "#10b981" },
+    no:   { glyph: "✗", color: "#6b7280",       icon: "#4b5563" },
+    soon: { glyph: "→", color: "#9ca3af",       icon: "#a78bfa" },
+  };
+  const c = colors[item.kind];
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ flexShrink: 0 }}
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
+    <li style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: c.color, lineHeight: 1.45 }}>
+      <span style={{ color: c.icon, fontWeight: 800, marginTop: 1, flexShrink: 0, width: 12 }}>{c.glyph}</span>
+      <span>{item.label}</span>
+    </li>
   );
 }
 
-export default function PricingPage() {
-  const plan = useUserPlan();
+function CurrentBadge() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 14,
+        right: 14,
+        fontSize: 9,
+        fontWeight: 700,
+        padding: "3px 8px",
+        borderRadius: 999,
+        background: "rgba(99,102,241,0.12)",
+        border: "1px solid rgba(99,102,241,0.35)",
+        color: "#6366f1",
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+      }}
+    >
+      Current
+    </div>
+  );
+}
+
+function PopularBadge() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: -10,
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontSize: 9,
+        fontWeight: 800,
+        padding: "4px 10px",
+        borderRadius: 999,
+        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        color: "#fff",
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        boxShadow: "0 4px 16px rgba(99,102,241,0.4)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      Most Popular
+    </div>
+  );
+}
+
+function ComingSoonBadge() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 14,
+        right: 14,
+        fontSize: 9,
+        fontWeight: 700,
+        padding: "3px 8px",
+        borderRadius: 999,
+        background: "rgba(245,158,11,0.12)",
+        border: "1px solid rgba(245,158,11,0.3)",
+        color: "#f59e0b",
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+      }}
+    >
+      Coming soon
+    </div>
+  );
+}
+
+function WaitlistForm({ storageKey }: { storageKey: string }) {
   const [email, setEmail] = useState("");
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     try {
-      const list: string[] = JSON.parse(localStorage.getItem("nexyru_waitlist") || "[]");
+      const list: string[] = JSON.parse(localStorage.getItem(storageKey) || "[]");
       if (list.length) setJoined(true);
     } catch {}
-  }, []);
+  }, [storageKey]);
 
-  const submitWaitlist = (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     const value = email.trim().toLowerCase();
-    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    if (!IS_EMAIL(value)) {
       setError("Enter a valid email");
       return;
     }
     try {
-      const list: string[] = JSON.parse(localStorage.getItem("nexyru_waitlist") || "[]");
+      const list: string[] = JSON.parse(localStorage.getItem(storageKey) || "[]");
       if (!list.includes(value)) list.push(value);
-      localStorage.setItem("nexyru_waitlist", JSON.stringify(list));
+      localStorage.setItem(storageKey, JSON.stringify(list));
       setJoined(true);
       setEmail("");
     } catch {
       setError("Could not save to waitlist");
     }
   };
+
+  if (joined) {
+    return (
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          background: "rgba(34,197,94,0.08)",
+          border: "1px solid rgba(34,197,94,0.25)",
+          color: "#22c55e",
+          fontSize: 12,
+          fontWeight: 600,
+          textAlign: "center",
+        }}
+      >
+        You're on the list! We'll email when it's live.
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          aria-label="Email for waitlist"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid #2a2a3a",
+            background: "#0a0a0f",
+            color: "#fff",
+            fontSize: 12,
+            outline: "none",
+          }}
+        />
+        <button
+          type="submit"
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: "none",
+            background: "#6366f1",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Join
+        </button>
+      </div>
+      {error && <div style={{ fontSize: 11, color: "#ef4444" }}>{error}</div>}
+    </form>
+  );
+}
+
+type PricingCardProps = {
+  tier: Plan;
+  title: string;
+  price: string;
+  cadence: string;
+  features: FeatureItem[];
+  cta: React.ReactNode;
+  current: boolean;
+  popular?: boolean;
+  comingSoon?: boolean;
+  borderColor: string;
+  glow?: string;
+};
+
+function PricingCard({ tier, title, price, cadence, features, cta, current, popular, comingSoon, borderColor, glow }: PricingCardProps) {
+  return (
+    <div
+      style={{
+        background: "linear-gradient(180deg, rgba(255,255,255,0.02), #0f0f17)",
+        border: `1px solid ${borderColor}`,
+        borderRadius: 16,
+        padding: 28,
+        position: "relative",
+        boxShadow: glow ?? "none",
+        display: "flex",
+        flexDirection: "column",
+        opacity: comingSoon && !current ? 0.92 : 1,
+      }}
+    >
+      {popular && <PopularBadge />}
+      {current && <CurrentBadge />}
+      {comingSoon && !current && <ComingSoonBadge />}
+
+      <div
+        style={{
+          fontSize: 12,
+          color: tier === "elite" ? "#fcd34d" : tier === "pro" ? "#a5b4fc" : "#9ca3af",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 700,
+          marginBottom: 8,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 20 }}>
+        <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>{price}</span>
+        <span style={{ fontSize: 13, color: "#6b7280" }}>{cadence}</span>
+      </div>
+
+      <div style={{ marginBottom: 18 }}>{cta}</div>
+
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        {features.map((f) => (
+          <FeatureRow key={f.label} item={f} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default function PricingPage() {
+  const plan = useUserPlan();
+
+  const freeCta = (
+    <a
+      href="/login"
+      style={{
+        display: "block",
+        textAlign: "center",
+        padding: "11px 16px",
+        borderRadius: 10,
+        border: "1px solid #2a2a3a",
+        background: "transparent",
+        color: "#fff",
+        fontSize: 13,
+        fontWeight: 700,
+        textDecoration: "none",
+      }}
+    >
+      Get started free
+    </a>
+  );
 
   return (
     <div style={{ background: "#080808", minHeight: "100vh", color: "#fff", fontFamily: "system-ui,-apple-system,sans-serif" }}>
@@ -86,13 +317,13 @@ export default function PricingPage() {
       <main
         className="main-with-sidebar"
         style={{
-          maxWidth: 980,
+          maxWidth: 1180,
           margin: "0 auto",
           padding: "56px 24px 96px",
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+        <div style={{ textAlign: "center", marginBottom: 48 }}>
+          <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", margin: 0, color: "#fff" }}>
             Simple, fair pricing
           </h1>
           <p style={{ fontSize: 14, color: "#9ca3af", marginTop: 8 }}>
@@ -104,160 +335,50 @@ export default function PricingPage() {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 16,
+            gap: 18,
+            alignItems: "stretch",
           }}
         >
-          {/* FREE */}
-          <div
-            style={{
-              background: "#0f0f17",
-              border: `1px solid ${plan === "free" ? "rgba(99,102,241,0.45)" : "#1e1e2a"}`,
-              borderRadius: 16,
-              padding: 28,
-              position: "relative",
-            }}
-          >
-            {plan === "free" && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 14,
-                  right: 14,
-                  fontSize: 9,
-                  fontWeight: 700,
-                  padding: "3px 8px",
-                  borderRadius: 999,
-                  background: "rgba(99,102,241,0.12)",
-                  border: "1px solid rgba(99,102,241,0.35)",
-                  color: "#6366f1",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                Current
-              </div>
-            )}
-            <div style={{ fontSize: 12, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 8 }}>
-              Free
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 20 }}>
-              <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em" }}>$0</span>
-              <span style={{ fontSize: 13, color: "#6b7280" }}>/forever</span>
-            </div>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-              {FREE_FEATURES.map((f) => (
-                <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#d1d5db" }}>
-                  <CheckIcon color="#6b7280" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <PricingCard
+            tier="free"
+            title="Free"
+            price="$0"
+            cadence="/forever"
+            features={FREE_FEATURES}
+            cta={freeCta}
+            current={plan === "free"}
+            borderColor={plan === "free" ? "rgba(255,255,255,0.5)" : "#2a2a3a"}
+          />
 
-          {/* PRO */}
-          <div
-            style={{
-              background: "linear-gradient(180deg, rgba(99,102,241,0.06), #0f0f17)",
-              border: "1px solid rgba(99,102,241,0.4)",
-              borderRadius: 16,
-              padding: 28,
-              position: "relative",
-              boxShadow: "0 10px 40px rgba(99,102,241,0.08)",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                top: 14,
-                right: 14,
-                fontSize: 9,
-                fontWeight: 700,
-                padding: "3px 8px",
-                borderRadius: 999,
-                background: "rgba(245,158,11,0.12)",
-                border: "1px solid rgba(245,158,11,0.3)",
-                color: "#f59e0b",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-              }}
-            >
-              Coming soon
-            </div>
-            <div style={{ fontSize: 12, color: "#a5b4fc", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 8 }}>
-              Pro
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 20 }}>
-              <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em" }}>$19</span>
-              <span style={{ fontSize: 13, color: "#6b7280" }}>/month</span>
-            </div>
-            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 22px", display: "flex", flexDirection: "column", gap: 10 }}>
-              {PRO_FEATURES.map((f) => (
-                <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#e5e7eb" }}>
-                  <CheckIcon color="#6366f1" />
-                  {f}
-                </li>
-              ))}
-            </ul>
+          <PricingCard
+            tier="pro"
+            title="Pro"
+            price="$19"
+            cadence="/month"
+            features={PRO_FEATURES}
+            cta={<WaitlistForm storageKey="nexyru_waitlist_pro" />}
+            current={plan === "pro"}
+            popular
+            comingSoon={plan !== "pro"}
+            borderColor="rgba(99,102,241,0.55)"
+            glow="0 10px 40px rgba(99,102,241,0.12)"
+          />
 
-            {joined ? (
-              <div
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  background: "rgba(34,197,94,0.08)",
-                  border: "1px solid rgba(34,197,94,0.25)",
-                  color: "#22c55e",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  textAlign: "center",
-                }}
-              >
-                You're on the list! We'll email when Pro is live.
-              </div>
-            ) : (
-              <form onSubmit={submitWaitlist} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    aria-label="Email for waitlist"
-                    style={{
-                      flex: 1,
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #2a2a3a",
-                      background: "#0a0a0f",
-                      color: "#fff",
-                      fontSize: 13,
-                      outline: "none",
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    style={{
-                      padding: "10px 16px",
-                      borderRadius: 8,
-                      border: "none",
-                      background: "#6366f1",
-                      color: "#fff",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Join waitlist
-                  </button>
-                </div>
-                {error && <div style={{ fontSize: 12, color: "#ef4444" }}>{error}</div>}
-              </form>
-            )}
-          </div>
+          <PricingCard
+            tier="elite"
+            title="Elite"
+            price="$39"
+            cadence="/month"
+            features={ELITE_FEATURES}
+            cta={<WaitlistForm storageKey="nexyru_waitlist_elite" />}
+            current={plan === "elite"}
+            comingSoon={plan !== "elite"}
+            borderColor="rgba(168,85,247,0.55)"
+            glow="0 10px 40px rgba(168,85,247,0.12)"
+          />
         </div>
 
-        <p style={{ textAlign: "center", marginTop: 32, fontSize: 12, color: "#4b5563" }}>
+        <p style={{ textAlign: "center", marginTop: 36, fontSize: 12, color: "#4b5563" }}>
           Questions? <a href="/contact" style={{ color: "#6366f1", textDecoration: "none" }}>Get in touch</a>
         </p>
       </main>

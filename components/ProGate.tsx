@@ -48,7 +48,7 @@ function UpgradeCard({ feature }: { feature: string }) {
 
 export default function ProGate({ feature, children, fallback }: ProGateProps) {
   const plan = useUserPlan();
-  if (plan === "pro") return <>{children}</>;
+  if (plan !== "free") return <>{children}</>;
   return <>{fallback ?? <UpgradeCard feature={feature} />}</>;
 }
 

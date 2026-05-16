@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export type Plan = "free" | "pro";
+export type Plan = "free" | "pro" | "elite";
 
 const isBrowser = () => typeof window !== "undefined";
 
@@ -8,7 +8,9 @@ export function getUserPlan(): Plan {
   if (!isBrowser()) return "free";
   try {
     const plan = localStorage.getItem("nexyru_plan");
-    return plan === "pro" ? "pro" : "free";
+    if (plan === "elite") return "elite";
+    if (plan === "pro") return "pro";
+    return "free";
   } catch {
     return "free";
   }
@@ -16,19 +18,34 @@ export function getUserPlan(): Plan {
 
 export const LIMITS = {
   free: {
-    maxTrades: 100,
+    maxTrades: 50,
     maxChallengeAccounts: 1,
-    aiUsesPerDay: 1,
-    screenshotImportsPerDay: 3,
-    tradeReviewHistory: 5,
+    aiUsesPerDay: 0,
+    screenshotImportsPerDay: 1,
+    tradeReviewHistory: 3,
     hasInsights: false,
     hasPsychology: false,
     hasSetupFinder: false,
     hasAlerts: false,
     hasDailyNotes: false,
     hasCSVExport: false,
+    hasMultipleAccounts: false,
   },
   pro: {
+    maxTrades: Infinity,
+    maxChallengeAccounts: 3,
+    aiUsesPerDay: 10,
+    screenshotImportsPerDay: 20,
+    tradeReviewHistory: Infinity,
+    hasInsights: true,
+    hasPsychology: true,
+    hasSetupFinder: true,
+    hasAlerts: true,
+    hasDailyNotes: true,
+    hasCSVExport: true,
+    hasMultipleAccounts: true,
+  },
+  elite: {
     maxTrades: Infinity,
     maxChallengeAccounts: Infinity,
     aiUsesPerDay: Infinity,
@@ -40,6 +57,7 @@ export const LIMITS = {
     hasAlerts: true,
     hasDailyNotes: true,
     hasCSVExport: true,
+    hasMultipleAccounts: true,
   },
 } as const;
 
