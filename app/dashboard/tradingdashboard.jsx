@@ -94,6 +94,90 @@ async function syncTradesToSupabase(trades, userId) {
   }
 }
 
+// Push EVERY trade currently in localStorage to Supabase, across every
+// `tradedesk_trades_*_v1` bucket. CSV imports and inline edits only pushed
+// the new batch, so trades saved under another username on the same device
+// (or before sign-in) never made it to the cloud. Returns the row count on
+// success, null on failure.
+async function fullSyncToSupabase(userId) {
+  if (!userId || typeof window === "undefined") return null;
+  try {
+    const allKeys = Object.keys(localStorage).filter(
+      k => k.startsWith("tradedesk_trades_") && k.endsWith("_v1")
+    );
+    const seen = new Set();
+    const allTrades = [];
+    for (const key of allKeys) {
+      let stored;
+      try { stored = JSON.parse(localStorage.getItem(key) || "[]"); }
+      catch { continue; }
+      if (!Array.isArray(stored)) continue;
+      for (const t of stored) {
+        if (!t || t.id === undefined || t.id === null) continue;
+        const id = String(t.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        allTrades.push(t);
+      }
+    }
+    if (!allTrades.length) return 0;
+    const res = await fetch("/api/trades", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, trades: allTrades }),
+    });
+    if (!res.ok) {
+      console.error("Full sync failed:", await res.text());
+      return null;
+    }
+    const data = await res.json().catch(() => ({}));
+    console.log("Full sync uploaded:", data.count ?? allTrades.length, "trades");
+    return data.count ?? allTrades.length;
+  } catch (e) {
+    console.error("Full sync error:", e);
+    return null;
+  }
+}
+
+// Pull every trade for this user from Supabase and mirror the result into
+// localStorage under each candidate username key, so the local-first loader
+// can't miss them on the next read. Returns the trade array as-is; the caller
+// is responsible for IDB screenshot rehydration before handing it to React.
+async function loadTradesFromSupabase(userId, usernames = []) {
+  if (!userId || typeof window === "undefined") return [];
+  try {
+    let token = null;
+    try {
+      const supa = getSupabaseClient();
+      const { data } = supa ? await supa.auth.getSession() : { data: null };
+      token = data?.session?.access_token ?? null;
+    } catch {}
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`/api/trades?user_id=${encodeURIComponent(userId)}`, {
+      cache: "no-store",
+      headers,
+    });
+    if (!res.ok) {
+      console.error("Load from Supabase failed:", await res.text());
+      return [];
+    }
+    const body = await res.json().catch(() => ({}));
+    const trades = Array.isArray(body.trades) ? body.trades : [];
+    const writeKeys = new Set(["tradedesk_trades_synced_v1"]);
+    for (const u of usernames) {
+      if (u) writeKeys.add(`tradedesk_trades_${u}_v1`);
+    }
+    const payload = JSON.stringify(trades.map(stripScreenshot));
+    for (const k of writeKeys) {
+      try { localStorage.setItem(k, payload); } catch {}
+    }
+    return trades;
+  } catch (e) {
+    console.error("Load from Supabase error:", e);
+    return [];
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════════════════════════════
@@ -7739,7 +7823,14 @@ function TradingDashboard({ session, onLogout }) {
     })();
     const { data: sub } = supa.auth.onAuthStateChange((evt, s) => {
       setSupabaseUserId(s?.user?.id ?? null);
-      if (evt === "SIGNED_IN") setAuthRefreshKey(k => k + 1);
+      if (evt === "SIGNED_IN") {
+        setAuthRefreshKey(k => k + 1);
+        // Force-upload every local trade bucket so older trades (CSV imports
+        // logged pre-sign-in, or trades saved under a different username on
+        // this device) actually land in the cloud — not just the new batch.
+        const uid = s?.user?.id;
+        if (uid) forceSyncRef.current?.(uid, { silent: true });
+      }
     });
     return () => {
       cancelled = true;
@@ -7749,6 +7840,9 @@ function TradingDashboard({ session, onLogout }) {
   const initialSyncDoneRef = useRef(false);
   const skipNextPushRef = useRef(false);
   const pushTimerRef = useRef(null);
+  // Stable handle to the latest runFullSync so the `[]`-deps auth effect
+  // below can fire it on SIGNED_IN without re-subscribing on every render.
+  const forceSyncRef = useRef(null);
 
   const copyTrading  = useCopyTrading(session.username);
   const paperAccts   = usePaperAccounts(session.username);
@@ -8004,6 +8098,46 @@ function TradingDashboard({ session, onLogout }) {
     }, 600);
   }, [trades, session.username, supabaseUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Force-sync: upload every local bucket, then re-pull the canonical set
+  // from Supabase and rehydrate React state. Used by the SIGNED_IN hook
+  // above and by the "Sync Now" button.
+  const runFullSync = useCallback(async (overrideUid, { silent = false } = {}) => {
+    const userId = overrideUid ?? supabaseUserId;
+    if (!userId) {
+      if (!silent) toast("Sign in to sync to the cloud", "info");
+      return;
+    }
+    setSyncStatus("syncing");
+    try {
+      await fullSyncToSupabase(userId);
+      const localSession = (() => {
+        try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "{}"); }
+        catch { return {}; }
+      })();
+      const email = localSession.email || "";
+      const emailUsername = email
+        ? email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "")
+        : null;
+      const usernames = Array.from(new Set(
+        [session.username, localSession.username, emailUsername].filter(Boolean)
+      ));
+      const merged = await loadTradesFromSupabase(userId, usernames);
+      if (merged.length) {
+        const hydrated = await Promise.all(merged.map(rehydrateScreenshot));
+        skipNextPushRef.current = true;
+        setTrades(hydrated);
+      }
+      markSaved();
+      if (!silent) toast("Synced to cloud", "success");
+    } catch (e) {
+      console.error("runFullSync error:", e);
+      setSyncStatus("error");
+      if (!silent) toast("Sync failed", "error");
+    }
+  }, [supabaseUserId, session.username, markSaved]);
+
+  useEffect(() => { forceSyncRef.current = runFullSync; }, [runFullSync]);
+
   // Consume incoming copied trades
   useEffect(() => {
     if (!copyTrading.pendingCopies.length) return;
@@ -8211,6 +8345,34 @@ function TradingDashboard({ session, onLogout }) {
           {/* Right: account selector + Log Trade + avatar */}
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
             {supabaseUserId && <SyncIndicator status={syncStatus} />}
+            {supabaseUserId && (
+              <button
+                onClick={() => runFullSync()}
+                disabled={syncStatus === "syncing"}
+                title="Force upload every local trade to the cloud, then pull the merged result back"
+                className="hide-mobile"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 9px",
+                  borderRadius: 8,
+                  border: "1px solid #2a2a3a",
+                  background: "#1a1a24",
+                  color: syncStatus === "syncing" ? "#6b7280" : "#9ca3af",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: syncStatus === "syncing" ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <RefreshCw
+                  size={10}
+                  style={{ animation: syncStatus === "syncing" ? "nx-spin 0.7s linear infinite" : "none" }}
+                />
+                Sync Now
+              </button>
+            )}
             <AccountSwitcher
               accounts={paperAccts.accounts}
               activeAccount={paperAccts.activeAccount}
