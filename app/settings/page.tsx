@@ -782,6 +782,36 @@ function AccountSection({
   const [emailMsg, setEmailMsg] = useState("");
   const [showEmailForm, setShowEmailForm] = useState(false);
 
+  const [resetStatus, setResetStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resetMsg, setResetMsg] = useState("");
+
+  const sendResetLink = async () => {
+    setResetMsg("");
+    setResetStatus("sending");
+    try {
+      const { data: { session: sb } } = await supabase.auth.getSession();
+      const email = sb?.user?.email || session.email || "";
+      if (!email) {
+        setResetStatus("error");
+        setResetMsg("Could not find your email. Please sign in again.");
+        return;
+      }
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: "https://www.nexyru.com/auth/callback?type=recovery",
+      });
+      if (error) {
+        setResetStatus("error");
+        setResetMsg("Could not send reset email. Try again.");
+        return;
+      }
+      setResetStatus("sent");
+      setResetMsg(`Reset link sent to ${email} — check your inbox`);
+    } catch {
+      setResetStatus("error");
+      setResetMsg("Could not send reset email. Try again.");
+    }
+  };
+
   const sendEmailChange = async () => {
     setEmailMsg("");
     const trimmed = newEmail.trim().toLowerCase();
@@ -939,6 +969,62 @@ function AccountSection({
             </button>
           </div>
         )}
+      </div>
+
+      {/* Reset password by email */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ ...label, fontSize: 13, color: "#fff", marginBottom: 6 }}>
+          Forgot your current password?
+        </div>
+        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 10, lineHeight: 1.5 }}>
+          We&apos;ll email a reset link to{" "}
+          <span style={{ color: "#e5e7eb", fontWeight: 600 }}>{session.email || "your email"}</span>.
+        </div>
+        <button
+          type="button"
+          onClick={sendResetLink}
+          disabled={resetStatus === "sending" || resetStatus === "sent"}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 8,
+            background: "transparent",
+            border: "1px solid rgba(99,102,241,0.55)",
+            color: "#a5b4fc",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: resetStatus === "sending" || resetStatus === "sent" ? "default" : "pointer",
+            opacity: resetStatus === "sending" || resetStatus === "sent" ? 0.6 : 1,
+            width: "fit-content",
+          }}
+        >
+          {resetStatus === "sending"
+            ? "Sending..."
+            : resetStatus === "sent"
+            ? "Sent"
+            : "Send password reset email"}
+        </button>
+        {resetMsg && (
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 12,
+              fontWeight: 600,
+              color: resetStatus === "error" ? "#ef4444" : "#22c55e",
+              lineHeight: 1.5,
+            }}
+          >
+            {resetMsg}
+          </div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "0 0 18px" }}>
+        <div style={{ flex: 1, height: 1, background: "#2a2a2a" }} />
+        <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, letterSpacing: "0.04em" }}>
+          or change password directly
+        </span>
+        <div style={{ flex: 1, height: 1, background: "#2a2a2a" }} />
       </div>
 
       {/* Password */}
