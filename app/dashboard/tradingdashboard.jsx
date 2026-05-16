@@ -8216,12 +8216,21 @@ function TradingDashboard({ session, onLogout }) {
 
   const strategies = useMemo(() => Array.from(new Set(trades.map(t=>t.strategy).filter(Boolean))).sort(), [trades]);
 
-  // Trades scoped to active account for display
+  // Trades scoped to active account for display.
+  // Cloud-synced trades may carry an accountId from another device whose
+  // paper account doesn't exist locally (paper accounts are random per-device
+  // UUIDs and aren't synced). Surface those orphans under the default account
+  // so the phone doesn't render an empty list after a fresh sign-in.
   const activeTrades = useMemo(() => {
     if (!paperAccts.activeAccount || paperAccts.accounts.length === 0) return trades;
     const id = paperAccts.activeAccount.id;
     const isDefault = paperAccts.accounts[0]?.id === id;
-    return trades.filter(t => t.accountId === id || (!t.accountId && isDefault));
+    const knownIds = new Set(paperAccts.accounts.map(a => a.id));
+    return trades.filter(t =>
+      t.accountId === id
+      || (!t.accountId && isDefault)
+      || (isDefault && t.accountId && !knownIds.has(t.accountId))
+    );
   }, [trades, paperAccts.activeAccount, paperAccts.accounts]);
 
   if (typeof window !== "undefined" && window.innerWidth < 768 || isMobile) {
