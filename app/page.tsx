@@ -320,6 +320,22 @@ export default function LandingPage() {
         minHeight: "100vh",
       }}
     >
+      {/* ─── Beta banner ───────────────────────────────────────────── */}
+      <div
+        style={{
+          width: "100%",
+          background: "rgba(99,102,241,0.12)",
+          borderBottom: "1px solid rgba(99,102,241,0.25)",
+          padding: "8px 16px",
+          textAlign: "center",
+          fontSize: 13,
+          color: "#a5b4fc",
+          fontWeight: 500,
+        }}
+      >
+        🧪 Nexyru is currently in beta — expect occasional bugs as we improve the product
+      </div>
+
       {/* ─── NAV ───────────────────────────────────────────────────── */}
       <nav
         style={{

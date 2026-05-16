@@ -46,7 +46,10 @@ export default function MobileDashboard({ trades, session, activeAccount, active
 
       {/* TOP BAR */}
       <div style={{position:'sticky', top:0, zIndex:200, background:'rgba(8,8,8,0.95)', backdropFilter:'blur(10px)', borderBottom:'1px solid #1e1e2a', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-        <span style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>Nexyru</span>
+        <span style={{display:'flex', alignItems:'center'}}>
+          <span style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>Nexyru</span>
+          <span style={{fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4, background:'rgba(99,102,241,0.2)', color:'#a5b4fc', letterSpacing:'0.05em', marginLeft:6}}>BETA</span>
+        </span>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           <div style={{fontSize:11, color:s.muted}}>{session?.username}</div>
           <div style={{width:30, height:30, borderRadius:'50%', background:s.accent, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:12, fontWeight:700}}>
