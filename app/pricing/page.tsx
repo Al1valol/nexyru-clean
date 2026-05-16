@@ -324,7 +324,6 @@ function PricingCard({ tier, title, subtitle, price, cadence, features, cta, cur
         flexDirection: "column",
         opacity: comingSoon && !current && !badge ? 0.92 : 1,
         overflow: "visible",
-        marginTop: badge ? 20 : 0,
       }}
     >
       {isElite && (
@@ -454,7 +453,7 @@ export default function PricingPage() {
             gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: 18,
             alignItems: "stretch",
-            paddingTop: 24,
+            paddingTop: 20,
           }}
         >
           <PricingCard
@@ -468,35 +467,39 @@ export default function PricingPage() {
             borderColor={plan === "free" ? "rgba(255,255,255,0.5)" : "#2a2a3a"}
           />
 
-          <PricingCard
-            tier="pro"
-            title="Pro"
-            price="$19"
-            cadence="/month"
-            features={PRO_FEATURES}
-            cta={<WaitlistForm plan="pro" />}
-            current={plan === "pro"}
-            badge="popular"
-            comingSoon={plan !== "pro"}
-            borderColor="rgba(99,102,241,0.55)"
-            glow="0 10px 40px rgba(99,102,241,0.12)"
-          />
+          <div style={{ paddingTop: 24, position: "relative", overflow: "visible", display: "grid" }}>
+            <PricingCard
+              tier="pro"
+              title="Pro"
+              price="$19"
+              cadence="/month"
+              features={PRO_FEATURES}
+              cta={<WaitlistForm plan="pro" />}
+              current={plan === "pro"}
+              badge="popular"
+              comingSoon={plan !== "pro"}
+              borderColor="rgba(99,102,241,0.55)"
+              glow="0 10px 40px rgba(99,102,241,0.12)"
+            />
+          </div>
 
-          <PricingCard
-            tier="elite"
-            title="Elite"
-            subtitle="For serious funded traders who want every edge"
-            price="$39"
-            cadence="/month"
-            features={ELITE_FEATURES}
-            cta={<WaitlistForm plan="elite" />}
-            current={plan === "elite"}
-            badge="value"
-            comingSoon={plan !== "elite"}
-            borderColor="rgba(245,158,11,0.4)"
-            glow="0 10px 40px rgba(245,158,11,0.15)"
-            urgencyNote="Early waitlist members lock in $29/mo when Pro launches — $10 savings forever."
-          />
+          <div style={{ paddingTop: 24, position: "relative", overflow: "visible", display: "grid" }}>
+            <PricingCard
+              tier="elite"
+              title="Elite"
+              subtitle="For serious funded traders who want every edge"
+              price="$39"
+              cadence="/month"
+              features={ELITE_FEATURES}
+              cta={<WaitlistForm plan="elite" />}
+              current={plan === "elite"}
+              badge="value"
+              comingSoon={plan !== "elite"}
+              borderColor="rgba(245,158,11,0.4)"
+              glow="0 10px 40px rgba(245,158,11,0.15)"
+              urgencyNote="Early waitlist members lock in $29/mo when Pro launches — $10 savings forever."
+            />
+          </div>
         </div>
 
         <p style={{ textAlign: "center", marginTop: 36, fontSize: 12, color: "#4b5563" }}>
