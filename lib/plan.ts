@@ -2,10 +2,56 @@ import { useEffect, useState } from "react";
 
 export type Plan = "free" | "pro" | "elite";
 
+// Emails that always get elite access. CLIENT-SIDE GATE ONLY — this is
+// readable in the JS bundle by anyone and bypassable via devtools. Any
+// server-cost feature (AI calls, premium queries) must verify plan on
+// the server, not trust this.
+const ADMIN_EMAILS = ["calemax5@gmail.com"];
+
 const isBrowser = () => typeof window !== "undefined";
+
+// Pull the current user's email from whichever client-side store has it.
+// Checks the Supabase auth token first (canonical), then falls back to the
+// app's persisted session blob written by /login and /auth/complete.
+function readCurrentEmail(): string {
+  if (!isBrowser()) return "";
+  try {
+    const supaToken = localStorage.getItem("sb-xsrcaceydyqytbipvrok-auth-token");
+    const supaUser = supaToken ? JSON.parse(supaToken) : null;
+    const supaEmail = supaUser?.user?.email || supaUser?.currentSession?.user?.email;
+    if (supaEmail) return String(supaEmail).toLowerCase();
+  } catch {}
+  try {
+    const session = JSON.parse(localStorage.getItem("tradedesk_session_v1") || "{}");
+    if (session?.email) return String(session.email).toLowerCase();
+  } catch {}
+  return "";
+}
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(String(email).toLowerCase());
+}
+
+// Call from auth handlers right after the session is persisted, so the
+// fast-path `nexyru_plan === 'elite'` is set for admin emails.
+export function applyAdminPlanForEmail(email: string | null | undefined): void {
+  if (!isBrowser()) return;
+  if (isAdminEmail(email)) {
+    try {
+      localStorage.setItem("nexyru_plan", "elite");
+    } catch {}
+  }
+}
 
 export function getUserPlan(): Plan {
   if (!isBrowser()) return "free";
+
+  // Admin override — always elite if the signed-in email is on the list.
+  try {
+    if (isAdminEmail(readCurrentEmail())) return "elite";
+  } catch {}
+
   try {
     const plan = localStorage.getItem("nexyru_plan");
     if (plan === "elite") return "elite";

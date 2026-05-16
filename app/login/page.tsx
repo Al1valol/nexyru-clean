@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { applyAdminPlanForEmail } from "@/lib/plan";
 
 const SUPA_URL = "https://xsrcaceydyqytbipvrok.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzcmNhY2V5ZHlxeXRiaXB2cm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NDg0MjUsImV4cCI6MjA5MzUyNDQyNX0.IfIkjTtAAb0-iZLu8CE-3GgdNGKxSNJKczSAZlQV62A";
@@ -42,6 +43,7 @@ export default function LoginPage() {
       localStorage.setItem("tradedesk_session_v1", JSON.stringify(s));
       if (user.id) localStorage.setItem(`nexyru_supabase_user_id`, user.id);
     } catch {}
+    applyAdminPlanForEmail(user.email);
   };
 
   const submit = async () => {

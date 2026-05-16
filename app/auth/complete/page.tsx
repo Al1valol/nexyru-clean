@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { applyAdminPlanForEmail } from "@/lib/plan";
 
 export default function AuthComplete() {
   const [status, setStatus] = useState("Processing...");
@@ -24,6 +25,7 @@ export default function AuthComplete() {
         if (supabaseUserId) {
           try { localStorage.setItem("nexyru_supabase_user_id", supabaseUserId); } catch {}
         }
+        applyAdminPlanForEmail(email);
         setStatus("Success! Redirecting...");
         setTimeout(() => { window.location.href = "/dashboard"; }, 500);
       } catch(e) {
