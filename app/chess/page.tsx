@@ -3,9 +3,8 @@ export const dynamic = "force-dynamic";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
-import Sidebar from "@/components/Sidebar";
-import MobileNav from "@/components/MobileNav";
 import { Chess } from "chess.js";
+import type { Square } from "chess.js";
 
 const Chessboard = nextDynamic(
   () => import("react-chessboard").then((m) => ({ default: m.Chessboard })),
@@ -20,21 +19,22 @@ const C = {
   border: "#1e1e2a",
   borderSoft: "#1a1a1a",
   text: "#ffffff",
-  textDim: "#888888",
-  textMuted: "#666666",
-  accent: "#6366f1",
-  accentDim: "rgba(99,102,241,0.12)",
+  textDim: "#9aa0aa",
+  textMuted: "#6b7280",
+  accent: "#4a6741",
+  accentBright: "#5b7d52",
+  accentDim: "rgba(74,103,65,0.18)",
   green: "#22c55e",
   red: "#ef4444",
   amber: "#f59e0b",
-  light: "#e9edf2",
-  dark: "#3b4252",
+  squareLight: "#e9edf2",
+  squareDark: "#3b4252",
 };
 
-const PERF_TYPES = ["bullet", "blitz", "rapid", "classical", "puzzle"] as const;
-type PerfKey = (typeof PERF_TYPES)[number];
-
 // ───────────────────────── types ─────────────────────────
+type Mode = "free" | "play" | "review";
+type PieceSymbol = "p" | "n" | "b" | "r" | "q" | "k";
+
 interface LichessPerf {
   games?: number;
   rating?: number;
@@ -59,7 +59,7 @@ interface LichessProfile {
   createdAt?: number;
   url?: string;
 }
-interface LichessGamePlayer {
+interface LichessPlayer {
   user?: { name: string; title?: string; id?: string };
   rating?: number;
   aiLevel?: number;
@@ -74,138 +74,345 @@ interface LichessGame {
   lastMoveAt?: number;
   status?: string;
   winner?: "white" | "black";
-  players: { white: LichessGamePlayer; black: LichessGamePlayer };
+  players: { white: LichessPlayer; black: LichessPlayer };
   opening?: { eco?: string; name?: string; ply?: number };
   moves?: string;
-  pgn?: string;
 }
 interface ImportedGame {
   id: string;
-  source: "chesscom" | "lichess";
   white: string;
   black: string;
-  result: string; // "1-0" | "0-1" | "1/2-1/2" | "*"
+  result: string;
   date?: string;
   opening?: string;
   pgn: string;
+}
+
+// ───────────────────────── engine ─────────────────────────
+const PIECE_VALUES: Record<PieceSymbol, number> = {
+  p: 100,
+  n: 320,
+  b: 330,
+  r: 500,
+  q: 900,
+  k: 20000,
+};
+
+// PSTs from white's perspective; row 0 = 8th rank (top), col 0 = a-file (left).
+// chess.js board() returns the same layout (board[0] = 8th rank).
+// prettier-ignore
+const PST_PAWN = [
+   0,  0,  0,  0,  0,  0,  0,  0,
+  50, 50, 50, 50, 50, 50, 50, 50,
+  10, 10, 20, 30, 30, 20, 10, 10,
+   5,  5, 10, 25, 25, 10,  5,  5,
+   0,  0,  0, 20, 20,  0,  0,  0,
+   5, -5,-10,  0,  0,-10, -5,  5,
+   5, 10, 10,-20,-20, 10, 10,  5,
+   0,  0,  0,  0,  0,  0,  0,  0,
+];
+// prettier-ignore
+const PST_KNIGHT = [
+  -50,-40,-30,-30,-30,-30,-40,-50,
+  -40,-20,  0,  0,  0,  0,-20,-40,
+  -30,  0, 10, 15, 15, 10,  0,-30,
+  -30,  5, 15, 20, 20, 15,  5,-30,
+  -30,  0, 15, 20, 20, 15,  0,-30,
+  -30,  5, 10, 15, 15, 10,  5,-30,
+  -40,-20,  0,  5,  5,  0,-20,-40,
+  -50,-40,-30,-30,-30,-30,-40,-50,
+];
+// prettier-ignore
+const PST_BISHOP = [
+  -20,-10,-10,-10,-10,-10,-10,-20,
+  -10,  0,  0,  0,  0,  0,  0,-10,
+  -10,  0,  5, 10, 10,  5,  0,-10,
+  -10,  5,  5, 10, 10,  5,  5,-10,
+  -10,  0, 10, 10, 10, 10,  0,-10,
+  -10, 10, 10, 10, 10, 10, 10,-10,
+  -10,  5,  0,  0,  0,  0,  5,-10,
+  -20,-10,-10,-10,-10,-10,-10,-20,
+];
+// prettier-ignore
+const PST_ROOK = [
+   0,  0,  0,  0,  0,  0,  0,  0,
+   5, 10, 10, 10, 10, 10, 10,  5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+  -5,  0,  0,  0,  0,  0,  0, -5,
+   0,  0,  0,  5,  5,  0,  0,  0,
+];
+// prettier-ignore
+const PST_QUEEN = [
+  -20,-10,-10, -5, -5,-10,-10,-20,
+  -10,  0,  0,  0,  0,  0,  0,-10,
+  -10,  0,  5,  5,  5,  5,  0,-10,
+   -5,  0,  5,  5,  5,  5,  0, -5,
+    0,  0,  5,  5,  5,  5,  0, -5,
+  -10,  5,  5,  5,  5,  5,  0,-10,
+  -10,  0,  5,  0,  0,  0,  0,-10,
+  -20,-10,-10, -5, -5,-10,-10,-20,
+];
+// prettier-ignore
+const PST_KING_MID = [
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -30,-40,-40,-50,-50,-40,-40,-30,
+  -20,-30,-30,-40,-40,-30,-30,-20,
+  -10,-20,-20,-20,-20,-20,-20,-10,
+   20, 20,  0,  0,  0,  0, 20, 20,
+   20, 30, 10,  0,  0, 10, 30, 20,
+];
+
+const PST: Record<PieceSymbol, number[]> = {
+  p: PST_PAWN,
+  n: PST_KNIGHT,
+  b: PST_BISHOP,
+  r: PST_ROOK,
+  q: PST_QUEEN,
+  k: PST_KING_MID,
+};
+
+function pstScore(type: PieceSymbol, color: "w" | "b", rankIdx: number, fileIdx: number) {
+  const r = color === "w" ? rankIdx : 7 - rankIdx;
+  return PST[type][r * 8 + fileIdx];
+}
+
+function evaluate(chess: Chess): number {
+  if (chess.isCheckmate()) return chess.turn() === "w" ? -100000 : 100000;
+  if (chess.isDraw() || chess.isStalemate() || chess.isThreefoldRepetition()) return 0;
+  let score = 0;
+  const board = chess.board();
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const sq = board[r][f];
+      if (!sq) continue;
+      const t = sq.type as PieceSymbol;
+      const val = PIECE_VALUES[t] + pstScore(t, sq.color, r, f);
+      score += (sq.color === "w" ? 1 : -1) * val;
+    }
+  }
+  return score;
+}
+
+function orderedMoves(chess: Chess): string[] {
+  const moves = chess.moves({ verbose: true }) as Array<{ san: string; captured?: PieceSymbol }>;
+  return moves
+    .slice()
+    .sort((a, b) => {
+      const av = (a.captured ? PIECE_VALUES[a.captured] : 0) + (a.san.includes("+") ? 50 : 0);
+      const bv = (b.captured ? PIECE_VALUES[b.captured] : 0) + (b.san.includes("+") ? 50 : 0);
+      return bv - av;
+    })
+    .map((m) => m.san);
+}
+
+function minimax(
+  chess: Chess,
+  depth: number,
+  alpha: number,
+  beta: number,
+  maximizing: boolean,
+): number {
+  if (depth === 0 || chess.isGameOver()) return evaluate(chess);
+  const moves = orderedMoves(chess);
+  if (maximizing) {
+    let best = -Infinity;
+    for (const m of moves) {
+      chess.move(m);
+      const v = minimax(chess, depth - 1, alpha, beta, false);
+      chess.undo();
+      if (v > best) best = v;
+      if (best > alpha) alpha = best;
+      if (beta <= alpha) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const m of moves) {
+      chess.move(m);
+      const v = minimax(chess, depth - 1, alpha, beta, true);
+      chess.undo();
+      if (v < best) best = v;
+      if (best < beta) beta = best;
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+}
+
+interface BestMove {
+  from: Square;
+  to: Square;
+  san: string;
+  score: number;
+}
+
+function findBestMove(fen: string, depth: number): BestMove | null {
+  const chess = new Chess(fen);
+  const verbose = chess.moves({ verbose: true }) as Array<{
+    san: string;
+    from: Square;
+    to: Square;
+    captured?: PieceSymbol;
+  }>;
+  if (verbose.length === 0) return null;
+  const maximizing = chess.turn() === "w";
+  verbose.sort((a, b) => {
+    const av = (a.captured ? PIECE_VALUES[a.captured] : 0) + (a.san.includes("+") ? 50 : 0);
+    const bv = (b.captured ? PIECE_VALUES[b.captured] : 0) + (b.san.includes("+") ? 50 : 0);
+    return bv - av;
+  });
+  let bestScore = maximizing ? -Infinity : Infinity;
+  let best = verbose[0];
+  for (const m of verbose) {
+    chess.move(m.san);
+    const v = minimax(chess, depth - 1, -Infinity, Infinity, !maximizing);
+    chess.undo();
+    if (maximizing ? v > bestScore : v < bestScore) {
+      bestScore = v;
+      best = m;
+    }
+  }
+  return { from: best.from, to: best.to, san: best.san, score: bestScore };
 }
 
 // ───────────────────────── helpers ─────────────────────────
 function initials(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
-
-function fmtDate(ms?: number | string) {
+function fmtDate(ms?: number) {
   if (!ms) return "";
-  const d = typeof ms === "number" ? new Date(ms) : new Date(ms);
-  if (Number.isNaN(d.getTime())) return String(ms);
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
-
-function gameResult(g: LichessGame, you: string): "W" | "L" | "D" {
-  const youAreWhite = g.players.white.user?.name?.toLowerCase() === you.toLowerCase();
-  if (!g.winner) return "D";
-  if (g.winner === "white") return youAreWhite ? "W" : "L";
-  return youAreWhite ? "L" : "W";
+function memberSince(ms?: number) {
+  if (!ms) return "";
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
-
-function pgnResult(pgn: string): string {
-  const m = pgn.match(/\[Result\s+"([^"]+)"\]/);
-  return m ? m[1] : "*";
+function gameResultForUser(g: LichessGame, you: string): "W" | "L" | "D" {
+  const youWhite = g.players.white.user?.name?.toLowerCase() === you.toLowerCase();
+  if (!g.winner) return "D";
+  if (g.winner === "white") return youWhite ? "W" : "L";
+  return youWhite ? "L" : "W";
 }
 function pgnTag(pgn: string, tag: string): string | undefined {
   const m = pgn.match(new RegExp(`\\[${tag}\\s+"([^"]+)"\\]`));
   return m ? m[1] : undefined;
 }
-
-// Parse a string that may contain multiple PGN games
+function pgnResult(pgn: string): string {
+  return pgnTag(pgn, "Result") ?? "*";
+}
 function splitPgns(text: string): string[] {
   const out: string[] = [];
-  // Games are typically separated by a blank line between end of moves and next [Event ...]
-  // Find positions of [Event "..."] tag occurrences
-  const eventIdx: number[] = [];
   const re = /\[Event\s+"/g;
+  const idx: number[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) eventIdx.push(m.index);
-  if (eventIdx.length === 0) {
-    const trimmed = text.trim();
-    if (trimmed) out.push(trimmed);
+  while ((m = re.exec(text)) !== null) idx.push(m.index);
+  if (idx.length === 0) {
+    const t = text.trim();
+    if (t) out.push(t);
     return out;
   }
-  for (let i = 0; i < eventIdx.length; i++) {
-    const start = eventIdx[i];
-    const end = i + 1 < eventIdx.length ? eventIdx[i + 1] : text.length;
+  for (let i = 0; i < idx.length; i++) {
+    const start = idx[i];
+    const end = i + 1 < idx.length ? idx[i + 1] : text.length;
     const chunk = text.slice(start, end).trim();
     if (chunk) out.push(chunk);
   }
   return out;
 }
 
-// ───────────────────────── page shell ─────────────────────────
-export default function ChessPage() {
-  return (
-    <div style={{ display: "flex", minHeight: "100vh", background: C.bg }}>
-      <Sidebar activePath="/chess" />
-      <MobileNav activePath="/chess" />
-      <main style={{ flex: 1, marginLeft: 56, paddingBottom: 96 }}>
-        <ChessPageInner />
-      </main>
-    </div>
-  );
-}
-
-// ───────────────────────── inner ─────────────────────────
-function ChessPageInner() {
-  // Lichess search state
+// ───────────────────────── page ─────────────────────────
+export default function ChessCoachPage() {
+  // ── search state ──
   const [usernameInput, setUsernameInput] = useState("");
-  const [searchedUser, setSearchedUser] = useState("");
   const [profile, setProfile] = useState<LichessProfile | null>(null);
   const [lichessGames, setLichessGames] = useState<LichessGame[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
-  // Imported (Chess.com or other) games
+  // ── imported games ──
   const [importedGames, setImportedGames] = useState<ImportedGame[]>([]);
   const [importErr, setImportErr] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Selected game / board state
-  const [selectedPgn, setSelectedPgn] = useState<string | null>(null);
-  const [selectedTitle, setSelectedTitle] = useState<string>("Starting position");
-  const [moves, setMoves] = useState<{ san: string; fen: string }[]>([]);
-  const [moveIdx, setMoveIdx] = useState(0);
-  const [currentOpening, setCurrentOpening] = useState<string | null>(null);
+  // ── board state ──
+  const [mode, setMode] = useState<Mode>("free");
+  const [chess] = useState(() => new Chess());
+  const [fen, setFen] = useState(chess.fen());
+  const [reviewMoves, setReviewMoves] = useState<{ san: string; fen: string }[]>([]);
+  const [reviewIdx, setReviewIdx] = useState(0);
+  const [reviewTitle, setReviewTitle] = useState<string>("");
+  const [reviewOpening, setReviewOpening] = useState<string | null>(null);
 
-  const handleSearch = useCallback(async (uRaw: string) => {
-    const u = uRaw.trim();
+  const [playUserColor, setPlayUserColor] = useState<"w" | "b">("w");
+  const [aiThinking, setAiThinking] = useState(false);
+  const [aiHint, setAiHint] = useState<BestMove | null>(null);
+  const [aiDepth, setAiDepth] = useState(2);
+  const [gameOverMsg, setGameOverMsg] = useState<string | null>(null);
+
+  // ── derived ──
+  const currentFen = useMemo(() => {
+    if (mode === "review") {
+      if (!reviewMoves.length || reviewIdx === 0) {
+        return "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+      }
+      return reviewMoves[reviewIdx - 1].fen;
+    }
+    return fen;
+  }, [mode, reviewMoves, reviewIdx, fen]);
+
+  const openingFreq = useMemo(() => {
+    const m = new Map<string, number>();
+    let total = 0;
+    for (const g of lichessGames) {
+      if (g.opening?.name) {
+        m.set(g.opening.name, (m.get(g.opening.name) ?? 0) + 1);
+        total++;
+      }
+    }
+    return { map: m, total };
+  }, [lichessGames]);
+
+  // ── handlers ──
+  const handleSearch = useCallback(async (raw: string) => {
+    const u = raw.trim();
     if (!u) return;
-    setLoading(true);
-    setError(null);
+    setSearchLoading(true);
+    setSearchError(null);
     setProfile(null);
     setLichessGames([]);
-    setSearchedUser(u);
     try {
-      const profRes = await fetch(`https://lichess.org/api/user/${encodeURIComponent(u)}`);
+      const profRes = await fetch(`https://lichess.org/api/user/${encodeURIComponent(u)}`, {
+        headers: { Accept: "application/json" },
+      });
       if (profRes.status === 404) {
-        setError("User not found");
-        setLoading(false);
+        setSearchError("User not found");
+        setSearchLoading(false);
         return;
       }
       if (!profRes.ok) {
-        setError(`Lichess error (${profRes.status})`);
-        setLoading(false);
+        setSearchError(`Lichess error (${profRes.status})`);
+        setSearchLoading(false);
         return;
       }
       const prof = (await profRes.json()) as LichessProfile;
       setProfile(prof);
 
       const gamesRes = await fetch(
-        `https://lichess.org/api/games/user/${encodeURIComponent(u)}?max=10&moves=true&pgnInJson=true&opening=true`,
+        `https://lichess.org/api/games/user/${encodeURIComponent(u)}?max=20&moves=true&opening=true`,
         { headers: { Accept: "application/x-ndjson" } },
       );
       if (gamesRes.ok) {
         const text = await gamesRes.text();
-        const lines = text.split("\n").filter(Boolean);
-        const games = lines
+        const games = text
+          .split("\n")
+          .filter(Boolean)
           .map((l) => {
             try {
               return JSON.parse(l) as LichessGame;
@@ -217,92 +424,69 @@ function ChessPageInner() {
         setLichessGames(games);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+      setSearchError(err instanceof Error ? err.message : "Network error");
     } finally {
-      setLoading(false);
+      setSearchLoading(false);
     }
   }, []);
 
-  // Opening frequency map (from Lichess history)
-  const openingFreq = useMemo(() => {
-    const m = new Map<string, number>();
-    let total = 0;
-    for (const g of lichessGames) {
-      const name = g.opening?.name;
-      if (!name) continue;
-      m.set(name, (m.get(name) ?? 0) + 1);
-      total++;
-    }
-    return { map: m, total };
-  }, [lichessGames]);
-
-  // Load PGN into board
-  const loadPgn = useCallback((pgn: string, title: string) => {
+  const loadGameFromMoves = useCallback((sanMoves: string, title: string, opening?: string) => {
     try {
-      const chess = new Chess();
-      chess.loadPgn(pgn);
-      const verbose = chess.history({ verbose: true }) as Array<{ san: string; after: string }>;
-      const stepped: { san: string; fen: string }[] = verbose.map((v) => ({
-        san: v.san,
-        fen: v.after,
-      }));
-      setMoves(stepped);
-      setMoveIdx(stepped.length); // jump to end by default
-      setSelectedPgn(pgn);
-      setSelectedTitle(title);
-      const openingTag = pgnTag(pgn, "Opening");
-      setCurrentOpening(openingTag ?? null);
-    } catch (err) {
-      setError("Could not parse PGN");
+      const c = new Chess();
+      const tokens = sanMoves.trim().split(/\s+/).filter(Boolean);
+      const stepped: { san: string; fen: string }[] = [];
+      for (const t of tokens) {
+        try {
+          c.move(t);
+        } catch {
+          break;
+        }
+        stepped.push({ san: t, fen: c.fen() });
+      }
+      if (!stepped.length) return;
+      setMode("review");
+      setReviewMoves(stepped);
+      setReviewIdx(stepped.length);
+      setReviewTitle(title);
+      setReviewOpening(opening ?? null);
+      setAiHint(null);
+      setGameOverMsg(null);
+    } catch {
+      // ignore
     }
   }, []);
 
-  // Keyboard navigation
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (!selectedPgn) return;
-      // Ignore when typing in an input
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        setMoveIdx((i) => Math.max(0, i - 1));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        setMoveIdx((i) => Math.min(moves.length, i + 1));
-      } else if (e.key === "Home") {
-        e.preventDefault();
-        setMoveIdx(0);
-      } else if (e.key === "End") {
-        e.preventDefault();
-        setMoveIdx(moves.length);
-      }
+  const loadGameFromPgn = useCallback((pgn: string, title: string) => {
+    try {
+      const c = new Chess();
+      c.loadPgn(pgn);
+      const verbose = c.history({ verbose: true }) as Array<{ san: string; after: string }>;
+      const stepped = verbose.map((v) => ({ san: v.san, fen: v.after }));
+      if (!stepped.length) return;
+      setMode("review");
+      setReviewMoves(stepped);
+      setReviewIdx(stepped.length);
+      setReviewTitle(title);
+      setReviewOpening(pgnTag(pgn, "Opening") ?? null);
+      setAiHint(null);
+      setGameOverMsg(null);
+    } catch {
+      // ignore
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selectedPgn, moves.length]);
+  }, []);
 
-  const currentFen = useMemo(() => {
-    if (!moves.length || moveIdx === 0) {
-      return "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    }
-    return moves[moveIdx - 1].fen;
-  }, [moves, moveIdx]);
-
-  // Chess.com PGN import
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // ── PGN file import ──
   const onFile = useCallback(async (file: File) => {
     setImportErr(null);
     try {
       const text = await file.text();
       const pgns = splitPgns(text);
-      if (pgns.length === 0) {
+      if (!pgns.length) {
         setImportErr("No games found in file");
         return;
       }
       const parsed: ImportedGame[] = pgns.map((pgn, i) => ({
         id: `imp_${Date.now()}_${i}`,
-        source: "chesscom",
         white: pgnTag(pgn, "White") ?? "?",
         black: pgnTag(pgn, "Black") ?? "?",
         result: pgnResult(pgn),
@@ -316,111 +500,551 @@ function ChessPageInner() {
     }
   }, []);
 
+  // ── play vs AI: AI move after user move ──
+  const playAiMove = useCallback(() => {
+    if (chess.isGameOver()) return;
+    setAiThinking(true);
+    setTimeout(() => {
+      const best = findBestMove(chess.fen(), aiDepth);
+      if (best) {
+        chess.move(best.san);
+        setFen(chess.fen());
+      }
+      if (chess.isGameOver()) {
+        setGameOverMsg(describeGameOver(chess));
+      }
+      setAiThinking(false);
+    }, 30);
+  }, [chess, aiDepth]);
+
+  // ── board drop handler ──
+  const onPieceDrop = useCallback(
+    ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) => {
+      if (!targetSquare) return false;
+      if (mode === "review") return false;
+      try {
+        const move = chess.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+        if (!move) return false;
+      } catch {
+        return false;
+      }
+      setFen(chess.fen());
+      setAiHint(null);
+      if (chess.isGameOver()) {
+        setGameOverMsg(describeGameOver(chess));
+        return true;
+      }
+      if (mode === "play" && chess.turn() !== playUserColor) {
+        playAiMove();
+      }
+      return true;
+    },
+    [chess, mode, playUserColor, playAiMove],
+  );
+
+  // ── start play vs AI ──
+  const startPlayVsAi = useCallback(
+    (userColor: "w" | "b") => {
+      chess.reset();
+      setFen(chess.fen());
+      setMode("play");
+      setPlayUserColor(userColor);
+      setAiHint(null);
+      setGameOverMsg(null);
+      if (userColor === "b") {
+        // AI plays first as white
+        setTimeout(() => {
+          setAiThinking(true);
+          setTimeout(() => {
+            const best = findBestMove(chess.fen(), aiDepth);
+            if (best) {
+              chess.move(best.san);
+              setFen(chess.fen());
+            }
+            setAiThinking(false);
+          }, 30);
+        }, 0);
+      }
+    },
+    [chess, aiDepth],
+  );
+
+  const resetFree = useCallback(() => {
+    chess.reset();
+    setFen(chess.fen());
+    setMode("free");
+    setAiHint(null);
+    setGameOverMsg(null);
+  }, [chess]);
+
+  const exitReview = useCallback(() => {
+    chess.reset();
+    setFen(chess.fen());
+    setMode("free");
+    setReviewMoves([]);
+    setReviewIdx(0);
+    setReviewTitle("");
+    setReviewOpening(null);
+  }, [chess]);
+
+  const suggestBestMove = useCallback(() => {
+    const f = mode === "review" ? currentFen : fen;
+    setAiThinking(true);
+    setTimeout(() => {
+      const best = findBestMove(f, Math.max(aiDepth, 3));
+      setAiHint(best);
+      setAiThinking(false);
+    }, 30);
+  }, [mode, currentFen, fen, aiDepth]);
+
+  // ── keyboard nav for review ──
+  useEffect(() => {
+    if (mode !== "review") return;
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setReviewIdx((i) => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setReviewIdx((i) => Math.min(reviewMoves.length, i + 1));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setReviewIdx(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setReviewIdx(reviewMoves.length);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, reviewMoves.length]);
+
+  const scrollTo = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   return (
-    <div style={{ padding: "32px 24px", maxWidth: 1180, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1
+    <div
+      style={{
+        background: C.bg,
+        color: C.text,
+        minHeight: "100vh",
+        fontFamily:
+          "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+      }}
+    >
+      {/* ── NAV ── */}
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          background: "rgba(8,8,8,0.85)",
+          backdropFilter: "blur(8px)",
+          borderBottom: `1px solid ${C.border}`,
+        }}
+      >
+        <div
           style={{
-            margin: 0,
-            color: C.text,
-            fontSize: 30,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
+            maxWidth: 1200,
+            margin: "0 auto",
+            padding: "14px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
           }}
         >
-          Chess Coach
-        </h1>
-        <p style={{ margin: "6px 0 0", color: C.textDim, fontSize: 15 }}>
-          Analyze your games, search Lichess stats, and improve your play.
-        </p>
-      </div>
+          <a
+            href="/chess"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              color: C.text,
+              textDecoration: "none",
+              fontWeight: 700,
+              fontSize: 16,
+            }}
+          >
+            <span
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 7,
+                background: `linear-gradient(135deg,${C.accent},${C.accentBright})`,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 16,
+              }}
+            >
+              ♟
+            </span>
+            ChessCoach <span style={{ color: C.textMuted, fontWeight: 500 }}>by Nexyru</span>
+          </a>
+          <nav className="cc-nav-links" style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <a
+              href="#features"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollTo("features");
+              }}
+              style={navLink}
+            >
+              Features
+            </a>
+            <a
+              href="#lichess"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollTo("lichess");
+              }}
+              style={navLink}
+            >
+              Lichess Search
+            </a>
+            <a
+              href="#import"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollTo("import");
+              }}
+              style={navLink}
+            >
+              PGN Import
+            </a>
+          </nav>
+          <a
+            href="/"
+            style={{
+              color: C.textDim,
+              textDecoration: "none",
+              fontSize: 13,
+              padding: "8px 14px",
+              border: `1px solid ${C.border}`,
+              borderRadius: 8,
+              fontWeight: 500,
+            }}
+          >
+            ← Back to Nexyru
+          </a>
+        </div>
+      </header>
 
-      {/* Lichess search */}
-      <SectionCard title="Search Lichess">
+      {/* ── HERO ── */}
+      <section
+        style={{
+          padding: "72px 24px 56px",
+          maxWidth: 1200,
+          margin: "0 auto",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 48,
+            alignItems: "center",
+          }}
+          className="cc-hero-grid"
+        >
+          <div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "5px 12px",
+                background: C.accentDim,
+                border: `1px solid ${C.accent}`,
+                borderRadius: 999,
+                fontSize: 12,
+                color: C.accentBright,
+                fontWeight: 600,
+                marginBottom: 20,
+              }}
+            >
+              <span>♟</span> Free chess coaching, powered by Lichess
+            </div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 56,
+                fontWeight: 800,
+                letterSpacing: "-0.03em",
+                lineHeight: 1.05,
+              }}
+              className="cc-hero-h1"
+            >
+              Your personal chess coach.
+            </h1>
+            <p
+              style={{
+                margin: "20px 0 32px",
+                fontSize: 18,
+                color: C.textDim,
+                maxWidth: 560,
+                lineHeight: 1.6,
+              }}
+            >
+              Search your Lichess profile, review your games, and find exactly where you&apos;re losing.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button
+                onClick={() => scrollTo("lichess")}
+                style={{
+                  background: C.accent,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "13px 22px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "background 150ms",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = C.accentBright)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = C.accent)}
+              >
+                Search Lichess username
+              </button>
+              <button
+                onClick={() => scrollTo("import")}
+                style={{
+                  background: "transparent",
+                  color: C.text,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 10,
+                  padding: "13px 22px",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "border-color 150ms, background 150ms",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#2a2a3a";
+                  e.currentTarget.style.background = C.card2;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = C.border;
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                Import Chess.com games
+              </button>
+            </div>
+          </div>
+
+          {/* Mini illustration */}
+          <MiniBoard />
+        </div>
+      </section>
+
+      {/* ── LICHESS SEARCH ── */}
+      <section
+        id="lichess"
+        style={{
+          padding: "32px 24px 48px",
+          maxWidth: 1200,
+          margin: "0 auto",
+        }}
+      >
+        <SectionHeader
+          eyebrow="Lichess"
+          title="Search any Lichess player"
+          subtitle="Type a username to see ratings, recent games, and openings."
+        />
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSearch(usernameInput);
           }}
-          style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
+          style={{
+            display: "flex",
+            gap: 10,
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 14,
+            padding: 12,
+            marginBottom: 24,
+            flexWrap: "wrap",
+          }}
         >
           <input
             value={usernameInput}
             onChange={(e) => setUsernameInput(e.target.value)}
-            placeholder="Search Lichess username..."
+            placeholder="Enter Lichess username..."
             style={{
               flex: 1,
               minWidth: 240,
-              background: C.card2,
-              border: `1px solid ${C.border}`,
-              borderRadius: 8,
-              padding: "10px 14px",
+              background: "transparent",
+              border: "none",
+              padding: "12px 14px",
               color: C.text,
-              fontSize: 14,
+              fontSize: 16,
               outline: "none",
             }}
           />
           <button
             type="submit"
-            disabled={loading}
+            disabled={searchLoading}
             style={{
               background: C.accent,
-              border: "none",
               color: "#fff",
-              borderRadius: 8,
-              padding: "10px 18px",
+              border: "none",
+              borderRadius: 10,
+              padding: "0 22px",
+              minHeight: 44,
               fontSize: 14,
               fontWeight: 600,
-              cursor: loading ? "wait" : "pointer",
-              opacity: loading ? 0.7 : 1,
+              cursor: searchLoading ? "wait" : "pointer",
+              opacity: searchLoading ? 0.7 : 1,
             }}
           >
-            {loading ? "Searching..." : "Search"}
+            {searchLoading ? "Searching..." : "Search"}
           </button>
         </form>
 
-        {error && (
+        {searchError && (
           <div
             style={{
-              marginTop: 14,
-              padding: "10px 14px",
-              borderRadius: 8,
+              padding: "12px 16px",
+              borderRadius: 10,
               background: "rgba(239,68,68,0.08)",
               border: "1px solid rgba(239,68,68,0.25)",
               color: "#fca5a5",
-              fontSize: 13,
+              fontSize: 14,
+              marginBottom: 16,
             }}
           >
-            {error}
+            {searchError}
           </div>
         )}
 
         {profile && (
-          <ProfileBlock
-            profile={profile}
-            games={lichessGames}
-            onSelectGame={(g) => {
-              if (g.pgn) {
-                const title = `${g.players.white.user?.name ?? "?"} vs ${g.players.black.user?.name ?? "?"}`;
-                loadPgn(g.pgn, title);
-                // Scroll to board
-                document.getElementById("chess-board-anchor")?.scrollIntoView({ behavior: "smooth" });
-              }
-            }}
-          />
+          <>
+            <PlayerCard profile={profile} />
+            <RatingGrid profile={profile} />
+            <RecentGamesTable
+              games={lichessGames}
+              you={profile.username}
+              onSelect={(g) => {
+                if (g.moves) {
+                  const title = `${g.players.white.user?.name ?? "?"} vs ${g.players.black.user?.name ?? "?"}`;
+                  loadGameFromMoves(g.moves, title, g.opening?.name);
+                  scrollTo("board");
+                }
+              }}
+            />
+          </>
         )}
-      </SectionCard>
+      </section>
 
-      {/* Chess.com import */}
-      <SectionCard title="Import from Chess.com">
-        <ol style={{ margin: "0 0 14px", paddingLeft: 18, color: C.textDim, fontSize: 13.5, lineHeight: 1.7 }}>
-          <li>Go to chess.com/games</li>
-          <li>Click Archive</li>
-          <li>Export PGN</li>
-          <li>Upload here</li>
-        </ol>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      {/* ── BOARD ── */}
+      <section
+        id="board"
+        style={{
+          padding: "32px 24px 48px",
+          maxWidth: 1200,
+          margin: "0 auto",
+        }}
+      >
+        <SectionHeader
+          eyebrow="Board"
+          title="Play, analyze, review"
+          subtitle="Play against a built-in AI, analyze any position, or step through your games."
+        />
+        <BoardCard
+          fen={currentFen}
+          mode={mode}
+          onDrop={onPieceDrop}
+          reviewMoves={reviewMoves}
+          reviewIdx={reviewIdx}
+          setReviewIdx={setReviewIdx}
+          reviewTitle={reviewTitle}
+          reviewOpening={reviewOpening}
+          openingFreq={openingFreq}
+          onStartPlay={startPlayVsAi}
+          onResetFree={resetFree}
+          onExitReview={exitReview}
+          onSuggest={suggestBestMove}
+          aiHint={aiHint}
+          aiThinking={aiThinking}
+          aiDepth={aiDepth}
+          setAiDepth={setAiDepth}
+          playUserColor={playUserColor}
+          gameOverMsg={gameOverMsg}
+        />
+      </section>
+
+      {/* ── PGN IMPORT ── */}
+      <section
+        id="import"
+        style={{
+          padding: "32px 24px 48px",
+          maxWidth: 1200,
+          margin: "0 auto",
+        }}
+      >
+        <SectionHeader
+          eyebrow="Import"
+          title="Import from Chess.com"
+          subtitle="Export your archive as a PGN file and drop it in."
+        />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+            marginBottom: 20,
+          }}
+        >
+          {STEPS.map((s, i) => (
+            <div
+              key={i}
+              style={{
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                padding: 16,
+              }}
+            >
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  background: C.accentDim,
+                  border: `1px solid ${C.accent}`,
+                  color: C.accentBright,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  marginBottom: 10,
+                }}
+              >
+                {i + 1}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{s.title}</div>
+              <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.5 }}>{s.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 14,
+            padding: 20,
+          }}
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -431,393 +1055,591 @@ function ChessPageInner() {
             }}
             style={{ display: "none" }}
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              background: C.card2,
-              border: `1px solid ${C.border}`,
-              color: C.text,
-              borderRadius: 8,
-              padding: "10px 18px",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Choose PGN file
-          </button>
-          {importedGames.length > 0 && (
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                background: C.accent,
+                color: "#fff",
+                border: "none",
+                borderRadius: 10,
+                padding: "11px 20px",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Upload PGN file
+            </button>
             <span style={{ color: C.textDim, fontSize: 13 }}>
-              {importedGames.length} game{importedGames.length === 1 ? "" : "s"} loaded
+              {importedGames.length
+                ? `${importedGames.length} game${importedGames.length === 1 ? "" : "s"} imported`
+                : "No file selected"}
             </span>
+          </div>
+          {importErr && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.25)",
+                color: "#fca5a5",
+                fontSize: 13,
+              }}
+            >
+              {importErr}
+            </div>
+          )}
+          {importedGames.length > 0 && (
+            <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+              {importedGames.map((g) => (
+                <ImportedRow
+                  key={g.id}
+                  g={g}
+                  onClick={() => {
+                    loadGameFromPgn(g.pgn, `${g.white} vs ${g.black}`);
+                    scrollTo("board");
+                  }}
+                />
+              ))}
+            </div>
           )}
         </div>
-        {importErr && (
-          <div
-            style={{
-              marginTop: 12,
-              padding: "10px 14px",
-              borderRadius: 8,
-              background: "rgba(239,68,68,0.08)",
-              border: "1px solid rgba(239,68,68,0.25)",
-              color: "#fca5a5",
-              fontSize: 13,
-            }}
-          >
-            {importErr}
-          </div>
-        )}
+      </section>
 
-        {importedGames.length > 0 && (
-          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-            {importedGames.map((g) => (
-              <ImportedRow
-                key={g.id}
-                game={g}
-                onClick={() => {
-                  loadPgn(g.pgn, `${g.white} vs ${g.black}`);
-                  document.getElementById("chess-board-anchor")?.scrollIntoView({ behavior: "smooth" });
+      {/* ── FEATURES ── */}
+      <section
+        id="features"
+        style={{
+          padding: "32px 24px 64px",
+          maxWidth: 1200,
+          margin: "0 auto",
+        }}
+      >
+        <SectionHeader eyebrow="Features" title="Everything you need to get better" subtitle="" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 16,
+          }}
+        >
+          {FEATURES.map((f) => (
+            <div
+              key={f.title}
+              style={{
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 14,
+                padding: 22,
+              }}
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: C.accentDim,
+                  border: `1px solid ${C.accent}`,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 18,
+                  marginBottom: 14,
                 }}
-              />
-            ))}
-          </div>
-        )}
-      </SectionCard>
+              >
+                {f.icon}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{f.title}</div>
+              <div style={{ fontSize: 13.5, color: C.textDim, lineHeight: 1.6 }}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      {/* Chess board */}
-      <div id="chess-board-anchor" />
-      <SectionCard title="Board">
-        <BoardView
-          fen={currentFen}
-          moves={moves}
-          moveIdx={moveIdx}
-          setMoveIdx={setMoveIdx}
-          title={selectedTitle}
-          opening={currentOpening}
-          openingFreq={openingFreq}
-        />
-      </SectionCard>
+      {/* ── FOOTER ── */}
+      <footer
+        style={{
+          borderTop: `1px solid ${C.border}`,
+          padding: "28px 24px",
+          textAlign: "center",
+          color: C.textMuted,
+          fontSize: 13,
+        }}
+      >
+        ChessCoach by Nexyru · Free forever ·{" "}
+        <a href="/" style={{ color: C.textDim, textDecoration: "none" }}>
+          nexyru.com
+        </a>
+      </footer>
+
+      {/* responsive helpers */}
+      <style jsx>{`
+        @media (max-width: 760px) {
+          :global(.cc-hero-grid) {
+            grid-template-columns: 1fr !important;
+          }
+          :global(.cc-hero-h1) {
+            font-size: 38px !important;
+          }
+          :global(.cc-nav-links) {
+            display: none !important;
+          }
+          :global(.cc-board-grid) {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
-// ───────────────────────── components ─────────────────────────
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+// ───────────────────────── helpers UI ─────────────────────────
+const navLink: React.CSSProperties = {
+  color: C.textDim,
+  textDecoration: "none",
+  fontSize: 13.5,
+  fontWeight: 500,
+  transition: "color 150ms",
+};
+
+const STEPS = [
+  { title: "Go to chess.com/games", desc: "Sign in and open your games list." },
+  { title: "Click Archive", desc: "Switch to your archive view." },
+  { title: "Export PGN", desc: "Use Download → PGN to grab a file." },
+  { title: "Upload here", desc: "Drop the file into the uploader below." },
+];
+
+const FEATURES = [
+  {
+    icon: "🔍",
+    title: "Lichess Integration",
+    desc: "Search any Lichess username and instantly see their full stats and game history.",
+  },
+  {
+    icon: "🤖",
+    title: "AI Move Analysis",
+    desc: "Get the best move and coaching explanation for any position.",
+  },
+  {
+    icon: "📖",
+    title: "Game Review",
+    desc: "Step through your games move by move and find your mistakes.",
+  },
+];
+
+function SectionHeader({
+  eyebrow,
+  title,
+  subtitle,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+}) {
   return (
-    <section
-      style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: 12,
-        padding: 20,
-        marginBottom: 18,
-      }}
-    >
+    <div style={{ marginBottom: 22 }}>
+      <div
+        style={{
+          color: C.accentBright,
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          marginBottom: 6,
+        }}
+      >
+        {eyebrow}
+      </div>
       <h2
         style={{
-          margin: "0 0 14px",
-          color: C.text,
-          fontSize: 15,
+          margin: 0,
+          fontSize: 26,
           fontWeight: 700,
-          letterSpacing: "0.02em",
-          textTransform: "uppercase",
+          letterSpacing: "-0.02em",
         }}
       >
         {title}
       </h2>
-      {children}
-    </section>
-  );
-}
-
-function ProfileBlock({
-  profile,
-  games,
-  onSelectGame,
-}: {
-  profile: LichessProfile;
-  games: LichessGame[];
-  onSelectGame: (g: LichessGame) => void;
-}) {
-  const username = profile.username;
-  return (
-    <div style={{ marginTop: 18 }}>
-      {/* Identity row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg,#6366f1,#4f46e5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            fontSize: 20,
-            color: "#fff",
-            flexShrink: 0,
-          }}
-        >
-          {initials(username)}
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {profile.title && (
-              <span
-                style={{
-                  background: C.amber,
-                  color: "#1a1306",
-                  padding: "2px 8px",
-                  borderRadius: 5,
-                  fontWeight: 800,
-                  fontSize: 11,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {profile.title}
-              </span>
-            )}
-            <span style={{ color: C.text, fontWeight: 700, fontSize: 18 }}>{username}</span>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 12,
-                color: profile.online ? C.green : C.textMuted,
-              }}
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: profile.online ? C.green : C.textMuted,
-                  boxShadow: profile.online ? `0 0 8px ${C.green}` : "none",
-                }}
-              />
-              {profile.online ? "Online" : "Offline"}
-            </span>
-          </div>
-          {profile.profile?.bio && (
-            <div
-              style={{
-                marginTop: 4,
-                color: C.textDim,
-                fontSize: 12.5,
-                lineHeight: 1.5,
-                maxWidth: 720,
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-              }}
-            >
-              {profile.profile.bio}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Rating cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-          gap: 10,
-          marginBottom: 22,
-        }}
-      >
-        {PERF_TYPES.map((p) => (
-          <RatingCard key={p} kind={p} perf={profile.perfs?.[p]} count={profile.count} />
-        ))}
-      </div>
-
-      {/* Recent games */}
-      <div>
-        <div
-          style={{
-            color: C.textDim,
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            marginBottom: 8,
-          }}
-        >
-          Recent games
-        </div>
-        {games.length === 0 ? (
-          <div style={{ color: C.textMuted, fontSize: 13, padding: "8px 0" }}>No games found.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {games.map((g) => (
-              <GameRow key={g.id} game={g} you={username} onClick={() => onSelectGame(g)} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function RatingCard({
-  kind,
-  perf,
-  count,
-}: {
-  kind: PerfKey;
-  perf?: LichessPerf;
-  count?: LichessCount;
-}) {
-  const rating = perf?.rating;
-  const games = perf?.games ?? 0;
-  // count is total record across all games; we only show it on the bullet card aggregate is misleading
-  // To match the spec ("W/L/D for each time control"), Lichess does NOT expose per-perf record
-  // We expose total W/L/D once and show per-perf game count instead.
-  const isAggregate = kind === "bullet";
-  return (
-    <div
-      style={{
-        background: C.card2,
-        border: `1px solid ${C.border}`,
-        borderRadius: 10,
-        padding: 14,
-      }}
-    >
-      <div
-        style={{
-          color: C.textDim,
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-        }}
-      >
-        {kind}
-      </div>
-      <div
-        style={{
-          color: C.text,
-          fontSize: 22,
-          fontWeight: 800,
-          marginTop: 4,
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {rating ?? "—"}
-        {perf?.prov && (
-          <span
-            style={{
-              fontSize: 10,
-              color: C.textMuted,
-              marginLeft: 4,
-              fontWeight: 600,
-            }}
-          >
-            ?
-          </span>
-        )}
-      </div>
-      <div style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>
-        {games.toLocaleString()} {games === 1 ? "game" : "games"}
-      </div>
-      {isAggregate && count && (
-        <div style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 11 }}>
-          <span style={{ color: C.green }}>{count.win ?? 0}W</span>
-          <span style={{ color: C.red }}>{count.loss ?? 0}L</span>
-          <span style={{ color: C.textDim }}>{count.draw ?? 0}D</span>
-        </div>
+      {subtitle && (
+        <p style={{ margin: "6px 0 0", color: C.textDim, fontSize: 14.5 }}>{subtitle}</p>
       )}
     </div>
   );
 }
 
-function GameRow({
-  game,
-  you,
-  onClick,
-}: {
-  game: LichessGame;
-  you: string;
-  onClick: () => void;
-}) {
-  const result = gameResult(game, you);
-  const youAreWhite = game.players.white.user?.name?.toLowerCase() === you.toLowerCase();
-  const opp = youAreWhite ? game.players.black : game.players.white;
-  const oppName = opp.user?.name ?? (opp.aiLevel ? `Stockfish lvl ${opp.aiLevel}` : "anon");
-  const resultColor = result === "W" ? C.green : result === "L" ? C.red : C.textDim;
+function MiniBoard() {
+  // 4x4 micro layout for a decorative hero illustration
+  const layout: (string | null)[][] = [
+    ["♜", "♞", "♝", "♛"],
+    ["♟", "♟", "♟", "♟"],
+    [null, null, null, null],
+    ["♙", "♙", "♙", "♙"],
+  ];
   return (
-    <button
-      onClick={onClick}
+    <div
       style={{
-        textAlign: "left",
-        background: C.card2,
+        width: 240,
+        height: 240,
+        borderRadius: 14,
         border: `1px solid ${C.border}`,
-        borderRadius: 8,
-        padding: "10px 14px",
-        color: C.text,
-        cursor: "pointer",
+        padding: 10,
+        background: C.card,
         display: "grid",
-        gridTemplateColumns: "28px 1fr auto auto",
-        gap: 12,
-        alignItems: "center",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gridTemplateRows: "repeat(4, 1fr)",
+        gap: 0,
+        overflow: "hidden",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#2a2a3a")}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.border)}
+      aria-hidden
     >
-      <span
-        style={{
-          color: resultColor,
-          fontWeight: 800,
-          fontSize: 14,
-          textAlign: "center",
-        }}
-      >
-        {result}
-      </span>
-      <span style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600 }}>vs {oppName}</div>
-        <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>
-          {game.opening?.name ?? game.variant ?? "Standard"}
-        </div>
-      </span>
-      <span
-        style={{
-          fontSize: 11,
-          color: C.textMuted,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-        }}
-      >
-        {game.speed ?? game.perf ?? ""}
-      </span>
-      <span style={{ fontSize: 11.5, color: C.textDim }}>{fmtDate(game.createdAt)}</span>
-    </button>
+      {layout.flatMap((row, r) =>
+        row.map((piece, f) => {
+          const dark = (r + f) % 2 === 1;
+          const isBlackPiece = piece && "♜♞♝♛♚♟".includes(piece);
+          return (
+            <div
+              key={`${r}-${f}`}
+              style={{
+                background: dark ? C.squareDark : C.squareLight,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 38,
+                lineHeight: 1,
+                color: isBlackPiece ? "#1a1a1a" : "#fff",
+                textShadow: isBlackPiece ? "none" : "0 1px 2px rgba(0,0,0,0.35)",
+              }}
+            >
+              {piece}
+            </div>
+          );
+        }),
+      )}
+    </div>
   );
 }
 
-function ImportedRow({ game, onClick }: { game: ImportedGame; onClick: () => void }) {
+function PlayerCard({ profile }: { profile: LichessProfile }) {
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 14,
+        padding: 22,
+        display: "flex",
+        gap: 18,
+        alignItems: "center",
+        marginBottom: 18,
+        flexWrap: "wrap",
+      }}
+    >
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: "50%",
+          background: `linear-gradient(135deg,${C.accent},${C.accentBright})`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 800,
+          fontSize: 22,
+          color: "#fff",
+          flexShrink: 0,
+        }}
+      >
+        {initials(profile.username)}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {profile.title && (
+            <span
+              style={{
+                background: C.amber,
+                color: "#1a1306",
+                padding: "2px 8px",
+                borderRadius: 5,
+                fontWeight: 800,
+                fontSize: 11,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {profile.title}
+            </span>
+          )}
+          <span style={{ fontWeight: 700, fontSize: 20 }}>{profile.username}</span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: profile.online ? C.green : C.textMuted,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: profile.online ? C.green : C.textMuted,
+                boxShadow: profile.online ? `0 0 8px ${C.green}` : "none",
+              }}
+            />
+            {profile.online ? "Online" : "Offline"}
+          </span>
+        </div>
+        <div style={{ marginTop: 6, color: C.textDim, fontSize: 13 }}>
+          Member since {memberSince(profile.createdAt)}
+          {profile.profile?.country ? ` · ${profile.profile.country}` : ""}
+        </div>
+        {profile.profile?.bio && (
+          <div
+            style={{
+              marginTop: 6,
+              color: C.textDim,
+              fontSize: 13,
+              lineHeight: 1.5,
+              maxWidth: 700,
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
+            {profile.profile.bio}
+          </div>
+        )}
+      </div>
+      {profile.url && (
+        <a
+          href={profile.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: C.textDim,
+            textDecoration: "none",
+            fontSize: 13,
+            padding: "8px 14px",
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            fontWeight: 500,
+          }}
+        >
+          View on Lichess ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
+const RATING_KINDS: { key: string; label: string }[] = [
+  { key: "bullet", label: "Bullet" },
+  { key: "blitz", label: "Blitz" },
+  { key: "rapid", label: "Rapid" },
+  { key: "classical", label: "Classical" },
+  { key: "correspondence", label: "Correspondence" },
+  { key: "puzzle", label: "Puzzle" },
+];
+
+function RatingGrid({ profile }: { profile: LichessProfile }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+        gap: 10,
+        marginBottom: 24,
+      }}
+    >
+      {RATING_KINDS.map((k) => {
+        const p = profile.perfs?.[k.key];
+        const rating = p?.rating;
+        const games = p?.games ?? 0;
+        return (
+          <div
+            key={k.key}
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 12,
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                color: C.textDim,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}
+            >
+              {k.label}
+            </div>
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 800,
+                marginTop: 4,
+                letterSpacing: "-0.01em",
+                color: rating ? C.text : C.textMuted,
+              }}
+            >
+              {rating ?? "—"}
+              {p?.prov && (
+                <span
+                  style={{ fontSize: 11, color: C.textMuted, marginLeft: 4, fontWeight: 600 }}
+                >
+                  ?
+                </span>
+              )}
+            </div>
+            <div style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>
+              {games.toLocaleString()} {games === 1 ? "game" : "games"}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RecentGamesTable({
+  games,
+  you,
+  onSelect,
+}: {
+  games: LichessGame[];
+  you: string;
+  onSelect: (g: LichessGame) => void;
+}) {
+  if (!games.length) {
+    return (
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: 18,
+          color: C.textMuted,
+          fontSize: 13,
+        }}
+      >
+        No recent games found.
+      </div>
+    );
+  }
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 14,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "70px 1fr 1fr 80px 90px",
+          padding: "10px 16px",
+          borderBottom: `1px solid ${C.border}`,
+          fontSize: 11,
+          fontWeight: 700,
+          color: C.textMuted,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}
+      >
+        <span>Result</span>
+        <span>Players</span>
+        <span>Opening</span>
+        <span>Time</span>
+        <span style={{ textAlign: "right" }}>Date</span>
+      </div>
+      {games.map((g, i) => {
+        const result = gameResultForUser(g, you);
+        const youWhite = g.players.white.user?.name?.toLowerCase() === you.toLowerCase();
+        const oppPlayer = youWhite ? g.players.black : g.players.white;
+        const oppName =
+          oppPlayer.user?.name ??
+          (oppPlayer.aiLevel ? `Stockfish lvl ${oppPlayer.aiLevel}` : "anon");
+        const resultColor = result === "W" ? C.green : result === "L" ? C.red : C.textDim;
+        return (
+          <button
+            key={g.id}
+            onClick={() => onSelect(g)}
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              display: "grid",
+              gridTemplateColumns: "70px 1fr 1fr 80px 90px",
+              padding: "12px 16px",
+              borderTop: i === 0 ? "none" : `1px solid ${C.borderSoft}`,
+              fontSize: 13.5,
+              alignItems: "center",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = C.card2)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <span style={{ color: resultColor, fontWeight: 800 }}>{result}</span>
+            <span style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>vs {oppName}</div>
+              <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 2 }}>
+                {youWhite ? "white" : "black"}
+                {oppPlayer.rating ? ` · opp ${oppPlayer.rating}` : ""}
+              </div>
+            </span>
+            <span style={{ color: C.textDim, minWidth: 0 }}>
+              {g.opening?.name ?? g.variant ?? "—"}
+            </span>
+            <span
+              style={{
+                color: C.textMuted,
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {g.speed ?? g.perf ?? ""}
+            </span>
+            <span style={{ color: C.textDim, fontSize: 12, textAlign: "right" }}>
+              {fmtDate(g.createdAt)}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ImportedRow({ g, onClick }: { g: ImportedGame; onClick: () => void }) {
   const resultColor =
-    game.result === "1-0"
+    g.result === "1-0"
       ? C.green
-      : game.result === "0-1"
+      : g.result === "0-1"
         ? C.red
-        : game.result === "1/2-1/2"
+        : g.result === "1/2-1/2"
           ? C.textDim
           : C.textMuted;
   return (
     <button
       onClick={onClick}
       style={{
-        textAlign: "left",
+        all: "unset",
+        cursor: "pointer",
         background: C.card2,
         border: `1px solid ${C.border}`,
-        borderRadius: 8,
+        borderRadius: 10,
         padding: "10px 14px",
-        color: C.text,
-        cursor: "pointer",
         display: "grid",
         gridTemplateColumns: "1fr auto auto",
         gap: 12,
@@ -827,47 +1649,82 @@ function ImportedRow({ game, onClick }: { game: ImportedGame; onClick: () => voi
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.border)}
     >
       <span style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-          {game.white} <span style={{ color: C.textMuted, fontWeight: 400 }}>vs</span> {game.black}
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          {g.white} <span style={{ color: C.textMuted, fontWeight: 400 }}>vs</span> {g.black}
         </div>
-        <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>
-          {game.opening ?? "—"}
-        </div>
+        <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>{g.opening ?? "—"}</div>
       </span>
-      <span style={{ color: resultColor, fontWeight: 700, fontSize: 13 }}>{game.result}</span>
-      <span style={{ fontSize: 11.5, color: C.textDim }}>{game.date ?? ""}</span>
+      <span style={{ color: resultColor, fontWeight: 700, fontSize: 13 }}>{g.result}</span>
+      <span style={{ fontSize: 12, color: C.textDim }}>{g.date ?? ""}</span>
     </button>
   );
 }
 
-function BoardView({
-  fen,
-  moves,
-  moveIdx,
-  setMoveIdx,
-  title,
-  opening,
-  openingFreq,
-}: {
+interface BoardCardProps {
   fen: string;
-  moves: { san: string; fen: string }[];
-  moveIdx: number;
-  setMoveIdx: (i: number | ((p: number) => number)) => void;
-  title: string;
-  opening: string | null;
+  mode: Mode;
+  onDrop: (a: { sourceSquare: string; targetSquare: string | null }) => boolean;
+  reviewMoves: { san: string; fen: string }[];
+  reviewIdx: number;
+  setReviewIdx: (i: number | ((p: number) => number)) => void;
+  reviewTitle: string;
+  reviewOpening: string | null;
   openingFreq: { map: Map<string, number>; total: number };
-}) {
+  onStartPlay: (color: "w" | "b") => void;
+  onResetFree: () => void;
+  onExitReview: () => void;
+  onSuggest: () => void;
+  aiHint: BestMove | null;
+  aiThinking: boolean;
+  aiDepth: number;
+  setAiDepth: (d: number) => void;
+  playUserColor: "w" | "b";
+  gameOverMsg: string | null;
+}
+
+function BoardCard(props: BoardCardProps) {
+  const {
+    fen,
+    mode,
+    onDrop,
+    reviewMoves,
+    reviewIdx,
+    setReviewIdx,
+    reviewTitle,
+    reviewOpening,
+    openingFreq,
+    onStartPlay,
+    onResetFree,
+    onExitReview,
+    onSuggest,
+    aiHint,
+    aiThinking,
+    aiDepth,
+    setAiDepth,
+    playUserColor,
+    gameOverMsg,
+  } = props;
+
+  const opening = reviewOpening;
   const total = openingFreq.total;
-  const openingCount = opening ? openingFreq.map.get(opening) ?? 0 : 0;
-  const pct = total > 0 && openingCount > 0 ? Math.round((openingCount / total) * 100) : null;
+  const count = opening ? openingFreq.map.get(opening) ?? 0 : 0;
+  const pct = total > 0 && count > 0 ? Math.round((count / total) * 100) : null;
+
+  const arrows = aiHint
+    ? [{ startSquare: aiHint.from, endSquare: aiHint.to, color: C.accentBright }]
+    : [];
 
   return (
     <div
+      className="cc-board-grid"
       style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 14,
+        padding: 20,
         display: "grid",
         gridTemplateColumns: "minmax(280px, 480px) 1fr",
         gap: 24,
-        alignItems: "start",
       }}
     >
       <div>
@@ -875,7 +1732,7 @@ function BoardView({
           style={{
             width: "100%",
             aspectRatio: "1 / 1",
-            borderRadius: 8,
+            borderRadius: 10,
             overflow: "hidden",
             border: `1px solid ${C.border}`,
           }}
@@ -883,68 +1740,170 @@ function BoardView({
           <Chessboard
             options={{
               position: fen,
+              boardOrientation: mode === "play" && playUserColor === "b" ? "black" : "white",
               boardStyle: { width: "100%", height: "100%" },
-              darkSquareStyle: { backgroundColor: C.dark },
-              lightSquareStyle: { backgroundColor: C.light },
+              darkSquareStyle: { backgroundColor: C.squareDark },
+              lightSquareStyle: { backgroundColor: C.squareLight },
               animationDurationInMs: 180,
-              allowDragging: moves.length === 0, // free play only when no game loaded
+              allowDragging: mode !== "review",
+              onPieceDrop: onDrop,
+              arrows,
+              showNotation: true,
             }}
           />
         </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            marginTop: 12,
-            justifyContent: "center",
-          }}
-        >
-          <NavBtn onClick={() => setMoveIdx(0)} label="⏮" disabled={!moves.length || moveIdx === 0} />
-          <NavBtn
-            onClick={() => setMoveIdx((i) => Math.max(0, i - 1))}
-            label="◀"
-            disabled={!moves.length || moveIdx === 0}
-          />
-          <NavBtn
-            onClick={() => setMoveIdx((i) => Math.min(moves.length, i + 1))}
-            label="▶"
-            disabled={!moves.length || moveIdx >= moves.length}
-          />
-          <NavBtn
-            onClick={() => setMoveIdx(moves.length)}
-            label="⏭"
-            disabled={!moves.length || moveIdx >= moves.length}
-          />
-        </div>
-        <div
-          style={{
-            textAlign: "center",
-            color: C.textMuted,
-            fontSize: 11,
-            marginTop: 8,
-          }}
-        >
-          Use ← / → to step through moves
-        </div>
+        {mode === "review" && (
+          <div style={{ display: "flex", gap: 6, marginTop: 12, justifyContent: "center" }}>
+            <NavBtn onClick={() => setReviewIdx(0)} label="⏮" disabled={reviewIdx === 0} />
+            <NavBtn
+              onClick={() => setReviewIdx((i) => Math.max(0, i - 1))}
+              label="◀"
+              disabled={reviewIdx === 0}
+            />
+            <NavBtn
+              onClick={() => setReviewIdx((i) => Math.min(reviewMoves.length, i + 1))}
+              label="▶"
+              disabled={reviewIdx >= reviewMoves.length}
+            />
+            <NavBtn
+              onClick={() => setReviewIdx(reviewMoves.length)}
+              label="⏭"
+              disabled={reviewIdx >= reviewMoves.length}
+            />
+          </div>
+        )}
+        {mode === "review" && (
+          <div style={{ textAlign: "center", color: C.textMuted, fontSize: 11, marginTop: 8 }}>
+            Use ← / → to step through moves
+          </div>
+        )}
       </div>
 
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: C.text, fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{title}</div>
-        <div style={{ color: C.textDim, fontSize: 13, marginBottom: 14 }}>
-          {moves.length > 0
-            ? `Move ${moveIdx} of ${moves.length}`
-            : "Click a game from above to load it."}
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Mode bar */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <ModePill active={mode === "free"} onClick={onResetFree} label="Analyze" />
+          <ModePill
+            active={mode === "play"}
+            onClick={() => onStartPlay("w")}
+            label="Play as White"
+          />
+          <ModePill
+            active={mode === "play" && playUserColor === "b"}
+            onClick={() => onStartPlay("b")}
+            label="Play as Black"
+          />
+          {mode === "review" && (
+            <ModePill active onClick={onExitReview} label="Exit review" />
+          )}
         </div>
 
-        {/* Opening info */}
-        {(opening || moves.length === 0) && (
+        {/* Title row */}
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>
+            {mode === "review"
+              ? reviewTitle || "Game review"
+              : mode === "play"
+                ? `Playing AI · You are ${playUserColor === "w" ? "white" : "black"}`
+                : "Analyze position"}
+          </div>
+          <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 2 }}>
+            {mode === "review"
+              ? `Move ${reviewIdx} of ${reviewMoves.length}`
+              : aiThinking
+                ? "AI thinking..."
+                : gameOverMsg ?? "Drag pieces to make moves."}
+          </div>
+        </div>
+
+        {/* AI controls */}
+        {mode !== "review" && (
           <div
             style={{
               background: C.card2,
               border: `1px solid ${C.border}`,
-              borderRadius: 8,
+              borderRadius: 10,
               padding: 14,
-              marginBottom: 14,
+            }}
+          >
+            <div
+              style={{
+                color: C.textMuted,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: 8,
+              }}
+            >
+              AI
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                onClick={onSuggest}
+                disabled={aiThinking}
+                style={{
+                  background: C.accent,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "8px 14px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: aiThinking ? "wait" : "pointer",
+                  opacity: aiThinking ? 0.7 : 1,
+                }}
+              >
+                {aiThinking ? "Thinking..." : "Suggest best move"}
+              </button>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  color: C.textDim,
+                  fontSize: 12,
+                }}
+              >
+                Depth
+                <select
+                  value={aiDepth}
+                  onChange={(e) => setAiDepth(Number(e.target.value))}
+                  style={{
+                    background: C.card,
+                    color: C.text,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 6,
+                    padding: "4px 8px",
+                    fontSize: 12,
+                  }}
+                >
+                  <option value={1}>1 (fast)</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3 (slower)</option>
+                </select>
+              </label>
+            </div>
+            {aiHint && (
+              <div style={{ marginTop: 10, fontSize: 13 }}>
+                <span style={{ color: C.textDim }}>Best move: </span>
+                <span style={{ fontWeight: 700 }}>{aiHint.san}</span>
+                <span style={{ color: C.textMuted, marginLeft: 8 }}>
+                  ({(aiHint.score / 100).toFixed(2)})
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Opening info (review only) */}
+        {mode === "review" && opening && (
+          <div
+            style={{
+              background: C.card2,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 14,
             }}
           >
             <div
@@ -959,42 +1918,39 @@ function BoardView({
             >
               Opening
             </div>
-            <div style={{ color: C.text, fontSize: 14, fontWeight: 600 }}>
-              {opening ?? "—"}
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{opening}</div>
             {pct !== null && (
-              <div style={{ color: C.textDim, fontSize: 12, marginTop: 4 }}>
-                You tend to play this opening {pct}% of the time ({openingCount} of {total} recent
-                games).
+              <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>
+                You tend to play this opening {pct}% of the time ({count} of {total} recent games).
               </div>
             )}
           </div>
         )}
 
-        {/* Move list */}
-        {moves.length > 0 && (
+        {/* Move list (review only) */}
+        {mode === "review" && reviewMoves.length > 0 && (
           <div
             style={{
               background: C.card2,
               border: `1px solid ${C.border}`,
-              borderRadius: 8,
+              borderRadius: 10,
               padding: 12,
-              maxHeight: 360,
+              maxHeight: 320,
               overflow: "auto",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               fontSize: 12.5,
               lineHeight: 1.9,
             }}
           >
-            {chunkMoves(moves).map((pair, i) => (
+            {pairMoves(reviewMoves).map((pair, i) => (
               <span key={i} style={{ marginRight: 12 }}>
                 <span style={{ color: C.textMuted, marginRight: 4 }}>{i + 1}.</span>
                 <span
-                  onClick={() => setMoveIdx(i * 2 + 1)}
+                  onClick={() => setReviewIdx(i * 2 + 1)}
                   style={{
                     cursor: "pointer",
-                    color: moveIdx === i * 2 + 1 ? C.accent : C.text,
-                    fontWeight: moveIdx === i * 2 + 1 ? 700 : 500,
+                    color: reviewIdx === i * 2 + 1 ? C.accentBright : C.text,
+                    fontWeight: reviewIdx === i * 2 + 1 ? 700 : 500,
                     marginRight: 6,
                   }}
                 >
@@ -1002,11 +1958,11 @@ function BoardView({
                 </span>
                 {pair[1] && (
                   <span
-                    onClick={() => setMoveIdx(i * 2 + 2)}
+                    onClick={() => setReviewIdx(i * 2 + 2)}
                     style={{
                       cursor: "pointer",
-                      color: moveIdx === i * 2 + 2 ? C.accent : C.text,
-                      fontWeight: moveIdx === i * 2 + 2 ? 700 : 500,
+                      color: reviewIdx === i * 2 + 2 ? C.accentBright : C.text,
+                      fontWeight: reviewIdx === i * 2 + 2 ? 700 : 500,
                     }}
                   >
                     {pair[1].san}
@@ -1050,10 +2006,49 @@ function NavBtn({
   );
 }
 
-function chunkMoves(moves: { san: string; fen: string }[]) {
+function ModePill({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? C.accent : C.card2,
+        color: active ? "#fff" : C.text,
+        border: `1px solid ${active ? C.accent : C.border}`,
+        borderRadius: 8,
+        padding: "8px 14px",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+        transition: "background 150ms, border-color 150ms",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function pairMoves(moves: { san: string; fen: string }[]) {
   const pairs: [{ san: string; fen: string }, { san: string; fen: string } | undefined][] = [];
-  for (let i = 0; i < moves.length; i += 2) {
-    pairs.push([moves[i], moves[i + 1]]);
-  }
+  for (let i = 0; i < moves.length; i += 2) pairs.push([moves[i], moves[i + 1]]);
   return pairs;
+}
+
+function describeGameOver(chess: Chess): string {
+  if (chess.isCheckmate()) {
+    const loser = chess.turn() === "w" ? "White" : "Black";
+    return `Checkmate — ${loser} loses.`;
+  }
+  if (chess.isStalemate()) return "Stalemate.";
+  if (chess.isThreefoldRepetition()) return "Draw by repetition.";
+  if (chess.isInsufficientMaterial()) return "Draw — insufficient material.";
+  if (chess.isDraw()) return "Draw.";
+  return "Game over.";
 }
