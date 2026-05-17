@@ -426,6 +426,16 @@ export default function ChessCoachPage() {
   const [aiDepth, setAiDepth] = useState(4);
   const [gameOverMsg, setGameOverMsg] = useState<string | null>(null);
 
+  // ── live (Chrome extension) ──
+  const [isLive, setIsLive] = useState(false);
+  const lastLiveCountRef = useRef<number>(-1);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setIsLive(params.get("mode") === "live");
+  }, []);
+
   // ── derived ──
   const currentFen = useMemo(() => {
     if (mode === "review") {
@@ -676,6 +686,88 @@ export default function ChessCoachPage() {
     }, 30);
   }, [mode, currentFen, fen, aiDepth]);
 
+  // ── live: apply moves arriving from extension ──
+  const applyLiveMoves = useCallback(
+    (moveList: unknown) => {
+      if (!Array.isArray(moveList)) return;
+      const sanList = moveList.filter((x): x is string => typeof x === "string");
+      if (sanList.length === lastLiveCountRef.current) return;
+      lastLiveCountRef.current = sanList.length;
+
+      const c = new Chess();
+      const stepped: { san: string; fen: string }[] = [];
+      for (const san of sanList) {
+        try {
+          c.move(san);
+        } catch {
+          break;
+        }
+        stepped.push({ san, fen: c.fen() });
+      }
+
+      setMode("review");
+      setReviewMoves(stepped);
+      setReviewIdx(stepped.length);
+      setReviewTitle("Live game");
+      setGameOverMsg(null);
+
+      if (stepped.length > 0) {
+        const lastFen = stepped[stepped.length - 1].fen;
+        setAiThinking(true);
+        setTimeout(() => {
+          const best = findBestMove(lastFen, aiDepth);
+          setAiHint(best);
+          setAiThinking(false);
+        }, 30);
+      } else {
+        setAiHint(null);
+      }
+    },
+    [aiDepth],
+  );
+
+  // ── live: postMessage listener ──
+  useEffect(() => {
+    if (!isLive) return;
+    function onMsg(e: MessageEvent) {
+      const data = e.data;
+      if (!data || typeof data !== "object") return;
+      if ((data as { type?: string }).type !== "CHESS_COACH_UPDATE") return;
+      applyLiveMoves((data as { moveList?: unknown }).moveList);
+    }
+    window.addEventListener("message", onMsg);
+    if (window.opener) {
+      try {
+        window.opener.postMessage({ type: "COACH_READY" }, "*");
+      } catch {
+        // cross-origin opener may reject — fine, extension can poll instead
+      }
+    }
+    return () => window.removeEventListener("message", onMsg);
+  }, [isLive, applyLiveMoves]);
+
+  // ── live: localStorage poll fallback ──
+  useEffect(() => {
+    if (!isLive) return;
+    const id = setInterval(() => {
+      try {
+        const raw = localStorage.getItem("nexyru_chess_live");
+        if (!raw) return;
+        const data = JSON.parse(raw) as { timestamp?: number; moveList?: unknown };
+        if (!data.timestamp || Date.now() - data.timestamp > 10000) return;
+        if (
+          Array.isArray(data.moveList) &&
+          data.moveList.length !== lastLiveCountRef.current
+        ) {
+          applyLiveMoves(data.moveList);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [isLive, applyLiveMoves]);
+
   // ── keyboard nav for review ──
   useEffect(() => {
     if (mode !== "review") return;
@@ -811,6 +903,47 @@ export default function ChessCoachPage() {
           </a>
         </div>
       </header>
+
+      {/* ── LIVE BANNER ── */}
+      {isLive && (
+        <div
+          style={{
+            maxWidth: 1200,
+            margin: "16px auto 0",
+            padding: "0 24px",
+          }}
+        >
+          <div
+            style={{
+              background: "rgba(74,103,65,0.2)",
+              border: "1px solid rgba(74,103,65,0.4)",
+              borderRadius: 8,
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div
+              className="cc-live-dot"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: C.accent,
+              }}
+            />
+            <span style={{ color: "#86a97d", fontSize: 13, fontWeight: 600 }}>
+              Live coaching active — play on Chess.com to see moves here
+            </span>
+            {lastLiveCountRef.current > 0 && (
+              <span style={{ color: C.textDim, fontSize: 12, marginLeft: "auto" }}>
+                {lastLiveCountRef.current} move{lastLiveCountRef.current === 1 ? "" : "s"} received
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── HERO ── */}
       <section
@@ -1254,21 +1387,35 @@ export default function ChessCoachPage() {
         </a>
       </footer>
 
-      {/* responsive helpers */}
-      <style jsx>{`
+      {/* responsive helpers + live pulse */}
+      <style jsx global>{`
         @media (max-width: 760px) {
-          :global(.cc-hero-grid) {
+          .cc-hero-grid {
             grid-template-columns: 1fr !important;
           }
-          :global(.cc-hero-h1) {
+          .cc-hero-h1 {
             font-size: 38px !important;
           }
-          :global(.cc-nav-links) {
+          .cc-nav-links {
             display: none !important;
           }
-          :global(.cc-board-grid) {
+          .cc-board-grid {
             grid-template-columns: 1fr !important;
           }
+        }
+        @keyframes cc-pulse {
+          0%,
+          100% {
+            opacity: 1;
+            box-shadow: 0 0 0 0 rgba(74, 103, 65, 0.6);
+          }
+          50% {
+            opacity: 0.6;
+            box-shadow: 0 0 0 6px rgba(74, 103, 65, 0);
+          }
+        }
+        .cc-live-dot {
+          animation: cc-pulse 2s infinite;
         }
       `}</style>
     </div>
