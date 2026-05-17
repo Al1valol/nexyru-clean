@@ -181,6 +181,77 @@ function pstScore(type: PieceSymbol, color: "w" | "b", rankIdx: number, fileIdx:
   return PST[type][r * 8 + fileIdx];
 }
 
+// ───────────────────────── openings ─────────────────────────
+const OPENINGS: Record<string, string> = {
+  e4: "King's Pawn Opening",
+  "e4 e5": "Open Game",
+  "e4 e5 Nf3": "King's Knight Opening",
+  "e4 e5 Nf3 Nc6": "Three Knights / Four Knights area",
+  "e4 e5 Nf3 Nc6 Bb5": "Ruy Lopez (Spanish Opening)",
+  "e4 e5 Nf3 Nc6 Bc4": "Italian Game",
+  "e4 e5 Nf3 Nc6 Bc4 Bc5": "Giuoco Piano",
+  "e4 e5 Nf3 Nc6 Bc4 Nf6": "Two Knights Defense",
+  "e4 e5 Nf3 Nc6 d4": "Scotch Game",
+  "e4 e5 Nf3 Nc6 d4 exd4": "Scotch Game accepted",
+  "e4 e5 Nf3 f5": "Latvian Gambit",
+  "e4 e5 f4": "King's Gambit",
+  "e4 e5 f4 exf4": "King's Gambit Accepted",
+  "e4 c5": "Sicilian Defense",
+  "e4 c5 Nf3": "Sicilian - Open",
+  "e4 c5 Nf3 d6": "Sicilian - Najdorf area",
+  "e4 c5 Nf3 d6 d4": "Sicilian - Open variation",
+  "e4 c5 Nf3 Nc6": "Sicilian - Classical",
+  "e4 c5 c3": "Sicilian - Alapin",
+  "e4 c5 Nc3": "Sicilian - Closed",
+  "e4 e6": "French Defense",
+  "e4 e6 d4": "French - Main line",
+  "e4 e6 d4 d5": "French - Standard",
+  "e4 e6 d4 d5 Nc3": "French - Classical",
+  "e4 e6 d4 d5 e5": "French - Advance",
+  "e4 e6 d4 d5 exd5": "French - Exchange",
+  "e4 c6": "Caro-Kann Defense",
+  "e4 c6 d4": "Caro-Kann - Main",
+  "e4 c6 d4 d5": "Caro-Kann - Classical",
+  "e4 d5": "Scandinavian Defense",
+  "e4 d5 exd5": "Scandinavian - Main line",
+  "e4 d6": "Pirc Defense",
+  "e4 g6": "Modern Defense",
+  "e4 Nf6": "Alekhine's Defense",
+  d4: "Queen's Pawn Opening",
+  "d4 d5": "Queen's Gambit area",
+  "d4 d5 c4": "Queen's Gambit",
+  "d4 d5 c4 e6": "Queen's Gambit Declined",
+  "d4 d5 c4 c6": "Slav Defense",
+  "d4 d5 c4 dxc4": "Queen's Gambit Accepted",
+  "d4 Nf6": "Indian Defense",
+  "d4 Nf6 c4": "Indian - Main",
+  "d4 Nf6 c4 g6": "King's Indian Defense",
+  "d4 Nf6 c4 e6": "Nimzo/Queen's Indian area",
+  "d4 Nf6 c4 e6 Nc3": "Nimzo-Indian Defense",
+  "d4 Nf6 c4 e6 Nf3": "Queen's Indian Defense",
+  "d4 Nf6 Nf3": "Torre Attack area",
+  "d4 f5": "Dutch Defense",
+  c4: "English Opening",
+  "c4 e5": "English - Reversed Sicilian",
+  "c4 Nf6": "English - Indian",
+  Nf3: "Reti Opening",
+  "Nf3 d5": "Reti - Main",
+  "Nf3 Nf6": "Reti - Symmetrical",
+  g3: "King's Fianchetto",
+  b3: "Nimzowitsch-Larsen Attack",
+  b4: "Polish Opening",
+  f4: "Bird's Opening",
+};
+
+function findOpening(sanMoves: string[]): string | null {
+  const cap = Math.min(sanMoves.length, 12);
+  for (let len = cap; len > 0; len--) {
+    const key = sanMoves.slice(0, len).join(" ");
+    if (OPENINGS[key]) return OPENINGS[key];
+  }
+  return null;
+}
+
 function evaluate(chess: Chess): number {
   if (chess.isCheckmate()) return chess.turn() === "w" ? -100000 : 100000;
   if (chess.isDraw() || chess.isStalemate() || chess.isThreefoldRepetition()) return 0;
@@ -348,12 +419,11 @@ export default function ChessCoachPage() {
   const [reviewMoves, setReviewMoves] = useState<{ san: string; fen: string }[]>([]);
   const [reviewIdx, setReviewIdx] = useState(0);
   const [reviewTitle, setReviewTitle] = useState<string>("");
-  const [reviewOpening, setReviewOpening] = useState<string | null>(null);
 
   const [playUserColor, setPlayUserColor] = useState<"w" | "b">("w");
   const [aiThinking, setAiThinking] = useState(false);
   const [aiHint, setAiHint] = useState<BestMove | null>(null);
-  const [aiDepth, setAiDepth] = useState(2);
+  const [aiDepth, setAiDepth] = useState(4);
   const [gameOverMsg, setGameOverMsg] = useState<string | null>(null);
 
   // ── derived ──
@@ -378,6 +448,18 @@ export default function ChessCoachPage() {
     }
     return { map: m, total };
   }, [lichessGames]);
+
+  // Dynamic opening recognition from current move history
+  const currentSanMoves = useMemo(() => {
+    if (mode === "review") {
+      return reviewMoves.slice(0, reviewIdx).map((m) => m.san);
+    }
+    // chess.history() reflects mutable Chess instance; re-key on fen to refresh
+    void fen;
+    return chess.history();
+  }, [mode, reviewMoves, reviewIdx, chess, fen]);
+
+  const currentOpening = useMemo(() => findOpening(currentSanMoves), [currentSanMoves]);
 
   // ── handlers ──
   const handleSearch = useCallback(async (raw: string) => {
@@ -430,7 +512,7 @@ export default function ChessCoachPage() {
     }
   }, []);
 
-  const loadGameFromMoves = useCallback((sanMoves: string, title: string, opening?: string) => {
+  const loadGameFromMoves = useCallback((sanMoves: string, title: string) => {
     try {
       const c = new Chess();
       const tokens = sanMoves.trim().split(/\s+/).filter(Boolean);
@@ -448,7 +530,6 @@ export default function ChessCoachPage() {
       setReviewMoves(stepped);
       setReviewIdx(stepped.length);
       setReviewTitle(title);
-      setReviewOpening(opening ?? null);
       setAiHint(null);
       setGameOverMsg(null);
     } catch {
@@ -467,7 +548,6 @@ export default function ChessCoachPage() {
       setReviewMoves(stepped);
       setReviewIdx(stepped.length);
       setReviewTitle(title);
-      setReviewOpening(pgnTag(pgn, "Opening") ?? null);
       setAiHint(null);
       setGameOverMsg(null);
     } catch {
@@ -584,14 +664,13 @@ export default function ChessCoachPage() {
     setReviewMoves([]);
     setReviewIdx(0);
     setReviewTitle("");
-    setReviewOpening(null);
   }, [chess]);
 
   const suggestBestMove = useCallback(() => {
     const f = mode === "review" ? currentFen : fen;
     setAiThinking(true);
     setTimeout(() => {
-      const best = findBestMove(f, Math.max(aiDepth, 3));
+      const best = findBestMove(f, aiDepth);
       setAiHint(best);
       setAiThinking(false);
     }, 30);
@@ -934,7 +1013,7 @@ export default function ChessCoachPage() {
               onSelect={(g) => {
                 if (g.moves) {
                   const title = `${g.players.white.user?.name ?? "?"} vs ${g.players.black.user?.name ?? "?"}`;
-                  loadGameFromMoves(g.moves, title, g.opening?.name);
+                  loadGameFromMoves(g.moves, title);
                   scrollTo("board");
                 }
               }}
@@ -965,7 +1044,7 @@ export default function ChessCoachPage() {
           reviewIdx={reviewIdx}
           setReviewIdx={setReviewIdx}
           reviewTitle={reviewTitle}
-          reviewOpening={reviewOpening}
+          currentOpening={currentOpening}
           openingFreq={openingFreq}
           onStartPlay={startPlayVsAi}
           onResetFree={resetFree}
@@ -1668,7 +1747,7 @@ interface BoardCardProps {
   reviewIdx: number;
   setReviewIdx: (i: number | ((p: number) => number)) => void;
   reviewTitle: string;
-  reviewOpening: string | null;
+  currentOpening: string | null;
   openingFreq: { map: Map<string, number>; total: number };
   onStartPlay: (color: "w" | "b") => void;
   onResetFree: () => void;
@@ -1691,7 +1770,7 @@ function BoardCard(props: BoardCardProps) {
     reviewIdx,
     setReviewIdx,
     reviewTitle,
-    reviewOpening,
+    currentOpening,
     openingFreq,
     onStartPlay,
     onResetFree,
@@ -1705,9 +1784,8 @@ function BoardCard(props: BoardCardProps) {
     gameOverMsg,
   } = props;
 
-  const opening = reviewOpening;
   const total = openingFreq.total;
-  const count = opening ? openingFreq.map.get(opening) ?? 0 : 0;
+  const count = currentOpening ? openingFreq.map.get(currentOpening) ?? 0 : 0;
   const pct = total > 0 && count > 0 ? Math.round((count / total) * 100) : null;
 
   const arrows = aiHint
@@ -1798,6 +1876,28 @@ function BoardCard(props: BoardCardProps) {
           )}
         </div>
 
+        {/* Opening pill (dynamic) */}
+        {currentOpening && (
+          <div
+            style={{
+              padding: "8px 12px",
+              background: "rgba(74,103,65,0.2)",
+              border: `1px solid ${C.accent}`,
+              borderRadius: 8,
+              fontSize: 13,
+              color: "#86a97d",
+              fontWeight: 600,
+            }}
+          >
+            Opening: {currentOpening}
+            {pct !== null && (
+              <span style={{ color: C.textDim, fontWeight: 400, marginLeft: 8 }}>
+                · you play it {pct}% of recent games
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Title row */}
         <div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>
@@ -1878,9 +1978,10 @@ function BoardCard(props: BoardCardProps) {
                     fontSize: 12,
                   }}
                 >
-                  <option value={1}>1 (fast)</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3 (slower)</option>
+                  <option value={2}>2 (fast)</option>
+                  <option value={3}>3</option>
+                  <option value={4}>4 (default)</option>
+                  <option value={5}>5 (slow)</option>
                 </select>
               </label>
             </div>
@@ -1891,37 +1992,6 @@ function BoardCard(props: BoardCardProps) {
                 <span style={{ color: C.textMuted, marginLeft: 8 }}>
                   ({(aiHint.score / 100).toFixed(2)})
                 </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Opening info (review only) */}
-        {mode === "review" && opening && (
-          <div
-            style={{
-              background: C.card2,
-              border: `1px solid ${C.border}`,
-              borderRadius: 10,
-              padding: 14,
-            }}
-          >
-            <div
-              style={{
-                color: C.textMuted,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                marginBottom: 6,
-              }}
-            >
-              Opening
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{opening}</div>
-            {pct !== null && (
-              <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>
-                You tend to play this opening {pct}% of the time ({count} of {total} recent games).
               </div>
             )}
           </div>
