@@ -100,6 +100,14 @@ const ICONS = {
       <line x1="7" y1="7" x2="7.01" y2="7" />
     </svg>
   ),
+  pawn: (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="6" r="3" />
+      <path d="M9 9c0 2 1 3 3 5 2-2 3-3 3-5" />
+      <path d="M8 20h8l-1-5H9z" />
+      <path d="M6 22h12" />
+    </svg>
+  ),
   gear: (
     <svg {...ICON_PROPS}>
       <circle cx="12" cy="12" r="3" />
@@ -344,6 +352,7 @@ export default function Sidebar({ activePath }: { activePath?: string }) {
         {/* Group 4 — Build */}
         <SidebarGroupLabel label="Build" />
         <SidebarItem icon={ICONS.flask} label="Strategy Lab" href="/dashboard?tab=stratlab" active={isActive("/dashboard?tab=stratlab")} />
+        <SidebarItem icon={ICONS.pawn} label="Chess Coach" href="/chess" active={isActive("/chess")} />
       </nav>
 
       <SidebarItem icon={ICONS.tag} label="Pricing" href="/pricing" active={isActive("/pricing")} />

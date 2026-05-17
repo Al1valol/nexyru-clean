@@ -436,6 +436,9 @@ export default function LandingPage() {
             <a href="#pricing" style={navLink}>
               Pricing
             </a>
+            <a href="/chess" style={navLink}>
+              Chess Coach
+            </a>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
