@@ -33,6 +33,7 @@ const C = {
 
 // ───────────────────────── types ─────────────────────────
 type Mode = "free" | "play" | "review";
+type Platform = "chesscom" | "lichess";
 type PieceSymbol = "p" | "n" | "b" | "r" | "q" | "k";
 
 interface LichessPerf {
@@ -86,6 +87,59 @@ interface ImportedGame {
   date?: string;
   opening?: string;
   pgn: string;
+}
+
+// Chess.com types
+interface ChesscomProfile {
+  username: string;
+  player_id?: number;
+  url?: string;
+  name?: string;
+  avatar?: string;
+  title?: string;
+  country?: string; // url like https://api.chess.com/pub/country/US
+  last_online?: number;
+  joined?: number;
+  status?: string;
+  followers?: number;
+  is_streamer?: boolean;
+  verified?: boolean;
+}
+interface ChesscomRecord {
+  win?: number;
+  loss?: number;
+  draw?: number;
+}
+interface ChesscomTimeStats {
+  last?: { rating?: number; date?: number; rd?: number };
+  best?: { rating?: number; date?: number };
+  record?: ChesscomRecord;
+}
+interface ChesscomStats {
+  chess_bullet?: ChesscomTimeStats;
+  chess_blitz?: ChesscomTimeStats;
+  chess_rapid?: ChesscomTimeStats;
+  chess_daily?: ChesscomTimeStats;
+  tactics?: { highest?: { rating?: number } };
+  puzzle_rush?: { best?: { score?: number } };
+  fide?: number;
+}
+interface ChesscomGamePlayer {
+  username: string;
+  rating?: number;
+  result?: string;
+  "@id"?: string;
+}
+interface ChesscomGame {
+  url?: string;
+  pgn: string;
+  time_control?: string;
+  end_time?: number;
+  rated?: boolean;
+  time_class?: string;
+  rules?: string;
+  white: ChesscomGamePlayer;
+  black: ChesscomGamePlayer;
 }
 
 // ───────────────────────── engine ─────────────────────────
@@ -378,6 +432,56 @@ function pgnTag(pgn: string, tag: string): string | undefined {
 function pgnResult(pgn: string): string {
   return pgnTag(pgn, "Result") ?? "*";
 }
+function chesscomCountryCode(countryUrl?: string): string | null {
+  if (!countryUrl) return null;
+  const m = countryUrl.match(/\/country\/([A-Z]{2})$/);
+  return m ? m[1] : null;
+}
+
+function countryFlag(code: string | null): string {
+  if (!code || code.length !== 2) return "";
+  const A = 0x1f1e6 - "A".charCodeAt(0);
+  return String.fromCodePoint(code.charCodeAt(0) + A, code.charCodeAt(1) + A);
+}
+
+function chesscomGameResult(g: ChesscomGame, you: string): "W" | "L" | "D" {
+  const youLower = you.toLowerCase();
+  const youColor =
+    g.white.username?.toLowerCase() === youLower
+      ? "white"
+      : g.black.username?.toLowerCase() === youLower
+        ? "black"
+        : null;
+  const drawResults = new Set([
+    "agreed",
+    "repetition",
+    "stalemate",
+    "insufficient",
+    "50move",
+    "timevsinsufficient",
+  ]);
+  if (youColor === "white") {
+    if (g.white.result === "win") return "W";
+    if (drawResults.has(g.white.result ?? "")) return "D";
+    return "L";
+  }
+  if (youColor === "black") {
+    if (g.black.result === "win") return "W";
+    if (drawResults.has(g.black.result ?? "")) return "D";
+    return "L";
+  }
+  return "D";
+}
+
+function chesscomOpeningFromPgn(pgn: string): string | undefined {
+  const ecoUrl = pgnTag(pgn, "ECOUrl");
+  if (ecoUrl) {
+    const slug = ecoUrl.split("/").pop() ?? "";
+    return slug.replace(/-/g, " ").replace(/\s+/g, " ").trim() || undefined;
+  }
+  return pgnTag(pgn, "Opening") ?? pgnTag(pgn, "ECO");
+}
+
 function splitPgns(text: string): string[] {
   const out: string[] = [];
   const re = /\[Event\s+"/g;
@@ -401,9 +505,13 @@ function splitPgns(text: string): string[] {
 // ───────────────────────── page ─────────────────────────
 export default function ChessCoachPage() {
   // ── search state ──
+  const [platform, setPlatform] = useState<Platform>("chesscom");
   const [usernameInput, setUsernameInput] = useState("");
   const [profile, setProfile] = useState<LichessProfile | null>(null);
   const [lichessGames, setLichessGames] = useState<LichessGame[]>([]);
+  const [chesscomProfile, setChesscomProfile] = useState<ChesscomProfile | null>(null);
+  const [chesscomStats, setChesscomStats] = useState<ChesscomStats | null>(null);
+  const [chesscomGames, setChesscomGames] = useState<ChesscomGame[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
@@ -472,55 +580,109 @@ export default function ChessCoachPage() {
   const currentOpening = useMemo(() => findOpening(currentSanMoves), [currentSanMoves]);
 
   // ── handlers ──
-  const handleSearch = useCallback(async (raw: string) => {
-    const u = raw.trim();
-    if (!u) return;
-    setSearchLoading(true);
-    setSearchError(null);
-    setProfile(null);
-    setLichessGames([]);
-    try {
-      const profRes = await fetch(`https://lichess.org/api/user/${encodeURIComponent(u)}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (profRes.status === 404) {
-        setSearchError("User not found");
-        setSearchLoading(false);
-        return;
-      }
-      if (!profRes.ok) {
-        setSearchError(`Lichess error (${profRes.status})`);
-        setSearchLoading(false);
-        return;
-      }
-      const prof = (await profRes.json()) as LichessProfile;
-      setProfile(prof);
+  const handleSearch = useCallback(
+    async (raw: string) => {
+      const u = raw.trim();
+      if (!u) return;
+      setSearchLoading(true);
+      setSearchError(null);
+      // Clear both sides — keeps results consistent with the active toggle
+      setProfile(null);
+      setLichessGames([]);
+      setChesscomProfile(null);
+      setChesscomStats(null);
+      setChesscomGames([]);
 
-      const gamesRes = await fetch(
-        `https://lichess.org/api/games/user/${encodeURIComponent(u)}?max=20&moves=true&opening=true`,
-        { headers: { Accept: "application/x-ndjson" } },
-      );
-      if (gamesRes.ok) {
-        const text = await gamesRes.text();
-        const games = text
-          .split("\n")
-          .filter(Boolean)
-          .map((l) => {
-            try {
-              return JSON.parse(l) as LichessGame;
-            } catch {
-              return null;
+      try {
+        if (platform === "lichess") {
+          const profRes = await fetch(`https://lichess.org/api/user/${encodeURIComponent(u)}`, {
+            headers: { Accept: "application/json" },
+          });
+          if (profRes.status === 404) {
+            setSearchError("User not found");
+            return;
+          }
+          if (!profRes.ok) {
+            setSearchError(`Lichess error (${profRes.status})`);
+            return;
+          }
+          setProfile((await profRes.json()) as LichessProfile);
+
+          const gamesRes = await fetch(
+            `https://lichess.org/api/games/user/${encodeURIComponent(u)}?max=20&moves=true&opening=true`,
+            { headers: { Accept: "application/x-ndjson" } },
+          );
+          if (gamesRes.ok) {
+            const text = await gamesRes.text();
+            const games = text
+              .split("\n")
+              .filter(Boolean)
+              .map((l) => {
+                try {
+                  return JSON.parse(l) as LichessGame;
+                } catch {
+                  return null;
+                }
+              })
+              .filter((g): g is LichessGame => g !== null);
+            setLichessGames(games);
+          }
+        } else {
+          // Chess.com via server proxy (avoids CORS)
+          const profRes = await fetch(
+            `/api/chess-profile?type=profile&username=${encodeURIComponent(u)}`,
+          );
+          if (profRes.status === 404) {
+            setSearchError("User not found");
+            return;
+          }
+          if (!profRes.ok) {
+            const errBody = await profRes.json().catch(() => ({}));
+            setSearchError(
+              (errBody as { error?: string }).error ?? `Chess.com error (${profRes.status})`,
+            );
+            return;
+          }
+          setChesscomProfile((await profRes.json()) as ChesscomProfile);
+
+          // Stats (best-effort)
+          const statsRes = await fetch(
+            `/api/chess-profile?type=stats&username=${encodeURIComponent(u)}`,
+          );
+          if (statsRes.ok) {
+            setChesscomStats((await statsRes.json()) as ChesscomStats);
+          }
+
+          // Archives → fetch latest archive's games
+          const arcRes = await fetch(
+            `/api/chess-profile?type=archives&username=${encodeURIComponent(u)}`,
+          );
+          if (arcRes.ok) {
+            const arcData = (await arcRes.json()) as { archives?: string[] };
+            const archives = arcData.archives ?? [];
+            if (archives.length > 0) {
+              // Latest archive is last in the list
+              const latest = archives[archives.length - 1];
+              const gamesRes = await fetch(
+                `/api/chess-profile?type=games&url=${encodeURIComponent(latest)}`,
+              );
+              if (gamesRes.ok) {
+                const data = (await gamesRes.json()) as { games?: ChesscomGame[] };
+                const games = data.games ?? [];
+                // Show most recent 20 (archive is chronological asc)
+                setChesscomGames(games.slice(-20).reverse());
+              }
             }
-          })
-          .filter((g): g is LichessGame => g !== null);
-        setLichessGames(games);
+          }
+        }
+      } catch (err) {
+        setSearchError(err instanceof Error ? err.message : "Network error");
+      } finally {
+        setSearchLoading(false);
       }
-    } catch (err) {
-      setSearchError(err instanceof Error ? err.message : "Network error");
-    } finally {
-      setSearchLoading(false);
-    }
-  }, []);
+    },
+    [platform],
+  );
 
   const loadGameFromMoves = useCallback((sanMoves: string, title: string) => {
     try {
@@ -1064,10 +1226,24 @@ export default function ChessCoachPage() {
         }}
       >
         <SectionHeader
-          eyebrow="Lichess"
-          title="Search any Lichess player"
-          subtitle="Type a username to see ratings, recent games, and openings."
+          eyebrow={platform === "chesscom" ? "Chess.com" : "Lichess"}
+          title="Search any player"
+          subtitle="Pick a platform, type a username, and see ratings, games, and openings."
         />
+
+        {/* Platform toggle */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <PlatformPill
+            active={platform === "chesscom"}
+            onClick={() => setPlatform("chesscom")}
+            label="Chess.com"
+          />
+          <PlatformPill
+            active={platform === "lichess"}
+            onClick={() => setPlatform("lichess")}
+            label="Lichess"
+          />
+        </div>
 
         <form
           onSubmit={(e) => {
@@ -1088,7 +1264,11 @@ export default function ChessCoachPage() {
           <input
             value={usernameInput}
             onChange={(e) => setUsernameInput(e.target.value)}
-            placeholder="Enter Lichess username..."
+            placeholder={
+              platform === "chesscom"
+                ? "Enter Chess.com username..."
+                : "Enter Lichess username..."
+            }
             style={{
               flex: 1,
               minWidth: 240,
@@ -1136,7 +1316,7 @@ export default function ChessCoachPage() {
           </div>
         )}
 
-        {profile && (
+        {platform === "lichess" && profile && (
           <>
             <PlayerCard profile={profile} />
             <RatingGrid profile={profile} />
@@ -1149,6 +1329,22 @@ export default function ChessCoachPage() {
                   loadGameFromMoves(g.moves, title);
                   scrollTo("board");
                 }
+              }}
+            />
+          </>
+        )}
+
+        {platform === "chesscom" && chesscomProfile && (
+          <>
+            <ChesscomPlayerCard profile={chesscomProfile} />
+            <ChesscomRatingGrid stats={chesscomStats} />
+            <ChesscomGamesTable
+              games={chesscomGames}
+              you={chesscomProfile.username}
+              onSelect={(g) => {
+                const title = `${g.white.username} vs ${g.black.username}`;
+                loadGameFromPgn(g.pgn, title);
+                scrollTo("board");
               }}
             />
           </>
@@ -1839,6 +2035,340 @@ function RecentGamesTable({
             </span>
             <span style={{ color: C.textDim, fontSize: 12, textAlign: "right" }}>
               {fmtDate(g.createdAt)}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlatformPill({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? C.accentDim : "transparent",
+        color: active ? C.accentBright : C.textDim,
+        border: `1px solid ${active ? C.accent : C.border}`,
+        borderRadius: 999,
+        padding: "7px 16px",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+        transition: "background 150ms, color 150ms, border-color 150ms",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ChesscomPlayerCard({ profile }: { profile: ChesscomProfile }) {
+  const code = chesscomCountryCode(profile.country);
+  const flag = countryFlag(code);
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 14,
+        padding: 22,
+        display: "flex",
+        gap: 18,
+        alignItems: "center",
+        marginBottom: 18,
+        flexWrap: "wrap",
+      }}
+    >
+      {profile.avatar ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={profile.avatar}
+          alt={profile.username}
+          width={64}
+          height={64}
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: "50%",
+            objectFit: "cover",
+            flexShrink: 0,
+            border: `1px solid ${C.border}`,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: "50%",
+            background: `linear-gradient(135deg,${C.accent},${C.accentBright})`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 800,
+            fontSize: 22,
+            color: "#fff",
+            flexShrink: 0,
+          }}
+        >
+          {initials(profile.username)}
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {profile.title && (
+            <span
+              style={{
+                background: C.amber,
+                color: "#1a1306",
+                padding: "2px 8px",
+                borderRadius: 5,
+                fontWeight: 800,
+                fontSize: 11,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {profile.title}
+            </span>
+          )}
+          <span style={{ fontWeight: 700, fontSize: 20 }}>{profile.username}</span>
+          {flag && (
+            <span style={{ fontSize: 18 }} title={code ?? ""}>
+              {flag}
+            </span>
+          )}
+          {profile.status && (
+            <span
+              style={{
+                fontSize: 11,
+                color: C.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                fontWeight: 600,
+              }}
+            >
+              · {profile.status}
+            </span>
+          )}
+        </div>
+        <div style={{ marginTop: 6, color: C.textDim, fontSize: 13 }}>
+          {profile.name ? `${profile.name} · ` : ""}
+          Member since {memberSince(profile.joined ? profile.joined * 1000 : undefined)}
+          {profile.last_online
+            ? ` · Last online ${fmtDate(profile.last_online * 1000)}`
+            : ""}
+        </div>
+      </div>
+      {profile.url && (
+        <a
+          href={profile.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: C.textDim,
+            textDecoration: "none",
+            fontSize: 13,
+            padding: "8px 14px",
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            fontWeight: 500,
+          }}
+        >
+          View on Chess.com ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
+const CHESSCOM_RATING_KINDS: { key: keyof ChesscomStats; label: string }[] = [
+  { key: "chess_bullet", label: "Bullet" },
+  { key: "chess_blitz", label: "Blitz" },
+  { key: "chess_rapid", label: "Rapid" },
+  { key: "chess_daily", label: "Daily" },
+];
+
+function ChesscomRatingGrid({ stats }: { stats: ChesscomStats | null }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+        gap: 10,
+        marginBottom: 24,
+      }}
+    >
+      {CHESSCOM_RATING_KINDS.map((k) => {
+        const t = stats?.[k.key] as ChesscomTimeStats | undefined;
+        const rating = t?.last?.rating;
+        const r = t?.record;
+        return (
+          <div
+            key={k.key as string}
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 12,
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                color: C.textDim,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}
+            >
+              {k.label}
+            </div>
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 800,
+                marginTop: 4,
+                letterSpacing: "-0.01em",
+                color: rating ? C.text : C.textMuted,
+              }}
+            >
+              {rating ?? "—"}
+            </div>
+            {r ? (
+              <div style={{ display: "flex", gap: 10, marginTop: 8, fontSize: 11 }}>
+                <span style={{ color: C.green }}>{r.win ?? 0}W</span>
+                <span style={{ color: C.red }}>{r.loss ?? 0}L</span>
+                <span style={{ color: C.textDim }}>{r.draw ?? 0}D</span>
+              </div>
+            ) : (
+              <div style={{ color: C.textMuted, fontSize: 11, marginTop: 8 }}>No record</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChesscomGamesTable({
+  games,
+  you,
+  onSelect,
+}: {
+  games: ChesscomGame[];
+  you: string;
+  onSelect: (g: ChesscomGame) => void;
+}) {
+  if (!games.length) {
+    return (
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: 18,
+          color: C.textMuted,
+          fontSize: 13,
+        }}
+      >
+        No recent games found in the latest archive.
+      </div>
+    );
+  }
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 14,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "70px 1fr 1fr 80px 90px",
+          padding: "10px 16px",
+          borderBottom: `1px solid ${C.border}`,
+          fontSize: 11,
+          fontWeight: 700,
+          color: C.textMuted,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}
+      >
+        <span>Result</span>
+        <span>Players</span>
+        <span>Opening</span>
+        <span>Time</span>
+        <span style={{ textAlign: "right" }}>Date</span>
+      </div>
+      {games.map((g, i) => {
+        const result = chesscomGameResult(g, you);
+        const youWhite = g.white.username?.toLowerCase() === you.toLowerCase();
+        const opp = youWhite ? g.black : g.white;
+        const resultColor = result === "W" ? C.green : result === "L" ? C.red : C.textDim;
+        const opening = chesscomOpeningFromPgn(g.pgn) ?? "—";
+        return (
+          <button
+            key={i}
+            onClick={() => onSelect(g)}
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              display: "grid",
+              gridTemplateColumns: "70px 1fr 1fr 80px 90px",
+              padding: "12px 16px",
+              borderTop: i === 0 ? "none" : `1px solid ${C.borderSoft}`,
+              fontSize: 13.5,
+              alignItems: "center",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = C.card2)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <span style={{ color: resultColor, fontWeight: 800 }}>{result}</span>
+            <span style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>vs {opp.username}</div>
+              <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 2 }}>
+                {youWhite ? "white" : "black"}
+                {opp.rating ? ` · opp ${opp.rating}` : ""}
+              </div>
+            </span>
+            <span
+              style={{
+                color: C.textDim,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {opening}
+            </span>
+            <span
+              style={{
+                color: C.textMuted,
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {g.time_class ?? ""}
+            </span>
+            <span style={{ color: C.textDim, fontSize: 12, textAlign: "right" }}>
+              {g.end_time ? fmtDate(g.end_time * 1000) : ""}
             </span>
           </button>
         );
