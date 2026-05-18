@@ -7874,7 +7874,31 @@ function ProUpgradeCard({ feature }) {
   );
 }
 
-function CryptoTrending({ refreshKey, onUpdated }) {
+function parseCoinPrice(p) {
+  if (typeof p === 'number') return p;
+  if (typeof p === 'string') return parseFloat(p.replace(/[$,]/g, '')) || 0;
+  return 0;
+}
+
+function computeMomentumScore(coin, position) {
+  const change = coin.data?.price_change_percentage_24h?.usd || 0;
+  const rank = coin.market_cap_rank;
+  // 24h change: +20% = 40pts, 0% = 20pts, -20% = 0pts (linear, clamped)
+  const changePts = Math.max(0, Math.min(40, 20 + change));
+  // Rank: <100 = 30, <500 = 20, <1000 = 10, else 0
+  const rankPts = !rank ? 0 : rank < 100 ? 30 : rank < 500 ? 20 : rank < 1000 ? 10 : 0;
+  // Position: index 0 (pos 1) = 30, index 6 (pos 7) = 10 (linear)
+  const positionPts = Math.max(0, 30 - position * (20 / 6));
+  return Math.round(changePts + rankPts + positionPts);
+}
+
+function scoreBadge(score) {
+  if (score >= 70) return { label: '🟢 Strong', bg: 'rgba(34,197,94,0.15)', color: '#22c55e' };
+  if (score >= 40) return { label: '🟡 Neutral', bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' };
+  return { label: '🔴 Weak', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' };
+}
+
+function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal }) {
   const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   React.useEffect(() => {
@@ -7892,23 +7916,75 @@ function CryptoTrending({ refreshKey, onUpdated }) {
     return () => { cancelled = true; };
   }, [refreshKey, onUpdated]);
 
+  const loggedCoinIds = React.useMemo(() => new Set(signals.map(s => s.coinId)), [signals]);
+
   if (loading && coins.length === 0) return <div style={{color:"#6b7280",padding:32}}>Loading trending coins...</div>;
   return (
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:12}}>
-      {coins.map(({item:c}) => {
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))",gap:12}}>
+      {coins.map(({item:c}, position) => {
         const change = c.data?.price_change_percentage_24h?.usd || 0;
         const pos = change >= 0;
+        const score = computeMomentumScore(c, position);
+        const badge = scoreBadge(score);
+        const risk = 100 - score;
+        const target = score / 2;
+        const logged = loggedCoinIds.has(c.id);
+        const onLog = () => {
+          if (logged || !onLogSignal) return;
+          onLogSignal({
+            id: Date.now(),
+            coinId: c.id,
+            name: c.name,
+            symbol: c.symbol,
+            score,
+            priceAtSignal: parseCoinPrice(c.data?.price),
+            change24h: change,
+            loggedAt: new Date().toISOString(),
+            didTake: false,
+            exitPrice: null,
+            exitedAt: null,
+            notes: '',
+            targetGain: null,
+            stopLoss: null,
+            targetHitNotified: false,
+            stopHitNotified: false,
+          });
+        };
         return (
-          <div key={c.id} style={{background: pos?"rgba(34,197,94,0.05)":"rgba(239,68,68,0.05)", border:`1px solid ${pos?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}`, borderRadius:12, padding:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+          <div key={c.id} style={{background: pos?"rgba(34,197,94,0.05)":"rgba(239,68,68,0.05)", border:`1px solid ${pos?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}`, borderRadius:12, padding:16, display:'flex', flexDirection:'column', gap:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div>
                 <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{c.name}</div>
                 <div style={{fontSize:11,color:"#6b7280"}}>{c.symbol}</div>
               </div>
               <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:"rgba(99,102,241,0.15)",color:"#a5b4fc"}}>#{c.market_cap_rank||'?'}</span>
             </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:11, fontWeight:700, padding:"3px 8px", borderRadius:6, background:badge.bg, color:badge.color}}>{badge.label}</span>
+              <span style={{fontSize:11, color:"#6b7280"}}>Score <span style={{color:"#fff", fontWeight:700}}>{score}</span></span>
+            </div>
             <div style={{fontSize:22,fontWeight:800,color:pos?"#22c55e":"#ef4444"}}>{pos?"+":""}{change.toFixed(2)}%</div>
-            <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#6366f1",textDecoration:"none",marginTop:8,display:"block"}}>View chart →</a>
+            <div style={{display:"flex",gap:14,fontSize:11,color:"#9ca3af"}}>
+              <div>Risk <span style={{color:"#fff",fontWeight:700}}>{risk}%</span></div>
+              <div>Target <span style={{color:"#22c55e",fontWeight:700}}>+{target.toFixed(0)}%</span></div>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:2}}>
+              <button
+                onClick={onLog}
+                disabled={logged}
+                style={{
+                  flex:1, padding:"7px 10px", borderRadius:8, border:"none",
+                  background: logged ? "#2a2a3a" : "#6366f1",
+                  color: logged ? "#6b7280" : "#fff",
+                  fontSize:12, fontWeight:700, cursor: logged ? "default" : "pointer"
+                }}
+              >{logged ? "Logged ✓" : "Log Signal"}</button>
+              <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{
+                padding:"7px 10px", borderRadius:8, border:"1px solid #2a2a3a",
+                color:"#9ca3af", fontSize:12, fontWeight:700, textDecoration:"none",
+                whiteSpace:"nowrap", display:"inline-flex", alignItems:"center"
+              }}>Chart ↗</a>
+            </div>
           </div>
         );
       })}
@@ -8205,6 +8281,342 @@ function CryptoWatchlist({ refreshKey, onUpdated }) {
   );
 }
 
+function Sparkline({ points, width = 80, height = 24, color }) {
+  if (!points || points.length < 2) return null;
+  const ys = points.map(p => typeof p === 'number' ? p : p.v);
+  const min = Math.min(...ys);
+  const max = Math.max(...ys);
+  const range = max - min || 1;
+  const stepX = width / (ys.length - 1);
+  const path = ys.map((v, i) => `${i === 0 ? 'M' : 'L'} ${(i * stepX).toFixed(1)} ${(height - ((v - min) / range) * height).toFixed(1)}`).join(' ');
+  const stroke = color || (ys[ys.length - 1] >= ys[0] ? '#22c55e' : '#ef4444');
+  return (
+    <svg width={width} height={height} style={{display:'block'}}>
+      <path d={path} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function SignalCard({ signal, livePrice, livePriceChange24h, history, onUpdate, onRemove }) {
+  const [notesDraft, setNotesDraft] = React.useState(signal.notes || '');
+  const [exitDraft, setExitDraft] = React.useState(signal.exitPrice ?? '');
+  const [targetDraft, setTargetDraft] = React.useState(signal.targetGain ?? '');
+  const [stopDraft, setStopDraft] = React.useState(signal.stopLoss ?? '');
+
+  React.useEffect(() => { setNotesDraft(signal.notes || ''); }, [signal.id, signal.notes]);
+
+  const entry = Number(signal.priceAtSignal) || 0;
+  const cur = typeof livePrice === 'number' ? livePrice : null;
+  const changeSinceLog = (cur && entry > 0) ? ((cur / entry) - 1) * 100 : null;
+
+  const badge = scoreBadge(signal.score || 0);
+
+  // Hindsight: filter history points after loggedAt, find max
+  const hindsight = React.useMemo(() => {
+    if (!history || history.length === 0 || entry <= 0) return null;
+    const loggedTs = new Date(signal.loggedAt).getTime();
+    const tsHistory = history[0] && typeof history[0] === 'object' ? history : history.map(v => ({ t: 0, v }));
+    const afterLog = tsHistory.filter(p => p.t >= loggedTs);
+    const series = afterLog.length > 1 ? afterLog : tsHistory;
+    if (series.length === 0) return null;
+    let bestPt = series[0];
+    for (const p of series) if (p.v > bestPt.v) bestPt = p;
+    const bestPct = ((bestPt.v / entry) - 1) * 100;
+    return { bestPct, bestTs: bestPt.t, series };
+  }, [history, signal.loggedAt, entry]);
+
+  const requestNotifyPerm = () => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default') {
+      try { Notification.requestPermission().catch(() => {}); } catch {}
+    }
+  };
+
+  const saveTarget = () => {
+    const v = targetDraft === '' ? null : Math.max(0, parseFloat(targetDraft) || 0);
+    onUpdate({ targetGain: v, targetHitNotified: false });
+    if (v != null && v > 0) requestNotifyPerm();
+  };
+  const saveStop = () => {
+    const v = stopDraft === '' ? null : Math.max(0, parseFloat(stopDraft) || 0);
+    onUpdate({ stopLoss: v, stopHitNotified: false });
+    if (v != null && v > 0) requestNotifyPerm();
+  };
+  const saveNotes = () => {
+    if (notesDraft !== signal.notes) onUpdate({ notes: notesDraft });
+  };
+  const toggleTaken = () => {
+    if (signal.didTake) {
+      onUpdate({ didTake: false, exitPrice: null, exitedAt: null });
+      setExitDraft('');
+    } else {
+      onUpdate({ didTake: true, exitedAt: new Date().toISOString() });
+    }
+  };
+  const saveExit = () => {
+    const v = exitDraft === '' ? null : (parseFloat(exitDraft) || null);
+    onUpdate({ exitPrice: v });
+  };
+
+  const fmtDate = (iso) => {
+    try { return new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric' }); }
+    catch { return '—'; }
+  };
+  const fmtPrice = (n) => {
+    if (n == null || !isFinite(n)) return '—';
+    return '$' + n.toLocaleString(undefined, { maximumFractionDigits: n >= 1 ? 4 : 8 });
+  };
+
+  return (
+    <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{signal.name}</div>
+            <div style={{fontSize:11,color:"#6b7280"}}>{signal.symbol} · logged {fmtDate(signal.loggedAt)}</div>
+          </div>
+          <span style={{fontSize:11, fontWeight:700, padding:"3px 8px", borderRadius:6, background:badge.bg, color:badge.color}}>{badge.label}</span>
+        </div>
+        <button onClick={onRemove} title="Remove" style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:18,lineHeight:1,padding:0}}>×</button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(110px, 1fr))",gap:10}}>
+        <div>
+          <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase",marginBottom:2}}>Entry</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{fmtPrice(entry)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase",marginBottom:2}}>Current</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{fmtPrice(cur)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase",marginBottom:2}}>Since logged</div>
+          <div style={{fontSize:13,fontWeight:700,color: changeSinceLog == null ? "#6b7280" : changeSinceLog >= 0 ? "#22c55e" : "#ef4444"}}>
+            {changeSinceLog == null ? '—' : (changeSinceLog >= 0 ? '+' : '') + changeSinceLog.toFixed(2) + '%'}
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase",marginBottom:2}}>If held</div>
+          <div style={{fontSize:13,fontWeight:700,color: hindsight && hindsight.bestPct >= 0 ? "#22c55e" : "#ef4444"}}>
+            {hindsight ? (hindsight.bestPct >= 0 ? '+' : '') + hindsight.bestPct.toFixed(1) + '%' : '—'}
+          </div>
+        </div>
+        <div style={{minWidth:80}}>
+          <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase",marginBottom:2}}>7d trend</div>
+          {history && history.length > 1 ? <Sparkline points={history} width={100} height={26}/> : <div style={{fontSize:11,color:"#6b7280"}}>loading…</div>}
+        </div>
+      </div>
+
+      {hindsight && (
+        <div style={{background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.18)",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#a5b4fc"}}>
+          <strong style={{color:"#fff"}}>What if?</strong>{' '}
+          If you held until today you would have {changeSinceLog == null ? 'unknown' : (changeSinceLog >= 0 ? 'made' : 'lost')}{' '}
+          <span style={{color: changeSinceLog == null ? '#a5b4fc' : changeSinceLog >= 0 ? '#22c55e' : '#ef4444', fontWeight:700}}>
+            {changeSinceLog == null ? '—' : Math.abs(changeSinceLog).toFixed(2) + '%'}
+          </span>.{' '}
+          Best exit would have been{' '}
+          <span style={{color: hindsight.bestPct >= 0 ? '#22c55e' : '#ef4444', fontWeight:700}}>
+            {(hindsight.bestPct >= 0 ? '+' : '') + hindsight.bestPct.toFixed(1) + '%'}
+          </span>
+          {hindsight.bestTs ? ' on ' + new Date(hindsight.bestTs).toLocaleDateString(undefined, { month:'short', day:'numeric' }) : ''}.
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:11,color:"#9ca3af"}}>Target +</span>
+          <input
+            type="number" value={targetDraft}
+            onChange={e => setTargetDraft(e.target.value)}
+            onBlur={saveTarget}
+            placeholder="20"
+            style={{width:60, padding:"5px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none"}}
+          />
+          <span style={{fontSize:11,color:"#9ca3af"}}>%</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:11,color:"#9ca3af"}}>Stop −</span>
+          <input
+            type="number" value={stopDraft}
+            onChange={e => setStopDraft(e.target.value)}
+            onBlur={saveStop}
+            placeholder="10"
+            style={{width:60, padding:"5px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none"}}
+          />
+          <span style={{fontSize:11,color:"#9ca3af"}}>%</span>
+        </div>
+        <div style={{flex:1}}/>
+        <button
+          onClick={toggleTaken}
+          style={{
+            padding:"6px 14px", borderRadius:8, border:"none",
+            background: signal.didTake ? "#22c55e" : "#6366f1", color:"#fff",
+            fontSize:12, fontWeight:700, cursor:"pointer"
+          }}
+        >{signal.didTake ? "Taken ✓" : "Mark as Taken"}</button>
+      </div>
+
+      {signal.didTake && (
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:11,color:"#9ca3af"}}>Exit price $</span>
+          <input
+            type="number" value={exitDraft}
+            onChange={e => setExitDraft(e.target.value)}
+            onBlur={saveExit}
+            placeholder={String(cur ?? '0.00')}
+            style={{width:120, padding:"5px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none"}}
+          />
+          {signal.exitPrice != null && entry > 0 && (() => {
+            const pnl = ((signal.exitPrice / entry) - 1) * 100;
+            return (
+              <span style={{fontSize:12, fontWeight:700, color: pnl >= 0 ? "#22c55e" : "#ef4444"}}>
+                P&L {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%
+              </span>
+            );
+          })()}
+        </div>
+      )}
+
+      <textarea
+        value={notesDraft}
+        onChange={e => setNotesDraft(e.target.value)}
+        onBlur={saveNotes}
+        placeholder="Notes (thesis, catalysts, exit plan…)"
+        rows={2}
+        style={{width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none", resize:"vertical", fontFamily:"inherit"}}
+      />
+    </div>
+  );
+}
+
+function CryptoJournal({ refreshKey, onUpdated, signals, onUpdateSignals }) {
+  const [tab, setTab] = React.useState('all');
+  const [prices, setPrices] = React.useState({});
+  const [history, setHistory] = React.useState({});
+
+  const loadPrices = React.useCallback(() => {
+    if (!signals || signals.length === 0) {
+      setPrices({});
+      onUpdated?.(Date.now());
+      return;
+    }
+    const ids = [...new Set(signals.map(s => s.coinId))].join(',');
+    fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`)
+      .then(r => r.json())
+      .then(d => { setPrices(d || {}); onUpdated?.(Date.now()); })
+      .catch(() => {});
+  }, [signals, onUpdated]);
+
+  React.useEffect(() => {
+    loadPrices();
+    const id = setInterval(loadPrices, 60_000);
+    return () => clearInterval(id);
+  }, [loadPrices, refreshKey]);
+
+  // Lazy historical chart fetching (staggered)
+  React.useEffect(() => {
+    const need = (signals || []).filter(s => !history[s.coinId]);
+    if (need.length === 0) return;
+    let cancelled = false;
+    const timers = [];
+    need.forEach((s, i) => {
+      timers.push(setTimeout(() => {
+        if (cancelled) return;
+        fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(s.coinId)}/market_chart?vs_currency=usd&days=7`)
+          .then(r => r.json())
+          .then(d => {
+            if (cancelled) return;
+            const pts = (d.prices || []).map(p => ({ t: p[0], v: p[1] }));
+            setHistory(prev => ({ ...prev, [s.coinId]: pts }));
+          })
+          .catch(() => {});
+      }, i * 1200));
+    });
+    return () => { cancelled = true; timers.forEach(clearTimeout); };
+  }, [signals, history]);
+
+  const updateSignal = (id, patch) => {
+    onUpdateSignals(signals.map(s => s.id === id ? { ...s, ...patch } : s));
+  };
+  const removeSignal = (id) => {
+    if (typeof window !== 'undefined' && !window.confirm('Remove this signal from your journal?')) return;
+    onUpdateSignals(signals.filter(s => s.id !== id));
+  };
+
+  const taken = (signals || []).filter(s => s.didTake);
+  const closed = taken.filter(s => s.exitPrice != null && s.priceAtSignal > 0);
+  const wins = closed.filter(s => s.exitPrice > s.priceAtSignal).length;
+  const winRate = closed.length > 0 ? (wins / closed.length) * 100 : null;
+  const totalPnl = closed.reduce((sum, s) => sum + (((s.exitPrice / s.priceAtSignal) - 1) * 100), 0);
+
+  const tabs = [
+    { id: 'all', label: `All Signals (${signals?.length || 0})` },
+    { id: 'taken', label: `My Trades (${taken.length})` },
+  ];
+
+  return (
+    <div>
+      <div style={{display:"flex",gap:4,marginBottom:16,background:"#1a1a24",borderRadius:10,padding:4,border:"1px solid #1e1e2a",width:"fit-content"}}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding:"7px 16px", border:"none", borderRadius:7,
+            background: tab===t.id ? "#6366f1" : "transparent",
+            color: tab===t.id ? "#fff" : "#9ca3af",
+            fontSize:12, fontWeight:700, cursor:"pointer"
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'taken' && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(160px, 1fr))",gap:10,marginBottom:16}}>
+          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+            <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Logged</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff",marginTop:4}}>{signals?.length || 0}</div>
+          </div>
+          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+            <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Taken</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff",marginTop:4}}>{taken.length}</div>
+          </div>
+          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+            <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Win rate</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff",marginTop:4}}>{winRate == null ? '—' : winRate.toFixed(0) + '%'}</div>
+          </div>
+          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+            <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Total P&amp;L</div>
+            <div style={{fontSize:18,fontWeight:800,color: totalPnl >= 0 ? "#22c55e" : "#ef4444",marginTop:4}}>
+              {closed.length === 0 ? '—' : (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(1) + '%'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(!signals || signals.length === 0) ? (
+        <div style={{textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#111", border:"1px dashed #1e1e2a", borderRadius:12}}>
+          {tab === 'taken' ? 'No taken trades yet. Mark logged signals as taken to track them here.' : 'No logged signals yet. Click "Log Signal" on a trending coin to start.'}
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {(tab === 'taken' ? taken : signals).length === 0 ? (
+            <div style={{textAlign:"center", padding:32, color:"#6b7280", fontSize:13}}>
+              No taken trades yet.
+            </div>
+          ) : (tab === 'taken' ? taken : signals).map(sig => (
+            <SignalCard
+              key={sig.id}
+              signal={sig}
+              livePrice={prices[sig.coinId]?.usd}
+              livePriceChange24h={prices[sig.coinId]?.usd_24h_change}
+              history={history[sig.coinId]}
+              onUpdate={(patch) => updateSignal(sig.id, patch)}
+              onRemove={() => removeSignal(sig.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TradingDashboard({ session, onLogout }) {
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
@@ -8220,6 +8632,21 @@ function TradingDashboard({ session, onLogout }) {
   const [cryptoRefreshKey,   setCryptoRefreshKey]   = useState(0);
   const [cryptoLastUpdated,  setCryptoLastUpdated]  = useState(null);
   const [, setCryptoTick] = useState(0);
+  const [cryptoSignals, setCryptoSignals] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('nexyru_crypto_signals') || '[]'); } catch { return []; }
+  });
+  const updateCryptoSignals = useCallback((next) => {
+    setCryptoSignals(next);
+    try { localStorage.setItem('nexyru_crypto_signals', JSON.stringify(next)); } catch {}
+  }, []);
+  const logCryptoSignal = useCallback((signal) => {
+    setCryptoSignals(prev => {
+      if (prev.some(s => s.coinId === signal.coinId)) return prev;
+      const next = [signal, ...prev];
+      try { localStorage.setItem('nexyru_crypto_signals', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
   useEffect(() => { setCryptoLastUpdated(null); }, [cryptoSection]);
   useEffect(() => {
     if (appMode !== 'crypto') return;
@@ -8231,7 +8658,62 @@ function TradingDashboard({ session, onLogout }) {
     newpairs: 'New hot pairs (auto-refresh 2m)',
     gainers:  'Top gainers',
     watchlist:'Your watchlist (auto-refresh 1m)',
+    journal:  'Logged signals & taken trades',
   }[cryptoSection] || cryptoSection;
+
+  // Alert checker — runs every 60s while in crypto mode. For each signal with
+  // a target or stop set, polls current price and fires a browser notification
+  // once when the threshold is crossed.
+  const cryptoSignalsRef = useRef(cryptoSignals);
+  useEffect(() => { cryptoSignalsRef.current = cryptoSignals; }, [cryptoSignals]);
+  useEffect(() => {
+    if (appMode !== 'crypto') return;
+    if (typeof Notification === 'undefined') return;
+    const check = async () => {
+      const sigs = cryptoSignalsRef.current || [];
+      const watch = sigs.filter(s =>
+        !s.didTake && s.priceAtSignal > 0 &&
+        ((s.targetGain && !s.targetHitNotified) || (s.stopLoss && !s.stopHitNotified))
+      );
+      if (watch.length === 0) return;
+      try {
+        const ids = [...new Set(watch.map(s => s.coinId))].join(',');
+        const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd`);
+        const d = await r.json();
+        if (!d) return;
+        const patches = new Map();
+        for (const s of watch) {
+          const cur = d[s.coinId]?.usd;
+          if (typeof cur !== 'number') continue;
+          const change = ((cur / s.priceAtSignal) - 1) * 100;
+          let patch = patches.get(s.id) || {};
+          if (s.targetGain && !s.targetHitNotified && change >= s.targetGain) {
+            if (Notification.permission === 'granted') {
+              try { new Notification(`🎯 ${s.name} hit +${s.targetGain}% target`, { body: `Consider taking profit. Current $${cur}` }); } catch {}
+            }
+            patch.targetHitNotified = true;
+          }
+          if (s.stopLoss && !s.stopHitNotified && change <= -s.stopLoss) {
+            if (Notification.permission === 'granted') {
+              try { new Notification(`⚠️ ${s.name} hit −${s.stopLoss}% stop loss`, { body: `Consider cutting losses. Current $${cur}` }); } catch {}
+            }
+            patch.stopHitNotified = true;
+          }
+          if (Object.keys(patch).length > 0) patches.set(s.id, patch);
+        }
+        if (patches.size > 0) {
+          setCryptoSignals(prev => {
+            const next = prev.map(s => patches.has(s.id) ? { ...s, ...patches.get(s.id) } : s);
+            try { localStorage.setItem('nexyru_crypto_signals', JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
+      } catch {}
+    };
+    check();
+    const id = setInterval(check, 60_000);
+    return () => clearInterval(id);
+  }, [appMode]);
   const formatRelative = (ts) => {
     if (!ts) return '—';
     const d = Math.floor((Date.now() - ts) / 1000);
@@ -8935,6 +9417,7 @@ function TradingDashboard({ session, onLogout }) {
             {id:'newpairs', label:'New Pairs', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>},
             {id:'gainers',  label:'Top Gainers', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
             {id:'watchlist',label:'Watchlist', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>},
+            {id:'journal',  label:'Journal', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>},
           ].map(s=>(
             <div key={s.id} onClick={()=>setCryptoSection(s.id)} title={s.label} style={{
               width:56, height:48, display:'flex', alignItems:'center', justifyContent:'center',
@@ -9149,10 +9632,11 @@ function TradingDashboard({ session, onLogout }) {
                 >Refresh</button>
               </div>
             </div>
-            {cryptoSection === 'trending'  && <CryptoTrending  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
+            {cryptoSection === 'trending'  && <CryptoTrending  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} />}
             {cryptoSection === 'newpairs'  && <CryptoNewPairs  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
             {cryptoSection === 'gainers'   && <CryptoGainers   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
             {cryptoSection === 'watchlist' && <CryptoWatchlist refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
+            {cryptoSection === 'journal'   && <CryptoJournal   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onUpdateSignals={updateCryptoSignals} />}
           </div>
         )}
 
