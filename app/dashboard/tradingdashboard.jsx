@@ -7898,7 +7898,7 @@ function scoreBadge(score) {
   return { label: '🔴 Weak', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' };
 }
 
-function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal }) {
+function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   React.useEffect(() => {
@@ -7968,7 +7968,7 @@ function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal }) {
               <div>Risk <span style={{color:"#fff",fontWeight:700}}>{risk}%</span></div>
               <div>Target <span style={{color:"#22c55e",fontWeight:700}}>+{target.toFixed(0)}%</span></div>
             </div>
-            <div style={{display:"flex",gap:8,marginTop:2}}>
+            <div style={{display:"flex",gap:8,marginTop:2,flexWrap:"wrap"}}>
               <button
                 onClick={onLog}
                 disabled={logged}
@@ -7976,9 +7976,24 @@ function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal }) {
                   flex:1, padding:"7px 10px", borderRadius:8, border:"none",
                   background: logged ? "#2a2a3a" : "#6366f1",
                   color: logged ? "#6b7280" : "#fff",
-                  fontSize:12, fontWeight:700, cursor: logged ? "default" : "pointer"
+                  fontSize:12, fontWeight:700, cursor: logged ? "default" : "pointer",
+                  minWidth:90,
                 }}
               >{logged ? "Logged ✓" : "Log Signal"}</button>
+              <button
+                onClick={() => onBuy?.({
+                  coinId: c.id,
+                  name: c.name,
+                  symbol: c.symbol,
+                  price: parseCoinPrice(c.data?.price),
+                })}
+                style={{
+                  flex:1, padding:"7px 10px", borderRadius:8, border:"none",
+                  background:"#22c55e", color:"#fff",
+                  fontSize:12, fontWeight:700, cursor:"pointer",
+                  minWidth:70,
+                }}
+              >Buy →</button>
               <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{
                 padding:"7px 10px", borderRadius:8, border:"1px solid #2a2a3a",
                 color:"#9ca3af", fontSize:12, fontWeight:700, textDecoration:"none",
@@ -8617,6 +8632,669 @@ function CryptoJournal({ refreshKey, onUpdated, signals, onUpdateSignals }) {
   );
 }
 
+const CRYPTO_ACCOUNTS_KEY = 'nexyru_crypto_accounts';
+
+function loadCryptoAccountStore() {
+  try {
+    const raw = localStorage.getItem(CRYPTO_ACCOUNTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.accounts)) return parsed;
+    }
+  } catch {}
+  return { accounts: [], activeAccountId: null };
+}
+
+function persistCryptoAccountStore(store) {
+  try { localStorage.setItem(CRYPTO_ACCOUNTS_KEY, JSON.stringify(store)); } catch {}
+}
+
+function makeShortId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function updateAccountInStore(store, accountId, transform) {
+  return {
+    ...store,
+    accounts: (store.accounts || []).map(a => a.id === accountId ? transform(a) : a),
+  };
+}
+
+function depositToAccount(store, accountId, amount, note) {
+  if (!(amount > 0)) return store;
+  return updateAccountInStore(store, accountId, acc => ({
+    ...acc,
+    balance: (acc.balance || 0) + amount,
+    history: [
+      { id: makeShortId('h'), type: 'deposit', amount, note: note || '', date: new Date().toISOString() },
+      ...(acc.history || []),
+    ],
+  }));
+}
+
+function withdrawFromAccount(store, accountId, amount, note) {
+  if (!(amount > 0)) return store;
+  return updateAccountInStore(store, accountId, acc => ({
+    ...acc,
+    balance: (acc.balance || 0) - amount,
+    history: [
+      { id: makeShortId('h'), type: 'withdraw', amount, note: note || '', date: new Date().toISOString() },
+      ...(acc.history || []),
+    ],
+  }));
+}
+
+function buyPositionInAccount(store, accountId, coin, usdAmount, atPrice) {
+  if (!(atPrice > 0) || !(usdAmount > 0)) return store;
+  return updateAccountInStore(store, accountId, acc => {
+    if ((acc.balance || 0) < usdAmount) return acc;
+    const amount = usdAmount / atPrice;
+    const positionId = makeShortId('pos');
+    const nowIso = new Date().toISOString();
+    const position = {
+      id: positionId,
+      coinId: coin.coinId,
+      symbol: coin.symbol,
+      name: coin.name,
+      amount,
+      entryPrice: atPrice,
+      entryDate: nowIso,
+      currentPrice: atPrice,
+      status: 'open',
+      exitPrice: null,
+      exitDate: null,
+      alertTarget: null,
+      alertStop: null,
+      targetHitNotified: false,
+      stopHitNotified: false,
+    };
+    return {
+      ...acc,
+      balance: acc.balance - usdAmount,
+      positions: [position, ...(acc.positions || [])],
+      history: [
+        { id: makeShortId('h'), type: 'buy', positionId, coinId: coin.coinId, symbol: coin.symbol, name: coin.name, amount, price: atPrice, usd: usdAmount, date: nowIso },
+        ...(acc.history || []),
+      ],
+    };
+  });
+}
+
+function closePositionInAccount(store, accountId, positionId, exitPrice) {
+  if (!(exitPrice > 0)) return store;
+  return updateAccountInStore(store, accountId, acc => {
+    const pos = (acc.positions || []).find(p => p.id === positionId);
+    if (!pos || pos.status !== 'open') return acc;
+    const proceeds = pos.amount * exitPrice;
+    const pnl = (exitPrice - pos.entryPrice) * pos.amount;
+    const nowIso = new Date().toISOString();
+    return {
+      ...acc,
+      balance: (acc.balance || 0) + proceeds,
+      positions: acc.positions.map(p => p.id === positionId
+        ? { ...p, status: 'closed', exitPrice, exitDate: nowIso, currentPrice: exitPrice }
+        : p),
+      history: [
+        { id: makeShortId('h'), type: 'sell', positionId, coinId: pos.coinId, symbol: pos.symbol, name: pos.name, amount: pos.amount, price: exitPrice, usd: proceeds, pnl, date: nowIso },
+        ...(acc.history || []),
+      ],
+    };
+  });
+}
+
+function setPositionAlerts(store, accountId, positionId, target, stop) {
+  return updateAccountInStore(store, accountId, acc => ({
+    ...acc,
+    positions: (acc.positions || []).map(p => p.id === positionId
+      ? { ...p, alertTarget: target, alertStop: stop, targetHitNotified: false, stopHitNotified: false }
+      : p),
+  }));
+}
+
+function fmtUsd(n, opts = {}) {
+  if (n == null || !isFinite(n)) return '—';
+  const max = opts.maxFractionDigits ?? (Math.abs(n) >= 1 ? 2 : 6);
+  return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: max });
+}
+
+function fmtDateShort(iso) {
+  try { return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+  catch { return '—'; }
+}
+
+function fmtDuration(fromIso, toIso) {
+  try {
+    const ms = new Date(toIso || Date.now()).getTime() - new Date(fromIso).getTime();
+    if (ms < 0) return '—';
+    const days = Math.floor(ms / 86400000);
+    if (days >= 1) return days + (days === 1 ? ' day' : ' days');
+    const hours = Math.floor(ms / 3600000);
+    if (hours >= 1) return hours + (hours === 1 ? ' hour' : ' hours');
+    const minutes = Math.max(1, Math.floor(ms / 60000));
+    return minutes + (minutes === 1 ? ' min' : ' mins');
+  } catch { return '—'; }
+}
+
+function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
+  const [accountId, setAccountId] = React.useState(() => store?.activeAccountId || store?.accounts?.[0]?.id || '');
+  const [usdInput, setUsdInput] = React.useState('');
+  const [priceInput, setPriceInput] = React.useState(() => {
+    const p = livePrice ?? coin?.priceAtSignal ?? coin?.price;
+    return p ? String(p) : '';
+  });
+  const [error, setError] = React.useState(null);
+
+  const usd = parseFloat(usdInput) || 0;
+  const price = parseFloat(priceInput) || 0;
+  const amount = price > 0 ? usd / price : 0;
+  const account = store?.accounts?.find(a => a.id === accountId) || null;
+  const insufficient = account && usd > (account.balance || 0);
+
+  const confirm = () => {
+    if (!accountId) { setError('Pick an account.'); return; }
+    if (!(usd > 0)) { setError('Enter a USD amount.'); return; }
+    if (!(price > 0)) { setError('Enter a valid price.'); return; }
+    if (insufficient) { setError('Not enough balance in that account.'); return; }
+    onConfirm({ accountId, usdAmount: usd, price });
+  };
+
+  if (!coin) return null;
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:420, color:"#fff" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:18, fontWeight:800 }}>Buy {coin.name}</div>
+            <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{coin.symbol?.toUpperCase()}{livePrice ? ' · current ' + fmtUsd(livePrice) : ''}</div>
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", fontSize:20, lineHeight:1 }}>×</button>
+        </div>
+
+        <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Account</label>
+        {store?.accounts?.length ? (
+          <select
+            value={accountId}
+            onChange={e => setAccountId(e.target.value)}
+            style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+          >
+            {store.accounts.map(a => (
+              <option key={a.id} value={a.id}>{a.name} ({a.type.toUpperCase()}) · {fmtUsd(a.balance)}</option>
+            ))}
+          </select>
+        ) : (
+          <div style={{ padding:"10px 12px", borderRadius:8, background:"rgba(245,158,11,0.10)", border:"1px solid rgba(245,158,11,0.25)", color:"#fcd34d", fontSize:12, marginBottom:14 }}>
+            No accounts yet. Create one from the Accounts section first.
+          </div>
+        )}
+
+        <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Amount (USD)</label>
+        <input
+          type="number" value={usdInput} onChange={e => { setUsdInput(e.target.value); setError(null); }}
+          placeholder="100" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+        />
+
+        <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Entry Price (USD)</label>
+        <input
+          type="number" value={priceInput} onChange={e => { setPriceInput(e.target.value); setError(null); }}
+          placeholder="0.00" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+        />
+
+        <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px", marginBottom:14, fontSize:12, color:"#9ca3af", display:"flex", justifyContent:"space-between" }}>
+          <span>You receive</span>
+          <span style={{ color:"#fff", fontWeight:700 }}>{amount > 0 ? amount.toLocaleString(undefined, { maximumFractionDigits: 8 }) + ' ' + (coin.symbol || '').toUpperCase() : '—'}</span>
+        </div>
+
+        {error && <div style={{ color:"#ef4444", fontSize:12, marginBottom:10 }}>{error}</div>}
+        {insufficient && !error && <div style={{ color:"#f59e0b", fontSize:12, marginBottom:10 }}>Account balance is {fmtUsd(account.balance)} — not enough for this purchase.</div>}
+
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+          <button onClick={confirm} disabled={!store?.accounts?.length || insufficient} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: (!store?.accounts?.length || insufficient) ? "#2a2a3a" : "#22c55e", color:"#fff", fontSize:13, fontWeight:700, cursor: (!store?.accounts?.length || insufficient) ? "not-allowed" : "pointer" }}>Confirm Buy</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }) {
+  const accounts = store?.accounts || [];
+  const initialActiveId = store?.activeAccountId || accounts[0]?.id || null;
+  const activeAccount = accounts.find(a => a.id === initialActiveId) || accounts[0] || null;
+
+  const [tab, setTab] = React.useState('positions');
+  const [createType, setCreateType] = React.useState(null);
+  const [createName, setCreateName] = React.useState('');
+  const [createBalance, setCreateBalance] = React.useState('');
+  const [txnDialog, setTxnDialog] = React.useState(null); // 'deposit' | 'withdraw'
+  const [txnAmount, setTxnAmount] = React.useState('');
+  const [txnNote, setTxnNote] = React.useState('');
+  const [closeFor, setCloseFor] = React.useState(null); // position object
+  const [closePrice, setClosePrice] = React.useState('');
+  const [livePrices, setLivePrices] = React.useState({});
+  const [alertEdits, setAlertEdits] = React.useState({}); // positionId -> { target, stop }
+
+  const openCoinIds = React.useMemo(() => {
+    if (!activeAccount) return '';
+    return [...new Set((activeAccount.positions || []).filter(p => p.status === 'open').map(p => p.coinId))].join(',');
+  }, [activeAccount]);
+
+  React.useEffect(() => {
+    if (!openCoinIds) {
+      setLivePrices({});
+      onUpdated?.(Date.now());
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(openCoinIds)}&vs_currencies=usd&include_24hr_change=true`)
+        .then(r => r.json())
+        .then(d => { if (!cancelled) { setLivePrices(d || {}); onUpdated?.(Date.now()); } })
+        .catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [openCoinIds, refreshKey, onUpdated]);
+
+  const setActiveAccount = (id) => onUpdate(prev => ({ ...prev, activeAccountId: id }));
+
+  const createAccount = () => {
+    const name = createName.trim();
+    const balance = Math.max(0, parseFloat(createBalance) || 0);
+    if (!name || !createType) return;
+    const id = makeShortId('acc');
+    const nowIso = new Date().toISOString();
+    const acc = {
+      id, name, type: createType, balance, createdAt: nowIso,
+      positions: [],
+      history: balance > 0 ? [{ id: makeShortId('h'), type: 'deposit', amount: balance, note: 'Starting balance', date: nowIso }] : [],
+    };
+    onUpdate(prev => ({
+      ...prev,
+      accounts: [...(prev.accounts || []), acc],
+      activeAccountId: prev.activeAccountId || id,
+    }));
+    setCreateType(null);
+    setCreateName('');
+    setCreateBalance('');
+  };
+
+  const deleteAccount = (id) => {
+    if (typeof window !== 'undefined' && !window.confirm('Delete this account and all of its history?')) return;
+    onUpdate(prev => {
+      const accts = (prev.accounts || []).filter(a => a.id !== id);
+      const activeId = prev.activeAccountId === id ? (accts[0]?.id ?? null) : prev.activeAccountId;
+      return { ...prev, accounts: accts, activeAccountId: activeId };
+    });
+  };
+
+  const submitTxn = () => {
+    const amount = parseFloat(txnAmount) || 0;
+    if (!(amount > 0) || !activeAccount) return;
+    if (txnDialog === 'deposit') onUpdate(prev => depositToAccount(prev, activeAccount.id, amount, txnNote));
+    else if (txnDialog === 'withdraw') onUpdate(prev => withdrawFromAccount(prev, activeAccount.id, amount, txnNote));
+    setTxnDialog(null); setTxnAmount(''); setTxnNote('');
+  };
+
+  const submitClose = () => {
+    if (!closeFor) return;
+    const exit = parseFloat(closePrice) || 0;
+    if (!(exit > 0)) return;
+    onUpdate(prev => closePositionInAccount(prev, activeAccount.id, closeFor.id, exit));
+    setCloseFor(null); setClosePrice('');
+  };
+
+  const saveAlerts = (positionId) => {
+    const edit = alertEdits[positionId] || {};
+    const target = edit.target === '' || edit.target == null ? null : Math.max(0, parseFloat(edit.target) || 0);
+    const stop   = edit.stop   === '' || edit.stop   == null ? null : Math.max(0, parseFloat(edit.stop)   || 0);
+    onUpdate(prev => setPositionAlerts(prev, activeAccount.id, positionId, target, stop));
+    if ((target != null && target > 0) || (stop != null && stop > 0)) {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        try { Notification.requestPermission().catch(() => {}); } catch {}
+      }
+    }
+  };
+
+  // ---------- Empty / accounts list view ----------
+  if (!activeAccount) {
+    return (
+      <div>
+        <div style={{ textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#111", border:"1px dashed #1e1e2a", borderRadius:12, marginBottom:16 }}>
+          No crypto accounts yet. Create one to start tracking trades.
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={() => setCreateType('paper')} style={{ flex:1, padding:"10px 14px", borderRadius:10, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ New Paper Account</button>
+          <button onClick={() => setCreateType('real')}  style={{ flex:1, padding:"10px 14px", borderRadius:10, border:"none",            background:"#6366f1", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ New Real Account</button>
+        </div>
+        {createType && <CreateAccountForm type={createType} name={createName} balance={createBalance} onName={setCreateName} onBalance={setCreateBalance} onCancel={() => { setCreateType(null); setCreateName(''); setCreateBalance(''); }} onSubmit={createAccount}/>}
+      </div>
+    );
+  }
+
+  const positions = activeAccount.positions || [];
+  const openPositions = positions.filter(p => p.status === 'open');
+  const closedPositions = positions.filter(p => p.status === 'closed');
+
+  // Live current prices on open positions
+  const positionsWithLive = openPositions.map(p => {
+    const cur = livePrices[p.coinId]?.usd ?? p.currentPrice ?? p.entryPrice;
+    const pnl = (cur - p.entryPrice) * p.amount;
+    const pnlPct = p.entryPrice > 0 ? ((cur / p.entryPrice) - 1) * 100 : 0;
+    return { ...p, _cur: cur, _pnl: pnl, _pnlPct: pnlPct };
+  });
+
+  const unrealizedPnl = positionsWithLive.reduce((s, p) => s + p._pnl, 0);
+  const openValue = positionsWithLive.reduce((s, p) => s + p._cur * p.amount, 0);
+  const closedPnl = closedPositions.reduce((s, p) => s + ((p.exitPrice - p.entryPrice) * p.amount), 0);
+
+  const history = activeAccount.history || [];
+  const deposits = history.filter(h => h.type === 'deposit').reduce((s, h) => s + h.amount, 0);
+  const withdraws = history.filter(h => h.type === 'withdraw').reduce((s, h) => s + h.amount, 0);
+  const netInvested = deposits - withdraws;
+  const currentValue = activeAccount.balance + openValue;
+  const totalPnl = currentValue - netInvested;
+  const totalReturnPct = netInvested > 0 ? (totalPnl / netInvested) * 100 : 0;
+
+  const closedWithPnl = closedPositions.map(p => ({ ...p, _pnl: (p.exitPrice - p.entryPrice) * p.amount, _pnlPct: p.entryPrice > 0 ? ((p.exitPrice / p.entryPrice) - 1) * 100 : 0 }));
+  const wins = closedWithPnl.filter(p => p._pnl > 0).length;
+  const winRate = closedWithPnl.length > 0 ? (wins / closedWithPnl.length) * 100 : null;
+  const bestTrade = closedWithPnl.length > 0 ? closedWithPnl.reduce((b, p) => p._pnlPct > b._pnlPct ? p : b) : null;
+  const worstTrade = closedWithPnl.length > 0 ? closedWithPnl.reduce((b, p) => p._pnlPct < b._pnlPct ? p : b) : null;
+  const avgHoldMs = closedPositions.length > 0
+    ? closedPositions.reduce((s, p) => s + (new Date(p.exitDate).getTime() - new Date(p.entryDate).getTime()), 0) / closedPositions.length
+    : 0;
+  const avgHoldHrs = avgHoldMs / 3600000;
+  const avgHold = avgHoldHrs >= 24 ? Math.round(avgHoldHrs / 24) + 'd' : Math.round(avgHoldHrs) + 'h';
+
+  const tabs = [
+    { id:'positions', label:'Positions' },
+    { id:'history',   label:'History' },
+    { id:'stats',     label:'Stats' },
+  ];
+
+  return (
+    <div>
+      {/* Account switcher */}
+      <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:18 }}>
+        {accounts.map(a => {
+          const isActive = a.id === activeAccount.id;
+          return (
+            <div key={a.id} onClick={() => setActiveAccount(a.id)} style={{
+              cursor:"pointer",
+              padding:"10px 14px",
+              borderRadius:10,
+              border: isActive ? "1px solid #6366f1" : "1px solid #1e1e2a",
+              background: isActive ? "rgba(99,102,241,0.08)" : "#111",
+              minWidth:200,
+            }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                <span style={{ fontSize:9, fontWeight:800, padding:"2px 6px", borderRadius:4, background: a.type === 'real' ? "rgba(34,197,94,0.15)" : "rgba(99,102,241,0.18)", color: a.type === 'real' ? "#22c55e" : "#a5b4fc", letterSpacing:"0.05em" }}>{a.type.toUpperCase()}</span>
+                <span style={{ fontSize:13, color:"#fff", fontWeight:700 }}>{a.name}</span>
+                {isActive && <span style={{ fontSize:9, marginLeft:"auto", color:"#6366f1", fontWeight:800, textTransform:"uppercase" }}>Active</span>}
+              </div>
+              <div style={{ fontSize:16, fontWeight:800, color:"#fff" }}>{fmtUsd(a.balance)}</div>
+            </div>
+          );
+        })}
+        <div style={{ display:"flex", flexDirection:"column", gap:6, justifyContent:"center" }}>
+          <button onClick={() => setCreateType('paper')} style={{ padding:"6px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ New Paper Account</button>
+          <button onClick={() => setCreateType('real')}  style={{ padding:"6px 12px", borderRadius:8, border:"none",            background:"#6366f1", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ New Real Account</button>
+        </div>
+      </div>
+
+      {createType && <CreateAccountForm type={createType} name={createName} balance={createBalance} onName={setCreateName} onBalance={setCreateBalance} onCancel={() => { setCreateType(null); setCreateName(''); setCreateBalance(''); }} onSubmit={createAccount}/>}
+
+      {/* Header */}
+      <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:12, padding:18, marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14, flexWrap:"wrap", gap:12 }}>
+          <div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:11, fontWeight:800, padding:"3px 8px", borderRadius:5, background: activeAccount.type === 'real' ? "rgba(34,197,94,0.18)" : "rgba(99,102,241,0.20)", color: activeAccount.type === 'real' ? "#22c55e" : "#a5b4fc", letterSpacing:"0.05em" }}>{activeAccount.type.toUpperCase()}</span>
+              <span style={{ fontSize:18, fontWeight:800, color:"#fff" }}>{activeAccount.name}</span>
+            </div>
+            <div style={{ fontSize:30, fontWeight:900, color:"#fff", marginTop:6 }}>{fmtUsd(currentValue)}</div>
+            <div style={{ fontSize:11, color:"#6b7280", marginTop:2 }}>Cash {fmtUsd(activeAccount.balance)} · Open positions {fmtUsd(openValue)}</div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => { setTxnDialog('deposit'); setTxnAmount(''); setTxnNote(''); }} style={{ padding:"10px 16px", borderRadius:10, border:"none", background:"#22c55e", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Deposit</button>
+            <button onClick={() => { setTxnDialog('withdraw'); setTxnAmount(''); setTxnNote(''); }} style={{ padding:"10px 16px", borderRadius:10, border:"1px solid #2a2a3a", background:"transparent", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>− Withdraw</button>
+            <button onClick={() => deleteAccount(activeAccount.id)} title="Delete account" style={{ padding:"10px 12px", borderRadius:10, border:"1px solid #2a2a3a", background:"transparent", color:"#ef4444", fontSize:13, fontWeight:700, cursor:"pointer" }}>×</button>
+          </div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))", gap:10 }}>
+          <Stat label="Total P&L" value={(totalPnl >= 0 ? '+' : '') + fmtUsd(Math.abs(totalPnl))} color={totalPnl >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Return" value={netInvested > 0 ? (totalReturnPct >= 0 ? '+' : '') + totalReturnPct.toFixed(2) + '%' : '—'} color={totalReturnPct >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Win rate" value={winRate == null ? '—' : winRate.toFixed(0) + '%'} color="#fff"/>
+          <Stat label="Open" value={String(openPositions.length)} color="#fff"/>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:4, marginBottom:14, background:"#1a1a24", borderRadius:10, padding:4, border:"1px solid #1e1e2a", width:"fit-content" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding:"7px 16px", border:"none", borderRadius:7,
+            background: tab===t.id ? "#6366f1" : "transparent",
+            color: tab===t.id ? "#fff" : "#9ca3af",
+            fontSize:12, fontWeight:700, cursor:"pointer",
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'positions' && (
+        <div>
+          {/* Open positions */}
+          <div style={{ marginBottom:18 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:8 }}>Open positions ({openPositions.length})</div>
+            {openPositions.length === 0 ? (
+              <div style={{ padding:20, background:"#111", border:"1px dashed #1e1e2a", borderRadius:10, color:"#6b7280", fontSize:12, textAlign:"center" }}>
+                No open positions. Click "Buy →" on any trending coin to start.
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {positionsWithLive.map(p => {
+                  const edit = alertEdits[p.id] || { target: p.alertTarget ?? '', stop: p.alertStop ?? '' };
+                  return (
+                    <div key={p.id} style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:14 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr auto", gap:12, alignItems:"center" }}>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{p.name}</div>
+                          <div style={{ fontSize:11, color:"#6b7280" }}>{p.symbol?.toUpperCase()} · {p.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Entry</div>
+                          <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 6 })}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Current</div>
+                          <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p._cur, { maxFractionDigits: 6 })}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>P&L</div>
+                          <div style={{ fontSize:12, fontWeight:700, color: p._pnl >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(p._pnl))}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>P&L %</div>
+                          <div style={{ fontSize:12, fontWeight:700, color: p._pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(2) + '%'}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Held</div>
+                          <div style={{ fontSize:12, color:"#fff" }}>{fmtDuration(p.entryDate)}</div>
+                        </div>
+                        <button onClick={() => { setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); }} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Close →</button>
+                      </div>
+
+                      <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #1e1e2a", display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+                        <span style={{ fontSize:11, color:"#9ca3af" }}>Alerts:</span>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:11, color:"#9ca3af" }}>Target +</span>
+                          <input type="number" value={edit.target} onChange={e => setAlertEdits(prev => ({ ...prev, [p.id]: { ...edit, target: e.target.value } }))} onBlur={() => saveAlerts(p.id)} placeholder="20" style={{ width:60, padding:"4px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none" }}/>
+                          <span style={{ fontSize:11, color:"#9ca3af" }}>%</span>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:11, color:"#9ca3af" }}>Stop −</span>
+                          <input type="number" value={edit.stop} onChange={e => setAlertEdits(prev => ({ ...prev, [p.id]: { ...edit, stop: e.target.value } }))} onBlur={() => saveAlerts(p.id)} placeholder="10" style={{ width:60, padding:"4px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none" }}/>
+                          <span style={{ fontSize:11, color:"#9ca3af" }}>%</span>
+                        </div>
+                        {(p.alertTarget || p.alertStop) && <span style={{ fontSize:10, color:"#22c55e", fontWeight:700 }}>● Active</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Closed positions */}
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:8 }}>Closed positions ({closedPositions.length})</div>
+            {closedPositions.length === 0 ? (
+              <div style={{ padding:16, background:"#111", border:"1px dashed #1e1e2a", borderRadius:10, color:"#6b7280", fontSize:12, textAlign:"center" }}>No closed trades yet.</div>
+            ) : (
+              <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, overflow:"hidden" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr", padding:"10px 14px", borderBottom:"1px solid #1e1e2a" }}>
+                  {["Coin","Entry","Exit","Held for","P&L","P&L %"].map(h => (
+                    <div key={h} style={{ fontSize:10, fontWeight:700, color:"#6b7280", textTransform:"uppercase" }}>{h}</div>
+                  ))}
+                </div>
+                {closedWithPnl.sort((a, b) => new Date(b.exitDate).getTime() - new Date(a.exitDate).getTime()).map(p => (
+                  <div key={p.id} style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr", padding:"10px 14px", borderBottom:"1px solid #1e1e2a", alignItems:"center" }}>
+                    <div style={{ fontSize:12, color:"#fff", fontWeight:600 }}>{p.name} <span style={{ color:"#6b7280", fontWeight:400 }}>{p.symbol?.toUpperCase()}</span></div>
+                    <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 6 })}</div>
+                    <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.exitPrice, { maxFractionDigits: 6 })}</div>
+                    <div style={{ fontSize:12, color:"#9ca3af" }}>{fmtDuration(p.entryDate, p.exitDate)}</div>
+                    <div style={{ fontSize:12, fontWeight:700, color: p._pnl >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(p._pnl))}</div>
+                    <div style={{ fontSize:12, fontWeight:700, color: p._pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(2) + '%'}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === 'history' && (
+        <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, overflow:"hidden" }}>
+          {history.length === 0 ? (
+            <div style={{ padding:20, color:"#6b7280", fontSize:12, textAlign:"center" }}>No activity yet.</div>
+          ) : history.map(h => {
+            let line;
+            const date = fmtDateShort(h.date);
+            if (h.type === 'deposit') line = `Deposited ${fmtUsd(h.amount)}${h.note ? ' — ' + h.note : ''} on ${date}`;
+            else if (h.type === 'withdraw') line = `Withdrew ${fmtUsd(h.amount)}${h.note ? ' — ' + h.note : ''} on ${date}`;
+            else if (h.type === 'buy') line = `Bought ${h.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${h.symbol || ''} at ${fmtUsd(h.price)} on ${date}`;
+            else if (h.type === 'sell') {
+              const pnlStr = h.pnl != null ? ` (${h.pnl >= 0 ? '+' : '−'}${fmtUsd(Math.abs(h.pnl))})` : '';
+              line = `Sold ${h.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${h.symbol || ''} at ${fmtUsd(h.price)} on ${date}${pnlStr}`;
+            } else line = `${h.type}: ${date}`;
+            const color = h.type === 'buy' ? "#a5b4fc"
+                        : h.type === 'sell' ? (h.pnl >= 0 ? "#22c55e" : "#ef4444")
+                        : h.type === 'deposit' ? "#22c55e"
+                        : h.type === 'withdraw' ? "#f59e0b" : "#fff";
+            return (
+              <div key={h.id} style={{ padding:"10px 14px", borderBottom:"1px solid #1e1e2a", fontSize:12, color, display:"flex", justifyContent:"space-between", gap:12 }}>
+                <span>{line}</span>
+                <span style={{ color:"#6b7280", fontSize:11, whiteSpace:"nowrap" }}>{new Date(h.date).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' })}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === 'stats' && (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(180px, 1fr))", gap:10 }}>
+          <Stat label="Total deposited" value={fmtUsd(deposits)} color="#fff"/>
+          <Stat label="Total withdrawn" value={fmtUsd(withdraws)} color="#fff"/>
+          <Stat label="Net invested" value={fmtUsd(netInvested)} color="#fff"/>
+          <Stat label="Current value" value={fmtUsd(currentValue)} color="#fff"/>
+          <Stat label="Total P&L" value={(totalPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(totalPnl))} color={totalPnl >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Unrealized P&L" value={(unrealizedPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(unrealizedPnl))} color={unrealizedPnl >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Realized P&L" value={(closedPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(closedPnl))} color={closedPnl >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Win rate" value={winRate == null ? '—' : winRate.toFixed(0) + '%'} color="#fff"/>
+          <Stat label="Best trade" value={bestTrade ? (bestTrade._pnlPct >= 0 ? '+' : '') + bestTrade._pnlPct.toFixed(1) + '% ' + (bestTrade.symbol || '').toUpperCase() : '—'} color="#22c55e"/>
+          <Stat label="Worst trade" value={worstTrade ? worstTrade._pnlPct.toFixed(1) + '% ' + (worstTrade.symbol || '').toUpperCase() : '—'} color="#ef4444"/>
+          <Stat label="Avg hold" value={closedPositions.length ? avgHold : '—'} color="#fff"/>
+          <Stat label="Trades closed" value={String(closedPositions.length)} color="#fff"/>
+        </div>
+      )}
+
+      {/* Deposit / Withdraw dialog */}
+      {txnDialog && (
+        <div onClick={() => setTxnDialog(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:380, color:"#fff" }}>
+            <div style={{ fontSize:18, fontWeight:800, marginBottom:12 }}>{txnDialog === 'deposit' ? '+ Deposit' : '− Withdraw'}</div>
+            <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700 }}>Amount (USD)</label>
+            <input type="number" value={txnAmount} onChange={e => setTxnAmount(e.target.value)} placeholder="100" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:12 }}/>
+            <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700 }}>Note (optional)</label>
+            <input type="text" value={txnNote} onChange={e => setTxnNote(e.target.value)} placeholder="e.g. paycheck, transferred from bank" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}/>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={() => setTxnDialog(null)} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+              <button onClick={submitTxn} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: txnDialog === 'deposit' ? "#22c55e" : "#f59e0b", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close position dialog */}
+      {closeFor && (
+        <div onClick={() => setCloseFor(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:380, color:"#fff" }}>
+            <div style={{ fontSize:18, fontWeight:800, marginBottom:4 }}>Close {closeFor.name}</div>
+            <div style={{ fontSize:11, color:"#6b7280", marginBottom:12 }}>{closeFor.symbol?.toUpperCase()} · {closeFor.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</div>
+            <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700 }}>Exit price (USD)</label>
+            <input type="number" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.00" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}/>
+            {(() => {
+              const exit = parseFloat(closePrice) || 0;
+              if (!(exit > 0)) return null;
+              const pnl = (exit - closeFor.entryPrice) * closeFor.amount;
+              const pnlPct = ((exit / closeFor.entryPrice) - 1) * 100;
+              return (
+                <div style={{ padding:"10px 12px", background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, marginBottom:14, fontSize:12, color:"#9ca3af", display:"flex", justifyContent:"space-between" }}>
+                  <span>P&L</span>
+                  <span style={{ color: pnl >= 0 ? "#22c55e" : "#ef4444", fontWeight:700 }}>{(pnl >= 0 ? '+' : '−')}{fmtUsd(Math.abs(pnl))} ({(pnlPct >= 0 ? '+' : '')}{pnlPct.toFixed(2)}%)</span>
+                </div>
+              );
+            })()}
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={() => setCloseFor(null)} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+              <button onClick={submitClose} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background:"#ef4444", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Confirm Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateAccountForm({ type, name, balance, onName, onBalance, onCancel, onSubmit }) {
+  const canSubmit = name.trim().length > 0;
+  return (
+    <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:10, padding:14, marginBottom:16 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+        <span style={{ fontSize:11, fontWeight:800, padding:"3px 8px", borderRadius:5, background: type === 'real' ? "rgba(34,197,94,0.18)" : "rgba(99,102,241,0.20)", color: type === 'real' ? "#22c55e" : "#a5b4fc", letterSpacing:"0.05em" }}>{type.toUpperCase()}</span>
+        <span style={{ fontSize:13, fontWeight:700, color:"#fff" }}>New {type === 'real' ? 'real' : 'paper'} account</span>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr auto auto", gap:8 }}>
+        <input value={name} onChange={e => onName(e.target.value)} placeholder="Account name (e.g. Main Portfolio)" style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}/>
+        <input type="number" value={balance} onChange={e => onBalance(e.target.value)} placeholder="Starting balance USD" style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}/>
+        <button onClick={onCancel} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:12, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+        <button onClick={onSubmit} disabled={!canSubmit} style={{ padding:"8px 14px", borderRadius:8, border:"none", background: canSubmit ? "#6366f1" : "#2a2a3a", color:"#fff", fontSize:12, fontWeight:700, cursor: canSubmit ? "pointer" : "not-allowed" }}>Create</button>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, color }) {
+  return (
+    <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:12 }}>
+      <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.04em", fontWeight:700 }}>{label}</div>
+      <div style={{ fontSize:16, fontWeight:800, color: color || "#fff", marginTop:4 }}>{value}</div>
+    </div>
+  );
+}
+
 function TradingDashboard({ session, onLogout }) {
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
@@ -8647,6 +9325,46 @@ function TradingDashboard({ session, onLogout }) {
       return next;
     });
   }, []);
+  const [cryptoAccountStore, setCryptoAccountStore] = useState(loadCryptoAccountStore);
+  const updateCryptoAccountStore = useCallback((next) => {
+    setCryptoAccountStore(prev => {
+      const updated = typeof next === 'function' ? next(prev) : next;
+      persistCryptoAccountStore(updated);
+      return updated;
+    });
+  }, []);
+  const [buyModalCoin, setBuyModalCoin] = useState(null);
+  const [buyModalLivePrice, setBuyModalLivePrice] = useState(null);
+
+  // When the buy modal opens, fetch the latest price so the entry default is current.
+  useEffect(() => {
+    if (!buyModalCoin) return;
+    let cancelled = false;
+    setBuyModalLivePrice(null);
+    fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(buyModalCoin.coinId)}&vs_currencies=usd`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        const p = d?.[buyModalCoin.coinId]?.usd;
+        if (typeof p === 'number') setBuyModalLivePrice(p);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [buyModalCoin]);
+
+  const handleConfirmBuy = useCallback(({ accountId, usdAmount, price }) => {
+    if (!buyModalCoin) return;
+    setCryptoAccountStore(prev => {
+      const next = buyPositionInAccount(prev, accountId, {
+        coinId: buyModalCoin.coinId,
+        name: buyModalCoin.name,
+        symbol: buyModalCoin.symbol,
+      }, usdAmount, price);
+      persistCryptoAccountStore(next);
+      return next;
+    });
+    setBuyModalCoin(null);
+  }, [buyModalCoin]);
   useEffect(() => { setCryptoLastUpdated(null); }, [cryptoSection]);
   useEffect(() => {
     if (appMode !== 'crypto') return;
@@ -8659,34 +9377,51 @@ function TradingDashboard({ session, onLogout }) {
     gainers:  'Top gainers',
     watchlist:'Your watchlist (auto-refresh 1m)',
     journal:  'Logged signals & taken trades',
+    accounts: 'Paper & real account portfolios',
   }[cryptoSection] || cryptoSection;
 
-  // Alert checker — runs every 60s while in crypto mode. For each signal with
-  // a target or stop set, polls current price and fires a browser notification
-  // once when the threshold is crossed.
+  // Alert checker — runs every 60s while in crypto mode. Polls current prices
+  // for both signals (with target/stop) and open positions (with alertTarget /
+  // alertStop), then fires a browser notification once per threshold crossed.
   const cryptoSignalsRef = useRef(cryptoSignals);
+  const cryptoAccountStoreRef = useRef(cryptoAccountStore);
   useEffect(() => { cryptoSignalsRef.current = cryptoSignals; }, [cryptoSignals]);
+  useEffect(() => { cryptoAccountStoreRef.current = cryptoAccountStore; }, [cryptoAccountStore]);
   useEffect(() => {
     if (appMode !== 'crypto') return;
     if (typeof Notification === 'undefined') return;
     const check = async () => {
       const sigs = cryptoSignalsRef.current || [];
-      const watch = sigs.filter(s =>
+      const store = cryptoAccountStoreRef.current || { accounts: [] };
+      const watchSigs = sigs.filter(s =>
         !s.didTake && s.priceAtSignal > 0 &&
         ((s.targetGain && !s.targetHitNotified) || (s.stopLoss && !s.stopHitNotified))
       );
-      if (watch.length === 0) return;
+      const watchPositions = [];
+      for (const acc of store.accounts || []) {
+        for (const pos of acc.positions || []) {
+          if (pos.status !== 'open') continue;
+          if (!(pos.alertTarget || pos.alertStop)) continue;
+          if (pos.targetHitNotified && pos.stopHitNotified) continue;
+          if ((pos.alertTarget && pos.targetHitNotified) && (!pos.alertStop || pos.stopHitNotified)) continue;
+          watchPositions.push({ accountId: acc.id, pos });
+        }
+      }
+      if (watchSigs.length === 0 && watchPositions.length === 0) return;
       try {
-        const ids = [...new Set(watch.map(s => s.coinId))].join(',');
-        const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd`);
+        const idSet = new Set();
+        watchSigs.forEach(s => idSet.add(s.coinId));
+        watchPositions.forEach(({ pos }) => idSet.add(pos.coinId));
+        const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent([...idSet].join(','))}&vs_currencies=usd`);
         const d = await r.json();
         if (!d) return;
-        const patches = new Map();
-        for (const s of watch) {
+
+        const sigPatches = new Map();
+        for (const s of watchSigs) {
           const cur = d[s.coinId]?.usd;
           if (typeof cur !== 'number') continue;
           const change = ((cur / s.priceAtSignal) - 1) * 100;
-          let patch = patches.get(s.id) || {};
+          let patch = sigPatches.get(s.id) || {};
           if (s.targetGain && !s.targetHitNotified && change >= s.targetGain) {
             if (Notification.permission === 'granted') {
               try { new Notification(`🎯 ${s.name} hit +${s.targetGain}% target`, { body: `Consider taking profit. Current $${cur}` }); } catch {}
@@ -8699,12 +9434,46 @@ function TradingDashboard({ session, onLogout }) {
             }
             patch.stopHitNotified = true;
           }
-          if (Object.keys(patch).length > 0) patches.set(s.id, patch);
+          if (Object.keys(patch).length > 0) sigPatches.set(s.id, patch);
         }
-        if (patches.size > 0) {
+        if (sigPatches.size > 0) {
           setCryptoSignals(prev => {
-            const next = prev.map(s => patches.has(s.id) ? { ...s, ...patches.get(s.id) } : s);
+            const next = prev.map(s => sigPatches.has(s.id) ? { ...s, ...sigPatches.get(s.id) } : s);
             try { localStorage.setItem('nexyru_crypto_signals', JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
+
+        const posPatches = new Map();
+        for (const { pos } of watchPositions) {
+          const cur = d[pos.coinId]?.usd;
+          if (typeof cur !== 'number') continue;
+          const change = ((cur / pos.entryPrice) - 1) * 100;
+          let patch = posPatches.get(pos.id) || {};
+          if (pos.alertTarget && !pos.targetHitNotified && change >= pos.alertTarget) {
+            if (Notification.permission === 'granted') {
+              try { new Notification(`🎯 ${(pos.symbol || pos.name)} hit +${pos.alertTarget}% target`, { body: `Consider taking profit. Current $${cur}` }); } catch {}
+            }
+            patch.targetHitNotified = true;
+          }
+          if (pos.alertStop && !pos.stopHitNotified && change <= -pos.alertStop) {
+            if (Notification.permission === 'granted') {
+              try { new Notification(`⚠️ ${(pos.symbol || pos.name)} hit −${pos.alertStop}% stop`, { body: `Consider cutting losses. Current $${cur}` }); } catch {}
+            }
+            patch.stopHitNotified = true;
+          }
+          if (Object.keys(patch).length > 0) posPatches.set(pos.id, patch);
+        }
+        if (posPatches.size > 0) {
+          setCryptoAccountStore(prev => {
+            const next = {
+              ...prev,
+              accounts: (prev.accounts || []).map(acc => ({
+                ...acc,
+                positions: (acc.positions || []).map(p => posPatches.has(p.id) ? { ...p, ...posPatches.get(p.id) } : p),
+              })),
+            };
+            persistCryptoAccountStore(next);
             return next;
           });
         }
@@ -9368,6 +10137,7 @@ function TradingDashboard({ session, onLogout }) {
       {showCSV && <CSVUploader initialTab={csvInitialTab} onImport={handleImportTrades} onClose={() => setShowCSV(false)} tradeCount={trades.length}/>}
       {showHub && <ImportHub onManual={() => setShowForm(true)} onCSV={() => { setCsvInitialTab("csv"); setShowCSV(true); }} onScreenshot={() => { setCsvInitialTab("ai"); setShowCSV(true); }} onClose={() => setShowHub(false)} accountType={paperAccts.activeAccount?.type ?? "paper"}/>}
       {showAddAcct && <AddAccountModal onAdd={tryAddAccount} onClose={() => setShowAddAcct(false)}/>}
+      {buyModalCoin && <CryptoBuyModal coin={buyModalCoin} livePrice={buyModalLivePrice} store={cryptoAccountStore} onClose={() => setBuyModalCoin(null)} onConfirm={handleConfirmBuy}/>}
 
       {/* ── Left Sidebar (desktop) ── */}
       {appMode === 'trading' && <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
@@ -9418,6 +10188,7 @@ function TradingDashboard({ session, onLogout }) {
             {id:'gainers',  label:'Top Gainers', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
             {id:'watchlist',label:'Watchlist', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>},
             {id:'journal',  label:'Journal', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>},
+            {id:'accounts', label:'Accounts', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>},
           ].map(s=>(
             <div key={s.id} onClick={()=>setCryptoSection(s.id)} title={s.label} style={{
               width:56, height:48, display:'flex', alignItems:'center', justifyContent:'center',
@@ -9632,11 +10403,12 @@ function TradingDashboard({ session, onLogout }) {
                 >Refresh</button>
               </div>
             </div>
-            {cryptoSection === 'trending'  && <CryptoTrending  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} />}
+            {cryptoSection === 'trending'  && <CryptoTrending  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />}
             {cryptoSection === 'newpairs'  && <CryptoNewPairs  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
             {cryptoSection === 'gainers'   && <CryptoGainers   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
             {cryptoSection === 'watchlist' && <CryptoWatchlist refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
             {cryptoSection === 'journal'   && <CryptoJournal   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onUpdateSignals={updateCryptoSignals} />}
+            {cryptoSection === 'accounts'  && <CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} />}
           </div>
         )}
 
