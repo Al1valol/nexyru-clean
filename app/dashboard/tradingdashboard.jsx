@@ -7689,20 +7689,16 @@ const SIDEBAR_ICONS = {
   ),
   coin: (
     <svg {...SIDEBAR_ICON_PROPS}>
-      <circle cx="12" cy="12" r="9"/>
-      <path d="M14.5 9.5a3 3 0 0 0-5-1.2"/>
-      <path d="M9.5 14.5a3 3 0 0 0 5 1.2"/>
-      <path d="M12 7v10"/>
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M9.5 9a3 3 0 0 1 5 1c0 2-3 3-3 3"/>
+      <path d="M12 17h.01"/>
     </svg>
   ),
   dice: (
     <svg {...SIDEBAR_ICON_PROPS}>
-      <rect x="3" y="3" width="18" height="18" rx="3"/>
-      <circle cx="8" cy="8" r="1" fill="currentColor"/>
-      <circle cx="16" cy="8" r="1" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <circle cx="8" cy="16" r="1" fill="currentColor"/>
-      <circle cx="16" cy="16" r="1" fill="currentColor"/>
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <path d="M16 10a4 4 0 0 1-8 0"/>
     </svg>
   ),
   chart: (
@@ -7893,6 +7889,25 @@ function TradingDashboard({ session, onLogout }) {
   // first render before useUserPlan() reads from localStorage.
   const isAdmin = isAdminEmail(session?.email);
   const effectivePlan = isAdmin ? "elite" : userPlan;
+
+  // Crypto + Odds tabs are admin-only. Read the email from the Supabase auth
+  // token in localStorage as a fallback for the SSR'd first paint where
+  // session.email may not be hydrated yet.
+  const [showAdminTabs, setShowAdminTabs] = useState(false);
+  useEffect(() => {
+    if (isAdmin) {
+      setShowAdminTabs(true);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("sb-xsrcaceydyqytbipvrok-auth-token");
+      if (!raw) return;
+      const email = JSON.parse(raw)?.user?.email ?? "";
+      if (String(email).toLowerCase() === "calemax5@gmail.com") {
+        setShowAdminTabs(true);
+      }
+    } catch {}
+  }, [isAdmin]);
   const [trades,        setTrades]        = useState([]);
   const [tradesLoading, setTradesLoading] = useState(true);
   const [showForm,      setShowForm]      = useState(false);
@@ -8543,14 +8558,14 @@ function TradingDashboard({ session, onLogout }) {
           <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups" pro/>
           <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"      active={tab==="insights"}  onClick={()=>setTab("insights")}/>
           <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Review"  href="/replay"/>
+          {showAdminTabs && <SidebarItem icon={SIDEBAR_ICONS.coin}  label="Crypto"  active={tab==="crypto"}  onClick={()=>setTab("crypto")}/>}
+          {showAdminTabs && <SidebarItem icon={SIDEBAR_ICONS.dice}  label="Odds"    active={tab==="odds"}    onClick={()=>setTab("odds")}/>}
 
           <SidebarDivider/>
 
           {/* Group 4 — Build */}
           <SidebarGroupLabel label="Build"/>
           <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab"  active={tab==="stratlab"}  onClick={()=>setTab("stratlab")}/>
-          {isAdmin && <SidebarItem icon={SIDEBAR_ICONS.coin}  label="Crypto"  active={tab==="crypto"}  onClick={()=>setTab("crypto")}/>}
-          {isAdmin && <SidebarItem icon={SIDEBAR_ICONS.dice}  label="Odds"    active={tab==="odds"}    onClick={()=>setTab("odds")}/>}
         </nav>
 
         {/* Pricing + Settings at bottom */}
@@ -8691,8 +8706,8 @@ function TradingDashboard({ session, onLogout }) {
               : <StrategyLabPage session={session} trades={activeTrades}/>
           )}
           {tab==="copy" && <CopyTradingPage session={session} copyTrading={copyTrading}/> }
-          {tab==="crypto" && isAdmin && <CryptoTab/>}
-          {tab==="odds" && isAdmin && <OddsTab/>}
+          {tab==="crypto" && showAdminTabs && <CryptoTab/>}
+          {tab==="odds" && showAdminTabs && <OddsTab/>}
           </div>
         </main>
       </div>
