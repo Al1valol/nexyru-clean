@@ -8669,7 +8669,7 @@ function TradingDashboard({ session, onLogout }) {
       {showAddAcct && <AddAccountModal onAdd={tryAddAccount} onClose={() => setShowAddAcct(false)}/>}
 
       {/* ── Left Sidebar (desktop) ── */}
-      <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
+      {appMode === 'trading' && <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:"#0f0f14", borderRight:"1px solid #1e1e2a", display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 0 14px", zIndex:50 }}>
         {/* Logo mark */}
         <a href="/" aria-label="Nexyru" style={{ width:36, height:36, borderRadius:9, background:"linear-gradient(135deg,#6366f1,#4f46e5)", display:"flex", alignItems:"center", justifyContent:"center", textDecoration:"none", marginBottom:14, flexShrink:0, fontWeight:900, color:"#fff", fontSize:16, letterSpacing:"-0.02em" }}>N</a>
 
@@ -8704,10 +8704,54 @@ function TradingDashboard({ session, onLogout }) {
           <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab"  active={tab==="stratlab"}  onClick={()=>setTab("stratlab")}/>
         </nav>
 
-        {/* Pricing + Settings at bottom */}
-        <SidebarItem icon={SIDEBAR_ICONS.tag} label="Pricing" href="/pricing"/>
+        {/* Settings at bottom */}
         <SidebarItem icon={SIDEBAR_ICONS.gear} label="Settings" href="/settings"/>
-      </aside>
+      </aside>}
+
+      {/* ── Crypto Sidebar (admin only) ── */}
+      {appMode === 'crypto' && isAdmin && (
+        <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
+          {[
+            {id:'trending', label:'Trending', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/></svg>},
+            {id:'newpairs', label:'New Pairs', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>},
+            {id:'gainers',  label:'Top Gainers', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
+            {id:'watchlist',label:'Watchlist', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>},
+          ].map(s=>(
+            <div key={s.id} onClick={()=>setCryptoSection(s.id)} title={s.label} style={{
+              width:56, height:48, display:'flex', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', color: cryptoSection===s.id ? '#6366f1' : '#6b7280',
+              background: cryptoSection===s.id ? 'rgba(99,102,241,0.08)' : 'transparent',
+              borderLeft: cryptoSection===s.id ? '2px solid #6366f1' : '2px solid transparent',
+              transition:'all 0.15s', marginBottom:4
+            }}>{s.icon}</div>
+          ))}
+        </aside>
+      )}
+
+      {/* ── Odds Sidebar (admin only) ── */}
+      {appMode === 'odds' && isAdmin && (
+        <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
+          {[
+            {id:'all',    label:'All Games', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>},
+            {id:'nfl',    label:'NFL', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><ellipse cx="12" cy="12" rx="10" ry="6"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="6" x2="12" y2="18"/></svg>},
+            {id:'nba',    label:'NBA', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>},
+            {id:'mlb',    label:'MLB', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 8c0 2.5-1 4.5-2 6s-2 2.5-2 4"/><path d="M12 8c0 2.5 1 4.5 2 6s2 2.5 2 4"/></svg>},
+            {id:'nhl',    label:'NHL', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><ellipse cx="12" cy="17" rx="9" ry="3"/><path d="M6 17V7l6-4 6 4v10"/></svg>},
+            {id:'mma',    label:'MMA', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>},
+            {id:'soccer', label:'Soccer', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/></svg>},
+            {id:'tennis', label:'Tennis', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 2C8 6 8 18 12 22"/><path d="M12 2c4 4 4 16 0 20"/></svg>},
+            {id:'arbs',   label:'Arbs', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>},
+          ].map(s=>(
+            <div key={s.id} onClick={()=>setOddsSport(s.id)} title={s.label} style={{
+              width:56, height:48, display:'flex', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', color: oddsSport===s.id ? '#22c55e' : '#6b7280',
+              background: oddsSport===s.id ? 'rgba(34,197,94,0.08)' : 'transparent',
+              borderLeft: oddsSport===s.id ? '2px solid #22c55e' : '2px solid transparent',
+              transition:'all 0.15s', marginBottom:4
+            }}>{s.icon}</div>
+          ))}
+        </aside>
+      )}
 
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
@@ -8865,58 +8909,18 @@ function TradingDashboard({ session, onLogout }) {
         </main>
         )}
 
-        {appMode === 'crypto' && showAdminTabs && (
-          <div style={{ padding:0, flex:1, display:"flex" }}>
-            <div style={{ width:160, borderRight:"1px solid #1e1e2a", paddingTop:16, flexShrink:0 }}>
-              {[
-                { id:'trending', label:'🔥 Trending' },
-                { id:'newpairs', label:'⚡ New Pairs' },
-                { id:'gainers',  label:'📈 Top Gainers' },
-                { id:'watchlist',label:'⭐ Watchlist' },
-              ].map(s => (
-                <button key={s.id} onClick={() => setCryptoSection(s.id)} style={{
-                  width:"100%", padding:"10px 16px", border:"none", background: cryptoSection===s.id ? "rgba(99,102,241,0.1)" : "transparent",
-                  color: cryptoSection===s.id ? "#fff" : "#6b7280",
-                  fontSize:13, fontWeight: cryptoSection===s.id ? 600 : 400,
-                  textAlign:"left", cursor:"pointer", borderLeft: cryptoSection===s.id ? "2px solid #6366f1" : "2px solid transparent",
-                  display:"flex", alignItems:"center", gap:8
-                }}>{s.label}</button>
-              ))}
-            </div>
-            <div style={{ flex:1, padding:"0 24px", overflowY:"auto" }}>
-              {cryptoSection === 'trending' && <CryptoTrending />}
-              {cryptoSection === 'newpairs' && <CryptoNewPairs />}
-              {cryptoSection === 'gainers' && <CryptoGainers />}
-              {cryptoSection === 'watchlist' && <CryptoWatchlist />}
-            </div>
+        {appMode === 'crypto' && isAdmin && (
+          <div style={{ flex:1, padding:24, overflowY:"auto" }}>
+            {cryptoSection === 'trending' && <CryptoTrending />}
+            {cryptoSection === 'newpairs' && <CryptoNewPairs />}
+            {cryptoSection === 'gainers' && <CryptoGainers />}
+            {cryptoSection === 'watchlist' && <CryptoWatchlist />}
           </div>
         )}
 
-        {appMode === 'odds' && showAdminTabs && (
-          <div style={{ display:"flex", flex:1 }}>
-            <div style={{ width:160, borderRight:"1px solid #1e1e2a", paddingTop:16, flexShrink:0 }}>
-              {[
-                { id:'all',     label:'🎯 All Games' },
-                { id:'nfl',     label:'🏈 NFL' },
-                { id:'nba',     label:'🏀 NBA' },
-                { id:'mlb',     label:'⚾ MLB' },
-                { id:'nhl',     label:'🏒 NHL' },
-                { id:'mma',     label:'🥊 MMA' },
-                { id:'soccer',  label:'⚽ Soccer' },
-                { id:'tennis',  label:'🎾 Tennis' },
-                { id:'arbs',    label:'💰 Arbs Only' },
-              ].map(s => (
-                <button key={s.id} onClick={() => setOddsSport(s.id)} style={{
-                  width:"100%", padding:"10px 16px", border:"none", background: oddsSport===s.id ? "rgba(99,102,241,0.1)" : "transparent",
-                  color: oddsSport===s.id ? "#fff" : "#6b7280",
-                  fontSize:13, fontWeight: oddsSport===s.id ? 600 : 400,
-                  textAlign:"left", cursor:"pointer", borderLeft: oddsSport===s.id ? "2px solid #6366f1" : "2px solid transparent",
-                }}>{s.label}</button>
-              ))}
-            </div>
-            <div style={{ flex:1, padding:24, overflowY:"auto" }}>
-              <OddsTab oddsSport={oddsSport}/>
-            </div>
+        {appMode === 'odds' && isAdmin && (
+          <div style={{ flex:1, padding:24, overflowY:"auto" }}>
+            <OddsTab oddsSport={oddsSport}/>
           </div>
         )}
       </div>
