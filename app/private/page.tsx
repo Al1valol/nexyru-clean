@@ -297,6 +297,9 @@ function TopBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
 interface Trade {
   pnl?: number | string;
   date?: number | string;
+  symbol?: string;
+  pair?: string;
+  type?: string;
 }
 
 function loadAllTrades(): Trade[] {
@@ -318,6 +321,17 @@ function loadAllTrades(): Trade[] {
   return all;
 }
 
+function tradePnl(t: Trade): number | null {
+  const v = typeof t.pnl === "number" ? t.pnl : parseFloat(String(t.pnl ?? ""));
+  return Number.isFinite(v) ? v : null;
+}
+function tradeTs(t: Trade): number | null {
+  if (t.date === undefined || t.date === null) return null;
+  if (typeof t.date === "number") return t.date;
+  const parsed = new Date(t.date).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function JournalTab() {
   const [trades, setTrades] = useState<Trade[]>([]);
 
@@ -325,40 +339,109 @@ function JournalTab() {
     setTrades(loadAllTrades());
   }, []);
 
+  // Chronological trades with valid pnl
+  const chrono = useMemo(() => {
+    return trades
+      .map((t) => ({ t, pnl: tradePnl(t), ts: tradeTs(t) }))
+      .filter((x): x is { t: Trade; pnl: number; ts: number | null } => x.pnl !== null)
+      .sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+  }, [trades]);
+
   const stats = useMemo(() => {
     let pnlTotal = 0;
     let wins = 0;
     let losses = 0;
     let best = -Infinity;
-    let count = 0;
-    for (const t of trades) {
-      const v = typeof t.pnl === "number" ? t.pnl : parseFloat(String(t.pnl ?? ""));
-      if (!Number.isFinite(v)) continue;
-      count++;
-      pnlTotal += v;
-      if (v > 0) wins++;
-      else if (v < 0) losses++;
-      if (v > best) best = v;
+    let winSum = 0;
+    let lossSum = 0;
+    for (const { pnl } of chrono) {
+      pnlTotal += pnl;
+      if (pnl > 0) {
+        wins++;
+        winSum += pnl;
+      } else if (pnl < 0) {
+        losses++;
+        lossSum += pnl;
+      }
+      if (pnl > best) best = pnl;
     }
     const decided = wins + losses;
     const winRate = decided > 0 ? (wins / decided) * 100 : 0;
+    const avgWin = wins > 0 ? winSum / wins : 0;
+    const avgLoss = losses > 0 ? lossSum / losses : 0;
+    const profitFactor =
+      lossSum < 0 ? winSum / Math.abs(lossSum) : winSum > 0 ? Infinity : 0;
+
+    // Current streak (from the latest trade backward)
+    let streakLen = 0;
+    let streakKind: "win" | "loss" | null = null;
+    for (let i = chrono.length - 1; i >= 0; i--) {
+      const pnl = chrono[i].pnl;
+      const kind: "win" | "loss" | null =
+        pnl > 0 ? "win" : pnl < 0 ? "loss" : null;
+      if (kind === null) break;
+      if (streakKind === null) {
+        streakKind = kind;
+        streakLen = 1;
+      } else if (streakKind === kind) {
+        streakLen++;
+      } else {
+        break;
+      }
+    }
+
+    // Per-day aggregation
+    const byDay = new Map<string, number>();
+    for (const { pnl, ts } of chrono) {
+      if (ts === null) continue;
+      const day = new Date(ts).toISOString().slice(0, 10);
+      byDay.set(day, (byDay.get(day) ?? 0) + pnl);
+    }
+    let bestDay: { day: string; pnl: number } | null = null;
+    let worstDay: { day: string; pnl: number } | null = null;
+    for (const [day, pnl] of byDay) {
+      if (bestDay === null || pnl > bestDay.pnl) bestDay = { day, pnl };
+      if (worstDay === null || pnl < worstDay.pnl) worstDay = { day, pnl };
+    }
+
     return {
-      count,
+      count: chrono.length,
       pnlTotal,
       winRate,
       best: best === -Infinity ? 0 : best,
+      profitFactor,
+      avgWin,
+      avgLoss,
+      streakLen,
+      streakKind,
+      bestDay,
+      worstDay,
     };
-  }, [trades]);
+  }, [chrono]);
+
+  const equityPoints = useMemo(() => {
+    const pts: number[] = [];
+    let cum = 0;
+    for (const { pnl } of chrono) {
+      cum += pnl;
+      pts.push(cum);
+    }
+    return pts;
+  }, [chrono]);
+
+  const recent = useMemo(() => chrono.slice(-10).reverse(), [chrono]);
 
   return (
     <section>
       <SectionTitle title="Journal" subtitle="Aggregate stats across all accounts" />
+
+      {/* Row 1 — core stats */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 12,
-          marginBottom: 20,
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 10,
+          marginBottom: 10,
         }}
       >
         <StatCard label="Total Trades" value={stats.count.toLocaleString()} />
@@ -378,6 +461,172 @@ function JournalTab() {
           color={stats.best > 0 ? C.green : C.textDim}
         />
       </div>
+
+      {/* Row 2 — performance ratios */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 10,
+          marginBottom: 10,
+        }}
+      >
+        <StatCard
+          label="Profit Factor"
+          value={
+            !Number.isFinite(stats.profitFactor)
+              ? stats.profitFactor === Infinity
+                ? "∞"
+                : "—"
+              : stats.profitFactor.toFixed(2)
+          }
+          color={stats.profitFactor >= 1.5 ? C.green : stats.profitFactor < 1 ? C.red : C.text}
+        />
+        <StatCard
+          label="Avg Win"
+          value={`+$${stats.avgWin.toFixed(2)}`}
+          color={C.green}
+        />
+        <StatCard
+          label="Avg Loss"
+          value={`$${stats.avgLoss.toFixed(2)}`}
+          color={C.red}
+        />
+      </div>
+
+      {/* Row 3 — streak / day extremes */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 10,
+          marginBottom: 22,
+        }}
+      >
+        <StatCard
+          label="Current Streak"
+          value={
+            stats.streakKind === null
+              ? "—"
+              : `${stats.streakLen} ${stats.streakKind} streak`
+          }
+          color={
+            stats.streakKind === "win"
+              ? C.green
+              : stats.streakKind === "loss"
+                ? C.red
+                : C.textDim
+          }
+        />
+        <StatCard
+          label="Best Day"
+          value={
+            stats.bestDay
+              ? `+$${stats.bestDay.pnl.toFixed(2)}`
+              : "—"
+          }
+          color={C.green}
+          subtext={stats.bestDay ? stats.bestDay.day : undefined}
+        />
+        <StatCard
+          label="Worst Day"
+          value={
+            stats.worstDay
+              ? `$${stats.worstDay.pnl.toFixed(2)}`
+              : "—"
+          }
+          color={C.red}
+          subtext={stats.worstDay ? stats.worstDay.day : undefined}
+        />
+      </div>
+
+      {/* Equity curve */}
+      <EquityCurveCard points={equityPoints} />
+
+      {/* Recent trades */}
+      <Subhead>Recent Trades</Subhead>
+      {recent.length === 0 ? (
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            padding: 18,
+            color: C.textMuted,
+            fontSize: 13,
+            marginBottom: 20,
+          }}
+        >
+          No trades found in localStorage.
+        </div>
+      ) : (
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            overflow: "hidden",
+            marginBottom: 20,
+          }}
+        >
+          {recent.map((entry, i) => {
+            const { t, pnl, ts } = entry;
+            const isLong = String(t.type ?? "").toLowerCase() === "long";
+            const isShort = String(t.type ?? "").toLowerCase() === "short";
+            const sym = t.symbol ?? t.pair ?? "—";
+            const date = ts ? new Date(ts).toLocaleDateString() : "—";
+            return (
+              <div
+                key={i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "110px 1fr 80px 100px",
+                  alignItems: "center",
+                  padding: "10px 14px",
+                  background: i % 2 === 1 ? C.card2 : "transparent",
+                  fontSize: 13,
+                  gap: 10,
+                }}
+              >
+                <span style={{ color: C.textDim, fontSize: 12 }}>{date}</span>
+                <span style={{ fontWeight: 600 }}>{sym}</span>
+                {isLong || isShort ? (
+                  <span
+                    style={{
+                      justifySelf: "start",
+                      background: isLong
+                        ? "rgba(34,197,94,0.12)"
+                        : "rgba(239,68,68,0.12)",
+                      border: `1px solid ${isLong ? C.green : C.red}`,
+                      color: isLong ? C.green : C.red,
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {isLong ? "Long" : "Short"}
+                  </span>
+                ) : (
+                  <span style={{ color: C.textMuted, fontSize: 11 }}>—</span>
+                )}
+                <span
+                  style={{
+                    textAlign: "right",
+                    fontWeight: 700,
+                    color: pnl >= 0 ? C.green : C.red,
+                  }}
+                >
+                  {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <a
         href="/dashboard"
         style={{
@@ -401,10 +650,12 @@ function StatCard({
   label,
   value,
   color,
+  subtext,
 }: {
   label: string;
   value: string;
   color?: string;
+  subtext?: string;
 }) {
   return (
     <div
@@ -437,6 +688,142 @@ function StatCard({
       >
         {value}
       </div>
+      {subtext && (
+        <div style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>{subtext}</div>
+      )}
+    </div>
+  );
+}
+
+function EquityCurveCard({ points }: { points: number[] }) {
+  // Coordinate space
+  const W = 760;
+  const H = 180;
+  const PAD_L = 12;
+  const PAD_R = 12;
+  const PAD_T = 14;
+  const PAD_B = 14;
+
+  if (points.length < 2) {
+    return (
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: 18,
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            color: C.textMuted,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            marginBottom: 6,
+          }}
+        >
+          Equity Curve
+        </div>
+        <div style={{ color: C.textMuted, fontSize: 13 }}>
+          Need at least 2 trades to draw a curve.
+        </div>
+      </div>
+    );
+  }
+
+  const min = Math.min(0, ...points);
+  const max = Math.max(0, ...points);
+  const range = max - min || 1;
+  const stepX = (W - PAD_L - PAD_R) / (points.length - 1);
+
+  const coords = points.map((p, i) => {
+    const x = PAD_L + i * stepX;
+    const y = PAD_T + (H - PAD_T - PAD_B) * (1 - (p - min) / range);
+    return [x, y] as const;
+  });
+
+  const polyline = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const end = points[points.length - 1];
+
+  // Zero line position (if 0 falls within range)
+  const zeroY =
+    min < 0 && max > 0
+      ? PAD_T + (H - PAD_T - PAD_B) * (1 - (0 - min) / range)
+      : null;
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 20,
+      }}
+    >
+      <div
+        style={{
+          color: C.textMuted,
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          marginBottom: 10,
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>Equity Curve</span>
+        <span style={{ color: C.textMuted, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>
+          {points.length} trades
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ width: "100%", height: 180, display: "block" }}
+      >
+        {zeroY !== null && (
+          <line
+            x1={PAD_L}
+            x2={W - PAD_R}
+            y1={zeroY}
+            y2={zeroY}
+            stroke={C.border}
+            strokeDasharray="3 3"
+          />
+        )}
+        <polyline
+          points={polyline}
+          fill="none"
+          stroke={end >= 0 ? C.green : C.red}
+          strokeWidth={1.75}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      </svg>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: 8,
+          fontSize: 12,
+          color: C.textDim,
+        }}
+      >
+        <span>$0.00</span>
+        <span
+          style={{
+            color: end >= 0 ? C.green : C.red,
+            fontWeight: 700,
+          }}
+        >
+          {end >= 0 ? "+" : ""}${end.toFixed(2)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -455,11 +842,12 @@ interface DexPair {
   pairAddress: string;
   chainId: string;
   dexId: string;
-  baseToken: { symbol: string; name: string };
+  baseToken: { symbol: string; name: string; address: string };
   quoteToken: { symbol: string };
   priceUsd?: string;
   priceChange?: { h1?: number; h24?: number };
   volume?: { h24?: number };
+  liquidity?: { usd?: number };
   pairCreatedAt?: number;
 }
 interface MarketCoin {
@@ -468,7 +856,32 @@ interface MarketCoin {
   name: string;
   current_price: number;
   price_change_percentage_24h: number | null;
+  price_change_percentage_1h_in_currency?: number | null;
+  price_change_percentage_24h_in_currency?: number | null;
   market_cap_rank: number | null;
+}
+
+const CHAIN_BADGES: Record<string, { bg: string; border: string; fg: string; label: string }> = {
+  solana: { bg: "rgba(147,51,234,0.18)", border: "rgba(147,51,234,0.55)", fg: "#c4a4ff", label: "SOL" },
+  ethereum: { bg: "rgba(59,130,246,0.18)", border: "rgba(59,130,246,0.55)", fg: "#93c5fd", label: "ETH" },
+  base: { bg: "rgba(34,197,94,0.18)", border: "rgba(34,197,94,0.55)", fg: "#86efac", label: "BASE" },
+  bsc: { bg: "rgba(234,179,8,0.18)", border: "rgba(234,179,8,0.55)", fg: "#fde047", label: "BSC" },
+  arbitrum: { bg: "rgba(56,189,248,0.18)", border: "rgba(56,189,248,0.55)", fg: "#7dd3fc", label: "ARB" },
+  polygon: { bg: "rgba(168,85,247,0.18)", border: "rgba(168,85,247,0.55)", fg: "#d8b4fe", label: "POLY" },
+  optimism: { bg: "rgba(239,68,68,0.18)", border: "rgba(239,68,68,0.55)", fg: "#fca5a5", label: "OP" },
+  avalanche: { bg: "rgba(244,63,94,0.18)", border: "rgba(244,63,94,0.55)", fg: "#fda4af", label: "AVAX" },
+};
+
+function chainBadge(chainId: string) {
+  const key = chainId.toLowerCase();
+  return (
+    CHAIN_BADGES[key] ?? {
+      bg: "rgba(120,120,140,0.15)",
+      border: "rgba(120,120,140,0.4)",
+      fg: "#c0c0d0",
+      label: chainId.toUpperCase().slice(0, 5),
+    }
+  );
 }
 
 function CryptoTab() {
@@ -477,6 +890,9 @@ function CryptoTab() {
   const [gainers, setGainers] = useState<MarketCoin[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -486,7 +902,7 @@ function CryptoTab() {
         fetch("https://api.coingecko.com/api/v3/search/trending"),
         fetch("https://api.dexscreener.com/latest/dex/search?q=meme"),
         fetch(
-          "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=price_change_percentage_24h_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h",
+          "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=price_change_percentage_24h_desc&per_page=10&page=1&sparkline=false&price_change_percentage=1h,24h",
         ),
       ]);
 
@@ -506,6 +922,7 @@ function CryptoTab() {
         const data = (await gainersRes.value.json()) as MarketCoin[];
         setGainers(data.slice(0, 10));
       }
+      setUpdatedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -518,6 +935,25 @@ function CryptoTab() {
     const id = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [load]);
+
+  async function copyAddress(addr: string) {
+    try {
+      await navigator.clipboard.writeText(addr);
+      setCopied(addr);
+      setTimeout(() => setCopied((cur) => (cur === addr ? null : cur)), 1200);
+    } catch {}
+  }
+
+  const filteredTrending = useMemo(() => {
+    if (!trending) return trending;
+    const q = search.trim().toLowerCase();
+    if (!q) return trending;
+    return trending.filter(
+      (c) =>
+        c.item.name.toLowerCase().includes(q) ||
+        c.item.symbol.toLowerCase().includes(q),
+    );
+  }, [trending, search]);
 
   return (
     <section>
@@ -550,56 +986,154 @@ function CryptoTab() {
       />
       {error && <ErrorBox>{error}</ErrorBox>}
 
-      <Subhead>Trending coins (top 7)</Subhead>
-      {trending === null ? (
+      <Subhead>Trending coins</Subhead>
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Filter by name or symbol..."
+        style={{
+          width: "100%",
+          background: C.card2,
+          border: `1px solid ${C.border}`,
+          borderRadius: 8,
+          padding: "9px 12px",
+          color: C.text,
+          fontSize: 13,
+          outline: "none",
+          boxSizing: "border-box",
+          marginBottom: 10,
+        }}
+      />
+      {filteredTrending === null ? (
         <LoadingBlock />
+      ) : filteredTrending.length === 0 ? (
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            padding: 14,
+            color: C.textMuted,
+            fontSize: 13,
+            marginBottom: 24,
+          }}
+        >
+          No coins match &ldquo;{search}&rdquo;.
+        </div>
       ) : (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
             gap: 10,
             marginBottom: 24,
           }}
         >
-          {trending.map((c) => {
+          {filteredTrending.map((c) => {
             const change = c.item.data?.price_change_percentage_24h?.usd;
             const positive = (change ?? 0) >= 0;
+            const tint =
+              change === undefined
+                ? "rgba(255,255,255,0.02)"
+                : positive
+                  ? "rgba(34,197,94,0.07)"
+                  : "rgba(239,68,68,0.07)";
+            const tintBorder =
+              change === undefined
+                ? C.border
+                : positive
+                  ? "rgba(34,197,94,0.35)"
+                  : "rgba(239,68,68,0.35)";
             return (
               <div
                 key={c.item.id}
                 style={{
-                  background: C.card,
-                  border: `1px solid ${C.border}`,
+                  background: `linear-gradient(180deg, ${tint}, transparent 80%), ${C.card}`,
+                  border: `1px solid ${tintBorder}`,
                   borderRadius: 10,
                   padding: 14,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    alignItems: "flex-start",
+                  }}
+                >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>
-                      {c.item.name}{" "}
-                      <span style={{ color: C.textMuted, fontWeight: 500 }}>
-                        {c.item.symbol}
-                      </span>
+                    <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>
+                      {c.item.name}
                     </div>
-                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                      Rank #{c.item.market_cap_rank ?? "—"}
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: C.textMuted,
+                        marginTop: 2,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {c.item.symbol}
                     </div>
                   </div>
-                  {change !== undefined && (
+                  {c.item.market_cap_rank !== null &&
+                    c.item.market_cap_rank !== undefined && (
+                      <span
+                        style={{
+                          background: C.card2,
+                          border: `1px solid ${C.border}`,
+                          color: C.textDim,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        #{c.item.market_cap_rank}
+                      </span>
+                    )}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                  }}
+                >
+                  {change !== undefined ? (
                     <span
                       style={{
                         color: positive ? C.green : C.red,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
+                        fontSize: 22,
+                        fontWeight: 800,
+                        letterSpacing: "-0.01em",
                       }}
                     >
                       {positive ? "+" : ""}
                       {change.toFixed(2)}%
                     </span>
+                  ) : (
+                    <span style={{ color: C.textMuted, fontSize: 16 }}>—</span>
                   )}
+                  <a
+                    href={`https://www.coingecko.com/en/coins/${c.item.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open on CoinGecko"
+                    style={{
+                      color: C.textDim,
+                      textDecoration: "none",
+                      fontSize: 14,
+                    }}
+                  >
+                    🔗
+                  </a>
                 </div>
               </div>
             );
@@ -623,7 +1157,7 @@ function CryptoTab() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 70px 80px 80px 90px 30px",
+              gridTemplateColumns: "1fr 70px 70px 70px 90px 90px 30px",
               padding: "10px 14px",
               borderBottom: `1px solid ${C.border}`,
               fontSize: 11,
@@ -638,6 +1172,7 @@ function CryptoTab() {
             <span>Chain</span>
             <span>1h</span>
             <span>24h</span>
+            <span style={{ textAlign: "right" }}>Liq</span>
             <span style={{ textAlign: "right" }}>Vol 24h</span>
             <span />
           </div>
@@ -649,12 +1184,16 @@ function CryptoTab() {
             const fire = vol > 500_000 && ageHr !== null && ageHr < 24;
             const h1 = p.priceChange?.h1;
             const h24 = p.priceChange?.h24;
+            const chain = chainBadge(p.chainId);
+            const addr = p.baseToken.address ?? "";
+            const tail = addr ? addr.slice(-6) : "";
+            const isCopied = copied === addr;
             return (
               <div
                 key={p.pairAddress}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 70px 80px 80px 90px 30px",
+                  gridTemplateColumns: "1fr 70px 70px 70px 90px 90px 30px",
                   padding: "10px 14px",
                   borderTop: `1px solid ${C.borderSoft}`,
                   fontSize: 13,
@@ -674,24 +1213,65 @@ function CryptoTab() {
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
                     }}
                   >
-                    {p.baseToken.name} · age{" "}
-                    {ageHr === null ? "?" : ageHr < 24 ? `${ageHr.toFixed(0)}h` : `${(ageHr / 24).toFixed(0)}d`}
+                    <span style={{ flex: "0 1 auto", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {p.baseToken.name}
+                    </span>
+                    {tail && (
+                      <button
+                        onClick={() => copyAddress(addr)}
+                        title={`Copy ${addr}`}
+                        style={{
+                          background: "transparent",
+                          border: `1px solid ${C.border}`,
+                          color: isCopied ? C.green : C.textDim,
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                          fontSize: 10.5,
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isCopied ? "copied ✓" : `…${tail}`}
+                      </button>
+                    )}
+                    <span style={{ color: C.textMuted, fontSize: 10.5 }}>
+                      ·{" "}
+                      {ageHr === null
+                        ? "?"
+                        : ageHr < 24
+                          ? `${ageHr.toFixed(0)}h`
+                          : `${(ageHr / 24).toFixed(0)}d`}
+                    </span>
                   </div>
                 </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: C.textDim,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  {p.chainId}
+                <span>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      background: chain.bg,
+                      border: `1px solid ${chain.border}`,
+                      color: chain.fg,
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      letterSpacing: "0.04em",
+                      padding: "2px 7px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    {chain.label}
+                  </span>
                 </span>
                 <ChangeCell value={h1} />
                 <ChangeCell value={h24} />
+                <span style={{ textAlign: "right", color: C.textDim, fontSize: 12 }}>
+                  {p.liquidity?.usd ? `$${formatBigNum(p.liquidity.usd)}` : "—"}
+                </span>
                 <span style={{ textAlign: "right", color: C.textDim, fontSize: 12 }}>
                   ${formatBigNum(vol)}
                 </span>
@@ -712,12 +1292,13 @@ function CryptoTab() {
             border: `1px solid ${C.border}`,
             borderRadius: 12,
             overflow: "hidden",
+            marginBottom: 12,
           }}
         >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "30px 1fr 120px 100px",
+              gridTemplateColumns: "32px 1fr 110px 80px 80px",
               padding: "10px 14px",
               borderBottom: `1px solid ${C.border}`,
               fontSize: 11,
@@ -730,37 +1311,68 @@ function CryptoTab() {
             <span>#</span>
             <span>Coin</span>
             <span style={{ textAlign: "right" }}>Price</span>
+            <span style={{ textAlign: "right" }}>1h</span>
             <span style={{ textAlign: "right" }}>24h</span>
           </div>
-          {gainers.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "30px 1fr 120px 100px",
-                padding: "10px 14px",
-                borderTop: `1px solid ${C.borderSoft}`,
-                fontSize: 13,
-                alignItems: "center",
-              }}
-            >
-              <span style={{ color: C.textMuted, fontSize: 12 }}>
-                {c.market_cap_rank ?? "—"}
-              </span>
-              <span>
-                <span style={{ fontWeight: 600 }}>{c.name}</span>{" "}
-                <span style={{ color: C.textMuted, textTransform: "uppercase", fontSize: 11 }}>
-                  {c.symbol}
+          {gainers.map((c) => {
+            const h1 = c.price_change_percentage_1h_in_currency;
+            const h24 =
+              c.price_change_percentage_24h_in_currency ?? c.price_change_percentage_24h;
+            return (
+              <div
+                key={c.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "32px 1fr 110px 80px 80px",
+                  padding: "10px 14px",
+                  borderTop: `1px solid ${C.borderSoft}`,
+                  fontSize: 13,
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ color: C.textMuted, fontSize: 12 }}>
+                  {c.market_cap_rank ?? "—"}
                 </span>
-              </span>
-              <span style={{ textAlign: "right", color: C.textDim }}>
-                ${formatPrice(c.current_price)}
-              </span>
-              <ChangeCell value={c.price_change_percentage_24h} alignRight />
-            </div>
-          ))}
+                <span>
+                  <span style={{ fontWeight: 600 }}>{c.name}</span>{" "}
+                  <span
+                    style={{
+                      color: C.textMuted,
+                      textTransform: "uppercase",
+                      fontSize: 11,
+                    }}
+                  >
+                    {c.symbol}
+                  </span>
+                </span>
+                <span style={{ textAlign: "right", color: C.textDim }}>
+                  ${formatPrice(c.current_price)}
+                </span>
+                <ChangeCell value={h1} alignRight />
+                <ChangeCell value={h24} alignRight />
+              </div>
+            );
+          })}
         </div>
       )}
+
+      <div
+        style={{
+          textAlign: "right",
+          color: C.textMuted,
+          fontSize: 11,
+          marginBottom: 4,
+        }}
+      >
+        Last updated{" "}
+        {updatedAt
+          ? new Date(updatedAt).toLocaleTimeString(undefined, {
+              hour: "numeric",
+              minute: "2-digit",
+              second: "2-digit",
+            })
+          : "—"}
+      </div>
     </section>
   );
 }
@@ -884,12 +1496,52 @@ function calcArbStakes(oddsA: number, oddsB: number, targetProfit = 100): ArbSta
   };
 }
 
+function sportIcon(sportKey: string): string {
+  if (sportKey.startsWith("soccer_")) return "⚽";
+  if (sportKey.includes("basketball")) return "🏀";
+  if (sportKey.includes("baseball")) return "⚾";
+  if (sportKey.includes("icehockey")) return "🏒";
+  if (sportKey.includes("mma")) return "🥊";
+  if (sportKey.includes("americanfootball")) return "🏈";
+  if (sportKey.includes("tennis")) return "🎾";
+  if (sportKey.includes("golf")) return "⛳";
+  return "🎯";
+}
+
+function formatDuration(ms: number): string {
+  const totalMin = Math.max(0, Math.floor(ms / 60_000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
+
+function countdownLabel(commenceISO: string, nowMs: number): { label: string; live: boolean } {
+  const start = new Date(commenceISO).getTime();
+  if (!Number.isFinite(start)) return { label: "", live: false };
+  const diff = start - nowMs;
+  if (diff <= 0) {
+    const elapsed = -diff;
+    if (elapsed < 3 * 60 * 60 * 1000) return { label: "Live", live: true };
+    return { label: `Started ${formatDuration(elapsed)} ago`, live: false };
+  }
+  return { label: `Starts in ${formatDuration(diff)}`, live: false };
+}
+
 function OddsTab() {
   const [sport, setSport] = useState<string>("upcoming");
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
+  const [onlyArbs, setOnlyArbs] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const load = useCallback(async (sportKey: string) => {
     setLoading(true);
@@ -929,8 +1581,8 @@ function OddsTab() {
       if (a.isArb !== b.isArb) return a.isArb ? -1 : 1;
       return new Date(a.g.commence_time).getTime() - new Date(b.g.commence_time).getTime();
     });
-    return decorated;
-  }, [games]);
+    return onlyArbs ? decorated.filter((d) => d.isArb) : decorated;
+  }, [games, onlyArbs]);
 
   return (
     <section>
@@ -946,25 +1598,65 @@ function OddsTab() {
         }
       />
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
-        {SPORT_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setSport(f.key)}
-            style={{
-              background: sport === f.key ? C.accent : C.card2,
-              color: sport === f.key ? "#fff" : C.text,
-              border: `1px solid ${sport === f.key ? C.accent : C.border}`,
-              borderRadius: 999,
-              padding: "5px 12px",
-              fontSize: 12.5,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
+      {/* Arb calculator */}
+      <ArbCalculator />
+
+      <Subhead>Games</Subhead>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 14,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+          {SPORT_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setSport(f.key)}
+              style={{
+                background: sport === f.key ? C.accent : C.card2,
+                color: sport === f.key ? "#fff" : C.text,
+                border: `1px solid ${sport === f.key ? C.accent : C.border}`,
+                borderRadius: 999,
+                padding: "5px 12px",
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: onlyArbs ? "rgba(34,197,94,0.12)" : C.card2,
+            border: `1px solid ${onlyArbs ? C.green : C.border}`,
+            color: onlyArbs ? C.green : C.textDim,
+            padding: "5px 12px",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            userSelect: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={onlyArbs}
+            onChange={(e) => setOnlyArbs(e.target.checked)}
+            style={{ accentColor: C.green, margin: 0 }}
+          />
+          Show only arbs
+        </label>
       </div>
 
       {error && <ErrorBox>{error}</ErrorBox>}
@@ -982,7 +1674,11 @@ function OddsTab() {
             fontSize: 13,
           }}
         >
-          {loading ? "Loading..." : "No games in the selected window."}
+          {loading
+            ? "Loading..."
+            : onlyArbs
+              ? "No arb opportunities in the selected window."
+              : "No games in the selected window."}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -993,6 +1689,11 @@ function OddsTab() {
               home={home}
               away={away}
               isArb={isArb}
+              expanded={expandedId === g.id}
+              onToggle={() =>
+                setExpandedId((cur) => (cur === g.id ? null : g.id))
+              }
+              nowMs={nowMs}
             />
           ))}
         </div>
@@ -1001,26 +1702,197 @@ function OddsTab() {
   );
 }
 
+function ArbCalculator() {
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+
+  const result = useMemo(() => {
+    const oa = parseFloat(a);
+    const ob = parseFloat(b);
+    if (!Number.isFinite(oa) || !Number.isFinite(ob)) return null;
+    const pA = americanToImpliedProb(oa);
+    const pB = americanToImpliedProb(ob);
+    const overround = pA + pB;
+    if (overround >= 1) {
+      return { arb: false as const, overround };
+    }
+    // Spec formula: stakes proportional to implied probs, $100 total
+    const betA = (100 * pA) / overround;
+    const betB = (100 * pB) / overround;
+    const profit = 100 - 100 * overround;
+    return { arb: true as const, betA, betB, profit, overround };
+  }, [a, b]);
+
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 18,
+      }}
+    >
+      <div
+        style={{
+          color: C.textMuted,
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          marginBottom: 10,
+        }}
+      >
+        Arb Calculator
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 10,
+          marginBottom: 12,
+        }}
+      >
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: 11,
+              color: C.textMuted,
+              marginBottom: 4,
+              fontWeight: 600,
+            }}
+          >
+            Team A odds (American)
+          </label>
+          <input
+            type="number"
+            value={a}
+            onChange={(e) => setA(e.target.value)}
+            placeholder="+150"
+            style={{
+              width: "100%",
+              background: C.card2,
+              border: `1px solid ${C.border}`,
+              borderRadius: 8,
+              padding: "9px 12px",
+              color: C.text,
+              fontSize: 14,
+              outline: "none",
+              boxSizing: "border-box",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            }}
+          />
+        </div>
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: 11,
+              color: C.textMuted,
+              marginBottom: 4,
+              fontWeight: 600,
+            }}
+          >
+            Team B odds (American)
+          </label>
+          <input
+            type="number"
+            value={b}
+            onChange={(e) => setB(e.target.value)}
+            placeholder="+120"
+            style={{
+              width: "100%",
+              background: C.card2,
+              border: `1px solid ${C.border}`,
+              borderRadius: 8,
+              padding: "9px 12px",
+              color: C.text,
+              fontSize: 14,
+              outline: "none",
+              boxSizing: "border-box",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            }}
+          />
+        </div>
+      </div>
+      {result === null ? (
+        <div style={{ color: C.textMuted, fontSize: 12.5 }}>
+          Enter both odds to see if an arb exists.
+        </div>
+      ) : !result.arb ? (
+        <div style={{ color: C.textMuted, fontSize: 12.5 }}>
+          No arb opportunity — overround {(result.overround * 100).toFixed(2)}% (one side
+          is too short).
+        </div>
+      ) : (
+        <div
+          style={{
+            background: "rgba(34,197,94,0.08)",
+            border: "1px solid rgba(34,197,94,0.35)",
+            borderRadius: 8,
+            padding: "10px 12px",
+            color: C.text,
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          Bet{" "}
+          <strong style={{ color: C.green }}>${result.betA.toFixed(2)}</strong> on Team A
+          + <strong style={{ color: C.green }}>${result.betB.toFixed(2)}</strong> on Team
+          B ={" "}
+          <strong style={{ color: C.green }}>
+            ${result.profit.toFixed(2)} guaranteed profit on $100
+          </strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GameCard({
   game,
   home,
   away,
   isArb,
+  expanded,
+  onToggle,
+  nowMs,
 }: {
   game: OddsGame;
   home: BestOdds | null;
   away: BestOdds | null;
   isArb: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  nowMs: number;
 }) {
   const arb = isArb && home && away ? calcArbStakes(home.price, away.price) : null;
   const start = new Date(game.commence_time);
+  const cd = countdownLabel(game.commence_time, nowMs);
+
+  // All bookmaker rows for expanded view
+  const bookRows = useMemo(() => {
+    const rows: { book: string; awayPrice: number | null; homePrice: number | null }[] = [];
+    for (const b of game.bookmakers ?? []) {
+      const h2h = b.markets?.find((m) => m.key === "h2h");
+      if (!h2h) continue;
+      const aw = h2h.outcomes.find((o) => o.name === game.away_team)?.price ?? null;
+      const ho = h2h.outcomes.find((o) => o.name === game.home_team)?.price ?? null;
+      rows.push({ book: b.title, awayPrice: aw, homePrice: ho });
+    }
+    return rows;
+  }, [game]);
+
   return (
     <div
+      onClick={onToggle}
       style={{
         background: C.card,
         border: `1px solid ${isArb ? C.green : C.border}`,
         borderRadius: 12,
         padding: 16,
+        cursor: "pointer",
       }}
     >
       <div
@@ -1032,6 +1904,7 @@ function GameCard({
           flexWrap: "wrap",
         }}
       >
+        <span style={{ fontSize: 16 }}>{sportIcon(game.sport_key)}</span>
         <span
           style={{
             fontSize: 11,
@@ -1053,32 +1926,43 @@ function GameCard({
             minute: "2-digit",
           })}
         </span>
-        {isArb && (
+        {cd.label && (
           <span
             style={{
-              marginLeft: "auto",
-              background: "rgba(34,197,94,0.15)",
-              border: `1px solid ${C.green}`,
-              color: C.green,
-              padding: "2px 10px",
-              borderRadius: 999,
               fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: "0.04em",
+              color: cd.live ? C.red : C.textMuted,
+              fontWeight: cd.live ? 700 : 500,
+              letterSpacing: cd.live ? "0.04em" : 0,
+              textTransform: cd.live ? "uppercase" : "none",
             }}
           >
-            ARB ✓
+            · {cd.label}
           </span>
         )}
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {isArb && (
+            <span
+              style={{
+                background: "rgba(34,197,94,0.15)",
+                border: `1px solid ${C.green}`,
+                color: C.green,
+                padding: "2px 10px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.04em",
+              }}
+            >
+              ARB ✓
+            </span>
+          )}
+          <span style={{ color: C.textMuted, fontSize: 11 }}>
+            {expanded ? "▲" : "▼"}
+          </span>
+        </span>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <TeamLine team={game.away_team} odds={away} />
         <TeamLine team={game.home_team} odds={home} alignRight />
       </div>
@@ -1100,6 +1984,81 @@ function GameCard({
           {home?.team} at {home?.book} ={" "}
           <strong style={{ color: C.green }}>${arb.profit.toFixed(2)} guaranteed profit</strong>{" "}
           (total stake ${arb.totalStake.toFixed(2)})
+        </div>
+      )}
+
+      {expanded && bookRows.length > 0 && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: `1px solid ${C.border}`,
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              padding: "6px 0",
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: C.textMuted,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              borderBottom: `1px solid ${C.borderSoft}`,
+              marginBottom: 4,
+            }}
+          >
+            <span>Bookmaker</span>
+            <span style={{ textAlign: "right" }}>{game.away_team}</span>
+            <span style={{ textAlign: "right" }}>{game.home_team}</span>
+          </div>
+          {bookRows.map((r) => {
+            const bestAway =
+              away !== null && r.awayPrice !== null && r.awayPrice === away.price;
+            const bestHome =
+              home !== null && r.homePrice !== null && r.homePrice === home.price;
+            return (
+              <div
+                key={r.book}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  padding: "5px 0",
+                  fontSize: 12.5,
+                  color: C.textDim,
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ color: C.text }}>{r.book}</span>
+                <span
+                  style={{
+                    textAlign: "right",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    color: r.awayPrice === null ? C.textMuted : bestAway ? C.green : C.textDim,
+                    fontWeight: bestAway ? 700 : 500,
+                  }}
+                >
+                  {r.awayPrice === null
+                    ? "—"
+                    : `${r.awayPrice > 0 ? "+" : ""}${r.awayPrice}`}
+                </span>
+                <span
+                  style={{
+                    textAlign: "right",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    color: r.homePrice === null ? C.textMuted : bestHome ? C.green : C.textDim,
+                    fontWeight: bestHome ? 700 : 500,
+                  }}
+                >
+                  {r.homePrice === null
+                    ? "—"
+                    : `${r.homePrice > 0 ? "+" : ""}${r.homePrice}`}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
