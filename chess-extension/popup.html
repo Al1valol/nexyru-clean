@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ChessCoach by Nexyru</title>
+    <style>
+      :root {
+        --bg: #080808;
+        --card: #111111;
+        --border: #1e1e2a;
+        --text: #ffffff;
+        --text-dim: #9aa0aa;
+        --text-muted: #6b7280;
+        --accent: #4a6741;
+        --accent-bright: #5b7d52;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        width: 300px;
+      }
+      .wrap { padding: 16px; }
+      .header { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+      .logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+      }
+      .title {
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+      .title span { color: var(--text-muted); font-weight: 500; }
+      .subtitle {
+        font-size: 12px;
+        color: var(--text-dim);
+        line-height: 1.5;
+        margin: 0 0 14px;
+      }
+      .btn {
+        display: block;
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: left;
+        margin-bottom: 8px;
+        transition: background 150ms, border-color 150ms;
+      }
+      .btn:hover { border-color: #2a2a3a; background: #16161e; }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #ffffff;
+      }
+      .btn.primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); }
+      .footer {
+        margin-top: 10px;
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <div class="logo">♟</div>
+        <div class="title">ChessCoach <span>by Nexyru</span></div>
+      </div>
+      <p class="subtitle">Open the coach in a new tab, then play on Chess.com to see moves arrive live.</p>
+      <button id="open-coach" class="btn primary">Open ChessCoach (live mode)</button>
+      <button id="open-chessdotcom" class="btn">Open Chess.com</button>
+      <div class="footer">v1.0.1 · nexyru.com</div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "ChessCoach by Nexyru",
+  "version": "1.0.1",
+  "description": "Get real-time AI coaching while you play on Chess.com",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["https://www.chess.com/*", "https://www.nexyru.com/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.chess.com/game/*",
+        "https://www.chess.com/play/*",
+        "https://www.chess.com/home"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ChessCoach by Nexyru"
+  }
+}
