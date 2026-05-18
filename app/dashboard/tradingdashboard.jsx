@@ -7874,6 +7874,141 @@ function ProUpgradeCard({ feature }) {
   );
 }
 
+function CryptoTrending() {
+  const [coins, setCoins] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    fetch('https://api.coingecko.com/api/v3/search/trending')
+      .then(r => r.json())
+      .then(d => { setCoins(d.coins||[]); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+  if (loading) return <div style={{color:"#6b7280",padding:32}}>Loading trending coins...</div>;
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,paddingTop:16}}>
+        <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Trending Coins</div>
+        <div style={{fontSize:11,color:"#6b7280"}}>Auto-refreshes every 5 min</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+        {coins.map(({item:c}) => {
+          const change = c.data?.price_change_percentage_24h?.usd || 0;
+          const pos = change >= 0;
+          return (
+            <div key={c.id} style={{background: pos?"rgba(34,197,94,0.05)":"rgba(239,68,68,0.05)", border:`1px solid ${pos?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}`, borderRadius:12, padding:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{c.name}</div>
+                  <div style={{fontSize:11,color:"#6b7280"}}>{c.symbol}</div>
+                </div>
+                <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:"rgba(99,102,241,0.15)",color:"#a5b4fc"}}>#{c.market_cap_rank||'?'}</span>
+              </div>
+              <div style={{fontSize:22,fontWeight:800,color:pos?"#22c55e":"#ef4444"}}>{pos?"+":""}{change.toFixed(2)}%</div>
+              <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#6366f1",textDecoration:"none",marginTop:8,display:"block"}}>View chart →</a>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CryptoNewPairs() {
+  const [pairs, setPairs] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    fetch('https://api.dexscreener.com/latest/dex/search?q=meme')
+      .then(r => r.json())
+      .then(d => { setPairs((d.pairs||[]).slice(0,20)); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+  const chainColor = (chain) => ({solana:"#9945ff",ethereum:"#627eea",base:"#0052ff",bsc:"#f0b90b"}[chain?.toLowerCase()]||"#6b7280");
+  if (loading) return <div style={{color:"#6b7280",padding:32}}>Loading new pairs...</div>;
+  return (
+    <div>
+      <div style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:16,paddingTop:16}}>New Hot Pairs</div>
+      <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
+          {["Pair","Chain","1h%","24h%","Volume","Age"].map(h => (
+            <div key={h} style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>{h}</div>
+          ))}
+        </div>
+        {pairs.map((p,i) => {
+          const vol = parseFloat(p.volume?.h24||0);
+          const age = p.pairCreatedAt ? Math.floor((Date.now()-p.pairCreatedAt)/86400000) : null;
+          const hot = vol > 500000 && age !== null && age < 1;
+          return (
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
+              <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{p.baseToken?.symbol}/{p.quoteToken?.symbol} {hot?"🔥":""}</div>
+              <div><span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:chainColor(p.chainId)+"22",color:chainColor(p.chainId),fontWeight:700}}>{p.chainId?.toUpperCase()?.slice(0,4)}</span></div>
+              <div style={{color:parseFloat(p.priceChange?.h1||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(p.priceChange?.h1||0)>=0?"+":""}{parseFloat(p.priceChange?.h1||0).toFixed(1)}%</div>
+              <div style={{color:parseFloat(p.priceChange?.h24||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(p.priceChange?.h24||0)>=0?"+":""}{parseFloat(p.priceChange?.h24||0).toFixed(1)}%</div>
+              <div style={{color:"#fff",fontSize:12}}>${vol>1e6?(vol/1e6).toFixed(1)+"M":vol>1e3?(vol/1e3).toFixed(0)+"K":vol.toFixed(0)}</div>
+              <div style={{color:"#6b7280",fontSize:12}}>{age!==null?age===0?"<1d":age+"d":"?"}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CryptoGainers() {
+  const [coins, setCoins] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=percent_change_24h&per_page=20&sparkline=false&price_change_percentage=1h,24h')
+      .then(r => r.json())
+      .then(d => { setCoins(d||[]); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+  if (loading) return <div style={{color:"#6b7280",padding:32}}>Loading top gainers...</div>;
+  return (
+    <div>
+      <div style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:16,paddingTop:16}}>Top Gainers (24h)</div>
+      <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
+          {["#","Coin","Price","1h%","24h%"].map(h => (
+            <div key={h} style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>{h}</div>
+          ))}
+        </div>
+        {coins.map((c,i) => (
+          <div key={c.id} style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
+            <div style={{color:"#6b7280",fontSize:12}}>{i+1}</div>
+            <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{c.name} <span style={{color:"#6b7280",fontSize:11}}>{c.symbol?.toUpperCase()}</span></div>
+            <div style={{color:"#fff",fontSize:12}}>${c.current_price?.toLocaleString()}</div>
+            <div style={{color:parseFloat(c.price_change_percentage_1h_in_currency||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(c.price_change_percentage_1h_in_currency||0)>=0?"+":""}{parseFloat(c.price_change_percentage_1h_in_currency||0).toFixed(2)}%</div>
+            <div style={{color:parseFloat(c.price_change_percentage_24h||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(c.price_change_percentage_24h||0)>=0?"+":""}{parseFloat(c.price_change_percentage_24h||0).toFixed(2)}%</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CryptoWatchlist() {
+  const [list, setList] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('nexyru_watchlist')||'[]'); } catch { return []; }
+  });
+  const [input, setInput] = React.useState('');
+  const remove = (id) => { const n=list.filter(c=>c.id!==id); setList(n); try { localStorage.setItem('nexyru_watchlist',JSON.stringify(n)); } catch {} };
+  return (
+    <div>
+      <div style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:16,paddingTop:16}}>Watchlist</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Add coin symbol (e.g. BTC)" style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid #1e1e2a",background:"#1a1a24",color:"#fff",fontSize:13,outline:"none"}}/>
+        <button onClick={()=>{if(input.trim()){const n=[...list,{id:Date.now(),symbol:input.trim().toUpperCase()}];setList(n);try { localStorage.setItem('nexyru_watchlist',JSON.stringify(n)); } catch {};setInput('');}}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#6366f1",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>Add</button>
+      </div>
+      {list.length===0?<div style={{color:"#6b7280",fontSize:13}}>No coins in watchlist yet. Add a symbol above.</div>:list.map(c=>(
+        <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#111",border:"1px solid #1e1e2a",borderRadius:10,marginBottom:8}}>
+          <div style={{fontWeight:700,color:"#fff",fontSize:14}}>{c.symbol}</div>
+          <button onClick={()=>remove(c.id)} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:16}}>×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TradingDashboard({ session, onLogout }) {
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
@@ -7883,6 +8018,9 @@ function TradingDashboard({ session, onLogout }) {
     return () => window.removeEventListener('resize', check);
   }, []);
   const [tab,           setTab]           = useState("dashboard");
+  const [appMode,       setAppMode]       = useState('trading');
+  const [cryptoSection, setCryptoSection] = useState('trending');
+  const [oddsSport,     setOddsSport]     = useState('all');
   const userPlan = useUserPlan();
   // isAdminEmail uses the lib/plan ADMIN_EMAILS list — admins always get elite,
   // computed synchronously from the session prop so the gate doesn't flash on
@@ -8558,8 +8696,6 @@ function TradingDashboard({ session, onLogout }) {
           <SidebarItem icon={SIDEBAR_ICONS.target}    label="Best Setups"   href="/setups" pro/>
           <SidebarItem icon={SIDEBAR_ICONS.chart}     label="Insights"      active={tab==="insights"}  onClick={()=>setTab("insights")}/>
           <SidebarItem icon={SIDEBAR_ICONS.play}      label="Trade Review"  href="/replay"/>
-          {showAdminTabs && <SidebarItem icon={SIDEBAR_ICONS.coin}  label="Crypto"  active={tab==="crypto"}  onClick={()=>setTab("crypto")}/>}
-          {showAdminTabs && <SidebarItem icon={SIDEBAR_ICONS.dice}  label="Odds"    active={tab==="odds"}    onClick={()=>setTab("odds")}/>}
 
           <SidebarDivider/>
 
@@ -8575,6 +8711,24 @@ function TradingDashboard({ session, onLogout }) {
 
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
+        {/* ── TOP MODE SWITCHER (admin only) ── */}
+        {showAdminTabs && (
+          <div style={{ display:"flex", borderBottom:"1px solid #1e1e2a", background:"#080808", flexShrink:0 }}>
+            {[
+              { id:'trading', label:'📈 Trading' },
+              { id:'crypto',  label:'🪙 Crypto'  },
+              { id:'odds',    label:'🎰 Odds'    },
+            ].map(m => (
+              <button key={m.id} onClick={() => setAppMode(m.id)} style={{
+                padding:"10px 24px", border:"none", background:"transparent",
+                color: appMode===m.id ? "#ffffff" : "#6b7280",
+                fontSize:13, fontWeight: appMode===m.id ? 700 : 500,
+                borderBottom: appMode===m.id ? "2px solid #6366f1" : "2px solid transparent",
+                cursor:"pointer", letterSpacing:"0.02em", transition:"all 0.15s"
+              }}>{m.label}</button>
+            ))}
+          </div>
+        )}
 
         {/* ── Top bar ── */}
         <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:40, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
@@ -8643,6 +8797,7 @@ function TradingDashboard({ session, onLogout }) {
         </header>
 
         {/* ── Page content ── */}
+        {appMode === 'trading' && (
         <main style={{ flex:1, padding:"24px", paddingBottom: isMobile ? 70 : 0, background:"#0a0a0f" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
             <DemoBanner username={session.username} onClear={() => {
@@ -8706,10 +8861,64 @@ function TradingDashboard({ session, onLogout }) {
               : <StrategyLabPage session={session} trades={activeTrades}/>
           )}
           {tab==="copy" && <CopyTradingPage session={session} copyTrading={copyTrading}/> }
-          {tab==="crypto" && showAdminTabs && <CryptoTab/>}
-          {tab==="odds" && showAdminTabs && <OddsTab/>}
           </div>
         </main>
+        )}
+
+        {appMode === 'crypto' && showAdminTabs && (
+          <div style={{ padding:0, flex:1, display:"flex" }}>
+            <div style={{ width:160, borderRight:"1px solid #1e1e2a", paddingTop:16, flexShrink:0 }}>
+              {[
+                { id:'trending', label:'🔥 Trending' },
+                { id:'newpairs', label:'⚡ New Pairs' },
+                { id:'gainers',  label:'📈 Top Gainers' },
+                { id:'watchlist',label:'⭐ Watchlist' },
+              ].map(s => (
+                <button key={s.id} onClick={() => setCryptoSection(s.id)} style={{
+                  width:"100%", padding:"10px 16px", border:"none", background: cryptoSection===s.id ? "rgba(99,102,241,0.1)" : "transparent",
+                  color: cryptoSection===s.id ? "#fff" : "#6b7280",
+                  fontSize:13, fontWeight: cryptoSection===s.id ? 600 : 400,
+                  textAlign:"left", cursor:"pointer", borderLeft: cryptoSection===s.id ? "2px solid #6366f1" : "2px solid transparent",
+                  display:"flex", alignItems:"center", gap:8
+                }}>{s.label}</button>
+              ))}
+            </div>
+            <div style={{ flex:1, padding:"0 24px", overflowY:"auto" }}>
+              {cryptoSection === 'trending' && <CryptoTrending />}
+              {cryptoSection === 'newpairs' && <CryptoNewPairs />}
+              {cryptoSection === 'gainers' && <CryptoGainers />}
+              {cryptoSection === 'watchlist' && <CryptoWatchlist />}
+            </div>
+          </div>
+        )}
+
+        {appMode === 'odds' && showAdminTabs && (
+          <div style={{ display:"flex", flex:1 }}>
+            <div style={{ width:160, borderRight:"1px solid #1e1e2a", paddingTop:16, flexShrink:0 }}>
+              {[
+                { id:'all',     label:'🎯 All Games' },
+                { id:'nfl',     label:'🏈 NFL' },
+                { id:'nba',     label:'🏀 NBA' },
+                { id:'mlb',     label:'⚾ MLB' },
+                { id:'nhl',     label:'🏒 NHL' },
+                { id:'mma',     label:'🥊 MMA' },
+                { id:'soccer',  label:'⚽ Soccer' },
+                { id:'tennis',  label:'🎾 Tennis' },
+                { id:'arbs',    label:'💰 Arbs Only' },
+              ].map(s => (
+                <button key={s.id} onClick={() => setOddsSport(s.id)} style={{
+                  width:"100%", padding:"10px 16px", border:"none", background: oddsSport===s.id ? "rgba(99,102,241,0.1)" : "transparent",
+                  color: oddsSport===s.id ? "#fff" : "#6b7280",
+                  fontSize:13, fontWeight: oddsSport===s.id ? 600 : 400,
+                  textAlign:"left", cursor:"pointer", borderLeft: oddsSport===s.id ? "2px solid #6366f1" : "2px solid transparent",
+                }}>{s.label}</button>
+              ))}
+            </div>
+            <div style={{ flex:1, padding:24, overflowY:"auto" }}>
+              <OddsTab oddsSport={oddsSport}/>
+            </div>
+          </div>
+        )}
       </div>
       <style>{`
         * { box-sizing: border-box; }
