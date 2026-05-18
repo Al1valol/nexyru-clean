@@ -9740,32 +9740,77 @@ function TradeRow({ p }) {
   );
 }
 
+class ChartErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('Chart error:', error, info?.componentStack);
+    }
+  }
+  componentDidUpdate(prevProps) {
+    // Reset the error state if the boundary's children change identity (e.g.
+    // a new position is clicked) so the next chart gets a fresh attempt.
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div style={{ color: '#6b7280', fontSize: 13, padding: 16, background: '#111', border: '1px dashed #1e1e2a', borderRadius: 10, textAlign: 'center' }}>
+          Chart unavailable
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function PositionChartModal({ position, onClose }) {
   const [history, setHistory] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
 
-  const minDays = position.status === 'open' ? 30 : 90;
+  const minDays = position?.status === 'open' ? 30 : 90;
   const ageDays = React.useMemo(() => {
-    try { return Math.ceil((Date.now() - new Date(position.entryDate).getTime()) / 86400000); }
-    catch { return 0; }
-  }, [position.entryDate]);
-  const days = Math.min(365, Math.max(minDays, ageDays + 7));
+    try {
+      const entryTs = position?.entryDate ? new Date(position.entryDate).getTime() : NaN;
+      if (!isFinite(entryTs)) return 0;
+      return Math.ceil((Date.now() - entryTs) / 86400000);
+    } catch { return 0; }
+  }, [position?.entryDate]);
+  const days = Math.min(365, Math.max(minDays, (Number.isFinite(ageDays) ? ageDays : 0) + 7));
 
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true); setErr(null);
+    if (!position?.coinId) { setErr('No coin id'); setLoading(false); return; }
     fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(position.coinId)}/market_chart?vs_currency=usd&days=${days}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error('Failed to load chart')))
       .then(d => {
         if (cancelled) return;
-        const pts = (d?.prices || []).map(([t, v]) => ({ t, v }));
+        // CoinGecko returns { prices: [[ts, price], ...] }. Guard against
+        // missing or malformed entries.
+        const raw = Array.isArray(d?.prices) ? d.prices : [];
+        const pts = [];
+        for (const row of raw) {
+          if (!Array.isArray(row) || row.length < 2) continue;
+          const t = Number(row[0]);
+          const v = Number(row[1]);
+          if (Number.isFinite(t) && Number.isFinite(v)) pts.push({ t, v });
+        }
         setHistory(pts);
         setLoading(false);
       })
-      .catch(e => { if (!cancelled) { setErr(e.message || 'Failed to load chart'); setLoading(false); } });
+      .catch(e => { if (!cancelled) { setErr(e?.message || 'Failed to load chart'); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [position.coinId, days]);
+  }, [position?.coinId, days]);
 
   // Layout sizing
   const [size, setSize] = React.useState({ w: 800, h: 360 });
@@ -9782,25 +9827,32 @@ function PositionChartModal({ position, onClose }) {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  const entryTs = new Date(position.entryDate).getTime();
-  const exitTs = position.exitDate ? new Date(position.exitDate).getTime() : null;
-  const entryPrice = position.entryPrice;
-  const exitPrice = position.exitPrice;
-  const currentPrice = (history && history.length > 0) ? history[history.length - 1].v : (position.currentPrice ?? entryPrice);
+  const entryTsRaw = position?.entryDate ? new Date(position.entryDate).getTime() : NaN;
+  const entryTs = Number.isFinite(entryTsRaw) ? entryTsRaw : 0;
+  const exitTsRaw = position?.exitDate ? new Date(position.exitDate).getTime() : null;
+  const exitTs = (typeof exitTsRaw === 'number' && Number.isFinite(exitTsRaw)) ? exitTsRaw : null;
+  const entryPrice = Number(position?.entryPrice) || 0;
+  const exitPrice = (position?.exitPrice != null && Number.isFinite(Number(position.exitPrice))) ? Number(position.exitPrice) : null;
+  const positionAmount = Number(position?.amount) || 0;
+  const currentPrice = (history && history.length > 0 && Number.isFinite(history[history.length - 1]?.v))
+    ? history[history.length - 1].v
+    : (Number(position?.currentPrice) || entryPrice);
 
   // Hindsight: best price after entry within the data window
   const hindsight = React.useMemo(() => {
-    if (!history || history.length === 0) return null;
-    const afterEntry = history.filter(p => p.t >= entryTs);
-    if (afterEntry.length === 0) return null;
-    let best = afterEntry[0];
-    for (const p of afterEntry) if (p.v > best.v) best = p;
-    return best;
+    try {
+      if (!Array.isArray(history) || history.length === 0 || !Number.isFinite(entryTs) || entryTs <= 0) return null;
+      const afterEntry = history.filter(p => p && Number.isFinite(p.t) && Number.isFinite(p.v) && p.t >= entryTs);
+      if (afterEntry.length === 0) return null;
+      let best = afterEntry[0];
+      for (const p of afterEntry) if (p.v > best.v) best = p;
+      return best;
+    } catch { return null; }
   }, [history, entryTs]);
 
-  const closedPnl = (exitPrice != null && entryPrice > 0) ? (exitPrice - entryPrice) * position.amount : null;
+  const closedPnl = (exitPrice != null && entryPrice > 0) ? (exitPrice - entryPrice) * positionAmount : null;
   const closedPnlPct = (exitPrice != null && entryPrice > 0) ? ((exitPrice / entryPrice) - 1) * 100 : null;
-  const openPnl = exitPrice == null ? (currentPrice - entryPrice) * position.amount : null;
+  const openPnl = exitPrice == null ? (currentPrice - entryPrice) * positionAmount : null;
   const openPnlPct = exitPrice == null && entryPrice > 0 ? ((currentPrice / entryPrice) - 1) * 100 : null;
 
   // Build SVG
@@ -9809,29 +9861,37 @@ function PositionChartModal({ position, onClose }) {
   const innerH = size.h - pad.top - pad.bottom;
 
   const linePath = React.useMemo(() => {
-    if (!history || history.length < 2) return null;
-    const ts = history.map(p => p.t);
-    const vs = history.map(p => p.v);
-    const minT = ts[0], maxT = ts[ts.length - 1];
-    const minV = Math.min(...vs), maxV = Math.max(...vs);
-    const rangeT = maxT - minT || 1;
-    const rangeV = maxV - minV || 1;
-    const px = (t) => pad.left + ((t - minT) / rangeT) * innerW;
-    const py = (v) => pad.top + innerH - ((v - minV) / rangeV) * innerH;
-    const d = history.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(p.t).toFixed(2)},${py(p.v).toFixed(2)}`).join(' ');
-    const areaD = `${d} L${px(maxT).toFixed(2)},${(pad.top + innerH).toFixed(2)} L${px(minT).toFixed(2)},${(pad.top + innerH).toFixed(2)} Z`;
-    const ticks = 4;
-    const yTicks = [];
-    for (let i = 0; i <= ticks; i++) {
-      const v = minV + (rangeV * i) / ticks;
-      yTicks.push({ y: py(v), v });
+    try {
+      if (!Array.isArray(history) || history.length < 2) return null;
+      let minT = history[0].t, maxT = history[0].t, minV = history[0].v, maxV = history[0].v;
+      for (const p of history) {
+        if (!p || !Number.isFinite(p.t) || !Number.isFinite(p.v)) continue;
+        if (p.t < minT) minT = p.t;
+        if (p.t > maxT) maxT = p.t;
+        if (p.v < minV) minV = p.v;
+        if (p.v > maxV) maxV = p.v;
+      }
+      if (!Number.isFinite(minT) || !Number.isFinite(maxT) || !Number.isFinite(minV) || !Number.isFinite(maxV)) return null;
+      const rangeT = (maxT - minT) || 1;
+      const rangeV = (maxV - minV) || 1;
+      const px = (t) => pad.left + ((t - minT) / rangeT) * innerW;
+      const py = (v) => pad.top + innerH - ((v - minV) / rangeV) * innerH;
+      const d = history.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(p.t).toFixed(2)},${py(p.v).toFixed(2)}`).join(' ');
+      const areaD = `${d} L${px(maxT).toFixed(2)},${(pad.top + innerH).toFixed(2)} L${px(minT).toFixed(2)},${(pad.top + innerH).toFixed(2)} Z`;
+      const yTicks = [];
+      for (let i = 0; i <= 4; i++) {
+        const v = minV + (rangeV * i) / 4;
+        yTicks.push({ y: py(v), v });
+      }
+      const xTicks = [];
+      for (let i = 0; i <= 4; i++) {
+        const t = minT + (rangeT * i) / 4;
+        xTicks.push({ x: px(t), t });
+      }
+      return { d, areaD, px, py, minT, maxT, minV, maxV, yTicks, xTicks };
+    } catch {
+      return null;
     }
-    const xTicks = [];
-    for (let i = 0; i <= 4; i++) {
-      const t = minT + (rangeT * i) / 4;
-      xTicks.push({ x: px(t), t });
-    }
-    return { d, areaD, px, py, minT, maxT, minV, maxV, yTicks, xTicks };
   }, [history, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trendColor = exitPrice != null
@@ -9853,7 +9913,7 @@ function PositionChartModal({ position, onClose }) {
               <div style={{ fontSize:22, fontWeight:800 }}>{position.name}</div>
               <span style={{ fontSize:11, fontWeight:800, padding:"3px 8px", borderRadius:5, background: position.status === 'open' ? "rgba(99,102,241,0.18)" : "rgba(107,114,128,0.18)", color: position.status === 'open' ? "#a5b4fc" : "#9ca3af" }}>{position.status.toUpperCase()}</span>
             </div>
-            <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{(position.symbol || '').toUpperCase()} · {position.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} held · entered {fmtDateShort(position.entryDate)}</div>
+            <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{(position?.symbol || '').toUpperCase()} · {positionAmount.toLocaleString(undefined, { maximumFractionDigits: 8 })} held · entered {fmtDateShort(position?.entryDate)}</div>
           </div>
           <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:"#9ca3af", cursor:"pointer", fontSize:24, lineHeight:1 }}>×</button>
         </div>
@@ -9953,8 +10013,8 @@ function PositionChartModal({ position, onClose }) {
         {/* Hindsight for closed positions */}
         {position.status === 'closed' && hindsight && exitPrice != null && (() => {
           const bestPct = ((hindsight.v / entryPrice) - 1) * 100;
-          const bestProceeds = hindsight.v * position.amount;
-          const actualProceeds = exitPrice * position.amount;
+          const bestProceeds = hindsight.v * positionAmount;
+          const actualProceeds = exitPrice * positionAmount;
           const leftOnTable = bestProceeds - actualProceeds;
           const captureRatio = bestProceeds > 0 ? actualProceeds / bestProceeds : 0;
           const nearPeak = captureRatio >= 0.9;
@@ -9982,23 +10042,28 @@ function PositionChartModal({ position, onClose }) {
 }
 
 function computeBalanceSeries(account) {
-  if (!account) return { points: [], starting: 0 };
-  const history = [...(account.history || [])].reverse(); // newest-first → chronological
-  if (history.length === 0) return { points: [], starting: 0 };
-  let balance = 0;
-  const points = [];
-  for (const h of history) {
-    if (h.type === 'deposit') balance += h.amount;
-    else if (h.type === 'withdraw') balance -= h.amount;
-    else if (h.type === 'buy') balance -= h.usd || 0;
-    else if (h.type === 'sell') balance += h.usd || 0;
-    points.push({
-      ts: new Date(h.date).getTime(),
-      balance,
-      event: h,
-    });
+  try {
+    if (!account || !Array.isArray(account.history)) return { points: [], starting: 0 };
+    const history = [...account.history].reverse(); // newest-first → chronological
+    if (history.length === 0) return { points: [], starting: 0 };
+    let balance = 0;
+    const points = [];
+    for (const h of history) {
+      if (!h || typeof h !== 'object') continue;
+      const amt = Number(h.amount) || 0;
+      const usd = Number(h.usd) || 0;
+      if (h.type === 'deposit')       balance += amt;
+      else if (h.type === 'withdraw') balance -= amt;
+      else if (h.type === 'buy')      balance -= usd;
+      else if (h.type === 'sell')     balance += usd;
+      const ts = h.date ? new Date(h.date).getTime() : NaN;
+      if (!isFinite(ts) || !isFinite(balance)) continue;
+      points.push({ ts, balance, event: h });
+    }
+    return { points, starting: 0 };
+  } catch {
+    return { points: [], starting: 0 };
   }
-  return { points, starting: points[0]?.balance ?? 0 };
 }
 
 function BalanceChart({ account, onDeposit }) {
@@ -10026,15 +10091,17 @@ function BalanceChart({ account, onDeposit }) {
     if (tf === '3m') return Date.now() - 90 * 86400000;
     return -Infinity;
   })();
-  const points = allSeries.points.filter(p => p.ts >= cutoff);
+  const points = (allSeries.points || []).filter(p => p && isFinite(p.ts) && isFinite(p.balance) && p.ts >= cutoff);
 
-  const starting = allSeries.starting;
-  const balances = allSeries.points.map(p => p.balance);
-  const allTimeHigh = balances.length ? Math.max(...balances) : 0;
-  const allTimeLow = balances.length ? Math.min(...balances) : 0;
+  const starting = isFinite(allSeries.starting) ? allSeries.starting : 0;
+  const balances = (allSeries.points || []).map(p => p?.balance).filter(v => typeof v === 'number' && isFinite(v));
+  // Reduce instead of spread — large arrays + spread blow the call stack on some engines
+  const allTimeHigh = balances.length ? balances.reduce((m, v) => v > m ? v : m, balances[0]) : 0;
+  const allTimeLow  = balances.length ? balances.reduce((m, v) => v < m ? v : m, balances[0]) : 0;
   const current = balances.length ? balances[balances.length - 1] : 0;
-  const totalDeposits = (account?.history || []).filter(h => h.type === 'deposit').reduce((s, h) => s + h.amount, 0);
-  const totalWithdraws = (account?.history || []).filter(h => h.type === 'withdraw').reduce((s, h) => s + h.amount, 0);
+  const safeHistory = Array.isArray(account?.history) ? account.history : [];
+  const totalDeposits  = safeHistory.filter(h => h?.type === 'deposit').reduce((s, h) => s + (Number(h.amount) || 0), 0);
+  const totalWithdraws = safeHistory.filter(h => h?.type === 'withdraw').reduce((s, h) => s + (Number(h.amount) || 0), 0);
   const netPnl = current - (totalDeposits - totalWithdraws);
 
   const pad = { top: 12, right: 12, bottom: 24, left: 56 };
@@ -10042,25 +10109,31 @@ function BalanceChart({ account, onDeposit }) {
   const innerH = size.h - pad.top - pad.bottom;
 
   const chart = React.useMemo(() => {
-    if (points.length === 0) return null;
-    const ts = points.map(p => p.ts);
-    const vs = points.map(p => p.balance);
-    const minT = points.length === 1 ? ts[0] - 86400000 : Math.min(...ts);
-    const maxT = points.length === 1 ? ts[0] + 86400000 : Math.max(...ts);
-    const minV = Math.min(0, ...vs);
-    const maxV = Math.max(...vs, minV + 1);
-    const rangeT = maxT - minT || 1;
-    const rangeV = (maxV - minV) || 1;
-    const px = (t) => pad.left + ((t - minT) / rangeT) * innerW;
-    const py = (v) => pad.top + innerH - ((v - minV) / rangeV) * innerH;
-    const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(p.ts).toFixed(2)},${py(p.balance).toFixed(2)}`).join(' ');
-    const areaD = points.length > 1 ? `${d} L${px(maxT).toFixed(2)},${(pad.top + innerH).toFixed(2)} L${px(minT).toFixed(2)},${(pad.top + innerH).toFixed(2)} Z` : null;
-    const yTicks = [];
-    for (let i = 0; i <= 3; i++) {
-      const v = minV + (rangeV * i) / 3;
-      yTicks.push({ y: py(v), v });
+    try {
+      if (!Array.isArray(points) || points.length < 2) return null;
+      let minT = points[0].ts, maxT = points[0].ts, minV = Math.min(0, points[0].balance), maxV = points[0].balance;
+      for (const p of points) {
+        if (p.ts < minT) minT = p.ts;
+        if (p.ts > maxT) maxT = p.ts;
+        if (p.balance < minV) minV = p.balance;
+        if (p.balance > maxV) maxV = p.balance;
+      }
+      if (!isFinite(minT) || !isFinite(maxT) || !isFinite(minV) || !isFinite(maxV)) return null;
+      const rangeT = (maxT - minT) || 1;
+      const rangeV = (maxV - minV) || 1;
+      const px = (t) => pad.left + ((t - minT) / rangeT) * innerW;
+      const py = (v) => pad.top + innerH - ((v - minV) / rangeV) * innerH;
+      const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(p.ts).toFixed(2)},${py(p.balance).toFixed(2)}`).join(' ');
+      const areaD = `${d} L${px(maxT).toFixed(2)},${(pad.top + innerH).toFixed(2)} L${px(minT).toFixed(2)},${(pad.top + innerH).toFixed(2)} Z`;
+      const yTicks = [];
+      for (let i = 0; i <= 3; i++) {
+        const v = minV + (rangeV * i) / 3;
+        yTicks.push({ y: py(v), v });
+      }
+      return { d, areaD, px, py, minT, maxT, minV, maxV, yTicks };
+    } catch {
+      return null;
     }
-    return { d, areaD, px, py, minT, maxT, minV, maxV, yTicks };
   }, [points, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trendColor = current >= starting ? '#22c55e' : '#ef4444';
@@ -10089,7 +10162,7 @@ function BalanceChart({ account, onDeposit }) {
     return ev.type;
   };
 
-  const isEmpty = allSeries.points.length === 0;
+  const isEmpty = !allSeries.points || allSeries.points.length < 2;
 
   return (
     <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:12, padding:16, marginBottom:16 }}>
@@ -10117,7 +10190,11 @@ function BalanceChart({ account, onDeposit }) {
               <line x1={pad.left} y1={size.h / 2} x2={size.w - pad.right} y2={size.h / 2} stroke="#2a2a3a" strokeWidth="2" strokeDasharray="4 4"/>
               <text x={pad.left - 8} y={size.h / 2 + 4} fill="#6b7280" fontSize="10" textAnchor="end">$0</text>
             </svg>
-            <div style={{ position:"relative", color:"#9ca3af", fontSize:13, textAlign:"center", padding:"0 24px" }}>Make your first deposit to start tracking your balance</div>
+            <div style={{ position:"relative", color:"#9ca3af", fontSize:13, textAlign:"center", padding:"0 24px" }}>
+              {(allSeries.points?.length ?? 0) === 0
+                ? 'Make your first deposit to start tracking your balance'
+                : 'Make your first deposit to see balance history'}
+            </div>
             <button onClick={onDeposit} style={{ position:"relative", padding:"10px 18px", borderRadius:10, border:"none", background:"#22c55e", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Deposit</button>
           </div>
         ) : !chart || points.length === 0 ? (
@@ -10548,10 +10625,12 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       </div>
 
       {/* Balance history chart */}
-      <BalanceChart
-        account={activeAccount}
-        onDeposit={() => { setTxnDialog('deposit'); setTxnAmount(''); setTxnNote(''); }}
-      />
+      <ChartErrorBoundary resetKey={activeAccount?.id}>
+        <BalanceChart
+          account={activeAccount}
+          onDeposit={() => { setTxnDialog('deposit'); setTxnAmount(''); setTxnNote(''); }}
+        />
+      </ChartErrorBoundary>
 
       {/* Tabs */}
       <div style={{ display:"flex", gap:4, marginBottom:14, background:"#1a1a24", borderRadius:10, padding:4, border:"1px solid #1e1e2a", width:"fit-content" }}>
@@ -10743,7 +10822,20 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
 
       {/* Position chart modal */}
       {chartModal?.position && (
-        <PositionChartModal position={chartModal.position} onClose={() => setChartModal(null)}/>
+        <ChartErrorBoundary
+          resetKey={chartModal.position.id}
+          fallback={
+            <div onClick={() => setChartModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1100, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+              <div onClick={e => e.stopPropagation()} style={{ background:"#0a0a0f", border:"1px solid #1e1e2a", borderRadius:14, padding:24, maxWidth:420, color:"#fff" }}>
+                <div style={{ fontSize:16, fontWeight:800, marginBottom:6 }}>Chart unavailable</div>
+                <div style={{ fontSize:12, color:"#9ca3af", marginBottom:14 }}>This position's price data couldn't be rendered.</div>
+                <button onClick={() => setChartModal(null)} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Close</button>
+              </div>
+            </div>
+          }
+        >
+          <PositionChartModal position={chartModal.position} onClose={() => setChartModal(null)}/>
+        </ChartErrorBoundary>
       )}
 
       {/* Close position dialog */}
