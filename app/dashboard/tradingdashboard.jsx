@@ -9740,6 +9740,461 @@ function TradeRow({ p }) {
   );
 }
 
+function PositionChartModal({ position, onClose }) {
+  const [history, setHistory] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState(null);
+
+  const minDays = position.status === 'open' ? 30 : 90;
+  const ageDays = React.useMemo(() => {
+    try { return Math.ceil((Date.now() - new Date(position.entryDate).getTime()) / 86400000); }
+    catch { return 0; }
+  }, [position.entryDate]);
+  const days = Math.min(365, Math.max(minDays, ageDays + 7));
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setErr(null);
+    fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(position.coinId)}/market_chart?vs_currency=usd&days=${days}`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('Failed to load chart')))
+      .then(d => {
+        if (cancelled) return;
+        const pts = (d?.prices || []).map(([t, v]) => ({ t, v }));
+        setHistory(pts);
+        setLoading(false);
+      })
+      .catch(e => { if (!cancelled) { setErr(e.message || 'Failed to load chart'); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [position.coinId, days]);
+
+  // Layout sizing
+  const [size, setSize] = React.useState({ w: 800, h: 360 });
+  const wrapRef = React.useRef(null);
+  React.useEffect(() => {
+    const measure = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setSize({ w: Math.max(320, Math.floor(r.width)), h: Math.max(220, Math.floor(r.height)) });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  const entryTs = new Date(position.entryDate).getTime();
+  const exitTs = position.exitDate ? new Date(position.exitDate).getTime() : null;
+  const entryPrice = position.entryPrice;
+  const exitPrice = position.exitPrice;
+  const currentPrice = (history && history.length > 0) ? history[history.length - 1].v : (position.currentPrice ?? entryPrice);
+
+  // Hindsight: best price after entry within the data window
+  const hindsight = React.useMemo(() => {
+    if (!history || history.length === 0) return null;
+    const afterEntry = history.filter(p => p.t >= entryTs);
+    if (afterEntry.length === 0) return null;
+    let best = afterEntry[0];
+    for (const p of afterEntry) if (p.v > best.v) best = p;
+    return best;
+  }, [history, entryTs]);
+
+  const closedPnl = (exitPrice != null && entryPrice > 0) ? (exitPrice - entryPrice) * position.amount : null;
+  const closedPnlPct = (exitPrice != null && entryPrice > 0) ? ((exitPrice / entryPrice) - 1) * 100 : null;
+  const openPnl = exitPrice == null ? (currentPrice - entryPrice) * position.amount : null;
+  const openPnlPct = exitPrice == null && entryPrice > 0 ? ((currentPrice / entryPrice) - 1) * 100 : null;
+
+  // Build SVG
+  const pad = { top: 14, right: 18, bottom: 28, left: 56 };
+  const innerW = size.w - pad.left - pad.right;
+  const innerH = size.h - pad.top - pad.bottom;
+
+  const linePath = React.useMemo(() => {
+    if (!history || history.length < 2) return null;
+    const ts = history.map(p => p.t);
+    const vs = history.map(p => p.v);
+    const minT = ts[0], maxT = ts[ts.length - 1];
+    const minV = Math.min(...vs), maxV = Math.max(...vs);
+    const rangeT = maxT - minT || 1;
+    const rangeV = maxV - minV || 1;
+    const px = (t) => pad.left + ((t - minT) / rangeT) * innerW;
+    const py = (v) => pad.top + innerH - ((v - minV) / rangeV) * innerH;
+    const d = history.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(p.t).toFixed(2)},${py(p.v).toFixed(2)}`).join(' ');
+    const areaD = `${d} L${px(maxT).toFixed(2)},${(pad.top + innerH).toFixed(2)} L${px(minT).toFixed(2)},${(pad.top + innerH).toFixed(2)} Z`;
+    const ticks = 4;
+    const yTicks = [];
+    for (let i = 0; i <= ticks; i++) {
+      const v = minV + (rangeV * i) / ticks;
+      yTicks.push({ y: py(v), v });
+    }
+    const xTicks = [];
+    for (let i = 0; i <= 4; i++) {
+      const t = minT + (rangeT * i) / 4;
+      xTicks.push({ x: px(t), t });
+    }
+    return { d, areaD, px, py, minT, maxT, minV, maxV, yTicks, xTicks };
+  }, [history, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trendColor = exitPrice != null
+    ? (closedPnl >= 0 ? '#22c55e' : '#ef4444')
+    : (openPnl >= 0 ? '#22c55e' : '#ef4444');
+
+  const fmtChartDate = (ts) => {
+    try { return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+    catch { return ''; }
+  };
+  const fmtPrice = (v) => fmtUsd(v, { maxFractionDigits: v >= 1 ? 4 : 8 });
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1100, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0a0a0f", border:"1px solid #1e1e2a", borderRadius:14, padding:24, width:"80vw", height:"80vh", maxWidth:1200, color:"#fff", display:"flex", flexDirection:"column", gap:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
+          <div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ fontSize:22, fontWeight:800 }}>{position.name}</div>
+              <span style={{ fontSize:11, fontWeight:800, padding:"3px 8px", borderRadius:5, background: position.status === 'open' ? "rgba(99,102,241,0.18)" : "rgba(107,114,128,0.18)", color: position.status === 'open' ? "#a5b4fc" : "#9ca3af" }}>{position.status.toUpperCase()}</span>
+            </div>
+            <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{(position.symbol || '').toUpperCase()} · {position.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} held · entered {fmtDateShort(position.entryDate)}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:"#9ca3af", cursor:"pointer", fontSize:24, lineHeight:1 }}>×</button>
+        </div>
+
+        <div ref={wrapRef} style={{ flex:1, minHeight:240, background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:10, position:"relative", overflow:"hidden" }}>
+          {loading && (
+            <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", gap:12, color:"#9ca3af", fontSize:13 }}>
+              <div style={{ width:22, height:22, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+              Loading {days}-day price history…
+            </div>
+          )}
+          {err && !loading && (
+            <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#ef4444", fontSize:13, padding:24, textAlign:"center" }}>
+              Couldn't load chart for this coin. CoinGecko may not have data for it ({position.coinId}).
+            </div>
+          )}
+          {linePath && (
+            <svg width={size.w} height={size.h} style={{ display:"block" }}>
+              <defs>
+                <linearGradient id={`pos-area-${position.id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={trendColor} stopOpacity="0.22"/>
+                  <stop offset="100%" stopColor={trendColor} stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              {/* gridlines */}
+              {linePath.yTicks.map((t, i) => (
+                <g key={`y${i}`}>
+                  <line x1={pad.left} y1={t.y} x2={size.w - pad.right} y2={t.y} stroke="#1e1e2a" strokeWidth="1"/>
+                  <text x={pad.left - 8} y={t.y + 3} fill="#6b7280" fontSize="10" textAnchor="end">{fmtPrice(t.v)}</text>
+                </g>
+              ))}
+              {linePath.xTicks.map((t, i) => (
+                <text key={`x${i}`} x={t.x} y={size.h - pad.bottom + 14} fill="#6b7280" fontSize="10" textAnchor="middle">{fmtChartDate(t.t)}</text>
+              ))}
+              <path d={linePath.areaD} fill={`url(#pos-area-${position.id})`}/>
+              <path d={linePath.d} fill="none" stroke={trendColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+
+              {/* Entry marker */}
+              {entryTs >= linePath.minT && entryTs <= linePath.maxT && (() => {
+                const x = linePath.px(entryTs);
+                return (
+                  <g>
+                    <line x1={x} y1={pad.top} x2={x} y2={size.h - pad.bottom} stroke="#22c55e" strokeWidth="1.5" strokeDasharray="4 4"/>
+                    <rect x={x + 6} y={pad.top + 6} width={Math.min(140, Math.max(80, 60 + (`${fmtPrice(entryPrice)}`).length * 6))} height="22" rx="4" fill="rgba(34,197,94,0.18)" stroke="rgba(34,197,94,0.5)"/>
+                    <text x={x + 12} y={pad.top + 21} fill="#22c55e" fontSize="11" fontWeight="700">BUY {fmtPrice(entryPrice)}</text>
+                  </g>
+                );
+              })()}
+
+              {/* Exit marker */}
+              {exitTs && exitTs >= linePath.minT && exitTs <= linePath.maxT && (() => {
+                const x = linePath.px(exitTs);
+                const labelWidth = Math.min(160, Math.max(120, 80 + (`${fmtPrice(exitPrice)}`).length * 6));
+                const labelOffset = x + labelWidth + 10 > size.w - pad.right ? -labelWidth - 12 : 6;
+                return (
+                  <g>
+                    <line x1={x} y1={pad.top} x2={x} y2={size.h - pad.bottom} stroke="#ef4444" strokeWidth="1.5" strokeDasharray="4 4"/>
+                    <rect x={x + labelOffset} y={pad.top + 32} width={labelWidth} height="38" rx="4" fill="rgba(239,68,68,0.16)" stroke="rgba(239,68,68,0.5)"/>
+                    <text x={x + labelOffset + 6} y={pad.top + 47} fill="#ef4444" fontSize="11" fontWeight="700">SELL {fmtPrice(exitPrice)}</text>
+                    <text x={x + labelOffset + 6} y={pad.top + 62} fill={closedPnl >= 0 ? "#22c55e" : "#ef4444"} fontSize="11" fontWeight="800">
+                      {(closedPnl >= 0 ? '+' : '−')}{fmtUsd(Math.abs(closedPnl))} ({(closedPnlPct >= 0 ? '+' : '')}{closedPnlPct.toFixed(2)}%)
+                    </text>
+                  </g>
+                );
+              })()}
+            </svg>
+          )}
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
+          <Stat label="Entry" value={fmtPrice(entryPrice)} color="#fff"/>
+          <Stat label={exitPrice != null ? "Exit" : "Current"} value={fmtPrice(exitPrice ?? currentPrice)} color="#fff"/>
+          <Stat
+            label="P&L"
+            value={exitPrice != null
+              ? (closedPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(closedPnl))
+              : (openPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(openPnl))}
+            color={(exitPrice != null ? closedPnl : openPnl) >= 0 ? "#22c55e" : "#ef4444"}
+          />
+          <Stat
+            label="P&L %"
+            value={exitPrice != null
+              ? (closedPnlPct >= 0 ? '+' : '') + closedPnlPct.toFixed(2) + '%'
+              : (openPnlPct >= 0 ? '+' : '') + openPnlPct.toFixed(2) + '%'}
+            color={(exitPrice != null ? closedPnlPct : openPnlPct) >= 0 ? "#22c55e" : "#ef4444"}
+          />
+          <Stat label="Hold time" value={fmtHoldDuration(position.entryDate, position.exitDate)} color="#fff"/>
+        </div>
+
+        {(position.notes || position.exitNotes) && (
+          <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:12, display:"flex", flexDirection:"column", gap:6 }}>
+            {position.notes && <div style={{ fontSize:12, color:"#9ca3af" }}><span style={{ color:"#a5b4fc", fontWeight:700 }}>Entry notes:</span> {position.notes}</div>}
+            {position.exitNotes && <div style={{ fontSize:12, color:"#9ca3af" }}><span style={{ color:"#f59e0b", fontWeight:700 }}>Exit notes:</span> {position.exitNotes}</div>}
+          </div>
+        )}
+
+        {/* Hindsight for closed positions */}
+        {position.status === 'closed' && hindsight && exitPrice != null && (() => {
+          const bestPct = ((hindsight.v / entryPrice) - 1) * 100;
+          const bestProceeds = hindsight.v * position.amount;
+          const actualProceeds = exitPrice * position.amount;
+          const leftOnTable = bestProceeds - actualProceeds;
+          const captureRatio = bestProceeds > 0 ? actualProceeds / bestProceeds : 0;
+          const nearPeak = captureRatio >= 0.9;
+          return (
+            <div style={{ background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.18)", borderRadius:10, padding:14 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#a5b4fc", marginBottom:6 }}>What if you held longer?</div>
+              <div style={{ fontSize:12, color:"#9ca3af", marginBottom:4 }}>
+                Best possible exit: <span style={{ color:"#22c55e", fontWeight:700 }}>{fmtPrice(hindsight.v)}</span>
+                {' '}({(bestPct >= 0 ? '+' : '')}{bestPct.toFixed(2)}%)
+                {' on '}{fmtDateShort(hindsight.t)}
+              </div>
+              {nearPeak ? (
+                <div style={{ fontSize:13, color:"#22c55e", fontWeight:700 }}>You sold at near the perfect time! 🎯 (captured {(captureRatio * 100).toFixed(0)}% of the peak)</div>
+              ) : leftOnTable > 0 ? (
+                <div style={{ fontSize:13, color:"#f59e0b", fontWeight:700 }}>You left {fmtUsd(leftOnTable)} on the table by selling early.</div>
+              ) : (
+                <div style={{ fontSize:13, color:"#22c55e", fontWeight:700 }}>You exited above the post-entry peak — well-timed exit.</div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+function computeBalanceSeries(account) {
+  if (!account) return { points: [], starting: 0 };
+  const history = [...(account.history || [])].reverse(); // newest-first → chronological
+  if (history.length === 0) return { points: [], starting: 0 };
+  let balance = 0;
+  const points = [];
+  for (const h of history) {
+    if (h.type === 'deposit') balance += h.amount;
+    else if (h.type === 'withdraw') balance -= h.amount;
+    else if (h.type === 'buy') balance -= h.usd || 0;
+    else if (h.type === 'sell') balance += h.usd || 0;
+    points.push({
+      ts: new Date(h.date).getTime(),
+      balance,
+      event: h,
+    });
+  }
+  return { points, starting: points[0]?.balance ?? 0 };
+}
+
+function BalanceChart({ account, onDeposit }) {
+  const allSeries = React.useMemo(() => computeBalanceSeries(account), [account]);
+  const [tf, setTf] = React.useState('all'); // '1w' | '1m' | '3m' | 'all'
+  const [hover, setHover] = React.useState(null); // { idx, x } or null
+
+  const [size, setSize] = React.useState({ w: 800, h: 200 });
+  const wrapRef = React.useRef(null);
+  React.useEffect(() => {
+    const measure = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setSize({ w: Math.max(320, Math.floor(r.width)), h: 200 });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  const cutoff = (() => {
+    if (tf === '1w') return Date.now() - 7 * 86400000;
+    if (tf === '1m') return Date.now() - 30 * 86400000;
+    if (tf === '3m') return Date.now() - 90 * 86400000;
+    return -Infinity;
+  })();
+  const points = allSeries.points.filter(p => p.ts >= cutoff);
+
+  const starting = allSeries.starting;
+  const balances = allSeries.points.map(p => p.balance);
+  const allTimeHigh = balances.length ? Math.max(...balances) : 0;
+  const allTimeLow = balances.length ? Math.min(...balances) : 0;
+  const current = balances.length ? balances[balances.length - 1] : 0;
+  const totalDeposits = (account?.history || []).filter(h => h.type === 'deposit').reduce((s, h) => s + h.amount, 0);
+  const totalWithdraws = (account?.history || []).filter(h => h.type === 'withdraw').reduce((s, h) => s + h.amount, 0);
+  const netPnl = current - (totalDeposits - totalWithdraws);
+
+  const pad = { top: 12, right: 12, bottom: 24, left: 56 };
+  const innerW = size.w - pad.left - pad.right;
+  const innerH = size.h - pad.top - pad.bottom;
+
+  const chart = React.useMemo(() => {
+    if (points.length === 0) return null;
+    const ts = points.map(p => p.ts);
+    const vs = points.map(p => p.balance);
+    const minT = points.length === 1 ? ts[0] - 86400000 : Math.min(...ts);
+    const maxT = points.length === 1 ? ts[0] + 86400000 : Math.max(...ts);
+    const minV = Math.min(0, ...vs);
+    const maxV = Math.max(...vs, minV + 1);
+    const rangeT = maxT - minT || 1;
+    const rangeV = (maxV - minV) || 1;
+    const px = (t) => pad.left + ((t - minT) / rangeT) * innerW;
+    const py = (v) => pad.top + innerH - ((v - minV) / rangeV) * innerH;
+    const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(p.ts).toFixed(2)},${py(p.balance).toFixed(2)}`).join(' ');
+    const areaD = points.length > 1 ? `${d} L${px(maxT).toFixed(2)},${(pad.top + innerH).toFixed(2)} L${px(minT).toFixed(2)},${(pad.top + innerH).toFixed(2)} Z` : null;
+    const yTicks = [];
+    for (let i = 0; i <= 3; i++) {
+      const v = minV + (rangeV * i) / 3;
+      yTicks.push({ y: py(v), v });
+    }
+    return { d, areaD, px, py, minT, maxT, minV, maxV, yTicks };
+  }, [points, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trendColor = current >= starting ? '#22c55e' : '#ef4444';
+
+  const onMouseMove = (e) => {
+    if (!chart || points.length === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x < pad.left || x > size.w - pad.right) { setHover(null); return; }
+    // Find nearest point
+    let nearest = 0;
+    let best = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const d = Math.abs(chart.px(points[i].ts) - x);
+      if (d < best) { best = d; nearest = i; }
+    }
+    setHover({ idx: nearest });
+  };
+
+  const eventLabel = (ev) => {
+    if (!ev) return '';
+    if (ev.type === 'deposit') return `Deposit ${fmtUsd(ev.amount)}`;
+    if (ev.type === 'withdraw') return `Withdrawal ${fmtUsd(ev.amount)}`;
+    if (ev.type === 'buy') return `Bought ${(ev.symbol || '').toUpperCase()} ${fmtUsd(ev.usd || 0)}`;
+    if (ev.type === 'sell') return `Sold ${(ev.symbol || '').toUpperCase()} ${fmtUsd(ev.usd || 0)}`;
+    return ev.type;
+  };
+
+  const isEmpty = allSeries.points.length === 0;
+
+  return (
+    <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:12, padding:16, marginBottom:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
+        <div>
+          <div style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Balance</div>
+          <div style={{ fontSize:26, fontWeight:900, color:"#fff", marginTop:2 }}>{fmtUsd(current)}</div>
+        </div>
+        <div style={{ display:"flex", gap:4, background:"#1a1a24", borderRadius:8, padding:4, border:"1px solid #1e1e2a" }}>
+          {[['1w','1W'],['1m','1M'],['3m','3M'],['all','All']].map(([id, label]) => (
+            <button key={id} onClick={() => setTf(id)} style={{
+              padding:"5px 12px", border:"none", borderRadius:6,
+              background: tf === id ? "#6366f1" : "transparent",
+              color: tf === id ? "#fff" : "#9ca3af",
+              fontSize:11, fontWeight:700, cursor:"pointer",
+            }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div ref={wrapRef} style={{ position:"relative", height:size.h }}>
+        {isEmpty ? (
+          <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12 }}>
+            <svg width={size.w} height={size.h} style={{ position:"absolute", inset:0, opacity:0.4 }}>
+              <line x1={pad.left} y1={size.h / 2} x2={size.w - pad.right} y2={size.h / 2} stroke="#2a2a3a" strokeWidth="2" strokeDasharray="4 4"/>
+              <text x={pad.left - 8} y={size.h / 2 + 4} fill="#6b7280" fontSize="10" textAnchor="end">$0</text>
+            </svg>
+            <div style={{ position:"relative", color:"#9ca3af", fontSize:13, textAlign:"center", padding:"0 24px" }}>Make your first deposit to start tracking your balance</div>
+            <button onClick={onDeposit} style={{ position:"relative", padding:"10px 18px", borderRadius:10, border:"none", background:"#22c55e", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Deposit</button>
+          </div>
+        ) : !chart || points.length === 0 ? (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#6b7280", fontSize:12 }}>
+            No activity in the selected timeframe.
+          </div>
+        ) : (
+          <svg
+            width={size.w} height={size.h}
+            onMouseMove={onMouseMove}
+            onMouseLeave={() => setHover(null)}
+            style={{ display:"block" }}
+          >
+            <defs>
+              <linearGradient id={`bal-grad-${account?.id || 'na'}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={trendColor} stopOpacity="0.25"/>
+                <stop offset="100%" stopColor={trendColor} stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            {chart.yTicks.map((t, i) => (
+              <g key={i}>
+                <line x1={pad.left} y1={t.y} x2={size.w - pad.right} y2={t.y} stroke="#1e1e2a" strokeWidth="1"/>
+                <text x={pad.left - 8} y={t.y + 3} fill="#6b7280" fontSize="10" textAnchor="end">{fmtUsd(t.v, { maxFractionDigits: 0 })}</text>
+              </g>
+            ))}
+            {chart.areaD && <path d={chart.areaD} fill={`url(#bal-grad-${account?.id || 'na'})`}/>}
+            <path d={chart.d} fill="none" stroke={trendColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+            {points.map((p, i) => (
+              <circle key={i} cx={chart.px(p.ts)} cy={chart.py(p.balance)} r={hover?.idx === i ? 4 : 2.5} fill={trendColor}/>
+            ))}
+            {hover != null && points[hover.idx] && (() => {
+              const p = points[hover.idx];
+              const cx = chart.px(p.ts);
+              const cy = chart.py(p.balance);
+              return (
+                <g>
+                  <line x1={cx} y1={pad.top} x2={cx} y2={pad.top + innerH} stroke="#6366f1" strokeWidth="1" strokeDasharray="3 3"/>
+                  <circle cx={cx} cy={cy} r="5" fill={trendColor} stroke="#0f0f14" strokeWidth="2"/>
+                </g>
+              );
+            })()}
+          </svg>
+        )}
+
+        {hover != null && points[hover.idx] && chart && (() => {
+          const p = points[hover.idx];
+          const cx = chart.px(p.ts);
+          const tooltipLeft = Math.min(Math.max(8, cx - 90), size.w - 188);
+          return (
+            <div style={{
+              position:"absolute", top:8, left: tooltipLeft, width:180, pointerEvents:"none",
+              background:"#0a0a0f", border:"1px solid #2a2a3a", borderRadius:8, padding:"8px 10px",
+              fontSize:11, color:"#fff", boxShadow:"0 4px 14px rgba(0,0,0,0.5)",
+            }}>
+              <div style={{ color:"#6b7280", fontSize:10, marginBottom:2 }}>{new Date(p.ts).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</div>
+              <div style={{ fontSize:14, fontWeight:800 }}>{fmtUsd(p.balance)}</div>
+              <div style={{ color:"#9ca3af", marginTop:2, fontSize:11 }}>{eventLabel(p.event)}</div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {!isEmpty && (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:8, marginTop:14 }}>
+          <Stat label="Starting" value={fmtUsd(starting)} color="#fff"/>
+          <Stat label="Current" value={fmtUsd(current)} color="#fff"/>
+          <Stat label="All-time high" value={fmtUsd(allTimeHigh)} color="#22c55e"/>
+          <Stat label="All-time low" value={fmtUsd(allTimeLow)} color="#ef4444"/>
+          <Stat label="Total deposited" value={fmtUsd(totalDeposits)} color="#fff"/>
+          <Stat label="Total withdrawn" value={fmtUsd(totalWithdraws)} color="#fff"/>
+          <Stat label="Net P&L" value={(netPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(netPnl))} color={netPnl >= 0 ? '#22c55e' : '#ef4444'}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
   const [accountId, setAccountId] = React.useState(() => store?.activeAccountId || store?.accounts?.[0]?.id || '');
   const [usdInput, setUsdInput] = React.useState('');
@@ -9885,6 +10340,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
   const [closeFor, setCloseFor] = React.useState(null); // position object
   const [closePrice, setClosePrice] = React.useState('');
   const [closeNotes, setCloseNotes] = React.useState('');
+  const [chartModal, setChartModal] = React.useState(null);
   const [livePrices, setLivePrices] = React.useState({});
   const [alertEdits, setAlertEdits] = React.useState({}); // positionId -> { target, stop }
 
@@ -10091,6 +10547,12 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
         </div>
       </div>
 
+      {/* Balance history chart */}
+      <BalanceChart
+        account={activeAccount}
+        onDeposit={() => { setTxnDialog('deposit'); setTxnAmount(''); setTxnNote(''); }}
+      />
+
       {/* Tabs */}
       <div style={{ display:"flex", gap:4, marginBottom:14, background:"#1a1a24", borderRadius:10, padding:4, border:"1px solid #1e1e2a", width:"fit-content" }}>
         {tabs.map(t => (
@@ -10117,7 +10579,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                 {positionsWithLive.map(p => {
                   const edit = alertEdits[p.id] || { target: p.alertTarget ?? '', stop: p.alertStop ?? '' };
                   return (
-                    <div key={p.id} style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:14 }}>
+                    <div key={p.id} onClick={() => setChartModal({ position: p })} style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:14, cursor:"pointer", transition:"border-color 0.15s, background 0.15s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "#2a2a3a"; e.currentTarget.style.background = "#141420"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e1e2a"; e.currentTarget.style.background = "#111"; }}>
                       <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr auto", gap:12, alignItems:"center" }}>
                         <div>
                           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
@@ -10151,10 +10613,10 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Held</div>
                           <div style={{ fontSize:12, color:"#fff" }}>{fmtHoldDuration(p.entryDate)}</div>
                         </div>
-                        <button onClick={() => { setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); setCloseNotes(''); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#22c55e", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.02em" }}>Close Position →</button>
+                        <button onClick={(e) => { e.stopPropagation(); setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); setCloseNotes(''); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#22c55e", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.02em" }}>Close Position →</button>
                       </div>
 
-                      <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #1e1e2a", display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #1e1e2a", display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", cursor:"default" }}>
                         <span style={{ fontSize:11, color:"#9ca3af" }}>Alerts:</span>
                         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                           <span style={{ fontSize:11, color:"#9ca3af" }}>Target +</span>
@@ -10188,7 +10650,13 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                   ))}
                 </div>
                 {closedWithPnl.sort((a, b) => new Date(b.exitDate).getTime() - new Date(a.exitDate).getTime()).map(p => (
-                  <div key={p.id} style={{ borderBottom:"1px solid #1e1e2a" }}>
+                  <div
+                    key={p.id}
+                    onClick={() => setChartModal({ position: p })}
+                    style={{ borderBottom:"1px solid #1e1e2a", cursor:"pointer", transition:"background 0.15s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#141420"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
                     <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr", padding:"10px 14px", alignItems:"center" }}>
                       <div style={{ fontSize:12, color:"#fff", fontWeight:600 }}>{p.name} <span style={{ color:"#6b7280", fontWeight:400 }}>{p.symbol?.toUpperCase()}</span></div>
                       <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 6 })}</div>
@@ -10271,6 +10739,11 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
             </div>
           </div>
         </div>
+      )}
+
+      {/* Position chart modal */}
+      {chartModal?.position && (
+        <PositionChartModal position={chartModal.position} onClose={() => setChartModal(null)}/>
       )}
 
       {/* Close position dialog */}
