@@ -8132,7 +8132,7 @@ function formatBigUsd(n) {
   return '$' + n.toFixed(0);
 }
 
-function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
+function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [pairs, setPairs] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '6' | '24' | '48' | '72'
@@ -8171,7 +8171,17 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
         }
       }
 
-      // Also pull DexScreener trending (mostly SOL meme launches)
+      // Broader search to surface more memecoins (the user asked for this
+      // specifically — Solana memes are the most active new-launch market)
+      try {
+        const r = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana+meme');
+        if (r.ok) {
+          const d = await r.json();
+          for (const item of (d?.pairs || [])) collected.push(item);
+        }
+      } catch {}
+
+      // Also pull DexScreener trending if that endpoint exists
       try {
         const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/trending');
         if (r.ok) {
@@ -8220,20 +8230,16 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
         }
       }
 
-      // Relaxed filters: just enough liquidity + activity to be tradeable.
-      let pairsArr = [...byToken.values()].filter(p => {
-        const liq = parseFloat(p.liquidity?.usd || 0);
-        if (liq <= 1000) return false;
-        const vol = parseFloat(p.volume?.h24 || 0);
-        if (vol <= 500) return false;
-        return true;
-      });
+      // No hard liquidity/volume gates — the gem score itself reflects those
+      // signals, and filtering here masks coins the user might explicitly want
+      // to see (e.g. dust-liquidity coins with extreme momentum).
+      let pairsArr = [...byToken.values()];
 
       // Default order: newest first by pairCreatedAt. UI sort pills override.
       pairsArr.sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0));
 
-      // Cap at the freshest 60 so the grid stays manageable
-      pairsArr = pairsArr.slice(0, 60);
+      // Cap at 80 so the grid stays manageable
+      pairsArr = pairsArr.slice(0, 80);
 
       setPairs(pairsArr);
       onUpdated?.(Date.now());
@@ -8375,10 +8381,16 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
                 stopHitNotified: false,
               });
             };
+            const risk = ageH < 12 ? { label: 'EXTREME', color: '#ef4444', bg: 'rgba(239,68,68,0.18)' }
+                       : ageH < 48 ? { label: 'VERY HIGH', color: '#f59e0b', bg: 'rgba(245,158,11,0.18)' }
+                       : { label: 'HIGH', color: '#a5b4fc', bg: 'rgba(99,102,241,0.18)' };
             return (
               <div key={coinKey} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                  <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em' }}>{badge.label}</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em' }}>{badge.label}</span>
+                    <span style={{ fontSize:10, fontWeight:800, padding:'3px 6px', borderRadius:4, background:risk.bg, color:risk.color, letterSpacing:'0.04em' }} title="All new coins are high risk. Newer = more volatile.">Risk: {risk.label}</span>
+                  </div>
                   <span style={{ fontSize:11, color:'#6b7280' }}>Score <span style={{ color:'#fff', fontWeight:700 }}>{score}</span></span>
                 </div>
 
@@ -8420,17 +8432,32 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
                   {badge.desc}
                 </div>
 
-                <div style={{ display:'flex', gap:8 }}>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                   <button
                     onClick={logIt}
                     disabled={logged}
                     style={{
-                      flex:1, padding:'7px 10px', borderRadius:8, border:'none',
-                      background: logged ? '#2a2a3a' : '#6366f1',
-                      color: logged ? '#6b7280' : '#fff',
+                      flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
+                      background: logged ? '#2a2a3a' : '#1a1a24',
+                      color: logged ? '#6b7280' : '#a5b4fc',
                       fontSize:12, fontWeight:700, cursor: logged ? 'default' : 'pointer',
+                      minWidth:90,
                     }}
-                  >{logged ? 'Logged ✓' : 'Log as Signal'}</button>
+                  >{logged ? 'Logged ✓' : 'Log Signal'}</button>
+                  <button
+                    onClick={() => onBuy?.({
+                      coinId: coinKey,
+                      name: p.baseToken?.name || p.baseToken?.symbol || 'Unknown',
+                      symbol: (p.baseToken?.symbol || '').toUpperCase(),
+                      chain: p.chainId,
+                      price: price || 0,
+                    })}
+                    style={{
+                      flex:1, padding:'7px 10px', borderRadius:8, border:'none',
+                      background:'#22c55e', color:'#fff',
+                      fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
+                    }}
+                  >Buy →</button>
                   <a href={url} target="_blank" rel="noreferrer" style={{
                     padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
                     color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
@@ -9151,6 +9178,568 @@ function fmtHoldDuration(fromIso, toIso) {
   } catch { return '—'; }
 }
 
+function momentumBadge(change24h) {
+  if (change24h >= 20) return { label: '🔥 Surging', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+  if (change24h >= 3)  return { label: '📈 Rising',  color: '#22c55e', bg: 'rgba(34,197,94,0.15)' };
+  if (change24h > -3)  return { label: '😐 Flat',    color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' };
+  return                       { label: '📉 Falling', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+}
+
+function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
+  const [coins, setCoins] = React.useState([]);     // trending wrapper objects
+  const [prices, setPrices] = React.useState({});   // { coinId: { usd, usd_24h_change } }
+  const [loading, setLoading] = React.useState(true);
+  const [loadedAt, setLoadedAt] = React.useState(null);
+  const [, setTick] = React.useState(0);
+
+  // Re-render every 30s so "updated X mins ago" stays fresh
+  React.useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('https://api.coingecko.com/api/v3/search/trending');
+      const d = await r.json();
+      const top = (d?.coins || []).slice(0, 10);
+      setCoins(top);
+      // Batch-fetch live prices + 24h change
+      const ids = top.map(({ item }) => item?.id).filter(Boolean).join(',');
+      if (ids) {
+        try {
+          const pr = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`);
+          const pd = await pr.json();
+          setPrices(pd || {});
+        } catch {}
+      }
+      const now = Date.now();
+      setLoadedAt(now);
+      onUpdated?.(now);
+    } catch {} finally {
+      setLoading(false);
+    }
+  }, [onUpdated]);
+
+  React.useEffect(() => {
+    load();
+    const id = setInterval(load, 3 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [load, refreshKey]);
+
+  const loggedCoinIds = React.useMemo(() => new Set(signals.map(s => s.coinId)), [signals]);
+
+  // Compute a max volume across the visible set to scale the volume bars
+  const maxVol = React.useMemo(() => {
+    let m = 0;
+    for (const { item } of coins) {
+      const v = prices[item?.id]?.usd_24h_vol || 0;
+      if (v > m) m = v;
+    }
+    return m;
+  }, [coins, prices]);
+
+  const updatedAgo = (() => {
+    if (!loadedAt) return '—';
+    const m = Math.floor((Date.now() - loadedAt) / 60000);
+    if (m < 1) return 'just now';
+    if (m === 1) return '1 min ago';
+    return m + ' mins ago';
+  })();
+
+  if (loading && coins.length === 0) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
+        <div style={{ width:24, height:24, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+        Loading what's trending right now…
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
+        {coins.length} {coins.length === 1 ? 'coin' : 'coins'} trending · updated {updatedAgo}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 380px), 1fr))', gap:12 }}>
+        {coins.map(({ item: c }) => {
+          const live = prices[c.id] || {};
+          const change = (live.usd_24h_change ?? c.data?.price_change_percentage_24h?.usd) || 0;
+          const pos = change >= 0;
+          const price = live.usd ?? parseCoinPrice(c.data?.price);
+          const vol = live.usd_24h_vol || 0;
+          const volPct = maxVol > 0 ? Math.max(2, (vol / maxVol) * 100) : 0;
+          const mom = momentumBadge(change);
+          const logged = loggedCoinIds.has(c.id);
+          const onLog = () => {
+            if (logged || !onLogSignal) return;
+            onLogSignal({
+              id: Date.now(),
+              coinId: c.id,
+              name: c.name,
+              symbol: c.symbol,
+              score: 50,
+              priceAtSignal: price || 0,
+              change24h: change,
+              loggedAt: new Date().toISOString(),
+              didTake: false, exitPrice: null, exitedAt: null,
+              notes: '', targetGain: null, stopLoss: null,
+              targetHitNotified: false, stopHitNotified: false,
+            });
+          };
+          return (
+            <div key={c.id} style={{ background: pos?"rgba(34,197,94,0.05)":"rgba(239,68,68,0.05)", border:`1px solid ${pos?"rgba(34,197,94,0.18)":"rgba(239,68,68,0.18)"}`, borderRadius:12, padding:16, display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                <div>
+                  <div style={{ fontSize:15, fontWeight:800, color:'#fff' }}>{c.name}</div>
+                  <div style={{ fontSize:11, color:'#6b7280' }}>{c.symbol}</div>
+                </div>
+                <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(99,102,241,0.15)', color:'#a5b4fc' }}>#{c.market_cap_rank || '?'}</span>
+              </div>
+
+              <div style={{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' }}>
+                <div style={{ fontSize:26, fontWeight:900, color: pos ? '#22c55e' : '#ef4444' }}>{pos?'+':''}{change.toFixed(2)}%</div>
+                <div style={{ fontSize:13, color:'#fff', fontWeight:600 }}>{price ? fmtUsd(price, { maxFractionDigits: price >= 1 ? 4 : 8 }) : '—'}</div>
+              </div>
+
+              <span style={{ fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:6, background:mom.bg, color:mom.color, alignSelf:'flex-start' }}>{mom.label}</span>
+
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:10, color:'#6b7280', marginBottom:4, textTransform:'uppercase', letterSpacing:'0.04em', fontWeight:700 }}>
+                  <span>Volume 24h</span>
+                  <span style={{ color:'#9ca3af' }}>{vol > 0 ? formatBigUsd(vol) : '—'}</span>
+                </div>
+                <div style={{ height:6, background:'#1a1a24', borderRadius:3, overflow:'hidden' }}>
+                  <div style={{ height:'100%', width: volPct + '%', background:'linear-gradient(90deg, #6366f1, #a5b4fc)', borderRadius:3, transition:'width 0.3s ease' }}/>
+                </div>
+              </div>
+
+              <div style={{ display:'flex', gap:8, marginTop:2, flexWrap:'wrap' }}>
+                <button
+                  onClick={onLog}
+                  disabled={logged}
+                  style={{
+                    flex:1, padding:'7px 10px', borderRadius:8, border:'none',
+                    background: logged ? '#2a2a3a' : '#1a1a24',
+                    color: logged ? '#6b7280' : '#a5b4fc',
+                    fontSize:12, fontWeight:700, cursor: logged ? 'default' : 'pointer', minWidth:80,
+                    border: logged ? 'none' : '1px solid #2a2a3a',
+                  }}
+                >{logged ? 'Logged ✓' : 'Log Signal'}</button>
+                <button
+                  onClick={() => onBuy?.({ coinId: c.id, name: c.name, symbol: c.symbol, price: price || 0 })}
+                  style={{
+                    flex:1, padding:'7px 10px', borderRadius:8, border:'none',
+                    background:'#22c55e', color:'#fff',
+                    fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
+                  }}
+                >Buy →</button>
+                <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{
+                  padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
+                  color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
+                  whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
+                }}>Chart ↗</a>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function capTier(mcap) {
+  if (!mcap) return { id: 'unknown', label: '—', color: '#6b7280' };
+  if (mcap >= 10e9) return { id: 'large', label: 'LARGE', color: '#22c55e' };
+  if (mcap >= 1e9)  return { id: 'mid',   label: 'MID',   color: '#6366f1' };
+  return                     { id: 'small', label: 'SMALL', color: '#f59e0b' };
+}
+
+function CryptoUptrends({ refreshKey, onUpdated, onBuy }) {
+  const [coins, setCoins] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [timeframe, setTimeframe] = React.useState('all'); // 'all' | '24-7' | '7'
+  const [capFilter, setCapFilter] = React.useState('all'); // 'all' | 'large' | 'mid' | 'small'
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&sparkline=true&price_change_percentage=1h,24h,7d')
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        setCoins(Array.isArray(d) ? d : []);
+        setLoading(false);
+        onUpdated?.(Date.now());
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [refreshKey, onUpdated]);
+
+  const filtered = React.useMemo(() => {
+    const passesTimeframe = (c) => {
+      const h1  = c.price_change_percentage_1h_in_currency  || 0;
+      const h24 = c.price_change_percentage_24h             || 0;
+      const d7  = c.price_change_percentage_7d_in_currency  || 0;
+      if (timeframe === '7')    return d7 > 0;
+      if (timeframe === '24-7') return h24 > 0 && d7 > 0;
+      return h1 > 0 && h24 > 0 && d7 > 0;
+    };
+    let arr = coins.filter(passesTimeframe);
+    if (capFilter !== 'all') arr = arr.filter(c => capTier(c.market_cap).id === capFilter);
+    arr = arr.map(c => {
+      const h1  = c.price_change_percentage_1h_in_currency  || 0;
+      const h24 = c.price_change_percentage_24h             || 0;
+      const d7  = c.price_change_percentage_7d_in_currency  || 0;
+      const score = (h1 * 0.5) + (h24 * 0.3) + (d7 * 0.2);
+      return { ...c, _score: score };
+    });
+    arr.sort((a, b) => b._score - a._score);
+    return arr;
+  }, [coins, timeframe, capFilter]);
+
+  const pillStyle = (active, accent) => ({
+    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
+    background: active ? (accent || '#6366f1') : '#1a1a24',
+    color: active ? '#fff' : '#9ca3af',
+    fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+  });
+
+  if (loading && coins.length === 0) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
+        <div style={{ width:24, height:24, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+        Scanning top 100 by market cap for clean uptrends…
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:80 }}>Up across</span>
+          {[['all','1h + 24h + 7d'],['24-7','24h + 7d'],['7','7d only']].map(([id, label]) => (
+            <button key={id} onClick={() => setTimeframe(id)} style={pillStyle(timeframe === id, '#22c55e')}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:80 }}>Market cap</span>
+          {[['all','All'],['large','Large >$10B'],['mid','Mid $1B–$10B'],['small','Small <$1B']].map(([id, label]) => (
+            <button key={id} onClick={() => setCapFilter(id)} style={pillStyle(capFilter === id)}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
+        {filtered.length} {filtered.length === 1 ? 'coin' : 'coins'} on a confirmed uptrend
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#111', border:'1px dashed #1e1e2a', borderRadius:12 }}>
+          Market may be down — no coins showing uptrend across all timeframes. Try a shorter filter.
+        </div>
+      ) : (
+        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'40px 2fr 1fr 60px 60px 60px 70px 80px 90px', gap:10, padding:'10px 14px', borderBottom:'1px solid #1e1e2a' }}>
+            {['#','Coin','Mkt Cap','1h','24h','7d','Score','7d Trend','Buy'].map(h => (
+              <div key={h} style={{ fontSize:10, fontWeight:700, color:'#6b7280', textTransform:'uppercase' }}>{h}</div>
+            ))}
+          </div>
+          {filtered.map((c, i) => {
+            const h1  = c.price_change_percentage_1h_in_currency  || 0;
+            const h24 = c.price_change_percentage_24h             || 0;
+            const d7  = c.price_change_percentage_7d_in_currency  || 0;
+            const tier = capTier(c.market_cap);
+            const sparkPoints = c.sparkline_in_7d?.price || [];
+            return (
+              <div key={c.id} style={{ display:'grid', gridTemplateColumns:'40px 2fr 1fr 60px 60px 60px 70px 80px 90px', gap:10, padding:'10px 14px', borderBottom:'1px solid #1e1e2a', alignItems:'center' }}>
+                <div style={{ fontSize:12, color:'#6b7280' }}>{i + 1}</div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{c.name}</div>
+                    <div style={{ fontSize:11, color:'#6b7280' }}>{(c.symbol || '').toUpperCase()}</div>
+                  </div>
+                  <span style={{ fontSize:9, fontWeight:800, padding:'2px 6px', borderRadius:4, background: tier.color + '22', color: tier.color, letterSpacing:'0.04em' }}>{tier.label}</span>
+                </div>
+                <div style={{ fontSize:12, color:'#fff' }}>{formatBigUsd(c.market_cap || 0)}</div>
+                <div style={{ fontSize:12, fontWeight:700, color:'#22c55e' }}>+{h1.toFixed(2)}%</div>
+                <div style={{ fontSize:12, fontWeight:700, color:'#22c55e' }}>+{h24.toFixed(2)}%</div>
+                <div style={{ fontSize:12, fontWeight:700, color:'#22c55e' }}>+{d7.toFixed(2)}%</div>
+                <div style={{ fontSize:12, fontWeight:800, color:'#a5b4fc' }}>{c._score.toFixed(1)}</div>
+                <div>{sparkPoints.length > 1 ? <Sparkline points={sparkPoints} width={70} height={22} color="#22c55e"/> : <span style={{ color:'#6b7280', fontSize:11 }}>—</span>}</div>
+                <button
+                  onClick={() => onBuy?.({ coinId: c.id, name: c.name, symbol: c.symbol, price: c.current_price })}
+                  style={{ padding:'6px 10px', borderRadius:6, border:'none', background:'#22c55e', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}
+                >Buy →</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CryptoMyStats({ store, refreshKey, onUpdated }) {
+  const accounts = store?.accounts || [];
+
+  // Aggregate all positions across all accounts
+  const allPositions = React.useMemo(() => {
+    const out = [];
+    for (const a of accounts) {
+      for (const p of (a.positions || [])) out.push({ ...p, _accountName: a.name, _accountType: a.type });
+    }
+    return out;
+  }, [accounts]);
+
+  const closed = allPositions.filter(p => p.status === 'closed' && p.entryPrice > 0 && p.exitPrice != null);
+  const open = allPositions.filter(p => p.status === 'open');
+
+  // Live prices for open positions
+  const openCoinIds = React.useMemo(() => [...new Set(open.map(p => p.coinId))].join(','), [open]);
+  const [livePrices, setLivePrices] = React.useState({});
+  React.useEffect(() => {
+    if (!openCoinIds) { setLivePrices({}); onUpdated?.(Date.now()); return; }
+    let cancelled = false;
+    const load = () => {
+      fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(openCoinIds)}&vs_currencies=usd`)
+        .then(r => r.json())
+        .then(d => { if (!cancelled) { setLivePrices(d || {}); onUpdated?.(Date.now()); } })
+        .catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [openCoinIds, refreshKey, onUpdated]);
+
+  // Money totals
+  const totalDeposits = accounts.reduce((s, a) => s + (a.history || []).filter(h => h.type === 'deposit').reduce((x, h) => x + h.amount, 0), 0);
+  const totalWithdraws = accounts.reduce((s, a) => s + (a.history || []).filter(h => h.type === 'withdraw').reduce((x, h) => x + h.amount, 0), 0);
+  const totalCash = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+  const openValue = open.reduce((s, p) => {
+    const cur = livePrices[p.coinId]?.usd ?? p.currentPrice ?? p.entryPrice;
+    return s + cur * p.amount;
+  }, 0);
+  const currentValue = totalCash + openValue;
+  const netInvested = totalDeposits - totalWithdraws;
+  const totalPnl = currentValue - netInvested;
+  const totalReturnPct = netInvested > 0 ? (totalPnl / netInvested) * 100 : 0;
+
+  // Realized / unrealized
+  const realizedPnl = closed.reduce((s, p) => s + ((p.exitPrice - p.entryPrice) * p.amount), 0);
+  const unrealizedPnl = open.reduce((s, p) => {
+    const cur = livePrices[p.coinId]?.usd ?? p.currentPrice ?? p.entryPrice;
+    return s + ((cur - p.entryPrice) * p.amount);
+  }, 0);
+
+  // Trade stats
+  const closedWithPnl = closed.map(p => ({
+    ...p,
+    _pnl: (p.exitPrice - p.entryPrice) * p.amount,
+    _pnlPct: ((p.exitPrice / p.entryPrice) - 1) * 100,
+  }));
+  const wins = closedWithPnl.filter(p => p._pnl > 0).length;
+  const winRate = closedWithPnl.length > 0 ? (wins / closedWithPnl.length) * 100 : null;
+  const bestTrades = [...closedWithPnl].sort((a, b) => b._pnlPct - a._pnlPct).slice(0, 5);
+  const worstTrades = [...closedWithPnl].sort((a, b) => a._pnlPct - b._pnlPct).slice(0, 5);
+
+  // Chain breakdown (closed + open)
+  const chainTotals = new Map();
+  for (const p of allPositions) {
+    const key = p.chain || 'other';
+    chainTotals.set(key, (chainTotals.get(key) || 0) + 1);
+  }
+  const totalForChains = [...chainTotals.values()].reduce((s, v) => s + v, 0);
+  const chainBreakdown = [...chainTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([chain, count]) => ({ chain, count, pct: totalForChains > 0 ? (count / totalForChains) * 100 : 0 }));
+  const chainColors = { solana:'#9945ff', ethereum:'#627eea', base:'#0052ff', bsc:'#f0b90b' };
+
+  // Timing analysis
+  const dayBuckets = [[], [], [], [], [], [], []]; // Sun..Sat
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  for (const p of closedWithPnl) {
+    try {
+      const d = new Date(p.entryDate).getDay();
+      dayBuckets[d].push(p._pnlPct);
+    } catch {}
+  }
+  const dayAverages = dayBuckets.map((arr, i) => ({
+    day: dayNames[i],
+    avg: arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null,
+    n: arr.length,
+  }));
+  const bestDay = dayAverages.filter(d => d.avg != null).sort((a, b) => b.avg - a.avg)[0];
+  const winningHolds = closedWithPnl.filter(p => p._pnl > 0).map(p => new Date(p.exitDate).getTime() - new Date(p.entryDate).getTime());
+  const losingHolds  = closedWithPnl.filter(p => p._pnl <= 0).map(p => new Date(p.exitDate).getTime() - new Date(p.entryDate).getTime());
+  const avgWinHold  = winningHolds.length > 0 ? winningHolds.reduce((s, v) => s + v, 0) / winningHolds.length : null;
+  const avgLossHold = losingHolds.length > 0 ? losingHolds.reduce((s, v) => s + v, 0) / losingHolds.length : null;
+  const fmtMs = (ms) => {
+    if (ms == null) return '—';
+    const hrs = ms / 3600000;
+    if (hrs >= 24) return (hrs / 24).toFixed(1) + 'd';
+    if (hrs >= 1) return hrs.toFixed(1) + 'h';
+    return Math.max(1, Math.round(hrs * 60)) + 'm';
+  };
+
+  // Monthly P&L
+  const monthBuckets = new Map();
+  for (const p of closedWithPnl) {
+    try {
+      const d = new Date(p.exitDate);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthBuckets.set(key, (monthBuckets.get(key) || 0) + p._pnl);
+    } catch {}
+  }
+  const monthlyPnl = [...monthBuckets.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const maxAbsMonth = Math.max(0, ...monthlyPnl.map(([, v]) => Math.abs(v)));
+
+  if (accounts.length === 0) {
+    return (
+      <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#111', border:'1px dashed #1e1e2a', borderRadius:12 }}>
+        Create a crypto account to start tracking stats.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:10, marginBottom:16 }}>
+        <Stat label="Total invested" value={fmtUsd(netInvested)} color="#fff"/>
+        <Stat label="Current value" value={fmtUsd(currentValue)} color="#fff"/>
+        <Stat label="Total P&L" value={(totalPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(totalPnl))} color={totalPnl >= 0 ? '#22c55e' : '#ef4444'}/>
+        <Stat label="Return %" value={netInvested > 0 ? (totalReturnPct >= 0 ? '+' : '') + totalReturnPct.toFixed(2) + '%' : '—'} color={totalReturnPct >= 0 ? '#22c55e' : '#ef4444'}/>
+        <Stat label="Realized P&L" value={(realizedPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(realizedPnl))} color={realizedPnl >= 0 ? '#22c55e' : '#ef4444'}/>
+        <Stat label="Unrealized P&L" value={(unrealizedPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(unrealizedPnl))} color={unrealizedPnl >= 0 ? '#22c55e' : '#ef4444'}/>
+        <Stat label="Win rate" value={winRate == null ? '—' : winRate.toFixed(0) + '%'} color="#fff"/>
+        <Stat label="Trades closed" value={String(closedWithPnl.length)} color="#fff"/>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap:14, marginBottom:14 }}>
+        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Best performing trades</div>
+          {bestTrades.length === 0 ? (
+            <div style={{ fontSize:12, color:'#6b7280' }}>No closed trades yet.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column' }}>
+              {bestTrades.map(p => (
+                <TradeRow key={p.id} p={p}/>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Worst performing trades</div>
+          {worstTrades.length === 0 ? (
+            <div style={{ fontSize:12, color:'#6b7280' }}>No closed trades yet.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column' }}>
+              {worstTrades.map(p => (
+                <TradeRow key={p.id} p={p}/>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap:14, marginBottom:14 }}>
+        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Chain breakdown</div>
+          {chainBreakdown.length === 0 ? (
+            <div style={{ fontSize:12, color:'#6b7280' }}>No positions yet.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {chainBreakdown.map(({ chain, count, pct }) => {
+                const color = chainColors[chain.toLowerCase()] || '#9ca3af';
+                return (
+                  <div key={chain}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
+                      <span style={{ color:'#fff', fontWeight:700, textTransform:'uppercase' }}>{chain}</span>
+                      <span style={{ color:'#9ca3af' }}>{count} {count === 1 ? 'trade' : 'trades'} · {pct.toFixed(0)}%</span>
+                    </div>
+                    <div style={{ height:6, background:'#1a1a24', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width: pct + '%', background:color, borderRadius:3 }}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Timing analysis</div>
+          {closedWithPnl.length === 0 ? (
+            <div style={{ fontSize:12, color:'#6b7280' }}>Close some trades to see timing analysis.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ fontSize:12, color:'#9ca3af' }}>
+                Best day to enter: <span style={{ color:'#22c55e', fontWeight:700 }}>{bestDay ? `${bestDay.day} (avg ${bestDay.avg >= 0 ? '+' : ''}${bestDay.avg.toFixed(1)}% · ${bestDay.n} trades)` : '—'}</span>
+              </div>
+              <div style={{ fontSize:12, color:'#9ca3af' }}>
+                Avg hold (wins): <span style={{ color:'#22c55e', fontWeight:700 }}>{fmtMs(avgWinHold)}</span>
+              </div>
+              <div style={{ fontSize:12, color:'#9ca3af' }}>
+                Avg hold (losses): <span style={{ color:'#ef4444', fontWeight:700 }}>{fmtMs(avgLossHold)}</span>
+              </div>
+              <div style={{ paddingTop:6, borderTop:'1px solid #1e1e2a', marginTop:4 }}>
+                <div style={{ fontSize:10, color:'#6b7280', textTransform:'uppercase', fontWeight:700, marginBottom:6 }}>By day of week (avg P&L %)</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:4 }}>
+                  {dayAverages.map(d => (
+                    <div key={d.day} style={{ background:'#1a1a24', borderRadius:6, padding:'6px 4px', textAlign:'center' }}>
+                      <div style={{ fontSize:10, color:'#6b7280', fontWeight:700 }}>{d.day}</div>
+                      <div style={{ fontSize:11, fontWeight:700, color: d.avg == null ? '#6b7280' : d.avg >= 0 ? '#22c55e' : '#ef4444', marginTop:2 }}>
+                        {d.avg == null ? '—' : (d.avg >= 0 ? '+' : '') + d.avg.toFixed(0) + '%'}
+                      </div>
+                      <div style={{ fontSize:9, color:'#6b7280' }}>{d.n}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Monthly realized P&L</div>
+        {monthlyPnl.length === 0 ? (
+          <div style={{ fontSize:12, color:'#6b7280' }}>No closed trades yet.</div>
+        ) : (
+          <div style={{ display:'flex', alignItems:'flex-end', gap:6, minHeight:120 }}>
+            {monthlyPnl.map(([month, pnl]) => {
+              const heightPct = maxAbsMonth > 0 ? (Math.abs(pnl) / maxAbsMonth) * 100 : 0;
+              const isPos = pnl >= 0;
+              return (
+                <div key={month} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color: isPos ? '#22c55e' : '#ef4444' }}>{(isPos ? '+' : '−') + fmtUsd(Math.abs(pnl))}</div>
+                  <div style={{ width:'100%', maxWidth:60, height:`${Math.max(4, heightPct)}px`, background: isPos ? '#22c55e' : '#ef4444', borderRadius:4, opacity:0.85 }}/>
+                  <div style={{ fontSize:10, color:'#6b7280' }}>{month.slice(2)}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TradeRow({ p }) {
+  const fmtPrice = (n) => fmtUsd(n, { maxFractionDigits: n >= 1 ? 4 : 8 });
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'1.4fr 1fr 1fr auto auto', gap:8, padding:'6px 0', borderBottom:'1px solid #1e1e2a', alignItems:'center', fontSize:11 }}>
+      <div style={{ color:'#fff', fontWeight:700 }}>{p.name || p.symbol} <span style={{ color:'#6b7280', fontWeight:400 }}>{(p.symbol || '').toUpperCase()}</span></div>
+      <div style={{ color:'#9ca3af' }}>{fmtPrice(p.entryPrice)} → {fmtPrice(p.exitPrice)}</div>
+      <div style={{ color:'#9ca3af' }}>{fmtHoldDuration(p.entryDate, p.exitDate)}</div>
+      <div style={{ color: p._pnlPct >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, whiteSpace:'nowrap' }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(1) + '%'}</div>
+      <div style={{ color:'#6b7280' }}>{p._accountName}</div>
+    </div>
+  );
+}
+
 function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
   const [accountId, setAccountId] = React.useState(() => store?.activeAccountId || store?.accounts?.[0]?.id || '');
   const [usdInput, setUsdInput] = React.useState('');
@@ -9493,7 +10082,9 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
         </div>
 
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))", gap:10 }}>
-          <Stat label="Total P&L" value={(totalPnl >= 0 ? '+' : '') + fmtUsd(Math.abs(totalPnl))} color={totalPnl >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Unrealized P&L" value={(unrealizedPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(unrealizedPnl))} color={unrealizedPnl >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Realized P&L" value={(closedPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(closedPnl))} color={closedPnl >= 0 ? "#22c55e" : "#ef4444"}/>
+          <Stat label="Total P&L" value={(totalPnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(totalPnl))} color={totalPnl >= 0 ? "#22c55e" : "#ef4444"}/>
           <Stat label="Return" value={netInvested > 0 ? (totalReturnPct >= 0 ? '+' : '') + totalReturnPct.toFixed(2) + '%' : '—'} color={totalReturnPct >= 0 ? "#22c55e" : "#ef4444"}/>
           <Stat label="Win rate" value={winRate == null ? '—' : winRate.toFixed(0) + '%'} color="#fff"/>
           <Stat label="Open" value={String(openPositions.length)} color="#fff"/>
@@ -9560,7 +10151,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Held</div>
                           <div style={{ fontSize:12, color:"#fff" }}>{fmtHoldDuration(p.entryDate)}</div>
                         </div>
-                        <button onClick={() => { setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); setCloseNotes(''); }} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Close Position</button>
+                        <button onClick={() => { setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); setCloseNotes(''); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#22c55e", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.02em" }}>Close Position →</button>
                       </div>
 
                       <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #1e1e2a", display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
@@ -9786,7 +10377,7 @@ function TradingDashboard({ session, onLogout }) {
   }, []);
   const [tab,           setTab]           = useState("dashboard");
   const [appMode,            setAppMode]            = useState('trading');
-  const [cryptoSection,      setCryptoSection]      = useState('trending');
+  const [cryptoSection,      setCryptoSection]      = useState('hotnow');
   const [oddsSport,          setOddsSport]          = useState('all');
   const [cryptoRefreshKey,   setCryptoRefreshKey]   = useState(0);
   const [cryptoLastUpdated,  setCryptoLastUpdated]  = useState(null);
@@ -9861,13 +10452,11 @@ function TradingDashboard({ session, onLogout }) {
     return () => clearInterval(id);
   }, [appMode]);
   const cryptoSectionLabel = {
-    trending: 'Trending coins',
-    newpairs: 'New hot pairs (auto-refresh 2m)',
-    gems:     'New launches scored for blow-up potential (auto-refresh 2m)',
-    gainers:  'Top gainers',
-    watchlist:'Your watchlist (auto-refresh 1m)',
-    journal:  'Logged signals & taken trades',
+    hotnow:   "What's trending across the market right now (auto-refresh 3m)",
+    gems:     'Brand-new launches scored for blow-up potential (auto-refresh 2m)',
+    uptrends: 'Top 100 coins on a confirmed uptrend across 1h / 24h / 7d',
     accounts: 'Paper & real account portfolios',
+    mystats:  'Aggregate stats across all your accounts',
   }[cryptoSection] || cryptoSection;
 
   // Alert checker — runs every 60s while in crypto mode. Polls current prices
@@ -10673,13 +11262,11 @@ function TradingDashboard({ session, onLogout }) {
       {appMode === 'crypto' && isAdmin && (
         <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
           {[
-            {id:'trending', label:'Trending', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/></svg>},
-            {id:'newpairs', label:'New Pairs', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>},
+            {id:'hotnow',   label:'Hot Now', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 2s2 3 2 6c0 1.5-1 3-2 3s-2-1.5-2-3c0-1 0-2 1-4z"/><path d="M19 14c0 4-3 7-7 7s-7-3-7-7c0-2 1-4 3-5 0 3 2 4 4 4-1-3 1-6 3-7 2 3 4 5 4 8z"/></svg>},
             {id:'gems',     label:'New Gems', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3L8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>},
-            {id:'gainers',  label:'Top Gainers', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
-            {id:'watchlist',label:'Watchlist', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>},
-            {id:'journal',  label:'Journal', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>},
+            {id:'uptrends', label:'Uptrends', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
             {id:'accounts', label:'Accounts', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>},
+            {id:'mystats',  label:'My Stats', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>},
           ].map(s=>(
             <div key={s.id} onClick={()=>setCryptoSection(s.id)} title={s.label} style={{
               width:56, height:48, display:'flex', alignItems:'center', justifyContent:'center',
@@ -10894,13 +11481,11 @@ function TradingDashboard({ session, onLogout }) {
                 >Refresh</button>
               </div>
             </div>
-            {cryptoSection === 'trending'  && <CryptoTrending  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />}
-            {cryptoSection === 'newpairs'  && <CryptoNewPairs  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
-            {cryptoSection === 'gems'      && <CryptoGems      refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} />}
-            {cryptoSection === 'gainers'   && <CryptoGainers   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
-            {cryptoSection === 'watchlist' && <CryptoWatchlist refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
-            {cryptoSection === 'journal'   && <CryptoJournal   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onUpdateSignals={updateCryptoSignals} />}
+            {cryptoSection === 'hotnow'    && <CryptoHotNow    refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />}
+            {cryptoSection === 'gems'      && <CryptoGems      refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />}
+            {cryptoSection === 'uptrends'  && <CryptoUptrends  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} onBuy={setBuyModalCoin} />}
             {cryptoSection === 'accounts'  && <CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} />}
+            {cryptoSection === 'mystats'   && <CryptoMyStats   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} />}
           </div>
         )}
 
