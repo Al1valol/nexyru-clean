@@ -1528,8 +1528,12 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-export function OddsTab() {
-  const [sport, setSport] = useState<string>("upcoming");
+export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
+  // When oddsSport is supplied by the parent (top-level mode switcher), the
+  // internal sport chip selector is hidden and we always fetch "upcoming",
+  // filtering games client-side by the supplied sport key fragment.
+  const externalFilter = typeof oddsSport === "string";
+  const [sport, setSport] = useState<string>(externalFilter ? "upcoming" : "upcoming");
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1565,8 +1569,10 @@ export function OddsTab() {
   }, []);
 
   useEffect(() => {
-    load(sport);
-  }, [sport, load]);
+    // When the external filter is in use, always pull the upcoming feed and
+    // narrow client-side via sport_key. Otherwise honor the internal selector.
+    load(externalFilter ? "upcoming" : sport);
+  }, [sport, load, externalFilter, oddsSport]);
 
   // Sort: arbs first, then by start time
   const sorted = useMemo(() => {
@@ -1581,8 +1587,27 @@ export function OddsTab() {
       if (a.isArb !== b.isArb) return a.isArb ? -1 : 1;
       return new Date(a.g.commence_time).getTime() - new Date(b.g.commence_time).getTime();
     });
+    // External (top-level) filter takes precedence over the internal toggle.
+    if (externalFilter) {
+      if (oddsSport === "arbs") return decorated.filter((d) => d.isArb);
+      if (!oddsSport || oddsSport === "all") return decorated;
+      const needle = oddsSport.toLowerCase();
+      return decorated.filter((d) =>
+        (d.g.sport_key ?? "").toLowerCase().includes(needle),
+      );
+    }
     return onlyArbs ? decorated.filter((d) => d.isArb) : decorated;
-  }, [games, onlyArbs]);
+  }, [games, onlyArbs, externalFilter, oddsSport]);
+
+  const refresh = () => load(externalFilter ? "upcoming" : sport);
+
+  const emptyMessage = (() => {
+    if (loading) return "Loading...";
+    if (externalFilter && oddsSport === "arbs") return "No arb opportunities in the selected window.";
+    if (!externalFilter && onlyArbs) return "No arb opportunities in the selected window.";
+    if (externalFilter && oddsSport && oddsSport !== "all") return `No ${oddsSport.toUpperCase()} games in the selected window.`;
+    return "No games in the selected window.";
+  })();
 
   return (
     <section>
@@ -1590,11 +1615,30 @@ export function OddsTab() {
         title="Odds"
         subtitle="Best line per team across US books · arbs sorted first"
         right={
-          requestsRemaining !== null ? (
-            <span style={{ fontSize: 11, color: C.textMuted }}>
-              {requestsRemaining} API calls left
-            </span>
-          ) : null
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+            {requestsRemaining !== null && (
+              <span style={{ fontSize: 11, color: C.textMuted }}>
+                {requestsRemaining} API calls left
+              </span>
+            )}
+            <button
+              onClick={refresh}
+              disabled={loading}
+              style={{
+                background: loading ? C.card2 : C.accent,
+                color: loading ? C.textDim : "#fff",
+                border: `1px solid ${loading ? C.border : C.accent}`,
+                borderRadius: 999,
+                padding: "4px 12px",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: loading ? "not-allowed" : "pointer",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          </span>
         }
       />
 
@@ -1603,61 +1647,63 @@ export function OddsTab() {
 
       <Subhead>Games</Subhead>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 14,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
-          {SPORT_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setSport(f.key)}
-              style={{
-                background: sport === f.key ? C.accent : C.card2,
-                color: sport === f.key ? "#fff" : C.text,
-                border: `1px solid ${sport === f.key ? C.accent : C.border}`,
-                borderRadius: 999,
-                padding: "5px 12px",
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <label
+      {!externalFilter && (
+        <div
           style={{
-            display: "inline-flex",
+            display: "flex",
             alignItems: "center",
-            gap: 6,
-            background: onlyArbs ? "rgba(34,197,94,0.12)" : C.card2,
-            border: `1px solid ${onlyArbs ? C.green : C.border}`,
-            color: onlyArbs ? C.green : C.textDim,
-            padding: "5px 12px",
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            userSelect: "none",
-            whiteSpace: "nowrap",
+            gap: 10,
+            marginBottom: 14,
+            flexWrap: "wrap",
           }}
         >
-          <input
-            type="checkbox"
-            checked={onlyArbs}
-            onChange={(e) => setOnlyArbs(e.target.checked)}
-            style={{ accentColor: C.green, margin: 0 }}
-          />
-          Show only arbs
-        </label>
-      </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+            {SPORT_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setSport(f.key)}
+                style={{
+                  background: sport === f.key ? C.accent : C.card2,
+                  color: sport === f.key ? "#fff" : C.text,
+                  border: `1px solid ${sport === f.key ? C.accent : C.border}`,
+                  borderRadius: 999,
+                  padding: "5px 12px",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: onlyArbs ? "rgba(34,197,94,0.12)" : C.card2,
+              border: `1px solid ${onlyArbs ? C.green : C.border}`,
+              color: onlyArbs ? C.green : C.textDim,
+              padding: "5px 12px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              userSelect: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={onlyArbs}
+              onChange={(e) => setOnlyArbs(e.target.checked)}
+              style={{ accentColor: C.green, margin: 0 }}
+            />
+            Show only arbs
+          </label>
+        </div>
+      )}
 
       {error && <ErrorBox>{error}</ErrorBox>}
 
@@ -1674,11 +1720,7 @@ export function OddsTab() {
             fontSize: 13,
           }}
         >
-          {loading
-            ? "Loading..."
-            : onlyArbs
-              ? "No arb opportunities in the selected window."
-              : "No games in the selected window."}
+          {emptyMessage}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
