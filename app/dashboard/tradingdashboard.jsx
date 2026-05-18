@@ -19,6 +19,7 @@ import {
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import MobileDashboard from "./MobileDashboard";
 import { getUserPlan, getLimit, trackDailyUsage, incrementUsage, useUserPlan, isAdminEmail, applyAdminPlanForEmail } from "@/lib/plan";
+import { CryptoTab, OddsTab } from "@/app/private/page";
 
 // ── Supabase browser client — single instance so storage stays consistent
 // across the App. Using the SDK avoids guessing the localStorage key name,
@@ -7686,6 +7687,24 @@ const SIDEBAR_ICONS = {
       <path d="M6 14h12"/>
     </svg>
   ),
+  coin: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M14.5 9.5a3 3 0 0 0-5-1.2"/>
+      <path d="M9.5 14.5a3 3 0 0 0 5 1.2"/>
+      <path d="M12 7v10"/>
+    </svg>
+  ),
+  dice: (
+    <svg {...SIDEBAR_ICON_PROPS}>
+      <rect x="3" y="3" width="18" height="18" rx="3"/>
+      <circle cx="8" cy="8" r="1" fill="currentColor"/>
+      <circle cx="16" cy="8" r="1" fill="currentColor"/>
+      <circle cx="12" cy="12" r="1" fill="currentColor"/>
+      <circle cx="8" cy="16" r="1" fill="currentColor"/>
+      <circle cx="16" cy="16" r="1" fill="currentColor"/>
+    </svg>
+  ),
   chart: (
     <svg {...SIDEBAR_ICON_PROPS}>
       <line x1="3" y1="21" x2="21" y2="21"/>
@@ -7721,6 +7740,8 @@ const TAB_LABELS = {
   stratlab:   "Strategy Lab",
   strategies: "Strategies",
   copy:       "Copy Trading",
+  crypto:     "Crypto",
+  odds:       "Odds",
 };
 
 function SidebarItem({ icon, label, active, onClick, href, pro }) {
@@ -8528,6 +8549,8 @@ function TradingDashboard({ session, onLogout }) {
           {/* Group 4 — Build */}
           <SidebarGroupLabel label="Build"/>
           <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab"  active={tab==="stratlab"}  onClick={()=>setTab("stratlab")}/>
+          {isAdmin && <SidebarItem icon={SIDEBAR_ICONS.coin}  label="Crypto"  active={tab==="crypto"}  onClick={()=>setTab("crypto")}/>}
+          {isAdmin && <SidebarItem icon={SIDEBAR_ICONS.dice}  label="Odds"    active={tab==="odds"}    onClick={()=>setTab("odds")}/>}
         </nav>
 
         {/* Pricing + Settings at bottom */}
@@ -8668,6 +8691,8 @@ function TradingDashboard({ session, onLogout }) {
               : <StrategyLabPage session={session} trades={activeTrades}/>
           )}
           {tab==="copy" && <CopyTradingPage session={session} copyTrading={copyTrading}/> }
+          {tab==="crypto" && isAdmin && <CryptoTab/>}
+          {tab==="odds" && isAdmin && <OddsTab/>}
           </div>
         </main>
       </div>

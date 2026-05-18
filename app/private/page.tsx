@@ -884,7 +884,7 @@ function chainBadge(chainId: string) {
   );
 }
 
-function CryptoTab() {
+export function CryptoTab() {
   const [trending, setTrending] = useState<TrendingCoin[] | null>(null);
   const [pairs, setPairs] = useState<DexPair[] | null>(null);
   const [gainers, setGainers] = useState<MarketCoin[] | null>(null);
@@ -1528,7 +1528,7 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-function OddsTab() {
+export function OddsTab() {
   const [sport, setSport] = useState<string>("upcoming");
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
