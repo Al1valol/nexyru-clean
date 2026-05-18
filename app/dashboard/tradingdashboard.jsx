@@ -7874,77 +7874,198 @@ function ProUpgradeCard({ feature }) {
   );
 }
 
-function CryptoTrending() {
+function CryptoTrending({ refreshKey, onUpdated }) {
   const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     fetch('https://api.coingecko.com/api/v3/search/trending')
       .then(r => r.json())
-      .then(d => { setCoins(d.coins||[]); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-  if (loading) return <div style={{color:"#6b7280",padding:32}}>Loading trending coins...</div>;
+      .then(d => {
+        if (cancelled) return;
+        setCoins(d.coins || []);
+        setLoading(false);
+        onUpdated?.(Date.now());
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [refreshKey, onUpdated]);
+
+  if (loading && coins.length === 0) return <div style={{color:"#6b7280",padding:32}}>Loading trending coins...</div>;
   return (
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,paddingTop:16}}>
-        <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>Trending Coins</div>
-        <div style={{fontSize:11,color:"#6b7280"}}>Auto-refreshes every 5 min</div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-        {coins.map(({item:c}) => {
-          const change = c.data?.price_change_percentage_24h?.usd || 0;
-          const pos = change >= 0;
-          return (
-            <div key={c.id} style={{background: pos?"rgba(34,197,94,0.05)":"rgba(239,68,68,0.05)", border:`1px solid ${pos?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}`, borderRadius:12, padding:16}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{c.name}</div>
-                  <div style={{fontSize:11,color:"#6b7280"}}>{c.symbol}</div>
-                </div>
-                <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:"rgba(99,102,241,0.15)",color:"#a5b4fc"}}>#{c.market_cap_rank||'?'}</span>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:12}}>
+      {coins.map(({item:c}) => {
+        const change = c.data?.price_change_percentage_24h?.usd || 0;
+        const pos = change >= 0;
+        return (
+          <div key={c.id} style={{background: pos?"rgba(34,197,94,0.05)":"rgba(239,68,68,0.05)", border:`1px solid ${pos?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}`, borderRadius:12, padding:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{c.name}</div>
+                <div style={{fontSize:11,color:"#6b7280"}}>{c.symbol}</div>
               </div>
-              <div style={{fontSize:22,fontWeight:800,color:pos?"#22c55e":"#ef4444"}}>{pos?"+":""}{change.toFixed(2)}%</div>
-              <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#6366f1",textDecoration:"none",marginTop:8,display:"block"}}>View chart →</a>
+              <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:"rgba(99,102,241,0.15)",color:"#a5b4fc"}}>#{c.market_cap_rank||'?'}</span>
             </div>
-          );
-        })}
-      </div>
+            <div style={{fontSize:22,fontWeight:800,color:pos?"#22c55e":"#ef4444"}}>{pos?"+":""}{change.toFixed(2)}%</div>
+            <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#6366f1",textDecoration:"none",marginTop:8,display:"block"}}>View chart →</a>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function CryptoNewPairs() {
+function CryptoNewPairs({ refreshKey, onUpdated }) {
   const [pairs, setPairs] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
-  React.useEffect(() => {
+
+  const load = React.useCallback(() => {
+    setLoading(true);
     fetch('https://api.dexscreener.com/latest/dex/search?q=meme')
       .then(r => r.json())
-      .then(d => { setPairs((d.pairs||[]).slice(0,20)); setLoading(false); })
+      .then(d => {
+        const arr = (d.pairs || []).slice(0, 50);
+        arr.sort((a, b) => parseFloat(b.priceChange?.h24 || 0) - parseFloat(a.priceChange?.h24 || 0));
+        setPairs(arr);
+        setLoading(false);
+        onUpdated?.(Date.now());
+      })
       .catch(() => setLoading(false));
-  }, []);
+  }, [onUpdated]);
+
+  React.useEffect(() => {
+    load();
+    const id = setInterval(load, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [refreshKey, load]);
+
   const chainColor = (chain) => ({solana:"#9945ff",ethereum:"#627eea",base:"#0052ff",bsc:"#f0b90b"}[chain?.toLowerCase()]||"#6b7280");
-  if (loading) return <div style={{color:"#6b7280",padding:32}}>Loading new pairs...</div>;
+  const formatPrice = (price) => {
+    if (!price) return '—';
+    if (price < 0.0001) return '$' + price.toExponential(2);
+    if (price < 1) return '$' + price.toFixed(6);
+    return '$' + price.toFixed(4);
+  };
+  const formatAge = (hrs) => {
+    if (hrs === null) return '?';
+    if (hrs < 1) return '<1h';
+    if (hrs < 24) return Math.floor(hrs) + 'h';
+    return Math.floor(hrs / 24) + 'd';
+  };
+
+  if (loading && pairs.length === 0) return <div style={{color:"#6b7280",padding:32}}>Loading new pairs...</div>;
+  return (
+    <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
+        {["Pair","Chain","Price","1h%","24h%","Volume 24h","Age"].map(h => (
+          <div key={h} style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>{h}</div>
+        ))}
+      </div>
+      {pairs.map((p,i) => {
+        const vol = parseFloat(p.volume?.h24 || 0);
+        const ageHrs = p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : null;
+        const hot = vol > 500000 && ageHrs !== null && ageHrs < 24;
+        const ch1 = parseFloat(p.priceChange?.h1 || 0);
+        const ch24 = parseFloat(p.priceChange?.h24 || 0);
+        return (
+          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
+            <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{p.baseToken?.symbol}/{p.quoteToken?.symbol} {hot?"🔥":""}</div>
+            <div><span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:chainColor(p.chainId)+"22",color:chainColor(p.chainId),fontWeight:700}}>{p.chainId?.toUpperCase()?.slice(0,4)}</span></div>
+            <div style={{color:"#fff",fontSize:12}}>{formatPrice(parseFloat(p.priceUsd || 0))}</div>
+            <div style={{color: ch1>=0 ? "#22c55e" : "#ef4444",fontSize:12}}>{ch1>=0?"+":""}{ch1.toFixed(1)}%</div>
+            <div style={{color: ch24>=0 ? "#22c55e" : "#ef4444",fontSize:12}}>{ch24>=0?"+":""}{ch24.toFixed(1)}%</div>
+            <div style={{color:"#fff",fontSize:12}}>${vol>1e6?(vol/1e6).toFixed(1)+"M":vol>1e3?(vol/1e3).toFixed(0)+"K":vol.toFixed(0)}</div>
+            <div style={{color:"#6b7280",fontSize:12}}>{formatAge(ageHrs)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CryptoGainers({ refreshKey, onUpdated }) {
+  const [coins, setCoins] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [search, setSearch] = React.useState('');
+  const [timeframe, setTimeframe] = React.useState('24h');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=percent_change_24h&per_page=100&sparkline=false&price_change_percentage=1h,24h,7d')
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        setCoins(Array.isArray(d) ? d : []);
+        setLoading(false);
+        onUpdated?.(Date.now());
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [refreshKey, onUpdated]);
+
+  const sortKey = timeframe === '1h' ? 'price_change_percentage_1h_in_currency'
+                : timeframe === '7d' ? 'price_change_percentage_7d_in_currency'
+                : 'price_change_percentage_24h';
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = q ? coins.filter(c =>
+      c.name?.toLowerCase().includes(q) || c.symbol?.toLowerCase().includes(q)
+    ) : coins;
+    return [...list]
+      .sort((a, b) => parseFloat(b[sortKey] || 0) - parseFloat(a[sortKey] || 0))
+      .slice(0, 20);
+  }, [coins, search, sortKey]);
+
+  const formatMcap = (mcap) => {
+    if (!mcap) return '—';
+    if (mcap >= 1e9) return '$' + (mcap/1e9).toFixed(2) + 'B';
+    if (mcap >= 1e6) return '$' + (mcap/1e6).toFixed(1) + 'M';
+    return '$' + mcap.toLocaleString();
+  };
+
+  if (loading && coins.length === 0) return <div style={{color:"#6b7280",padding:32}}>Loading top gainers...</div>;
   return (
     <div>
-      <div style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:16,paddingTop:16}}>New Hot Pairs</div>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16}}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name or symbol..."
+          style={{flex:1, padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none"}}
+        />
+        <div style={{display:"flex",gap:4,background:"#1a1a24",borderRadius:8,padding:4,border:"1px solid #1e1e2a"}}>
+          {['1h','24h','7d'].map(t => (
+            <button key={t} onClick={() => setTimeframe(t)} style={{
+              padding:"5px 12px", border:"none", borderRadius:6,
+              background: timeframe===t ? "#6366f1" : "transparent",
+              color: timeframe===t ? "#fff" : "#9ca3af",
+              fontSize:11, fontWeight:700, cursor:"pointer"
+            }}>{t}</button>
+          ))}
+        </div>
+      </div>
       <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
-          {["Pair","Chain","1h%","24h%","Volume","Age"].map(h => (
+        <div style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
+          {["#","Coin","Price","1h%","24h%","Mkt Cap"].map(h => (
             <div key={h} style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>{h}</div>
           ))}
         </div>
-        {pairs.map((p,i) => {
-          const vol = parseFloat(p.volume?.h24||0);
-          const age = p.pairCreatedAt ? Math.floor((Date.now()-p.pairCreatedAt)/86400000) : null;
-          const hot = vol > 500000 && age !== null && age < 1;
+        {filtered.length === 0 ? (
+          <div style={{padding:24,color:"#6b7280",fontSize:13}}>No coins match your search.</div>
+        ) : filtered.map((c,i) => {
+          const ch1 = parseFloat(c.price_change_percentage_1h_in_currency || 0);
+          const ch24 = parseFloat(c.price_change_percentage_24h || 0);
           return (
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
-              <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{p.baseToken?.symbol}/{p.quoteToken?.symbol} {hot?"🔥":""}</div>
-              <div><span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:chainColor(p.chainId)+"22",color:chainColor(p.chainId),fontWeight:700}}>{p.chainId?.toUpperCase()?.slice(0,4)}</span></div>
-              <div style={{color:parseFloat(p.priceChange?.h1||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(p.priceChange?.h1||0)>=0?"+":""}{parseFloat(p.priceChange?.h1||0).toFixed(1)}%</div>
-              <div style={{color:parseFloat(p.priceChange?.h24||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(p.priceChange?.h24||0)>=0?"+":""}{parseFloat(p.priceChange?.h24||0).toFixed(1)}%</div>
-              <div style={{color:"#fff",fontSize:12}}>${vol>1e6?(vol/1e6).toFixed(1)+"M":vol>1e3?(vol/1e3).toFixed(0)+"K":vol.toFixed(0)}</div>
-              <div style={{color:"#6b7280",fontSize:12}}>{age!==null?age===0?"<1d":age+"d":"?"}</div>
+            <div key={c.id} style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
+              <div style={{color:"#6b7280",fontSize:12}}>{i+1}</div>
+              <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{c.name} <span style={{color:"#6b7280",fontSize:11}}>{c.symbol?.toUpperCase()}</span></div>
+              <div style={{color:"#fff",fontSize:12}}>${c.current_price?.toLocaleString()}</div>
+              <div style={{color: ch1>=0 ? "#22c55e" : "#ef4444",fontSize:12}}>{ch1>=0?"+":""}{ch1.toFixed(2)}%</div>
+              <div style={{color: ch24>=0 ? "#22c55e" : "#ef4444",fontSize:12}}>{ch24>=0?"+":""}{ch24.toFixed(2)}%</div>
+              <div style={{color:"#fff",fontSize:12}}>{formatMcap(c.market_cap)}</div>
             </div>
           );
         })}
@@ -7953,58 +8074,133 @@ function CryptoNewPairs() {
   );
 }
 
-function CryptoGainers() {
-  const [coins, setCoins] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
-  React.useEffect(() => {
-    fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=percent_change_24h&per_page=20&sparkline=false&price_change_percentage=1h,24h')
-      .then(r => r.json())
-      .then(d => { setCoins(d||[]); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-  if (loading) return <div style={{color:"#6b7280",padding:32}}>Loading top gainers...</div>;
-  return (
-    <div>
-      <div style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:16,paddingTop:16}}>Top Gainers (24h)</div>
-      <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
-          {["#","Coin","Price","1h%","24h%"].map(h => (
-            <div key={h} style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>{h}</div>
-          ))}
-        </div>
-        {coins.map((c,i) => (
-          <div key={c.id} style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
-            <div style={{color:"#6b7280",fontSize:12}}>{i+1}</div>
-            <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{c.name} <span style={{color:"#6b7280",fontSize:11}}>{c.symbol?.toUpperCase()}</span></div>
-            <div style={{color:"#fff",fontSize:12}}>${c.current_price?.toLocaleString()}</div>
-            <div style={{color:parseFloat(c.price_change_percentage_1h_in_currency||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(c.price_change_percentage_1h_in_currency||0)>=0?"+":""}{parseFloat(c.price_change_percentage_1h_in_currency||0).toFixed(2)}%</div>
-            <div style={{color:parseFloat(c.price_change_percentage_24h||0)>=0?"#22c55e":"#ef4444",fontSize:12}}>{parseFloat(c.price_change_percentage_24h||0)>=0?"+":""}{parseFloat(c.price_change_percentage_24h||0).toFixed(2)}%</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CryptoWatchlist() {
+function CryptoWatchlist({ refreshKey, onUpdated }) {
   const [list, setList] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('nexyru_watchlist')||'[]'); } catch { return []; }
+    try {
+      const stored = JSON.parse(localStorage.getItem('nexyru_watchlist') || '[]');
+      // Migrate legacy shape ({id: timestamp, symbol: string}) to {id, symbol, name}
+      return stored
+        .map(c => {
+          if (!c) return null;
+          if (typeof c === 'string') return { id: c.toLowerCase(), symbol: c.toUpperCase(), name: c };
+          if (typeof c.id === 'string') return { id: c.id, symbol: c.symbol || c.id.toUpperCase(), name: c.name || c.id };
+          return null;
+        })
+        .filter(Boolean);
+    } catch { return []; }
   });
   const [input, setInput] = React.useState('');
-  const remove = (id) => { const n=list.filter(c=>c.id!==id); setList(n); try { localStorage.setItem('nexyru_watchlist',JSON.stringify(n)); } catch {} };
+  const [addError, setAddError] = React.useState(null);
+  const [adding, setAdding] = React.useState(false);
+  const [prices, setPrices] = React.useState({});
+
+  const persist = (next) => {
+    setList(next);
+    try { localStorage.setItem('nexyru_watchlist', JSON.stringify(next)); } catch {}
+  };
+
+  const remove = (id) => persist(list.filter(c => c.id !== id));
+
+  const addCoin = async () => {
+    const id = input.trim().toLowerCase();
+    if (!id) return;
+    if (list.find(c => c.id === id)) {
+      setAddError('Already in watchlist');
+      return;
+    }
+    setAddError(null);
+    setAdding(true);
+    try {
+      const r = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}`);
+      const d = await r.json();
+      if (!Array.isArray(d) || d.length === 0) {
+        setAddError(`"${id}" not found. Use the CoinGecko id (e.g. bitcoin, ethereum, solana).`);
+        return;
+      }
+      const coin = d[0];
+      persist([...list, { id: coin.id, symbol: (coin.symbol || '').toUpperCase(), name: coin.name }]);
+      setInput('');
+    } catch {
+      setAddError('Failed to add — check your connection.');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const loadPrices = React.useCallback(() => {
+    if (list.length === 0) {
+      setPrices({});
+      onUpdated?.(Date.now());
+      return;
+    }
+    const ids = list.map(c => c.id).join(',');
+    fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`)
+      .then(r => r.json())
+      .then(d => {
+        setPrices(d || {});
+        onUpdated?.(Date.now());
+      })
+      .catch(() => {});
+  }, [list, onUpdated]);
+
+  React.useEffect(() => {
+    loadPrices();
+    const id = setInterval(loadPrices, 60_000);
+    return () => clearInterval(id);
+  }, [loadPrices, refreshKey]);
+
   return (
     <div>
-      <div style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:16,paddingTop:16}}>Watchlist</div>
-      <div style={{display:"flex",gap:8,marginBottom:16}}>
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Add coin symbol (e.g. BTC)" style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid #1e1e2a",background:"#1a1a24",color:"#fff",fontSize:13,outline:"none"}}/>
-        <button onClick={()=>{if(input.trim()){const n=[...list,{id:Date.now(),symbol:input.trim().toUpperCase()}];setList(n);try { localStorage.setItem('nexyru_watchlist',JSON.stringify(n)); } catch {};setInput('');}}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#6366f1",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>Add</button>
-      </div>
-      {list.length===0?<div style={{color:"#6b7280",fontSize:13}}>No coins in watchlist yet. Add a symbol above.</div>:list.map(c=>(
-        <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#111",border:"1px solid #1e1e2a",borderRadius:10,marginBottom:8}}>
-          <div style={{fontWeight:700,color:"#fff",fontSize:14}}>{c.symbol}</div>
-          <button onClick={()=>remove(c.id)} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:16}}>×</button>
+      <div style={{marginBottom:16}}>
+        <div style={{display:"flex",gap:8}}>
+          <input
+            value={input}
+            onChange={e => { setInput(e.target.value); setAddError(null); }}
+            onKeyDown={e => { if (e.key === 'Enter') addCoin(); }}
+            placeholder="Add coin (e.g. bitcoin, ethereum, solana)"
+            style={{flex:1, padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none"}}
+          />
+          <button
+            onClick={addCoin}
+            disabled={adding || !input.trim()}
+            style={{padding:"8px 16px", borderRadius:8, border:"none", background: adding || !input.trim() ? "#2a2a3a" : "#6366f1", color:"#fff", fontSize:13, fontWeight:600, cursor: adding || !input.trim() ? "not-allowed" : "pointer"}}
+          >
+            {adding ? 'Adding…' : 'Add'}
+          </button>
         </div>
-      ))}
+        {addError && <div style={{color:"#ef4444",fontSize:12,marginTop:8}}>{addError}</div>}
+      </div>
+      {list.length === 0 ? (
+        <div style={{textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#111", border:"1px dashed #1e1e2a", borderRadius:12}}>
+          Add coins to track them here
+        </div>
+      ) : (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))",gap:12}}>
+          {list.map(c => {
+            const p = prices[c.id];
+            const price = p?.usd;
+            const change = p?.usd_24h_change ?? 0;
+            const pos = change >= 0;
+            const priceStr = price === undefined ? '—'
+              : '$' + price.toLocaleString(undefined, { maximumFractionDigits: price >= 1 ? 2 : 6 });
+            return (
+              <div key={c.id} style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,padding:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{c.name}</div>
+                    <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{c.symbol}</div>
+                  </div>
+                  <button onClick={() => remove(c.id)} title="Remove" style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:20,lineHeight:1,padding:0}}>×</button>
+                </div>
+                <div style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:4}}>{priceStr}</div>
+                <div style={{fontSize:13,fontWeight:700,color: pos ? "#22c55e" : "#ef4444"}}>
+                  {pos ? '+' : ''}{change.toFixed(2)}% <span style={{color:"#6b7280",fontWeight:500,fontSize:11}}>24h</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -8018,9 +8214,32 @@ function TradingDashboard({ session, onLogout }) {
     return () => window.removeEventListener('resize', check);
   }, []);
   const [tab,           setTab]           = useState("dashboard");
-  const [appMode,       setAppMode]       = useState('trading');
-  const [cryptoSection, setCryptoSection] = useState('trending');
-  const [oddsSport,     setOddsSport]     = useState('all');
+  const [appMode,            setAppMode]            = useState('trading');
+  const [cryptoSection,      setCryptoSection]      = useState('trending');
+  const [oddsSport,          setOddsSport]          = useState('all');
+  const [cryptoRefreshKey,   setCryptoRefreshKey]   = useState(0);
+  const [cryptoLastUpdated,  setCryptoLastUpdated]  = useState(null);
+  const [, setCryptoTick] = useState(0);
+  useEffect(() => { setCryptoLastUpdated(null); }, [cryptoSection]);
+  useEffect(() => {
+    if (appMode !== 'crypto') return;
+    const id = setInterval(() => setCryptoTick(t => t + 1), 5000);
+    return () => clearInterval(id);
+  }, [appMode]);
+  const cryptoSectionLabel = {
+    trending: 'Trending coins',
+    newpairs: 'New hot pairs (auto-refresh 2m)',
+    gainers:  'Top gainers',
+    watchlist:'Your watchlist (auto-refresh 1m)',
+  }[cryptoSection] || cryptoSection;
+  const formatRelative = (ts) => {
+    if (!ts) return '—';
+    const d = Math.floor((Date.now() - ts) / 1000);
+    if (d < 5) return 'just now';
+    if (d < 60) return d + 's ago';
+    if (d < 3600) return Math.floor(d/60) + 'm ago';
+    return Math.floor(d/3600) + 'h ago';
+  };
   const userPlan = useUserPlan();
   // isAdminEmail uses the lib/plan ADMIN_EMAILS list — admins always get elite,
   // computed synchronously from the session prop so the gate doesn't flash on
@@ -8911,10 +9130,29 @@ function TradingDashboard({ session, onLogout }) {
 
         {appMode === 'crypto' && isAdmin && (
           <div style={{ flex:1, padding:24, overflowY:"auto" }}>
-            {cryptoSection === 'trending' && <CryptoTrending />}
-            {cryptoSection === 'newpairs' && <CryptoNewPairs />}
-            {cryptoSection === 'gainers' && <CryptoGainers />}
-            {cryptoSection === 'watchlist' && <CryptoWatchlist />}
+            <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:20, gap:16, flexWrap:"wrap" }}>
+              <div>
+                <div style={{ fontSize:22, fontWeight:800, color:"#fff", letterSpacing:"-0.01em" }}>Crypto</div>
+                <div style={{ fontSize:13, color:"#6b7280", marginTop:2 }}>{cryptoSectionLabel}</div>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <span style={{ fontSize:11, color:"#6b7280" }}>
+                  {cryptoLastUpdated ? 'Last updated ' + formatRelative(cryptoLastUpdated) : 'Loading…'}
+                </span>
+                <button
+                  onClick={() => setCryptoRefreshKey(k => k + 1)}
+                  style={{
+                    padding:"6px 14px", borderRadius:8, border:"1px solid #2a2a3a",
+                    background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700,
+                    cursor:"pointer", letterSpacing:"0.02em",
+                  }}
+                >Refresh</button>
+              </div>
+            </div>
+            {cryptoSection === 'trending'  && <CryptoTrending  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
+            {cryptoSection === 'newpairs'  && <CryptoNewPairs  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
+            {cryptoSection === 'gainers'   && <CryptoGainers   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
+            {cryptoSection === 'watchlist' && <CryptoWatchlist refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
           </div>
         )}
 
