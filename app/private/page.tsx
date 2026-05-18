@@ -24,7 +24,7 @@ const C = {
 };
 
 // ───────────────────────── page ─────────────────────────
-type Tab = "journal" | "crypto" | "odds" | "poker";
+type Tab = "journal" | "crypto" | "odds";
 
 export default function PrivatePage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -67,7 +67,6 @@ export default function PrivatePage() {
         {tab === "journal" && <JournalTab />}
         {tab === "crypto" && <CryptoTab />}
         {tab === "odds" && <OddsTab />}
-        {tab === "poker" && <PokerTab />}
       </main>
       <button
         onClick={logout}
@@ -221,7 +220,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "journal", label: "Journal" },
   { key: "crypto", label: "Crypto" },
   { key: "odds", label: "Odds" },
-  { key: "poker", label: "Poker" },
 ];
 
 function TopBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
@@ -1140,169 +1138,6 @@ function TeamLine({
       ) : (
         <div style={{ marginTop: 4, fontSize: 12, color: C.textMuted }}>—</div>
       )}
-    </div>
-  );
-}
-
-// ───────────────────────── poker tab ─────────────────────────
-function PokerTab() {
-  const [hand, setHand] = useState("");
-  const [analysis, setAnalysis] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const analyze = useCallback(async () => {
-    if (!hand.trim()) return;
-    setLoading(true);
-    setError(null);
-    setAnalysis(null);
-    try {
-      const res = await fetch("/api/analyze-poker", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hand }),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        setError((body as { error?: string }).error ?? `Error (${res.status})`);
-        return;
-      }
-      setAnalysis((body.analysis as string) ?? "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to analyze");
-    } finally {
-      setLoading(false);
-    }
-  }, [hand]);
-
-  const copy = useCallback(async () => {
-    if (!analysis) return;
-    try {
-      await navigator.clipboard.writeText(analysis);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {}
-  }, [analysis]);
-
-  return (
-    <section>
-      <SectionTitle title="Poker" subtitle="Paste a hand history — Claude returns a structured breakdown" />
-      <textarea
-        value={hand}
-        onChange={(e) => setHand(e.target.value)}
-        placeholder="Paste your hand history here..."
-        style={{
-          width: "100%",
-          minHeight: 200,
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: 12,
-          padding: 14,
-          color: C.text,
-          fontSize: 13,
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-          outline: "none",
-          resize: "vertical",
-          boxSizing: "border-box",
-        }}
-      />
-      <div style={{ display: "flex", gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button
-          onClick={analyze}
-          disabled={loading || !hand.trim()}
-          style={{
-            background: C.accent,
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            padding: "10px 20px",
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: loading || !hand.trim() ? "default" : "pointer",
-            opacity: loading || !hand.trim() ? 0.6 : 1,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          {loading && <Spinner small />}
-          {loading ? "Analyzing..." : "Analyze Hand"}
-        </button>
-        {analysis && (
-          <button
-            onClick={copy}
-            style={{
-              background: C.card2,
-              color: C.text,
-              border: `1px solid ${C.border}`,
-              borderRadius: 8,
-              padding: "10px 16px",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {copied ? "Copied!" : "Copy Analysis"}
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <div style={{ marginTop: 14 }}>
-          <ErrorBox>{error}</ErrorBox>
-        </div>
-      )}
-
-      {analysis && (
-        <div
-          style={{
-            marginTop: 20,
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: 12,
-            padding: 18,
-          }}
-        >
-          <RenderAnalysis text={analysis} />
-        </div>
-      )}
-    </section>
-  );
-}
-
-function RenderAnalysis({ text }: { text: string }) {
-  // Split on **bold** markers. Sections look like "**1. PRE-FLOP**".
-  // We treat any `**...**` chunk as a header line.
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return (
-    <div style={{ fontSize: 14, lineHeight: 1.7, color: C.textDim, whiteSpace: "pre-wrap" }}>
-      {parts.map((p, i) => {
-        const m = p.match(/^\*\*([^*]+)\*\*$/);
-        if (m) {
-          return (
-            <span
-              key={i}
-              style={{
-                display: "block",
-                marginTop: i === 0 ? 0 : 16,
-                marginBottom: 6,
-                color: C.text,
-                fontWeight: 700,
-                fontSize: 14.5,
-                letterSpacing: "0.01em",
-              }}
-            >
-              {m[1].trim()}
-            </span>
-          );
-        }
-        return (
-          <span key={i}>
-            {p}
-          </span>
-        );
-      })}
     </div>
   );
 }
