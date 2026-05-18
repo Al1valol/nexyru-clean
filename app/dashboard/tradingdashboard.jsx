@@ -8157,164 +8157,142 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [secondsAgo, setSecondsAgo] = React.useState(0);
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '1' | '6' | '24' | '48'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
-  const [sortBy, setSortBy] = React.useState('age');           // 'age' | 'score' | 'mcap' | 'change' | 'replies'
-
-  const [source, setSource] = React.useState('pumpfun');
-
-  const fetchGemsFromDexScreener = React.useCallback(async () => {
-    try {
-      const queries = ['pepe', 'doge', 'moon', 'ape', 'baby', 'cat', 'sol', 'pump'];
-      const q = queries[Math.floor(Math.random() * queries.length)];
-      const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`);
-      const data = r.ok ? await r.json() : null;
-      const pairs = Array.isArray(data?.pairs) ? data.pairs : [];
-      pairs.sort((a, b) => (b?.pairCreatedAt || 0) - (a?.pairCreatedAt || 0));
-
-      const scored = pairs.slice(0, 30).map(p => {
-        const ageHours = p?.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 9999;
-        const vol = parseFloat(p?.volume?.h24 || 0);
-        const change = parseFloat(p?.priceChange?.h24 || 0);
-        let score = 0;
-        if (ageHours < 1) score += 30;
-        else if (ageHours < 6) score += 25;
-        else if (ageHours < 24) score += 20;
-        else if (ageHours < 72) score += 10;
-        if (vol > 1_000_000) score += 25;
-        else if (vol > 100_000) score += 20;
-        else if (vol > 10_000) score += 10;
-        else if (vol > 1_000) score += 5;
-        if (change > 100) score += 25;
-        else if (change > 50) score += 20;
-        else if (change > 20) score += 15;
-        else if (change > 0) score += 10;
-        const baseAddr = p?.baseToken?.address || p?.pairAddress;
-        return {
-          mint: p?.pairAddress || baseAddr,
-          name: p?.baseToken?.name || p?.baseToken?.symbol || 'Unknown',
-          symbol: (p?.baseToken?.symbol || '').toUpperCase(),
-          image_uri: p?.info?.imageUrl || null,
-          usd_market_cap: parseFloat(p?.fdv || p?.marketCap || 0),
-          price_change_24h: change,
-          reply_count: 0,
-          created_timestamp: p?.pairCreatedAt ? Math.floor(p.pairCreatedAt / 1000) : 0,
-          gemScore: Math.min(100, score),
-          ageHours,
-          source: 'dexscreener',
-          _coinKey: `${p?.chainId}:${baseAddr}`,
-          _buyChain: p?.chainId || 'ethereum',
-          _buyPairAddress: p?.pairAddress || null,
-          _linkUrl: p?.url || (p?.chainId && p?.pairAddress ? `https://dexscreener.com/${p.chainId}/${p.pairAddress}` : null),
-          _linkLabel: 'DexScreener ↗',
-        };
-      });
-      setCoins(scored);
-      setSource('dexscreener');
-    } catch (e) {
-      if (typeof console !== 'undefined') console.warn('DexScreener fallback error:', e);
-      setCoins([]);
-    }
-  }, []);
+  const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'age' | 'mcap' | 'change' | 'volume'
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // Try Pump.fun first. If the proxy returns an error or non-array shape
-      // (e.g. upstream 530/blocked), fall back to DexScreener.
-      let pumpData = null;
+      // Step 1: latest token profiles (newest tokens listed on DexScreener)
+      let profiles = [];
       try {
-        const r = await fetch('/api/pump?sort=created_timestamp&order=DESC&limit=30');
-        pumpData = await r.json().catch(() => null);
+        const r = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
+        if (r.ok) {
+          const body = await r.json();
+          if (Array.isArray(body)) profiles = body;
+        }
       } catch {}
 
-      if (!Array.isArray(pumpData) || pumpData.length === 0 || pumpData.error) {
-        await fetchGemsFromDexScreener();
-        const now = Date.now();
-        setLastUpdated(now);
-        setSecondsAgo(0);
-        onUpdated?.(now);
-        return;
+      const addresses = profiles
+        .slice(0, 20)
+        .map(p => p?.tokenAddress)
+        .filter(Boolean);
+
+      // Step 2: batch-fetch pair data for the profile token addresses (10 per request)
+      let allPairs = [];
+      const batchSize = 10;
+      for (let i = 0; i < addresses.length; i += batchSize) {
+        const batch = addresses.slice(i, i + batchSize).join(',');
+        try {
+          const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${batch}`);
+          if (r.ok) {
+            const d = await r.json();
+            if (Array.isArray(d?.pairs)) allPairs = allPairs.concat(d.pairs);
+          }
+        } catch {}
       }
 
-      // Optional second Pump.fun call for trending; failures are swallowed
-      let trendingData = null;
+      // Step 3: trending — adds variety beyond brand-new launches
       try {
-        const r = await fetch('/api/pump?sort=last_trade_timestamp&order=DESC&limit=20');
-        trendingData = await r.json().catch(() => null);
+        const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/trending');
+        if (r.ok) {
+          const d = await r.json();
+          const arr = Array.isArray(d?.pairs)
+            ? d.pairs
+            : Array.isArray(d?.tokens)
+              ? d.tokens
+              : Array.isArray(d)
+                ? d
+                : [];
+          for (const item of arr) {
+            if (item?.pairs && Array.isArray(item.pairs)) allPairs = allPairs.concat(item.pairs);
+            else allPairs.push(item);
+          }
+        }
       } catch {}
-      const trending = Array.isArray(trendingData) ? trendingData : [];
 
-      // Merge + dedupe by mint
+      // Dedupe by pairAddress
       const seen = new Set();
-      const merged = [];
-      for (const c of [...pumpData, ...trending]) {
-        if (!c?.mint) continue;
-        if (seen.has(c.mint)) continue;
-        seen.add(c.mint);
-        merged.push(c);
+      const unique = [];
+      for (const p of allPairs) {
+        if (!p?.pairAddress || seen.has(p.pairAddress)) continue;
+        seen.add(p.pairAddress);
+        unique.push(p);
       }
 
-      // Score every coin
-      const nowSec = Date.now() / 1000;
-      const scored = merged.map(coin => {
-        const ageHours = (nowSec - (Number(coin.created_timestamp) || nowSec)) / 3600;
-        const marketCap = Number(coin.usd_market_cap) || 0;
-        const priceChange = Number(coin.price_change_24h) || 0;
-        const replies = Number(coin.reply_count) || 0;
+      const scored = unique.map(p => {
+        const ageHours = p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 9999;
+        const vol = parseFloat(p.volume?.h24 || 0);
+        const liq = parseFloat(p.liquidity?.usd || 0);
+        const change1h = parseFloat(p.priceChange?.h1 || 0);
+        const change24h = parseFloat(p.priceChange?.h24 || 0);
 
         let score = 0;
-        if (ageHours < 1)       score += 30;
-        else if (ageHours < 6)  score += 25;
-        else if (ageHours < 12) score += 20;
-        else if (ageHours < 24) score += 15;
-        else if (ageHours < 48) score += 10;
-        if (marketCap > 10000 && marketCap < 50000)        score += 25;
-        else if (marketCap > 50000 && marketCap < 200000)  score += 20;
-        else if (marketCap > 200000 && marketCap < 500000) score += 15;
-        else if (marketCap > 500000)                       score += 5;
-        else                                               score += 5;
-        if (priceChange > 100)      score += 25;
-        else if (priceChange > 50)  score += 20;
-        else if (priceChange > 20)  score += 15;
-        else if (priceChange > 0)   score += 10;
-        if (replies > 50)      score += 20;
-        else if (replies > 20) score += 15;
-        else if (replies > 10) score += 10;
-        else if (replies > 5)  score += 5;
+        // Age score
+        if (ageHours < 6) score += 30;
+        else if (ageHours < 24) score += 25;
+        else if (ageHours < 48) score += 20;
+        else if (ageHours < 72) score += 10;
+        // Volume score
+        if (vol > 500_000) score += 25;
+        else if (vol > 100_000) score += 20;
+        else if (vol > 10_000) score += 15;
+        else if (vol > 1_000) score += 5;
+        // Momentum (1h)
+        if (change1h > 20) score += 25;
+        else if (change1h > 5) score += 15;
+        else if (change1h > 0) score += 5;
+        // Liquidity
+        if (liq > 100_000) score += 20;
+        else if (liq > 10_000) score += 10;
+        else if (liq > 1_000) score += 5;
 
+        const baseAddr = p.baseToken?.address || p.pairAddress;
         return {
-          ...coin,
           gemScore: Math.min(100, score),
           ageHours,
-          source: 'pumpfun',
-          _coinKey: `solana:${coin.mint}`,
-          _buyChain: 'solana',
-          _buyPairAddress: null,
-          _linkUrl: `https://pump.fun/${coin.mint}`,
-          _linkLabel: 'Pump.fun ↗',
+          source: 'dexscreener',
+          mint: p.pairAddress,
+          name: p.baseToken?.name || 'Unknown',
+          symbol: (p.baseToken?.symbol || '???').toUpperCase(),
+          image_uri: p.info?.imageUrl || null,
+          price: p.priceUsd,
+          usd_market_cap: parseFloat(p.fdv || p.marketCap || 0),
+          price_change_1h: change1h,
+          price_change_24h: change24h,
+          volume_24h: vol,
+          liquidity: liq,
+          chainId: p.chainId,
+          pairAddress: p.pairAddress,
+          pumpUrl: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
+          created_timestamp: p.pairCreatedAt ? Math.floor(p.pairCreatedAt / 1000) : 0,
+          _coinKey: `${p.chainId}:${baseAddr}`,
+          _buyChain: p.chainId || 'ethereum',
+          _buyPairAddress: p.pairAddress || null,
+          _linkUrl: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
+          _linkLabel: 'DexScreener ↗',
         };
       });
 
-      scored.sort((a, b) => (b.created_timestamp || 0) - (a.created_timestamp || 0));
+      // Default order: gem score descending
+      scored.sort((a, b) => b.gemScore - a.gemScore);
 
       setCoins(scored);
-      setSource('pumpfun');
       const now = Date.now();
       setLastUpdated(now);
       setSecondsAgo(0);
       onUpdated?.(now);
     } catch (e) {
-      if (typeof console !== 'undefined') console.warn('Pump.fun gems error:', e);
-      // Last-ditch fallback so the section never goes blank on a thrown error
-      await fetchGemsFromDexScreener();
+      if (typeof console !== 'undefined') console.warn('Gems error:', e);
+      setCoins([]);
     } finally {
       setLoading(false);
     }
-  }, [onUpdated, fetchGemsFromDexScreener]);
+  }, [onUpdated]);
 
-  // Auto-refresh every 30 seconds — Pump.fun mints new coins constantly
+  // Auto-refresh every 60 seconds
   React.useEffect(() => {
     load();
-    const id = setInterval(load, 30_000);
+    const id = setInterval(load, 60_000);
     return () => clearInterval(id);
   }, [load, refreshKey]);
 
@@ -8343,7 +8321,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     if (sortBy === 'score')        arr.sort((a, b) => b.gemScore - a.gemScore);
     else if (sortBy === 'mcap')    arr.sort((a, b) => (b.usd_market_cap || 0) - (a.usd_market_cap || 0));
     else if (sortBy === 'change')  arr.sort((a, b) => (b.price_change_24h || 0) - (a.price_change_24h || 0));
-    else if (sortBy === 'replies') arr.sort((a, b) => (b.reply_count || 0) - (a.reply_count || 0));
+    else if (sortBy === 'volume')  arr.sort((a, b) => (b.volume_24h || 0) - (a.volume_24h || 0));
     else                           arr.sort((a, b) => (b.created_timestamp || 0) - (a.created_timestamp || 0));
     return arr;
   }, [coins, ageFilter, scoreFilter, sortBy]);
@@ -8386,9 +8364,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
               ? `Last updated: ${secondsAgo < 1 ? 'just now' : secondsAgo + (secondsAgo === 1 ? ' second' : ' seconds') + ' ago'}`
               : 'Loading…'}
           </span>
-          <span style={{ color: source === 'pumpfun' ? '#4b5563' : '#f59e0b' }}>
-            · source: {source === 'pumpfun' ? 'pump.fun' : 'dexscreener (pump.fun blocked)'} · auto-refreshes every 30s
-          </span>
+          <span style={{ color:'#4b5563' }}>· source: dexscreener · auto-refreshes every 60s</span>
         </div>
         <button
           onClick={() => load()}
@@ -8427,14 +8403,14 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Sort</span>
-          {[['age','Newest'],['score','Score'],['mcap','Market cap'],['change','24h change'],['replies','Replies']].map(([id, label]) => (
+          {[['score','Score'],['age','Newest'],['mcap','Market cap'],['change','24h change'],['volume','Volume']].map(([id, label]) => (
             <button key={id} onClick={() => setSortBy(id)} style={pillStyle(sortBy === id)}>{label}</button>
           ))}
         </div>
       </div>
 
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
-        {visible.length} new {visible.length === 1 ? 'coin' : 'coins'} found · updating every 30s
+        {visible.length} {visible.length === 1 ? 'gem' : 'gems'} found · updated {secondsAgo < 1 ? 'just now' : secondsAgo + 's ago'}
       </div>
 
       {visible.length === 0 ? (
@@ -8447,9 +8423,22 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const score = coin.gemScore;
             const badge = gemBadge(score);
             const change = Number(coin.price_change_24h) || 0;
+            const change1h = Number(coin.price_change_1h) || 0;
             const mcap = Number(coin.usd_market_cap) || 0;
-            const replies = Number(coin.reply_count) || 0;
+            const vol = Number(coin.volume_24h) || 0;
+            const liq = Number(coin.liquidity) || 0;
             const ageHours = coin.ageHours;
+            const ageLabel = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
+            const rawPrice = parseFloat(coin.price);
+            const priceStr = Number.isFinite(rawPrice) && rawPrice > 0
+              ? (rawPrice < 0.0001 ? '$' + rawPrice.toExponential(2)
+                  : rawPrice < 1 ? '$' + rawPrice.toFixed(6)
+                  : '$' + rawPrice.toFixed(4))
+              : 'N/A';
+            const chainColors = { solana:'#9945ff', ethereum:'#627eea', base:'#0052ff', bsc:'#f0b90b' };
+            const chainKey = (coin.chainId || '').toLowerCase();
+            const chainColor = chainColors[chainKey] || '#6b7280';
+            const chainShort = ({ solana:'SOL', ethereum:'ETH', base:'BASE', bsc:'BSC' }[chainKey] || (coin.chainId || '').toUpperCase().slice(0, 4));
             const coinKey = coin._coinKey || `solana:${coin.mint}`;
             const logged = loggedKeys.has(coinKey);
             // Pump.fun has a fixed 1B supply; DexScreener fallback gives us no
@@ -8495,28 +8484,41 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     </div>
                     <div style={{ minWidth:0 }}>
                       <div style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{coin.name || '—'}</div>
-                      <div style={{ fontSize:11, color:'#6b7280' }}>{(coin.symbol || '').toUpperCase()}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
+                        <span style={{ fontSize:11, color:'#6b7280' }}>{(coin.symbol || '').toUpperCase()}</span>
+                        {coin.chainId && (
+                          <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background: chainColor + '22', color: chainColor, fontWeight:800, letterSpacing:'0.04em' }}>{chainShort}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em', whiteSpace:'nowrap' }}>{badge.label}</span>
                 </div>
 
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8 }}>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Age</div>
-                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpAge(ageHours)}</div>
+                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{ageLabel}</div>
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Price</div>
+                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{priceStr}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Market cap</div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Mkt cap</div>
                     <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpMcap(mcap)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>24h change</div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>1h</div>
+                    <div style={{ fontSize:13, color: change1h >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2 }}>{change1h >= 0 ? '+' : ''}{change1h.toFixed(2)}%</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>24h</div>
                     <div style={{ fontSize:13, color: change >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2 }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
                   </div>
                   <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Community</div>
-                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{replies} replies 💬</div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Vol 24h</div>
+                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpMcap(vol)}</div>
                   </div>
                 </div>
 
