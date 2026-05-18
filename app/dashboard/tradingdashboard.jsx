@@ -8762,7 +8762,7 @@ function fmtDateShort(iso) {
   catch { return '—'; }
 }
 
-function fmtDuration(fromIso, toIso) {
+function fmtHoldDuration(fromIso, toIso) {
   try {
     const ms = new Date(toIso || Date.now()).getTime() - new Date(fromIso).getTime();
     if (ms < 0) return '—';
@@ -9121,7 +9121,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                         </div>
                         <div>
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Held</div>
-                          <div style={{ fontSize:12, color:"#fff" }}>{fmtDuration(p.entryDate)}</div>
+                          <div style={{ fontSize:12, color:"#fff" }}>{fmtHoldDuration(p.entryDate)}</div>
                         </div>
                         <button onClick={() => { setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); }} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Close →</button>
                       </div>
@@ -9164,7 +9164,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                     <div style={{ fontSize:12, color:"#fff", fontWeight:600 }}>{p.name} <span style={{ color:"#6b7280", fontWeight:400 }}>{p.symbol?.toUpperCase()}</span></div>
                     <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 6 })}</div>
                     <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.exitPrice, { maxFractionDigits: 6 })}</div>
-                    <div style={{ fontSize:12, color:"#9ca3af" }}>{fmtDuration(p.entryDate, p.exitDate)}</div>
+                    <div style={{ fontSize:12, color:"#9ca3af" }}>{fmtHoldDuration(p.entryDate, p.exitDate)}</div>
                     <div style={{ fontSize:12, fontWeight:700, color: p._pnl >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(p._pnl))}</div>
                     <div style={{ fontSize:12, fontWeight:700, color: p._pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(2) + '%'}</div>
                   </div>
