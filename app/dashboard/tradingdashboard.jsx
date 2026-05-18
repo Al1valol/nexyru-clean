@@ -8452,6 +8452,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       name: p.baseToken?.name || p.baseToken?.symbol || 'Unknown',
                       symbol: (p.baseToken?.symbol || '').toUpperCase(),
                       chain: p.chainId,
+                      pairAddress: p.pairAddress || null,
+                      dexUrl: p.url || (p.chainId && p.pairAddress ? `https://dexscreener.com/${p.chainId}/${p.pairAddress}` : null),
                       price: price || 0,
                     })}
                     style={{
@@ -9097,6 +9099,8 @@ function buyPositionInAccount(store, accountId, coin, usdAmount, atPrice, extra 
       symbol: coin.symbol,
       name: coin.name,
       chain: coin.chain || null,
+      pairAddress: coin.pairAddress || null,
+      dexUrl: coin.dexUrl || null,
       amount,
       amountUSD: usdAmount,
       entryPrice: atPrice,
@@ -9774,10 +9778,19 @@ class ChartErrorBoundary extends React.Component {
   }
 }
 
+function isCoinGeckoCoinId(coinId) {
+  // CoinGecko ids are short slugs like 'bitcoin', 'pepe', 'wrapped-eth'.
+  // DexScreener-sourced ids include a contract ('0x...') or a 'chain:address' prefix.
+  return !!coinId && !coinId.includes('0x') && !coinId.includes(':') && coinId.length < 30;
+}
+
 function PositionChartModal({ position, onClose }) {
   const [history, setHistory] = React.useState(null);
+  const [dexPair, setDexPair] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
+
+  const isDexCoin = !isCoinGeckoCoinId(position?.coinId);
 
   const minDays = position?.status === 'open' ? 30 : 90;
   const ageDays = React.useMemo(() => {
@@ -9791,14 +9804,59 @@ function PositionChartModal({ position, onClose }) {
 
   React.useEffect(() => {
     let cancelled = false;
-    setLoading(true); setErr(null);
+    setLoading(true); setErr(null); setHistory(null); setDexPair(null);
     if (!position?.coinId) { setErr('No coin id'); setLoading(false); return; }
+
+    // DexScreener path — token address or chain:address. Free API only exposes
+    // a current snapshot (no OHLCV), so we fetch the pair and render stats.
+    if (isDexCoin) {
+      const fetchDex = async () => {
+        try {
+          // Strip a leading "chain:" prefix if present
+          const rawId = position.coinId || '';
+          const chain = position.chain || (rawId.includes(':') ? rawId.split(':')[0] : 'ethereum');
+          const address = rawId.includes(':') ? rawId.split(':').slice(1).join(':') : rawId;
+
+          // Preferred: direct pair lookup (faster, exact match)
+          if (position.pairAddress && chain) {
+            try {
+              const r = await fetch(`https://api.dexscreener.com/latest/dex/pairs/${chain}/${position.pairAddress}`);
+              if (r.ok) {
+                const d = await r.json();
+                const pair = d?.pair || (Array.isArray(d?.pairs) ? d.pairs[0] : null);
+                if (!cancelled && pair) { setDexPair(pair); setLoading(false); return; }
+              }
+            } catch {}
+          }
+
+          // Fallback: look up by token address — DexScreener returns all pairs
+          // containing the token; pick the most-liquid one.
+          if (address) {
+            const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+            if (r.ok) {
+              const d = await r.json();
+              const arr = Array.isArray(d?.pairs) ? d.pairs : [];
+              const best = arr
+                .slice()
+                .sort((a, b) => parseFloat(b.liquidity?.usd || 0) - parseFloat(a.liquidity?.usd || 0))[0];
+              if (!cancelled && best) { setDexPair(best); setLoading(false); return; }
+            }
+          }
+
+          if (!cancelled) { setErr('Pair not found on DexScreener.'); setLoading(false); }
+        } catch (e) {
+          if (!cancelled) { setErr(e?.message || 'Failed to load pair data.'); setLoading(false); }
+        }
+      };
+      fetchDex();
+      return () => { cancelled = true; };
+    }
+
+    // CoinGecko path
     fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(position.coinId)}/market_chart?vs_currency=usd&days=${days}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error('Failed to load chart')))
       .then(d => {
         if (cancelled) return;
-        // CoinGecko returns { prices: [[ts, price], ...] }. Guard against
-        // missing or malformed entries.
         const raw = Array.isArray(d?.prices) ? d.prices : [];
         const pts = [];
         for (const row of raw) {
@@ -9812,7 +9870,7 @@ function PositionChartModal({ position, onClose }) {
       })
       .catch(e => { if (!cancelled) { setErr(e?.message || 'Failed to load chart'); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [position?.coinId, days]);
+  }, [position?.coinId, position?.chain, position?.pairAddress, days, isDexCoin]);
 
   // Layout sizing
   const [size, setSize] = React.useState({ w: 800, h: 360 });
@@ -9836,9 +9894,12 @@ function PositionChartModal({ position, onClose }) {
   const entryPrice = Number(position?.entryPrice) || 0;
   const exitPrice = (position?.exitPrice != null && Number.isFinite(Number(position.exitPrice))) ? Number(position.exitPrice) : null;
   const positionAmount = Number(position?.amount) || 0;
+  const dexLivePrice = dexPair ? Number(dexPair.priceUsd) : NaN;
   const currentPrice = (history && history.length > 0 && Number.isFinite(history[history.length - 1]?.v))
     ? history[history.length - 1].v
-    : (Number(position?.currentPrice) || entryPrice);
+    : (Number.isFinite(dexLivePrice) && dexLivePrice > 0
+        ? dexLivePrice
+        : (Number(position?.currentPrice) || entryPrice));
 
   // Hindsight: best price after entry within the data window
   const hindsight = React.useMemo(() => {
@@ -9924,15 +9985,92 @@ function PositionChartModal({ position, onClose }) {
           {loading && (
             <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", gap:12, color:"#9ca3af", fontSize:13 }}>
               <div style={{ width:22, height:22, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
-              Loading {days}-day price history…
+              {isDexCoin ? 'Loading pair data from DexScreener…' : `Loading ${days}-day price history…`}
             </div>
           )}
           {err && !loading && (
             <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#ef4444", fontSize:13, padding:24, textAlign:"center" }}>
-              Couldn't load chart for this coin. CoinGecko may not have data for it ({position.coinId}).
+              {isDexCoin
+                ? `Couldn't load pair data for ${position?.symbol || 'this coin'} from DexScreener.`
+                : `Couldn't load chart for this coin. CoinGecko may not have data for it (${position?.coinId}).`}
             </div>
           )}
-          {linePath && (
+          {!loading && !err && isDexCoin && dexPair && (() => {
+            const cur = Number(dexPair.priceUsd) || 0;
+            const ch1 = parseFloat(dexPair.priceChange?.h1 || 0);
+            const ch6 = parseFloat(dexPair.priceChange?.h6 || 0);
+            const ch24 = parseFloat(dexPair.priceChange?.h24 || 0);
+            const vol = parseFloat(dexPair.volume?.h24 || 0);
+            const liq = parseFloat(dexPair.liquidity?.usd || 0);
+            const livePnl = entryPrice > 0 ? (cur - entryPrice) * positionAmount : 0;
+            const livePnlPct = entryPrice > 0 ? ((cur / entryPrice) - 1) * 100 : 0;
+            const linkUrl = position.dexUrl || (dexPair.url || (dexPair.chainId && dexPair.pairAddress ? `https://dexscreener.com/${dexPair.chainId}/${dexPair.pairAddress}` : null));
+            const pctCard = (label, ch) => (
+              <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>{label}</div>
+                <div style={{ fontSize:16, fontWeight:800, color: ch >= 0 ? "#22c55e" : "#ef4444", marginTop:4 }}>
+                  {ch >= 0 ? '+' : ''}{ch.toFixed(2)}%
+                </div>
+              </div>
+            );
+            return (
+              <div style={{ position:"absolute", inset:0, padding:18, overflowY:"auto" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:14, gap:12, flexWrap:"wrap" }}>
+                  <div>
+                    <div style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Price snapshot</div>
+                    <div style={{ fontSize:11, color:"#6b7280", marginTop:2 }}>DexScreener doesn't expose OHLCV via free API — showing live stats instead.</div>
+                  </div>
+                  {linkUrl && (
+                    <a href={linkUrl} target="_blank" rel="noreferrer" style={{ fontSize:12, fontWeight:700, color:"#a5b4fc", textDecoration:"none", whiteSpace:"nowrap" }}>
+                      Full chart on DexScreener →
+                    </a>
+                  )}
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10, marginBottom:12 }}>
+                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Entry</div>
+                    <div style={{ fontSize:16, fontWeight:800, color:"#fff", marginTop:4 }}>{fmtPrice(entryPrice)}</div>
+                  </div>
+                  <div style={{ background:"rgba(99,102,241,0.08)", border:"1px solid rgba(99,102,241,0.25)", borderRadius:8, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"#a5b4fc", textTransform:"uppercase", fontWeight:700 }}>Current</div>
+                    <div style={{ fontSize:18, fontWeight:800, color:"#fff", marginTop:4 }}>{fmtPrice(cur)}</div>
+                  </div>
+                  <div style={{ background:"#1a1a24", border:`1px solid ${livePnl >= 0 ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`, borderRadius:8, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>P&L from entry</div>
+                    <div style={{ fontSize:16, fontWeight:800, color: livePnl >= 0 ? "#22c55e" : "#ef4444", marginTop:4 }}>
+                      {(livePnl >= 0 ? '+' : '−')}{fmtUsd(Math.abs(livePnl))}
+                    </div>
+                    <div style={{ fontSize:11, fontWeight:700, color: livePnlPct >= 0 ? "#22c55e" : "#ef4444", marginTop:2 }}>
+                      {(livePnlPct >= 0 ? '+' : '')}{livePnlPct.toFixed(2)}%
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))", gap:10, marginBottom:12 }}>
+                  {pctCard('1h change', ch1)}
+                  {pctCard('6h change', ch6)}
+                  {pctCard('24h change', ch24)}
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
+                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Volume 24h</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{formatBigUsd(vol)}</div>
+                  </div>
+                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Liquidity</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{formatBigUsd(liq)}</div>
+                  </div>
+                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Chain</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{(dexPair.chainId || position.chain || '?').toUpperCase()}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+          {!loading && !err && !isDexCoin && linePath && (
             <svg width={size.w} height={size.h} style={{ display:"block" }}>
               <defs>
                 <linearGradient id={`pos-area-${position.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -10012,8 +10150,8 @@ function PositionChartModal({ position, onClose }) {
           </div>
         )}
 
-        {/* Hindsight for closed positions */}
-        {position.status === 'closed' && hindsight && exitPrice != null && (() => {
+        {/* Hindsight — CoinGecko coins use the actual post-entry peak */}
+        {!isDexCoin && position.status === 'closed' && hindsight && exitPrice != null && (() => {
           const bestPct = ((hindsight.v / entryPrice) - 1) * 100;
           const bestProceeds = hindsight.v * positionAmount;
           const actualProceeds = exitPrice * positionAmount;
@@ -10035,6 +10173,28 @@ function PositionChartModal({ position, onClose }) {
               ) : (
                 <div style={{ fontSize:13, color:"#22c55e", fontWeight:700 }}>You exited above the post-entry peak — well-timed exit.</div>
               )}
+            </div>
+          );
+        })()}
+
+        {/* Hindsight estimate for DexScreener coins — no OHLCV available, so
+            use the 24h change to approximate the recent peak. */}
+        {isDexCoin && dexPair && position.status === 'closed' && exitPrice != null && entryPrice > 0 && (() => {
+          const cur = Number(dexPair.priceUsd) || 0;
+          const ch24 = parseFloat(dexPair.priceChange?.h24 || 0);
+          // Approximate yesterday's price and use the higher snapshot as a peak estimate
+          const price24hAgo = ch24 !== -100 ? cur / (1 + ch24 / 100) : cur;
+          const estimatedPeak = Math.max(cur, price24hAgo);
+          if (!Number.isFinite(estimatedPeak) || estimatedPeak <= 0) return null;
+          const peakPct = ((estimatedPeak / entryPrice) - 1) * 100;
+          return (
+            <div style={{ background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.18)", borderRadius:10, padding:14 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#a5b4fc", marginBottom:6 }}>What if you held longer?</div>
+              <div style={{ fontSize:12, color:"#9ca3af" }}>
+                If you held until peak today: estimated{' '}
+                <span style={{ color: peakPct >= 0 ? "#22c55e" : "#ef4444", fontWeight:700 }}>{(peakPct >= 0 ? '+' : '')}{peakPct.toFixed(2)}%</span>
+                {' '}(based on 24h high · estimate, not exact data)
+              </div>
             </div>
           );
         })()}
@@ -10999,6 +11159,8 @@ function TradingDashboard({ session, onLogout }) {
         name: buyModalCoin.name,
         symbol: buyModalCoin.symbol,
         chain: buyModalCoin.chain || null,
+        pairAddress: buyModalCoin.pairAddress || null,
+        dexUrl: buyModalCoin.dexUrl || null,
       }, usdAmount, price, { notes, targetPct, stopLossPct });
       persistCryptoAccountStore(next);
       return next;
