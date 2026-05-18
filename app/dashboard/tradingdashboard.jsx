@@ -8132,89 +8132,110 @@ function formatBigUsd(n) {
   return '$' + n.toFixed(0);
 }
 
-const GEM_SEARCH_QUERIES = ['pump', 'moon', 'pepe', 'doge', 'cat', 'sol', 'ape', 'baby', 'meme', 'floki'];
+// Pump.fun coins all mint on Solana with a fixed 1,000,000,000 (1B) total supply.
+// Price per token ≈ usd_market_cap / TOTAL_SUPPLY.
+const PUMP_TOTAL_SUPPLY = 1_000_000_000;
+
+function formatPumpMcap(n) {
+  if (!n || !isFinite(n)) return '—';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'k';
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function formatPumpAge(ageHours) {
+  if (!isFinite(ageHours) || ageHours < 0) return '?';
+  if (ageHours < 1) return Math.max(1, Math.floor(ageHours * 60)) + 'm old';
+  if (ageHours < 24) return ageHours.toFixed(1) + 'h old';
+  return Math.floor(ageHours / 24) + 'd old';
+}
 
 function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
-  const [pairs, setPairs] = React.useState([]);
+  const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [lastUpdated, setLastUpdated] = React.useState(null);
   const [secondsAgo, setSecondsAgo] = React.useState(0);
-  const [activeQuery, setActiveQuery] = React.useState(null);
-  const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '6' | '24' | '48' | '72'
+  const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '1' | '6' | '24' | '48'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
-  const [chainFilter, setChainFilter] = React.useState('all'); // 'all' | 'solana' | 'ethereum' | 'base' | 'bsc'
-  const [sortBy, setSortBy] = React.useState('age');           // 'score' | 'volume' | 'age' | 'change1h'
+  const [sortBy, setSortBy] = React.useState('age');           // 'age' | 'score' | 'mcap' | 'change' | 'replies'
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // Rotate the themed search query each refresh so the user sees different
-      // coins instead of the same cached set.
-      const q = GEM_SEARCH_QUERIES[Math.floor(Math.random() * GEM_SEARCH_QUERIES.length)];
-      setActiveQuery(q);
-
-      const [profilesRes, searchRes] = await Promise.all([
-        fetch('https://api.dexscreener.com/token-profiles/latest/v1').then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      // Fetch newest + most-recently-traded in parallel through our proxy
+      const [newestRes, trendingRes] = await Promise.all([
+        fetch('/api/pump?sort=created_timestamp&order=DESC&limit=30').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/pump?sort=last_trade_timestamp&order=DESC&limit=20').then(r => r.ok ? r.json() : null).catch(() => null),
       ]);
 
-      const profiles = Array.isArray(profilesRes) ? profilesRes : [];
-      let profilePairs = [];
-      const addresses = profiles.slice(0, 15).map(p => p?.tokenAddress).filter(Boolean).join(',');
-      if (addresses) {
-        try {
-          const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses}`);
-          if (r.ok) {
-            const d = await r.json();
-            profilePairs = Array.isArray(d?.pairs) ? d.pairs : [];
-          }
-        } catch {}
-      }
-      const searchPairs = Array.isArray(searchRes?.pairs) ? searchRes.pairs : [];
+      const newest = Array.isArray(newestRes) ? newestRes : [];
+      const trending = Array.isArray(trendingRes) ? trendingRes : [];
 
-      // Merge + dedupe by pairAddress
+      // Merge + dedupe by mint
       const seen = new Set();
       const merged = [];
-      for (const p of [...profilePairs, ...searchPairs]) {
-        if (!p?.chainId || !p?.pairAddress) continue;
-        const key = `${p.chainId}:${p.pairAddress}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push(p);
+      for (const c of [...newest, ...trending]) {
+        if (!c?.mint) continue;
+        if (seen.has(c.mint)) continue;
+        seen.add(c.mint);
+        merged.push(c);
       }
 
-      // Dedupe by base token — keep the highest-liquidity pair per token so
-      // the same coin doesn't appear multiple times across DEXes.
-      const byToken = new Map();
-      for (const p of merged) {
-        const tokenKey = `${p.chainId}:${(p.baseToken?.address || '').toLowerCase()}`;
-        const liq = parseFloat(p.liquidity?.usd || 0);
-        const existing = byToken.get(tokenKey);
-        if (!existing || liq > parseFloat(existing.liquidity?.usd || 0)) {
-          byToken.set(tokenKey, p);
-        }
-      }
+      // Score every coin per the spec
+      const nowSec = Date.now() / 1000;
+      const scored = merged.map(coin => {
+        const ageMinutes = (nowSec - (Number(coin.created_timestamp) || nowSec)) / 60;
+        const ageHours = ageMinutes / 60;
+        const marketCap = Number(coin.usd_market_cap) || 0;
+        const priceChange = Number(coin.price_change_24h) || 0;
+        const replies = Number(coin.reply_count) || 0;
 
-      // Newest first, capped at 80
-      let pairsArr = [...byToken.values()];
-      pairsArr.sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0));
-      pairsArr = pairsArr.slice(0, 80);
+        let score = 0;
+        // Age
+        if (ageHours < 1)       score += 30;
+        else if (ageHours < 6)  score += 25;
+        else if (ageHours < 12) score += 20;
+        else if (ageHours < 24) score += 15;
+        else if (ageHours < 48) score += 10;
+        // Market cap — sweet spot between dead and parabolic
+        if (marketCap > 10000 && marketCap < 50000)        score += 25;
+        else if (marketCap > 50000 && marketCap < 200000)  score += 20;
+        else if (marketCap > 200000 && marketCap < 500000) score += 15;
+        else if (marketCap > 500000)                       score += 5;
+        else                                               score += 5;
+        // Momentum
+        if (priceChange > 100)      score += 25;
+        else if (priceChange > 50)  score += 20;
+        else if (priceChange > 20)  score += 15;
+        else if (priceChange > 0)   score += 10;
+        // Community engagement
+        if (replies > 50)      score += 20;
+        else if (replies > 20) score += 15;
+        else if (replies > 10) score += 10;
+        else if (replies > 5)  score += 5;
 
-      setPairs(pairsArr);
+        return { ...coin, gemScore: Math.min(100, score), ageHours };
+      });
+
+      // Default order: newest first
+      scored.sort((a, b) => (b.created_timestamp || 0) - (a.created_timestamp || 0));
+
+      setCoins(scored);
       const now = Date.now();
       setLastUpdated(now);
       setSecondsAgo(0);
       onUpdated?.(now);
     } catch (e) {
-      if (typeof console !== 'undefined') console.warn('Gems fetch error:', e);
+      if (typeof console !== 'undefined') console.warn('Pump.fun gems error:', e);
     } finally {
       setLoading(false);
     }
   }, [onUpdated]);
 
+  // Auto-refresh every 30 seconds — Pump.fun mints new coins constantly
   React.useEffect(() => {
     load();
-    const id = setInterval(load, 60_000); // refresh every 60 seconds
+    const id = setInterval(load, 30_000);
     return () => clearInterval(id);
   }, [load, refreshKey]);
 
@@ -8232,26 +8253,23 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   );
 
   const visible = React.useMemo(() => {
-    let arr = pairs.map(p => ({ ...p, _score: gemScore(p), _ageH: p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 999 }));
+    let arr = coins;
     if (ageFilter !== 'all') {
       const max = parseFloat(ageFilter);
-      arr = arr.filter(p => p._ageH < max);
+      arr = arr.filter(c => c.ageHours < max);
     }
-    if (scoreFilter === 'hot') arr = arr.filter(p => p._score >= 50);
-    else if (scoreFilter === 'gems') arr = arr.filter(p => p._score >= 70);
-    if (chainFilter !== 'all') arr = arr.filter(p => (p.chainId || '').toLowerCase() === chainFilter);
-    arr.sort((a, b) => {
-      if (sortBy === 'volume')    return parseFloat(b.volume?.h24 || 0) - parseFloat(a.volume?.h24 || 0);
-      if (sortBy === 'age')       return (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0);
-      if (sortBy === 'change1h')  return parseFloat(b.priceChange?.h1 || 0) - parseFloat(a.priceChange?.h1 || 0);
-      return b._score - a._score;
-    });
+    if (scoreFilter === 'hot') arr = arr.filter(c => c.gemScore >= 50);
+    else if (scoreFilter === 'gems') arr = arr.filter(c => c.gemScore >= 70);
+    arr = [...arr];
+    if (sortBy === 'score')        arr.sort((a, b) => b.gemScore - a.gemScore);
+    else if (sortBy === 'mcap')    arr.sort((a, b) => (b.usd_market_cap || 0) - (a.usd_market_cap || 0));
+    else if (sortBy === 'change')  arr.sort((a, b) => (b.price_change_24h || 0) - (a.price_change_24h || 0));
+    else if (sortBy === 'replies') arr.sort((a, b) => (b.reply_count || 0) - (a.reply_count || 0));
+    else                           arr.sort((a, b) => (b.created_timestamp || 0) - (a.created_timestamp || 0));
     return arr;
-  }, [pairs, ageFilter, scoreFilter, chainFilter, sortBy]);
+  }, [coins, ageFilter, scoreFilter, sortBy]);
 
-  const chainColors = { solana:'#9945ff', ethereum:'#627eea', base:'#0052ff', bsc:'#f0b90b' };
-  const chainColor = (c) => chainColors[(c || '').toLowerCase()] || '#6b7280';
-  const chainShort = (c) => ({ solana:'SOL', ethereum:'ETH', base:'BASE', bsc:'BSC' }[(c || '').toLowerCase()] || (c || '').toUpperCase().slice(0, 4));
+  const launchedInLastHour = coins.filter(c => c.ageHours < 1).length;
 
   const pillStyle = (active, accent) => ({
     padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
@@ -8260,11 +8278,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
   });
 
-  if (loading && pairs.length === 0) {
+  if (loading && coins.length === 0) {
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
         <div style={{ width:24, height:24, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
-        Fetching latest token launches from DexScreener...
+        Loading fresh launches from Pump.fun…
       </div>
     );
   }
@@ -8275,6 +8293,13 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         ⚠️ New coins are extremely high risk. Most will go to zero. Only invest what you can afford to lose completely.
       </div>
 
+      {launchedInLastHour > 0 && (
+        <div style={{ padding:'8px 14px', borderRadius:10, background:'rgba(239,68,68,0.10)', border:'1px solid rgba(239,68,68,0.30)', color:'#fca5a5', fontSize:12, fontWeight:700, marginBottom:12, display:'inline-flex', alignItems:'center', gap:8 }}>
+          <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'#ef4444', animation:'pulse 1.5s ease-in-out infinite' }}/>
+          LIVE: {launchedInLastHour} {launchedInLastHour === 1 ? 'coin' : 'coins'} launched in last hour
+        </div>
+      )}
+
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
         <div style={{ fontSize:11, color:'#6b7280', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span>
@@ -8282,15 +8307,14 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
               ? `Last updated: ${secondsAgo < 1 ? 'just now' : secondsAgo + (secondsAgo === 1 ? ' second' : ' seconds') + ' ago'}`
               : 'Loading…'}
           </span>
-          {activeQuery && <span style={{ color:'#a5b4fc', fontWeight:700 }}>· query: {activeQuery}</span>}
-          <span style={{ color:'#4b5563' }}>· auto-refreshes every 60s</span>
+          <span style={{ color:'#4b5563' }}>· source: pump.fun · auto-refreshes every 30s</span>
         </div>
         <button
           onClick={() => load()}
           disabled={loading}
           style={{
             padding:'6px 14px', borderRadius:8, border:'1px solid #2a2a3a',
-            background: loading ? '#1a1a24' : '#1a1a24',
+            background:'#1a1a24',
             color: loading ? '#6b7280' : '#fff',
             fontSize:12, fontWeight:700, cursor: loading ? 'not-allowed' : 'pointer',
             display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
@@ -8310,7 +8334,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Age</span>
-          {[['all','All'],['6','<6h'],['24','<24h'],['48','<48h'],['72','<72h']].map(([id, label]) => (
+          {[['all','All'],['1','<1h'],['6','<6h'],['24','<24h'],['48','<48h']].map(([id, label]) => (
             <button key={id} onClick={() => setAgeFilter(id)} style={pillStyle(ageFilter === id)}>{label}</button>
           ))}
         </div>
@@ -8321,117 +8345,97 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           ))}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Chain</span>
-          {[['all','All'],['solana','SOL'],['ethereum','ETH'],['base','BASE'],['bsc','BSC']].map(([id, label]) => (
-            <button key={id} onClick={() => setChainFilter(id)} style={pillStyle(chainFilter === id, id !== 'all' ? chainColor(id) : '#6366f1')}>{label}</button>
-          ))}
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Sort</span>
-          {[['score','Gem Score'],['volume','Volume'],['age','Age'],['change1h','1h Change']].map(([id, label]) => (
+          {[['age','Newest'],['score','Score'],['mcap','Market cap'],['change','24h change'],['replies','Replies']].map(([id, label]) => (
             <button key={id} onClick={() => setSortBy(id)} style={pillStyle(sortBy === id)}>{label}</button>
           ))}
         </div>
       </div>
 
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
-        {visible.length} {visible.length === 1 ? 'gem' : 'gems'} found · auto-refreshes every 2m
+        {visible.length} new {visible.length === 1 ? 'coin' : 'coins'} found · updating every 30s
       </div>
 
       {visible.length === 0 ? (
         <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#111', border:'1px dashed #1e1e2a', borderRadius:12 }}>
-          No gems matching your filters right now. Try widening the age or score filter.
+          No coins matching your filters right now. Try widening the age or score filter.
         </div>
       ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:12 }}>
-          {visible.map(p => {
-            const score = p._score;
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap:12 }}>
+          {visible.map(coin => {
+            const score = coin.gemScore;
             const badge = gemBadge(score);
-            const ageH = p._ageH;
-            const price = parseFloat(p.priceUsd || 0);
-            const c1h = parseFloat(p.priceChange?.h1 || 0);
-            const c6h = parseFloat(p.priceChange?.h6 || 0);
-            const c24h = parseFloat(p.priceChange?.h24 || 0);
-            const vol = parseFloat(p.volume?.h24 || 0);
-            const liq = parseFloat(p.liquidity?.usd || 0);
-            const url = p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`;
-            const baseAddr = p.baseToken?.address || '';
-            const coinKey = baseAddr ? `${p.chainId}:${baseAddr}` : `${p.chainId}:${p.pairAddress}`;
+            const change = Number(coin.price_change_24h) || 0;
+            const mcap = Number(coin.usd_market_cap) || 0;
+            const replies = Number(coin.reply_count) || 0;
+            const ageHours = coin.ageHours;
+            const coinKey = `solana:${coin.mint}`;
             const logged = loggedKeys.has(coinKey);
-            const priceStr = price === 0 ? '—'
-              : price < 0.0001 ? '$' + price.toExponential(2)
-              : price < 1 ? '$' + price.toFixed(6)
-              : '$' + price.toFixed(4);
+            const price = mcap > 0 ? mcap / PUMP_TOTAL_SUPPLY : 0;
+            const pumpUrl = `https://pump.fun/${coin.mint}`;
             const logIt = () => {
               if (logged || !onLogSignal) return;
               onLogSignal({
                 id: Date.now(),
                 coinId: coinKey,
-                name: p.baseToken?.name || p.baseToken?.symbol || 'Unknown',
-                symbol: (p.baseToken?.symbol || '').toUpperCase(),
+                name: coin.name || 'Unknown',
+                symbol: (coin.symbol || '').toUpperCase(),
                 score,
                 priceAtSignal: price,
-                change24h: c24h,
+                change24h: change,
                 loggedAt: new Date().toISOString(),
-                didTake: false,
-                exitPrice: null,
-                exitedAt: null,
-                notes: `From New Gems — ${p.chainId?.toUpperCase()} · ${url}`,
-                targetGain: null,
-                stopLoss: null,
-                targetHitNotified: false,
-                stopHitNotified: false,
+                notes: `From New Gems (Pump.fun) — ${pumpUrl}`,
+                didTake: false, exitPrice: null, exitedAt: null,
+                targetGain: null, stopLoss: null,
+                targetHitNotified: false, stopHitNotified: false,
               });
             };
-            const risk = ageH < 12 ? { label: 'EXTREME', color: '#ef4444', bg: 'rgba(239,68,68,0.18)' }
-                       : ageH < 48 ? { label: 'VERY HIGH', color: '#f59e0b', bg: 'rgba(245,158,11,0.18)' }
-                       : { label: 'HIGH', color: '#a5b4fc', bg: 'rgba(99,102,241,0.18)' };
             return (
-              <div key={coinKey} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
+              <div key={coin.mint} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                    <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em' }}>{badge.label}</span>
-                    <span style={{ fontSize:10, fontWeight:800, padding:'3px 6px', borderRadius:4, background:risk.bg, color:risk.color, letterSpacing:'0.04em' }} title="All new coins are high risk. Newer = more volatile.">Risk: {risk.label}</span>
-                  </div>
-                  <span style={{ fontSize:11, color:'#6b7280' }}>Score <span style={{ color:'#fff', fontWeight:700 }}>{score}</span></span>
-                </div>
-
-                <div>
-                  <div style={{ display:'flex', alignItems:'baseline', gap:8, flexWrap:'wrap' }}>
-                    <div style={{ fontSize:18, fontWeight:800, color:'#fff' }}>{p.baseToken?.symbol || '???'}</div>
-                    <div style={{ fontSize:12, color:'#9ca3af' }}>{p.baseToken?.name || ''}</div>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
-                    <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:chainColor(p.chainId)+'22', color:chainColor(p.chainId), fontWeight:700 }}>{chainShort(p.chainId)}</span>
-                    <span style={{ fontSize:11, color:'#6b7280' }}>{formatAgeLabel(ageH)}</span>
-                  </div>
-                </div>
-
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
-                  <div style={{ fontSize:18, fontWeight:800, color:'#fff' }}>{priceStr}</div>
-                  <div style={{ display:'flex', gap:10 }}>
-                    <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase' }}>1h</div>
-                      <div style={{ fontSize:12, fontWeight:700, color: c1h >= 0 ? '#22c55e' : '#ef4444' }}>{c1h >= 0 ? '+' : ''}{c1h.toFixed(1)}%</div>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+                    <div style={{ width:40, height:40, borderRadius:'50%', background:'#1a1a24', flexShrink:0, overflow:'hidden' }}>
+                      {coin.image_uri && (
+                        <img
+                          src={coin.image_uri}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
+                      )}
                     </div>
-                    <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase' }}>6h</div>
-                      <div style={{ fontSize:12, fontWeight:700, color: c6h >= 0 ? '#22c55e' : '#ef4444' }}>{c6h >= 0 ? '+' : ''}{c6h.toFixed(1)}%</div>
-                    </div>
-                    <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase' }}>24h</div>
-                      <div style={{ fontSize:12, fontWeight:700, color: c24h >= 0 ? '#22c55e' : '#ef4444' }}>{c24h >= 0 ? '+' : ''}{c24h.toFixed(1)}%</div>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{coin.name || '—'}</div>
+                      <div style={{ fontSize:11, color:'#6b7280' }}>{(coin.symbol || '').toUpperCase()}</div>
                     </div>
                   </div>
+                  <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em', whiteSpace:'nowrap' }}>{badge.label}</span>
                 </div>
 
-                <div style={{ display:'flex', gap:14, fontSize:11 }}>
-                  <span style={{ color:'#6b7280' }}>Vol <span style={{ color:'#fff', fontWeight:700 }}>{formatBigUsd(vol)}</span></span>
-                  <span style={{ color:'#6b7280' }}>Liq <span style={{ color:'#fff', fontWeight:700 }}>{formatBigUsd(liq)}</span></span>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Age</div>
+                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpAge(ageHours)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Market cap</div>
+                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpMcap(mcap)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>24h change</div>
+                    <div style={{ fontSize:13, color: change >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2 }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Community</div>
+                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{replies} replies 💬</div>
+                  </div>
                 </div>
 
-                <div style={{ fontSize:10, color:'#6b7280', fontStyle:'italic', borderTop:'1px solid #1e1e2a', paddingTop:8 }}>
-                  {badge.desc}
+                <div style={{ fontSize:11, color:'#6b7280' }}>
+                  <span style={{ color:'#9ca3af', fontWeight:700 }}>Score {score}</span>
+                  <span style={{ marginLeft:8 }}>· {badge.desc}</span>
                 </div>
 
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
@@ -8449,12 +8453,12 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   <button
                     onClick={() => onBuy?.({
                       coinId: coinKey,
-                      name: p.baseToken?.name || p.baseToken?.symbol || 'Unknown',
-                      symbol: (p.baseToken?.symbol || '').toUpperCase(),
-                      chain: p.chainId,
-                      pairAddress: p.pairAddress || null,
-                      dexUrl: p.url || (p.chainId && p.pairAddress ? `https://dexscreener.com/${p.chainId}/${p.pairAddress}` : null),
-                      price: price || 0,
+                      name: coin.name || 'Unknown',
+                      symbol: (coin.symbol || '').toUpperCase(),
+                      chain: 'solana',
+                      pairAddress: null,
+                      dexUrl: pumpUrl,
+                      price,
                     })}
                     style={{
                       flex:1, padding:'7px 10px', borderRadius:8, border:'none',
@@ -8462,11 +8466,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
                     }}
                   >Buy →</button>
-                  <a href={url} target="_blank" rel="noreferrer" style={{
+                  <a href={pumpUrl} target="_blank" rel="noreferrer" style={{
                     padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
                     color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
                     whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
-                  }}>DexScreener ↗</a>
+                  }}>Pump.fun ↗</a>
                 </div>
               </div>
             );
