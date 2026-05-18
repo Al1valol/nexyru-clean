@@ -9055,7 +9055,7 @@ function withdrawFromAccount(store, accountId, amount, note) {
   }));
 }
 
-function buyPositionInAccount(store, accountId, coin, usdAmount, atPrice) {
+function buyPositionInAccount(store, accountId, coin, usdAmount, atPrice, extra = {}) {
   if (!(atPrice > 0) || !(usdAmount > 0)) return store;
   return updateAccountInStore(store, accountId, acc => {
     if ((acc.balance || 0) < usdAmount) return acc;
@@ -9067,17 +9067,22 @@ function buyPositionInAccount(store, accountId, coin, usdAmount, atPrice) {
       coinId: coin.coinId,
       symbol: coin.symbol,
       name: coin.name,
+      chain: coin.chain || null,
       amount,
+      amountUSD: usdAmount,
       entryPrice: atPrice,
       entryDate: nowIso,
       currentPrice: atPrice,
       status: 'open',
+      notes: extra.notes || '',
       exitPrice: null,
       exitDate: null,
-      alertTarget: null,
-      alertStop: null,
+      exitNotes: '',
+      alertTarget: extra.targetPct ?? null,
+      alertStop: extra.stopLossPct ?? null,
       targetHitNotified: false,
       stopHitNotified: false,
+      realizedPnl: null,
     };
     return {
       ...acc,
@@ -9091,7 +9096,7 @@ function buyPositionInAccount(store, accountId, coin, usdAmount, atPrice) {
   });
 }
 
-function closePositionInAccount(store, accountId, positionId, exitPrice) {
+function closePositionInAccount(store, accountId, positionId, exitPrice, exitNotes = '') {
   if (!(exitPrice > 0)) return store;
   return updateAccountInStore(store, accountId, acc => {
     const pos = (acc.positions || []).find(p => p.id === positionId);
@@ -9103,10 +9108,10 @@ function closePositionInAccount(store, accountId, positionId, exitPrice) {
       ...acc,
       balance: (acc.balance || 0) + proceeds,
       positions: acc.positions.map(p => p.id === positionId
-        ? { ...p, status: 'closed', exitPrice, exitDate: nowIso, currentPrice: exitPrice }
+        ? { ...p, status: 'closed', exitPrice, exitDate: nowIso, exitNotes: exitNotes || '', realizedPnl: pnl, currentPrice: exitPrice }
         : p),
       history: [
-        { id: makeShortId('h'), type: 'sell', positionId, coinId: pos.coinId, symbol: pos.symbol, name: pos.name, amount: pos.amount, price: exitPrice, usd: proceeds, pnl, date: nowIso },
+        { id: makeShortId('h'), type: 'sell', positionId, coinId: pos.coinId, symbol: pos.symbol, name: pos.name, amount: pos.amount, price: exitPrice, usd: proceeds, pnl, date: nowIso, exitNotes: exitNotes || '' },
         ...(acc.history || []),
       ],
     };
@@ -9153,7 +9158,16 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
     const p = livePrice ?? coin?.priceAtSignal ?? coin?.price;
     return p ? String(p) : '';
   });
+  const [notesInput, setNotesInput] = React.useState('');
+  const [targetInput, setTargetInput] = React.useState('');
+  const [stopInput, setStopInput] = React.useState('');
   const [error, setError] = React.useState(null);
+
+  // If the live price arrives after the modal mounts, prefill the entry field
+  // as long as the user hasn't typed anything yet.
+  React.useEffect(() => {
+    if (livePrice && !priceInput) setPriceInput(String(livePrice));
+  }, [livePrice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const usd = parseFloat(usdInput) || 0;
   const price = parseFloat(priceInput) || 0;
@@ -9166,17 +9180,26 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
     if (!(usd > 0)) { setError('Enter a USD amount.'); return; }
     if (!(price > 0)) { setError('Enter a valid price.'); return; }
     if (insufficient) { setError('Not enough balance in that account.'); return; }
-    onConfirm({ accountId, usdAmount: usd, price });
+    const target = targetInput.trim() === '' ? null : Math.max(0, parseFloat(targetInput) || 0);
+    const stop   = stopInput.trim()   === '' ? null : Math.max(0, parseFloat(stopInput)   || 0);
+    onConfirm({
+      accountId,
+      usdAmount: usd,
+      price,
+      notes: notesInput.trim(),
+      targetPct: target,
+      stopLossPct: stop,
+    });
   };
 
   if (!coin) return null;
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:420, color:"#fff" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflowY:"auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:460, color:"#fff", margin:"auto" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
           <div>
-            <div style={{ fontSize:18, fontWeight:800 }}>Buy {coin.name}</div>
-            <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{coin.symbol?.toUpperCase()}{livePrice ? ' · current ' + fmtUsd(livePrice) : ''}</div>
+            <div style={{ fontSize:18, fontWeight:800 }}>Buy {(coin.symbol || coin.name || '').toUpperCase()}</div>
+            <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{coin.name || coin.symbol}{livePrice ? ' · current ' + fmtUsd(livePrice) : ''}</div>
           </div>
           <button onClick={onClose} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", fontSize:20, lineHeight:1 }}>×</button>
         </div>
@@ -9198,11 +9221,14 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
           </div>
         )}
 
-        <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Amount (USD)</label>
+        <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Amount in USD</label>
         <input
           type="number" value={usdInput} onChange={e => { setUsdInput(e.target.value); setError(null); }}
-          placeholder="100" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+          placeholder="500" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:6 }}
         />
+        <div style={{ fontSize:11, color:"#6b7280", marginBottom:14 }}>
+          ≈ {amount > 0 ? amount.toLocaleString(undefined, { maximumFractionDigits: 8 }) : '0'} {(coin.symbol || '').toUpperCase()}
+        </div>
 
         <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Entry Price (USD)</label>
         <input
@@ -9210,9 +9236,37 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
           placeholder="0.00" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
         />
 
-        <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px", marginBottom:14, fontSize:12, color:"#9ca3af", display:"flex", justifyContent:"space-between" }}>
-          <span>You receive</span>
-          <span style={{ color:"#fff", fontWeight:700 }}>{amount > 0 ? amount.toLocaleString(undefined, { maximumFractionDigits: 8 }) + ' ' + (coin.symbol || '').toUpperCase() : '—'}</span>
+        <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Entry notes (optional)</label>
+        <textarea
+          value={notesInput} onChange={e => setNotesInput(e.target.value)}
+          placeholder="Why are you buying this? (thesis, catalyst, source…)"
+          rows={2}
+          style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14, resize:"vertical", fontFamily:"inherit" }}
+        />
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+          <div>
+            <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Target %</label>
+            <div style={{ position:"relative" }}>
+              <input
+                type="number" value={targetInput} onChange={e => setTargetInput(e.target.value)}
+                placeholder="50"
+                style={{ width:"100%", padding:"9px 28px 9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}
+              />
+              <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"#6b7280", fontSize:12 }}>%</span>
+            </div>
+          </div>
+          <div>
+            <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Stop loss %</label>
+            <div style={{ position:"relative" }}>
+              <input
+                type="number" value={stopInput} onChange={e => setStopInput(e.target.value)}
+                placeholder="20"
+                style={{ width:"100%", padding:"9px 28px 9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}
+              />
+              <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"#6b7280", fontSize:12 }}>%</span>
+            </div>
+          </div>
         </div>
 
         {error && <div style={{ color:"#ef4444", fontSize:12, marginBottom:10 }}>{error}</div>}
@@ -9220,7 +9274,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
 
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
-          <button onClick={confirm} disabled={!store?.accounts?.length || insufficient} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: (!store?.accounts?.length || insufficient) ? "#2a2a3a" : "#22c55e", color:"#fff", fontSize:13, fontWeight:700, cursor: (!store?.accounts?.length || insufficient) ? "not-allowed" : "pointer" }}>Confirm Buy</button>
+          <button onClick={confirm} disabled={!store?.accounts?.length || insufficient} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: (!store?.accounts?.length || insufficient) ? "#2a2a3a" : "#22c55e", color:"#fff", fontSize:13, fontWeight:700, cursor: (!store?.accounts?.length || insufficient) ? "not-allowed" : "pointer" }}>Confirm Buy →</button>
         </div>
       </div>
     </div>
@@ -9241,6 +9295,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
   const [txnNote, setTxnNote] = React.useState('');
   const [closeFor, setCloseFor] = React.useState(null); // position object
   const [closePrice, setClosePrice] = React.useState('');
+  const [closeNotes, setCloseNotes] = React.useState('');
   const [livePrices, setLivePrices] = React.useState({});
   const [alertEdits, setAlertEdits] = React.useState({}); // positionId -> { target, stop }
 
@@ -9311,8 +9366,11 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
     if (!closeFor) return;
     const exit = parseFloat(closePrice) || 0;
     if (!(exit > 0)) return;
-    onUpdate(prev => closePositionInAccount(prev, activeAccount.id, closeFor.id, exit));
-    setCloseFor(null); setClosePrice('');
+    const pnl = (exit - closeFor.entryPrice) * closeFor.amount;
+    onUpdate(prev => closePositionInAccount(prev, activeAccount.id, closeFor.id, exit, closeNotes.trim()));
+    const sym = (closeFor.symbol || closeFor.name || '').toUpperCase();
+    try { toast(`Closed ${sym} — P&L ${pnl >= 0 ? '+' : '−'}${fmtUsd(Math.abs(pnl))}`, pnl >= 0 ? 'success' : 'error'); } catch {}
+    setCloseFor(null); setClosePrice(''); setCloseNotes('');
   };
 
   const saveAlerts = (positionId) => {
@@ -9471,7 +9529,15 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                     <div key={p.id} style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:14 }}>
                       <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr auto", gap:12, alignItems:"center" }}>
                         <div>
-                          <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{p.name}</div>
+                          <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                            <span style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{p.name}</span>
+                            {p.alertTarget != null && p.alertTarget > 0 && (
+                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(34,197,94,0.15)", color:"#22c55e" }}>🎯 +{p.alertTarget}%</span>
+                            )}
+                            {p.alertStop != null && p.alertStop > 0 && (
+                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(239,68,68,0.15)", color:"#ef4444" }}>🛑 -{p.alertStop}%</span>
+                            )}
+                          </div>
                           <div style={{ fontSize:11, color:"#6b7280" }}>{p.symbol?.toUpperCase()} · {p.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</div>
                         </div>
                         <div>
@@ -9494,7 +9560,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Held</div>
                           <div style={{ fontSize:12, color:"#fff" }}>{fmtHoldDuration(p.entryDate)}</div>
                         </div>
-                        <button onClick={() => { setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); }} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Close →</button>
+                        <button onClick={() => { setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); setCloseNotes(''); }} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Close Position</button>
                       </div>
 
                       <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #1e1e2a", display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
@@ -9509,7 +9575,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                           <input type="number" value={edit.stop} onChange={e => setAlertEdits(prev => ({ ...prev, [p.id]: { ...edit, stop: e.target.value } }))} onBlur={() => saveAlerts(p.id)} placeholder="10" style={{ width:60, padding:"4px 8px", borderRadius:6, border:"1px solid #2a2a3a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none" }}/>
                           <span style={{ fontSize:11, color:"#9ca3af" }}>%</span>
                         </div>
-                        {(p.alertTarget || p.alertStop) && <span style={{ fontSize:10, color:"#22c55e", fontWeight:700 }}>● Active</span>}
+                        {(p.alertTarget || p.alertStop) && <span style={{ fontSize:10, color:"#22c55e", fontWeight:700 }} title="Alert is active and being checked every 60s">● Active</span>}
                       </div>
                     </div>
                   );
@@ -9531,13 +9597,21 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                   ))}
                 </div>
                 {closedWithPnl.sort((a, b) => new Date(b.exitDate).getTime() - new Date(a.exitDate).getTime()).map(p => (
-                  <div key={p.id} style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr", padding:"10px 14px", borderBottom:"1px solid #1e1e2a", alignItems:"center" }}>
-                    <div style={{ fontSize:12, color:"#fff", fontWeight:600 }}>{p.name} <span style={{ color:"#6b7280", fontWeight:400 }}>{p.symbol?.toUpperCase()}</span></div>
-                    <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 6 })}</div>
-                    <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.exitPrice, { maxFractionDigits: 6 })}</div>
-                    <div style={{ fontSize:12, color:"#9ca3af" }}>{fmtHoldDuration(p.entryDate, p.exitDate)}</div>
-                    <div style={{ fontSize:12, fontWeight:700, color: p._pnl >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(p._pnl))}</div>
-                    <div style={{ fontSize:12, fontWeight:700, color: p._pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(2) + '%'}</div>
+                  <div key={p.id} style={{ borderBottom:"1px solid #1e1e2a" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr", padding:"10px 14px", alignItems:"center" }}>
+                      <div style={{ fontSize:12, color:"#fff", fontWeight:600 }}>{p.name} <span style={{ color:"#6b7280", fontWeight:400 }}>{p.symbol?.toUpperCase()}</span></div>
+                      <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 6 })}</div>
+                      <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.exitPrice, { maxFractionDigits: 6 })}</div>
+                      <div style={{ fontSize:12, color:"#9ca3af" }}>{fmtHoldDuration(p.entryDate, p.exitDate)}</div>
+                      <div style={{ fontSize:12, fontWeight:700, color: p._pnl >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(p._pnl))}</div>
+                      <div style={{ fontSize:12, fontWeight:700, color: p._pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(2) + '%'}</div>
+                    </div>
+                    {(p.notes || p.exitNotes) && (
+                      <div style={{ padding:"0 14px 10px", display:"flex", flexDirection:"column", gap:4 }}>
+                        {p.notes && <div style={{ fontSize:11, color:"#6b7280" }}><span style={{ color:"#a5b4fc", fontWeight:700 }}>Entry:</span> {p.notes}</div>}
+                        {p.exitNotes && <div style={{ fontSize:11, color:"#6b7280" }}><span style={{ color:"#f59e0b", fontWeight:700 }}>Exit:</span> {p.exitNotes}</div>}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -9609,32 +9683,68 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       )}
 
       {/* Close position dialog */}
-      {closeFor && (
-        <div onClick={() => setCloseFor(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:380, color:"#fff" }}>
-            <div style={{ fontSize:18, fontWeight:800, marginBottom:4 }}>Close {closeFor.name}</div>
-            <div style={{ fontSize:11, color:"#6b7280", marginBottom:12 }}>{closeFor.symbol?.toUpperCase()} · {closeFor.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</div>
-            <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700 }}>Exit price (USD)</label>
-            <input type="number" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.00" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}/>
-            {(() => {
-              const exit = parseFloat(closePrice) || 0;
-              if (!(exit > 0)) return null;
-              const pnl = (exit - closeFor.entryPrice) * closeFor.amount;
-              const pnlPct = ((exit / closeFor.entryPrice) - 1) * 100;
-              return (
-                <div style={{ padding:"10px 12px", background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, marginBottom:14, fontSize:12, color:"#9ca3af", display:"flex", justifyContent:"space-between" }}>
-                  <span>P&L</span>
-                  <span style={{ color: pnl >= 0 ? "#22c55e" : "#ef4444", fontWeight:700 }}>{(pnl >= 0 ? '+' : '−')}{fmtUsd(Math.abs(pnl))} ({(pnlPct >= 0 ? '+' : '')}{pnlPct.toFixed(2)}%)</span>
+      {closeFor && (() => {
+        const liveCur = livePrices[closeFor.coinId]?.usd ?? closeFor._cur ?? closeFor.currentPrice ?? closeFor.entryPrice;
+        const sym = (closeFor.symbol || '').toUpperCase();
+        const exit = parseFloat(closePrice) || 0;
+        const pnl = exit > 0 ? (exit - closeFor.entryPrice) * closeFor.amount : null;
+        const pnlPct = exit > 0 ? ((exit / closeFor.entryPrice) - 1) * 100 : null;
+        return (
+          <div onClick={() => setCloseFor(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflowY:"auto" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:440, color:"#fff", margin:"auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:800 }}>Close {sym} position</div>
+                  <div style={{ fontSize:11, color:"#6b7280", marginTop:2 }}>{closeFor.name} · {closeFor.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} {sym}</div>
                 </div>
-              );
-            })()}
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={() => setCloseFor(null)} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
-              <button onClick={submitClose} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background:"#ef4444", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Confirm Close</button>
+                <button onClick={() => setCloseFor(null)} style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", fontSize:20, lineHeight:1 }}>×</button>
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+                <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                  <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Entry price</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{fmtUsd(closeFor.entryPrice, { maxFractionDigits: 6 })}</div>
+                  <div style={{ fontSize:10, color:"#6b7280", marginTop:2 }}>locked</div>
+                </div>
+                <div style={{ background:"rgba(99,102,241,0.08)", border:"1px solid rgba(99,102,241,0.25)", borderRadius:8, padding:"10px 12px" }}>
+                  <div style={{ fontSize:10, color:"#a5b4fc", textTransform:"uppercase", fontWeight:700 }}>Current price</div>
+                  <div style={{ fontSize:20, fontWeight:800, color:"#fff", marginTop:4 }}>{fmtUsd(liveCur, { maxFractionDigits: 6 })}</div>
+                  <button
+                    onClick={() => setClosePrice(String(liveCur))}
+                    style={{ marginTop:4, padding:"2px 8px", fontSize:10, fontWeight:700, color:"#a5b4fc", background:"transparent", border:"1px solid rgba(99,102,241,0.4)", borderRadius:4, cursor:"pointer" }}
+                  >Use current</button>
+                </div>
+              </div>
+
+              <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Exit price (USD)</label>
+              <input
+                type="number" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.00"
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+              />
+
+              {pnl != null && (
+                <div style={{ padding:"12px 14px", background: pnl >= 0 ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border:`1px solid ${pnl >= 0 ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`, borderRadius:8, marginBottom:14, fontSize:13, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ color:"#9ca3af", fontWeight:600 }}>Estimated P&L</span>
+                  <span style={{ color: pnl >= 0 ? "#22c55e" : "#ef4444", fontWeight:800, fontSize:15 }}>{(pnl >= 0 ? '+' : '−')}{fmtUsd(Math.abs(pnl))} ({(pnlPct >= 0 ? '+' : '')}{pnlPct.toFixed(2)}%)</span>
+                </div>
+              )}
+
+              <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Exit notes (optional)</label>
+              <textarea
+                value={closeNotes} onChange={e => setCloseNotes(e.target.value)}
+                placeholder="Why are you selling? (target hit, thesis broken, profit-taking…)"
+                rows={2}
+                style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14, resize:"vertical", fontFamily:"inherit" }}
+              />
+
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={() => setCloseFor(null)} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
+                <button onClick={submitClose} disabled={!(exit > 0)} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: exit > 0 ? "#ef4444" : "#2a2a3a", color:"#fff", fontSize:13, fontWeight:700, cursor: exit > 0 ? "pointer" : "not-allowed" }}>Confirm Exit →</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -9723,17 +9833,25 @@ function TradingDashboard({ session, onLogout }) {
     return () => { cancelled = true; };
   }, [buyModalCoin]);
 
-  const handleConfirmBuy = useCallback(({ accountId, usdAmount, price }) => {
+  const handleConfirmBuy = useCallback(({ accountId, usdAmount, price, notes, targetPct, stopLossPct }) => {
     if (!buyModalCoin) return;
     setCryptoAccountStore(prev => {
       const next = buyPositionInAccount(prev, accountId, {
         coinId: buyModalCoin.coinId,
         name: buyModalCoin.name,
         symbol: buyModalCoin.symbol,
-      }, usdAmount, price);
+        chain: buyModalCoin.chain || null,
+      }, usdAmount, price, { notes, targetPct, stopLossPct });
       persistCryptoAccountStore(next);
       return next;
     });
+    const sym = (buyModalCoin.symbol || buyModalCoin.name || '').toUpperCase();
+    try { toast(`Bought ${sym} for ${fmtUsd(usdAmount)}`, 'success'); } catch {}
+    if ((targetPct != null && targetPct > 0) || (stopLossPct != null && stopLossPct > 0)) {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        try { Notification.requestPermission().catch(() => {}); } catch {}
+      }
+    }
     setBuyModalCoin(null);
   }, [buyModalCoin]);
   useEffect(() => { setCryptoLastUpdated(null); }, [cryptoSection]);
