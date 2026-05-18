@@ -8138,50 +8138,104 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '6' | '24' | '48' | '72'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [chainFilter, setChainFilter] = React.useState('all'); // 'all' | 'solana' | 'ethereum' | 'base' | 'bsc'
-  const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'volume' | 'age' | 'change1h'
+  const [sortBy, setSortBy] = React.useState('age');           // 'score' | 'volume' | 'age' | 'change1h'
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const sources = [
-        'https://api.dexscreener.com/latest/dex/tokens/trending',
-        'https://api.dexscreener.com/latest/dex/search?q=new',
-      ];
-      const results = await Promise.allSettled(sources.map(u => fetch(u).then(r => r.ok ? r.json() : null)));
       const collected = [];
-      for (const r of results) {
-        if (r.status !== 'fulfilled' || !r.value) continue;
-        // /search returns { pairs }; /tokens/trending shape varies — try both
-        const arr = r.value.pairs || r.value.tokens || (Array.isArray(r.value) ? r.value : []);
-        for (const item of arr) {
-          // Some endpoints return tokens that wrap pairs; flatten if needed
-          if (item.pairs && Array.isArray(item.pairs)) collected.push(...item.pairs);
-          else collected.push(item);
+
+      // Step 1: latest token profiles (newest tokens with metadata)
+      let profiles = [];
+      try {
+        const r = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
+        if (r.ok) {
+          const body = await r.json();
+          profiles = Array.isArray(body) ? body : [];
+        }
+      } catch {}
+
+      // Step 2: batch fetch pair data for the newest token addresses.
+      // The tokens batch endpoint returns all pairs containing any of those tokens.
+      if (profiles.length > 0) {
+        const addresses = profiles.slice(0, 25).map(p => p.tokenAddress).filter(Boolean).join(',');
+        if (addresses) {
+          try {
+            const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses}`);
+            if (r.ok) {
+              const d = await r.json();
+              const arr = d?.pairs || [];
+              collected.push(...arr);
+            }
+          } catch {}
         }
       }
-      const seen = new Set();
-      const unique = [];
-      for (const p of collected) {
-        if (!p || !p.chainId || !p.pairAddress) continue;
-        const key = `${p.chainId}:${p.pairAddress}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        unique.push(p);
+
+      // Also pull DexScreener trending (mostly SOL meme launches)
+      try {
+        const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/trending');
+        if (r.ok) {
+          const d = await r.json();
+          const arr = d?.pairs || d?.tokens || (Array.isArray(d) ? d : []);
+          for (const item of arr) {
+            if (item?.pairs && Array.isArray(item.pairs)) collected.push(...item.pairs);
+            else collected.push(item);
+          }
+        }
+      } catch {}
+
+      // Fallback: if everything above came back empty, do themed searches
+      if (collected.length === 0) {
+        const queries = ['pepe', 'doge', 'moon'];
+        const results = await Promise.allSettled(
+          queries.map(q => fetch(`https://api.dexscreener.com/latest/dex/search?q=${q}`).then(r => r.ok ? r.json() : null))
+        );
+        for (const r of results) {
+          if (r.status !== 'fulfilled' || !r.value) continue;
+          const arr = r.value.pairs || [];
+          collected.push(...arr);
+        }
       }
-      const filtered = unique.filter(p => {
-        if (!p.pairCreatedAt) return false;
-        const ageHours = (Date.now() - p.pairCreatedAt) / 3600000;
-        if (ageHours >= 72) return false;
-        const vol = parseFloat(p.volume?.h24 || 0);
-        if (vol <= 10000) return false;
+
+      // Dedupe by chain:pairAddress
+      const seenPair = new Set();
+      const uniquePairs = [];
+      for (const p of collected) {
+        if (!p?.chainId || !p?.pairAddress) continue;
+        const key = `${p.chainId}:${p.pairAddress}`;
+        if (seenPair.has(key)) continue;
+        seenPair.add(key);
+        uniquePairs.push(p);
+      }
+
+      // Dedupe by base token — keep the highest-liquidity pair per token so
+      // the same coin doesn't appear 5 times across different DEXes.
+      const byToken = new Map();
+      for (const p of uniquePairs) {
+        const tokenKey = `${p.chainId}:${(p.baseToken?.address || '').toLowerCase()}`;
         const liq = parseFloat(p.liquidity?.usd || 0);
-        if (liq <= 5000) return false;
-        const c1h = parseFloat(p.priceChange?.h1 || 0);
-        const c6h = parseFloat(p.priceChange?.h6 || 0);
-        if (c1h <= 0 && c6h <= 0) return false;
+        const existing = byToken.get(tokenKey);
+        if (!existing || liq > parseFloat(existing.liquidity?.usd || 0)) {
+          byToken.set(tokenKey, p);
+        }
+      }
+
+      // Relaxed filters: just enough liquidity + activity to be tradeable.
+      let pairsArr = [...byToken.values()].filter(p => {
+        const liq = parseFloat(p.liquidity?.usd || 0);
+        if (liq <= 1000) return false;
+        const vol = parseFloat(p.volume?.h24 || 0);
+        if (vol <= 500) return false;
         return true;
       });
-      setPairs(filtered);
+
+      // Default order: newest first by pairCreatedAt. UI sort pills override.
+      pairsArr.sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0));
+
+      // Cap at the freshest 60 so the grid stays manageable
+      pairsArr = pairsArr.slice(0, 60);
+
+      setPairs(pairsArr);
       onUpdated?.(Date.now());
     } catch {
       // swallow — show stale data
@@ -8231,7 +8285,12 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
   });
 
   if (loading && pairs.length === 0) {
-    return <div style={{ color: '#6b7280', padding: 32 }}>Scanning chains for fresh launches…</div>;
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
+        <div style={{ width:24, height:24, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+        Fetching latest token launches from DexScreener...
+      </div>
+    );
   }
 
   return (
