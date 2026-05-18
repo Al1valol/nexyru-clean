@@ -35,6 +35,28 @@ function scoreBadge(score) {
   return { label: '🔴 Weak', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' };
 }
 
+// DexScreener coins use a contract address (with '0x' or a chain prefix like
+// 'base:0x7b...'). CoinGecko's simple/price endpoint only knows named coin
+// ids like 'bitcoin', so calling it with a contract address silently returns
+// {} and P&L collapses to $0. Detect the coin type and route accordingly.
+async function fetchCurrentPrice(coinId) {
+  if (!coinId) return 0;
+  if (coinId.includes('0x') || coinId.includes(':')) {
+    const address = coinId.split(':').pop() || coinId;
+    try {
+      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
+      const data = await res.json();
+      const pair = data?.pairs?.[0];
+      return pair ? parseFloat(pair.priceUsd || '0') : 0;
+    } catch { return 0; }
+  }
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd`);
+    const data = await res.json();
+    return data?.[coinId]?.usd || 0;
+  } catch { return 0; }
+}
+
 function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -593,11 +615,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   </div>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>1h</div>
-                    <div style={{ fontSize:13, color: change1h >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2 }}>{change1h >= 0 ? '+' : ''}{change1h.toFixed(2)}%</div>
+                    <div style={{ fontSize:13, color: change1h >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2, transition:'color 0.3s ease' }}>{change1h >= 0 ? '+' : ''}{change1h.toFixed(2)}%</div>
                   </div>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>24h</div>
-                    <div style={{ fontSize:13, color: change >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2 }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
+                    <div style={{ fontSize:13, color: change >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2, transition:'color 0.3s ease' }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
                   </div>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Vol 24h</div>
@@ -1679,29 +1701,30 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
   const closed = allPositions.filter(p => p.status === 'closed' && p.entryPrice > 0 && p.exitPrice != null);
   const open = allPositions.filter(p => p.status === 'open');
 
-  // Live prices for open positions
-  const openCoinIds = React.useMemo(() => [...new Set(open.map(p => p.coinId))].join(','), [open]);
+  // Live prices for open positions, keyed by position id.
+  // Per-position fetch so we can route DexScreener vs CoinGecko per coin.
+  const openKey = React.useMemo(() => open.map(p => `${p.id}:${p.coinId}`).join(','), [open]);
   const [livePrices, setLivePrices] = React.useState({});
   React.useEffect(() => {
-    if (!openCoinIds) { setLivePrices({}); onUpdated?.(Date.now()); return; }
+    if (open.length === 0) { setLivePrices({}); onUpdated?.(Date.now()); return; }
     let cancelled = false;
-    const load = () => {
-      fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(openCoinIds)}&vs_currencies=usd`)
-        .then(r => r.json())
-        .then(d => { if (!cancelled) { setLivePrices(d || {}); onUpdated?.(Date.now()); } })
-        .catch(() => {});
+    const load = async () => {
+      const next = {};
+      await Promise.all(open.map(async p => { next[p.id] = await fetchCurrentPrice(p.coinId); }));
+      if (!cancelled) { setLivePrices(next); onUpdated?.(Date.now()); }
     };
     load();
     const id = setInterval(load, 60_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [openCoinIds, refreshKey, onUpdated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openKey, refreshKey, onUpdated]);
 
   // Money totals
   const totalDeposits = accounts.reduce((s, a) => s + (a.history || []).filter(h => h.type === 'deposit').reduce((x, h) => x + h.amount, 0), 0);
   const totalWithdraws = accounts.reduce((s, a) => s + (a.history || []).filter(h => h.type === 'withdraw').reduce((x, h) => x + h.amount, 0), 0);
   const totalCash = accounts.reduce((s, a) => s + (a.balance || 0), 0);
   const openValue = open.reduce((s, p) => {
-    const cur = livePrices[p.coinId]?.usd ?? p.currentPrice ?? p.entryPrice;
+    const cur = livePrices[p.id] || p.currentPrice || p.entryPrice;
     return s + cur * p.amount;
   }, 0);
   const currentValue = totalCash + openValue;
@@ -1712,7 +1735,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
   // Realized / unrealized
   const realizedPnl = closed.reduce((s, p) => s + ((p.exitPrice - p.entryPrice) * p.amount), 0);
   const unrealizedPnl = open.reduce((s, p) => {
-    const cur = livePrices[p.coinId]?.usd ?? p.currentPrice ?? p.entryPrice;
+    const cur = livePrices[p.id] || p.currentPrice || p.entryPrice;
     return s + ((cur - p.entryPrice) * p.amount);
   }, 0);
 
@@ -2759,28 +2782,29 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
   const [livePrices, setLivePrices] = React.useState({});
   const [alertEdits, setAlertEdits] = React.useState({}); // positionId -> { target, stop }
 
-  const openCoinIds = React.useMemo(() => {
-    if (!activeAccount) return '';
-    return [...new Set((activeAccount.positions || []).filter(p => p.status === 'open').map(p => p.coinId))].join(',');
+  const openForPrices = React.useMemo(() => {
+    if (!activeAccount) return [];
+    return (activeAccount.positions || []).filter(p => p.status === 'open');
   }, [activeAccount]);
+  const openKey = React.useMemo(() => openForPrices.map(p => `${p.id}:${p.coinId}`).join(','), [openForPrices]);
 
   React.useEffect(() => {
-    if (!openCoinIds) {
+    if (openForPrices.length === 0) {
       setLivePrices({});
       onUpdated?.(Date.now());
       return;
     }
     let cancelled = false;
-    const load = () => {
-      fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(openCoinIds)}&vs_currencies=usd&include_24hr_change=true`)
-        .then(r => r.json())
-        .then(d => { if (!cancelled) { setLivePrices(d || {}); onUpdated?.(Date.now()); } })
-        .catch(() => {});
+    const load = async () => {
+      const next = {};
+      await Promise.all(openForPrices.map(async p => { next[p.id] = await fetchCurrentPrice(p.coinId); }));
+      if (!cancelled) { setLivePrices(next); onUpdated?.(Date.now()); }
     };
     load();
     const id = setInterval(load, 60_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [openCoinIds, refreshKey, onUpdated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openKey, refreshKey, onUpdated]);
 
   const setActiveAccount = (id) => onUpdate(prev => ({ ...prev, activeAccountId: id }));
 
@@ -2867,10 +2891,12 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
 
   // Live current prices on open positions
   const positionsWithLive = openPositions.map(p => {
-    const cur = livePrices[p.coinId]?.usd ?? p.currentPrice ?? p.entryPrice;
-    const pnl = (cur - p.entryPrice) * p.amount;
-    const pnlPct = p.entryPrice > 0 ? ((cur / p.entryPrice) - 1) * 100 : 0;
-    return { ...p, _cur: cur, _pnl: pnl, _pnlPct: pnlPct };
+    const cur = livePrices[p.id] || p.currentPrice || p.entryPrice;
+    const value = cur * p.amount;
+    const cost = p.amountUSD ?? (p.entryPrice * p.amount);
+    const pnl = value - cost;
+    const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
+    return { ...p, _cur: cur, _value: value, _pnl: pnl, _pnlPct: pnlPct };
   });
 
   const unrealizedPnl = positionsWithLive.reduce((s, p) => s + p._pnl, 0);
@@ -3036,7 +3062,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                   const edit = alertEdits[p.id] || { target: p.alertTarget ?? '', stop: p.alertStop ?? '' };
                   return (
                     <div key={p.id} onClick={() => setChartModal({ position: p })} style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:14, cursor:"pointer", transition:"border-color 0.15s, background 0.15s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "#2a2a3a"; e.currentTarget.style.background = "#141420"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e1e2a"; e.currentTarget.style.background = "#111"; }}>
-                      <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr auto", gap:12, alignItems:"center" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr 1fr auto", gap:12, alignItems:"center" }}>
                         <div>
                           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                             <span style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{p.name}</span>
@@ -3051,19 +3077,23 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                         </div>
                         <div>
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Entry</div>
-                          <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 6 })}</div>
+                          <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p.entryPrice, { maxFractionDigits: 8 })}</div>
                         </div>
                         <div>
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Current</div>
-                          <div style={{ fontSize:12, color:"#fff" }}>{fmtUsd(p._cur, { maxFractionDigits: 6 })}</div>
+                          <div style={{ fontSize:12, color:"#fff", transition:"color 0.3s ease" }}>{fmtUsd(p._cur, { maxFractionDigits: 8 })}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Value</div>
+                          <div style={{ fontSize:12, color:"#fff", transition:"color 0.3s ease" }}>{fmtUsd(p._value)}</div>
                         </div>
                         <div>
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>P&L</div>
-                          <div style={{ fontSize:12, fontWeight:700, color: p._pnl >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(p._pnl))}</div>
+                          <div style={{ fontSize:12, fontWeight:700, transition:"color 0.3s ease", color: p._pnl >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnl >= 0 ? '+' : '−') + fmtUsd(Math.abs(p._pnl))}</div>
                         </div>
                         <div>
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>P&L %</div>
-                          <div style={{ fontSize:12, fontWeight:700, color: p._pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(2) + '%'}</div>
+                          <div style={{ fontSize:12, fontWeight:700, transition:"color 0.3s ease", color: p._pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{(p._pnlPct >= 0 ? '+' : '') + p._pnlPct.toFixed(2) + '%'}</div>
                         </div>
                         <div>
                           <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase" }}>Held</div>
@@ -3217,7 +3247,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
 
       {/* Close position dialog */}
       {closeFor && (() => {
-        const liveCur = livePrices[closeFor.coinId]?.usd ?? closeFor._cur ?? closeFor.currentPrice ?? closeFor.entryPrice;
+        const liveCur = livePrices[closeFor.id] || closeFor._cur || closeFor.currentPrice || closeFor.entryPrice;
         const sym = (closeFor.symbol || '').toUpperCase();
         const exit = parseFloat(closePrice) || 0;
         const pnl = exit > 0 ? (exit - closeFor.entryPrice) * closeFor.amount : null;
