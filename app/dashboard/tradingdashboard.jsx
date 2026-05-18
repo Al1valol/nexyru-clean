@@ -8159,78 +8159,157 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [sortBy, setSortBy] = React.useState('age');           // 'age' | 'score' | 'mcap' | 'change' | 'replies'
 
+  const [source, setSource] = React.useState('pumpfun');
+
+  const fetchGemsFromDexScreener = React.useCallback(async () => {
+    try {
+      const queries = ['pepe', 'doge', 'moon', 'ape', 'baby', 'cat', 'sol', 'pump'];
+      const q = queries[Math.floor(Math.random() * queries.length)];
+      const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`);
+      const data = r.ok ? await r.json() : null;
+      const pairs = Array.isArray(data?.pairs) ? data.pairs : [];
+      pairs.sort((a, b) => (b?.pairCreatedAt || 0) - (a?.pairCreatedAt || 0));
+
+      const scored = pairs.slice(0, 30).map(p => {
+        const ageHours = p?.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 9999;
+        const vol = parseFloat(p?.volume?.h24 || 0);
+        const change = parseFloat(p?.priceChange?.h24 || 0);
+        let score = 0;
+        if (ageHours < 1) score += 30;
+        else if (ageHours < 6) score += 25;
+        else if (ageHours < 24) score += 20;
+        else if (ageHours < 72) score += 10;
+        if (vol > 1_000_000) score += 25;
+        else if (vol > 100_000) score += 20;
+        else if (vol > 10_000) score += 10;
+        else if (vol > 1_000) score += 5;
+        if (change > 100) score += 25;
+        else if (change > 50) score += 20;
+        else if (change > 20) score += 15;
+        else if (change > 0) score += 10;
+        const baseAddr = p?.baseToken?.address || p?.pairAddress;
+        return {
+          mint: p?.pairAddress || baseAddr,
+          name: p?.baseToken?.name || p?.baseToken?.symbol || 'Unknown',
+          symbol: (p?.baseToken?.symbol || '').toUpperCase(),
+          image_uri: p?.info?.imageUrl || null,
+          usd_market_cap: parseFloat(p?.fdv || p?.marketCap || 0),
+          price_change_24h: change,
+          reply_count: 0,
+          created_timestamp: p?.pairCreatedAt ? Math.floor(p.pairCreatedAt / 1000) : 0,
+          gemScore: Math.min(100, score),
+          ageHours,
+          source: 'dexscreener',
+          _coinKey: `${p?.chainId}:${baseAddr}`,
+          _buyChain: p?.chainId || 'ethereum',
+          _buyPairAddress: p?.pairAddress || null,
+          _linkUrl: p?.url || (p?.chainId && p?.pairAddress ? `https://dexscreener.com/${p.chainId}/${p.pairAddress}` : null),
+          _linkLabel: 'DexScreener ↗',
+        };
+      });
+      setCoins(scored);
+      setSource('dexscreener');
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('DexScreener fallback error:', e);
+      setCoins([]);
+    }
+  }, []);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch newest + most-recently-traded in parallel through our proxy
-      const [newestRes, trendingRes] = await Promise.all([
-        fetch('/api/pump?sort=created_timestamp&order=DESC&limit=30').then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch('/api/pump?sort=last_trade_timestamp&order=DESC&limit=20').then(r => r.ok ? r.json() : null).catch(() => null),
-      ]);
+      // Try Pump.fun first. If the proxy returns an error or non-array shape
+      // (e.g. upstream 530/blocked), fall back to DexScreener.
+      let pumpData = null;
+      try {
+        const r = await fetch('/api/pump?sort=created_timestamp&order=DESC&limit=30');
+        pumpData = await r.json().catch(() => null);
+      } catch {}
 
-      const newest = Array.isArray(newestRes) ? newestRes : [];
-      const trending = Array.isArray(trendingRes) ? trendingRes : [];
+      if (!Array.isArray(pumpData) || pumpData.length === 0 || pumpData.error) {
+        await fetchGemsFromDexScreener();
+        const now = Date.now();
+        setLastUpdated(now);
+        setSecondsAgo(0);
+        onUpdated?.(now);
+        return;
+      }
+
+      // Optional second Pump.fun call for trending; failures are swallowed
+      let trendingData = null;
+      try {
+        const r = await fetch('/api/pump?sort=last_trade_timestamp&order=DESC&limit=20');
+        trendingData = await r.json().catch(() => null);
+      } catch {}
+      const trending = Array.isArray(trendingData) ? trendingData : [];
 
       // Merge + dedupe by mint
       const seen = new Set();
       const merged = [];
-      for (const c of [...newest, ...trending]) {
+      for (const c of [...pumpData, ...trending]) {
         if (!c?.mint) continue;
         if (seen.has(c.mint)) continue;
         seen.add(c.mint);
         merged.push(c);
       }
 
-      // Score every coin per the spec
+      // Score every coin
       const nowSec = Date.now() / 1000;
       const scored = merged.map(coin => {
-        const ageMinutes = (nowSec - (Number(coin.created_timestamp) || nowSec)) / 60;
-        const ageHours = ageMinutes / 60;
+        const ageHours = (nowSec - (Number(coin.created_timestamp) || nowSec)) / 3600;
         const marketCap = Number(coin.usd_market_cap) || 0;
         const priceChange = Number(coin.price_change_24h) || 0;
         const replies = Number(coin.reply_count) || 0;
 
         let score = 0;
-        // Age
         if (ageHours < 1)       score += 30;
         else if (ageHours < 6)  score += 25;
         else if (ageHours < 12) score += 20;
         else if (ageHours < 24) score += 15;
         else if (ageHours < 48) score += 10;
-        // Market cap — sweet spot between dead and parabolic
         if (marketCap > 10000 && marketCap < 50000)        score += 25;
         else if (marketCap > 50000 && marketCap < 200000)  score += 20;
         else if (marketCap > 200000 && marketCap < 500000) score += 15;
         else if (marketCap > 500000)                       score += 5;
         else                                               score += 5;
-        // Momentum
         if (priceChange > 100)      score += 25;
         else if (priceChange > 50)  score += 20;
         else if (priceChange > 20)  score += 15;
         else if (priceChange > 0)   score += 10;
-        // Community engagement
         if (replies > 50)      score += 20;
         else if (replies > 20) score += 15;
         else if (replies > 10) score += 10;
         else if (replies > 5)  score += 5;
 
-        return { ...coin, gemScore: Math.min(100, score), ageHours };
+        return {
+          ...coin,
+          gemScore: Math.min(100, score),
+          ageHours,
+          source: 'pumpfun',
+          _coinKey: `solana:${coin.mint}`,
+          _buyChain: 'solana',
+          _buyPairAddress: null,
+          _linkUrl: `https://pump.fun/${coin.mint}`,
+          _linkLabel: 'Pump.fun ↗',
+        };
       });
 
-      // Default order: newest first
       scored.sort((a, b) => (b.created_timestamp || 0) - (a.created_timestamp || 0));
 
       setCoins(scored);
+      setSource('pumpfun');
       const now = Date.now();
       setLastUpdated(now);
       setSecondsAgo(0);
       onUpdated?.(now);
     } catch (e) {
       if (typeof console !== 'undefined') console.warn('Pump.fun gems error:', e);
+      // Last-ditch fallback so the section never goes blank on a thrown error
+      await fetchGemsFromDexScreener();
     } finally {
       setLoading(false);
     }
-  }, [onUpdated]);
+  }, [onUpdated, fetchGemsFromDexScreener]);
 
   // Auto-refresh every 30 seconds — Pump.fun mints new coins constantly
   React.useEffect(() => {
@@ -8307,7 +8386,9 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
               ? `Last updated: ${secondsAgo < 1 ? 'just now' : secondsAgo + (secondsAgo === 1 ? ' second' : ' seconds') + ' ago'}`
               : 'Loading…'}
           </span>
-          <span style={{ color:'#4b5563' }}>· source: pump.fun · auto-refreshes every 30s</span>
+          <span style={{ color: source === 'pumpfun' ? '#4b5563' : '#f59e0b' }}>
+            · source: {source === 'pumpfun' ? 'pump.fun' : 'dexscreener (pump.fun blocked)'} · auto-refreshes every 30s
+          </span>
         </div>
         <button
           onClick={() => load()}
@@ -8369,10 +8450,16 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const mcap = Number(coin.usd_market_cap) || 0;
             const replies = Number(coin.reply_count) || 0;
             const ageHours = coin.ageHours;
-            const coinKey = `solana:${coin.mint}`;
+            const coinKey = coin._coinKey || `solana:${coin.mint}`;
             const logged = loggedKeys.has(coinKey);
+            // Pump.fun has a fixed 1B supply; DexScreener fallback gives us no
+            // per-token price directly so fall back to the same computation.
             const price = mcap > 0 ? mcap / PUMP_TOTAL_SUPPLY : 0;
-            const pumpUrl = `https://pump.fun/${coin.mint}`;
+            const linkUrl = coin._linkUrl || `https://pump.fun/${coin.mint}`;
+            const linkLabel = coin._linkLabel || 'Pump.fun ↗';
+            const buyChain = coin._buyChain || 'solana';
+            const buyPairAddress = coin._buyPairAddress || null;
+            const sourceLabel = coin.source === 'dexscreener' ? 'DexScreener' : 'Pump.fun';
             const logIt = () => {
               if (logged || !onLogSignal) return;
               onLogSignal({
@@ -8384,7 +8471,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 priceAtSignal: price,
                 change24h: change,
                 loggedAt: new Date().toISOString(),
-                notes: `From New Gems (Pump.fun) — ${pumpUrl}`,
+                notes: `From New Gems (${sourceLabel}) — ${linkUrl}`,
                 didTake: false, exitPrice: null, exitedAt: null,
                 targetGain: null, stopLoss: null,
                 targetHitNotified: false, stopHitNotified: false,
@@ -8455,9 +8542,9 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       coinId: coinKey,
                       name: coin.name || 'Unknown',
                       symbol: (coin.symbol || '').toUpperCase(),
-                      chain: 'solana',
-                      pairAddress: null,
-                      dexUrl: pumpUrl,
+                      chain: buyChain,
+                      pairAddress: buyPairAddress,
+                      dexUrl: linkUrl,
                       price,
                     })}
                     style={{
@@ -8466,11 +8553,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
                     }}
                   >Buy →</button>
-                  <a href={pumpUrl} target="_blank" rel="noreferrer" style={{
+                  <a href={linkUrl} target="_blank" rel="noreferrer" style={{
                     padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
                     color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
                     whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
-                  }}>Pump.fun ↗</a>
+                  }}>{linkLabel}</a>
                 </div>
               </div>
             );
@@ -10790,13 +10877,52 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
         </div>
       </div>
 
-      {/* Balance history chart */}
-      <ChartErrorBoundary resetKey={activeAccount?.id}>
-        <BalanceChart
-          account={activeAccount}
-          onDeposit={() => { setTxnDialog('deposit'); setTxnAmount(''); setTxnNote(''); }}
-        />
-      </ChartErrorBoundary>
+      {/* Activity feed — simple history list (replaces SVG balance chart) */}
+      <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:12, padding:16, marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <div style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Activity</div>
+          {(activeAccount?.history?.length ?? 0) === 0 && (
+            <button onClick={() => { setTxnDialog('deposit'); setTxnAmount(''); setTxnNote(''); }} style={{ padding:"6px 14px", borderRadius:8, border:"none", background:"#22c55e", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Deposit</button>
+          )}
+        </div>
+        {(activeAccount?.history?.length ?? 0) === 0 ? (
+          <div style={{ textAlign:"center", padding:24, color:"#6b7280", fontSize:13 }}>
+            Make your first deposit to start tracking your balance.
+          </div>
+        ) : (
+          <div style={{ maxHeight:240, overflowY:"auto" }}>
+            {(activeAccount.history || []).map((h, i) => {
+              if (!h) return null;
+              const isDeposit  = h.type === 'deposit';
+              const isWithdraw = h.type === 'withdraw' || h.type === 'withdrawal';
+              const isBuy      = h.type === 'buy';
+              const isSell     = h.type === 'sell';
+              const color = isDeposit ? '#22c55e' : isWithdraw ? '#ef4444' : isSell ? (Number(h.pnl) >= 0 ? '#22c55e' : '#ef4444') : '#a5b4fc';
+              const sign = (isDeposit || isSell) ? '+' : '−';
+              const amount = isBuy || isSell ? (Number(h.usd) || 0) : (Number(h.amount) || 0);
+              const label = isBuy ? `Bought ${(h.symbol || '').toUpperCase() || h.coinId || 'token'}`
+                          : isSell ? `Sold ${(h.symbol || '').toUpperCase() || h.coinId || 'token'}`
+                          : isDeposit ? 'Deposit'
+                          : isWithdraw ? 'Withdrawal'
+                          : (h.type || 'Event');
+              return (
+                <div key={h.id || i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #1e1e2a", gap:12 }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:13, color:"#fff", fontWeight:600 }}>{label}</div>
+                    <div style={{ fontSize:11, color:"#6b7280" }}>
+                      {fmtDateShort(h.date)}
+                      {h.note ? ` · ${h.note}` : ''}
+                    </div>
+                  </div>
+                  <span style={{ color, fontSize:13, fontWeight:700, whiteSpace:"nowrap" }}>
+                    {sign}{fmtUsd(Math.abs(amount))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Tabs */}
       <div style={{ display:"flex", gap:4, marginBottom:14, background:"#1a1a24", borderRadius:10, padding:4, border:"1px solid #1e1e2a", width:"fit-content" }}>
@@ -12214,11 +12340,11 @@ function TradingDashboard({ session, onLogout }) {
                 >Refresh</button>
               </div>
             </div>
-            {cryptoSection === 'hotnow'    && <CryptoHotNow    refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />}
-            {cryptoSection === 'gems'      && <CryptoGems      refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />}
-            {cryptoSection === 'uptrends'  && <CryptoUptrends  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} onBuy={setBuyModalCoin} />}
-            {cryptoSection === 'accounts'  && <CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} />}
-            {cryptoSection === 'mystats'   && <CryptoMyStats   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} />}
+            {cryptoSection === 'hotnow'    && <ChartErrorBoundary resetKey="hotnow"><CryptoHotNow    refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
+            {cryptoSection === 'gems'      && <ChartErrorBoundary resetKey="gems"><CryptoGems      refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
+            {cryptoSection === 'uptrends'  && <ChartErrorBoundary resetKey="uptrends"><CryptoUptrends  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
+            {cryptoSection === 'accounts'  && <ChartErrorBoundary resetKey={`accounts:${cryptoAccountStore?.activeAccountId ?? 'none'}`} fallback={<div style={{ padding:32, color:'#9ca3af', background:'#111', border:'1px solid #1e1e2a', borderRadius:12, fontSize:13, textAlign:'center' }}>Error loading accounts. Refresh the page or pick a different account.</div>}><CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} /></ChartErrorBoundary>}
+            {cryptoSection === 'mystats'   && <ChartErrorBoundary resetKey="mystats"><CryptoMyStats   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} /></ChartErrorBoundary>}
           </div>
         )}
 
