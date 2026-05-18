@@ -8132,9 +8132,14 @@ function formatBigUsd(n) {
   return '$' + n.toFixed(0);
 }
 
+const GEM_SEARCH_QUERIES = ['pump', 'moon', 'pepe', 'doge', 'cat', 'sol', 'ape', 'baby', 'meme', 'floki'];
+
 function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [pairs, setPairs] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [lastUpdated, setLastUpdated] = React.useState(null);
+  const [secondsAgo, setSecondsAgo] = React.useState(0);
+  const [activeQuery, setActiveQuery] = React.useState(null);
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '6' | '24' | '48' | '72'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [chainFilter, setChainFilter] = React.useState('all'); // 'all' | 'solana' | 'ethereum' | 'base' | 'bsc'
@@ -8143,85 +8148,45 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const collected = [];
+      // Rotate the themed search query each refresh so the user sees different
+      // coins instead of the same cached set.
+      const q = GEM_SEARCH_QUERIES[Math.floor(Math.random() * GEM_SEARCH_QUERIES.length)];
+      setActiveQuery(q);
 
-      // Step 1: latest token profiles (newest tokens with metadata)
-      let profiles = [];
-      try {
-        const r = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
-        if (r.ok) {
-          const body = await r.json();
-          profiles = Array.isArray(body) ? body : [];
-        }
-      } catch {}
+      const [profilesRes, searchRes] = await Promise.all([
+        fetch('https://api.dexscreener.com/token-profiles/latest/v1').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
 
-      // Step 2: batch fetch pair data for the newest token addresses.
-      // The tokens batch endpoint returns all pairs containing any of those tokens.
-      if (profiles.length > 0) {
-        const addresses = profiles.slice(0, 25).map(p => p.tokenAddress).filter(Boolean).join(',');
-        if (addresses) {
-          try {
-            const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses}`);
-            if (r.ok) {
-              const d = await r.json();
-              const arr = d?.pairs || [];
-              collected.push(...arr);
-            }
-          } catch {}
-        }
-      }
-
-      // Broader search to surface more memecoins (the user asked for this
-      // specifically — Solana memes are the most active new-launch market)
-      try {
-        const r = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana+meme');
-        if (r.ok) {
-          const d = await r.json();
-          for (const item of (d?.pairs || [])) collected.push(item);
-        }
-      } catch {}
-
-      // Also pull DexScreener trending if that endpoint exists
-      try {
-        const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/trending');
-        if (r.ok) {
-          const d = await r.json();
-          const arr = d?.pairs || d?.tokens || (Array.isArray(d) ? d : []);
-          for (const item of arr) {
-            if (item?.pairs && Array.isArray(item.pairs)) collected.push(...item.pairs);
-            else collected.push(item);
+      const profiles = Array.isArray(profilesRes) ? profilesRes : [];
+      let profilePairs = [];
+      const addresses = profiles.slice(0, 15).map(p => p?.tokenAddress).filter(Boolean).join(',');
+      if (addresses) {
+        try {
+          const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses}`);
+          if (r.ok) {
+            const d = await r.json();
+            profilePairs = Array.isArray(d?.pairs) ? d.pairs : [];
           }
-        }
-      } catch {}
-
-      // Fallback: if everything above came back empty, do themed searches
-      if (collected.length === 0) {
-        const queries = ['pepe', 'doge', 'moon'];
-        const results = await Promise.allSettled(
-          queries.map(q => fetch(`https://api.dexscreener.com/latest/dex/search?q=${q}`).then(r => r.ok ? r.json() : null))
-        );
-        for (const r of results) {
-          if (r.status !== 'fulfilled' || !r.value) continue;
-          const arr = r.value.pairs || [];
-          collected.push(...arr);
-        }
+        } catch {}
       }
+      const searchPairs = Array.isArray(searchRes?.pairs) ? searchRes.pairs : [];
 
-      // Dedupe by chain:pairAddress
-      const seenPair = new Set();
-      const uniquePairs = [];
-      for (const p of collected) {
+      // Merge + dedupe by pairAddress
+      const seen = new Set();
+      const merged = [];
+      for (const p of [...profilePairs, ...searchPairs]) {
         if (!p?.chainId || !p?.pairAddress) continue;
         const key = `${p.chainId}:${p.pairAddress}`;
-        if (seenPair.has(key)) continue;
-        seenPair.add(key);
-        uniquePairs.push(p);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(p);
       }
 
       // Dedupe by base token — keep the highest-liquidity pair per token so
-      // the same coin doesn't appear 5 times across different DEXes.
+      // the same coin doesn't appear multiple times across DEXes.
       const byToken = new Map();
-      for (const p of uniquePairs) {
+      for (const p of merged) {
         const tokenKey = `${p.chainId}:${(p.baseToken?.address || '').toLowerCase()}`;
         const liq = parseFloat(p.liquidity?.usd || 0);
         const existing = byToken.get(tokenKey);
@@ -8230,21 +8195,18 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         }
       }
 
-      // No hard liquidity/volume gates — the gem score itself reflects those
-      // signals, and filtering here masks coins the user might explicitly want
-      // to see (e.g. dust-liquidity coins with extreme momentum).
+      // Newest first, capped at 80
       let pairsArr = [...byToken.values()];
-
-      // Default order: newest first by pairCreatedAt. UI sort pills override.
       pairsArr.sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0));
-
-      // Cap at 80 so the grid stays manageable
       pairsArr = pairsArr.slice(0, 80);
 
       setPairs(pairsArr);
-      onUpdated?.(Date.now());
-    } catch {
-      // swallow — show stale data
+      const now = Date.now();
+      setLastUpdated(now);
+      setSecondsAgo(0);
+      onUpdated?.(now);
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('Gems fetch error:', e);
     } finally {
       setLoading(false);
     }
@@ -8252,9 +8214,17 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
   React.useEffect(() => {
     load();
-    const id = setInterval(load, 2 * 60 * 1000);
+    const id = setInterval(load, 60_000); // refresh every 60 seconds
     return () => clearInterval(id);
   }, [load, refreshKey]);
+
+  // 1-second tick so "Last updated X seconds ago" stays live
+  React.useEffect(() => {
+    const tick = setInterval(() => {
+      if (lastUpdated) setSecondsAgo(Math.floor((Date.now() - lastUpdated) / 1000));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [lastUpdated]);
 
   const loggedKeys = React.useMemo(
     () => new Set(signals.map(s => s.coinId)),
@@ -8301,8 +8271,40 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
   return (
     <div>
-      <div style={{ padding:'10px 14px', borderRadius:10, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', color:'#fcd34d', fontSize:12, marginBottom:16 }}>
+      <div style={{ padding:'10px 14px', borderRadius:10, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', color:'#fcd34d', fontSize:12, marginBottom:12 }}>
         ⚠️ New coins are extremely high risk. Most will go to zero. Only invest what you can afford to lose completely.
+      </div>
+
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+        <div style={{ fontSize:11, color:'#6b7280', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span>
+            {lastUpdated
+              ? `Last updated: ${secondsAgo < 1 ? 'just now' : secondsAgo + (secondsAgo === 1 ? ' second' : ' seconds') + ' ago'}`
+              : 'Loading…'}
+          </span>
+          {activeQuery && <span style={{ color:'#a5b4fc', fontWeight:700 }}>· query: {activeQuery}</span>}
+          <span style={{ color:'#4b5563' }}>· auto-refreshes every 60s</span>
+        </div>
+        <button
+          onClick={() => load()}
+          disabled={loading}
+          style={{
+            padding:'6px 14px', borderRadius:8, border:'1px solid #2a2a3a',
+            background: loading ? '#1a1a24' : '#1a1a24',
+            color: loading ? '#6b7280' : '#fff',
+            fontSize:12, fontWeight:700, cursor: loading ? 'not-allowed' : 'pointer',
+            display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
+          }}
+        >
+          {loading ? (
+            <>
+              <div style={{ width:12, height:12, border:'2px solid #2a2a3a', borderTopColor:'#a5b4fc', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+              Refreshing…
+            </>
+          ) : (
+            <>🔄 Refresh</>
+          )}
+        </button>
       </div>
 
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
