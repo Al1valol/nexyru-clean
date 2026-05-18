@@ -8151,75 +8151,37 @@ function formatPumpAge(ageHours) {
 }
 
 function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
-  const [coins, setCoins] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
-  const [lastUpdated, setLastUpdated] = React.useState(null);
+  const [gems, setGems] = React.useState([]);
+  const [gemsLoading, setGemsLoading] = React.useState(true);
+  const [gemsLastUpdated, setGemsLastUpdated] = React.useState(null);
   const [secondsAgo, setSecondsAgo] = React.useState(0);
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '1' | '6' | '24' | '48'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'age' | 'mcap' | 'change' | 'volume'
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
+  const fetchGems = React.useCallback(async () => {
+    setGemsLoading(true);
     try {
-      // Step 1: latest token profiles (newest tokens listed on DexScreener)
-      let profiles = [];
-      try {
-        const r = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
-        if (r.ok) {
-          const body = await r.json();
-          if (Array.isArray(body)) profiles = body;
-        }
-      } catch {}
+      // Step 1: latest token profiles from DexScreener
+      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
+      const profiles = await profilesRes.json();
+      const arr = Array.isArray(profiles) ? profiles : [];
 
-      const addresses = profiles
-        .slice(0, 20)
-        .map(p => p?.tokenAddress)
-        .filter(Boolean);
-
-      // Step 2: batch-fetch pair data for the profile token addresses (10 per request)
-      let allPairs = [];
-      const batchSize = 10;
-      for (let i = 0; i < addresses.length; i += batchSize) {
-        const batch = addresses.slice(i, i + batchSize).join(',');
-        try {
-          const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${batch}`);
-          if (r.ok) {
-            const d = await r.json();
-            if (Array.isArray(d?.pairs)) allPairs = allPairs.concat(d.pairs);
-          }
-        } catch {}
+      // Step 2: extract token addresses
+      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean);
+      if (addresses.length === 0) {
+        setGems([]);
+        setGemsLoading(false);
+        return;
       }
 
-      // Step 3: trending — adds variety beyond brand-new launches
-      try {
-        const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/trending');
-        if (r.ok) {
-          const d = await r.json();
-          const arr = Array.isArray(d?.pairs)
-            ? d.pairs
-            : Array.isArray(d?.tokens)
-              ? d.tokens
-              : Array.isArray(d)
-                ? d
-                : [];
-          for (const item of arr) {
-            if (item?.pairs && Array.isArray(item.pairs)) allPairs = allPairs.concat(item.pairs);
-            else allPairs.push(item);
-          }
-        }
-      } catch {}
+      // Step 3: fetch pair data in one batch
+      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`);
+      const pairsData = await pairsRes.json();
+      const pairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : [];
 
-      // Dedupe by pairAddress
-      const seen = new Set();
-      const unique = [];
-      for (const p of allPairs) {
-        if (!p?.pairAddress || seen.has(p.pairAddress)) continue;
-        seen.add(p.pairAddress);
-        unique.push(p);
-      }
-
-      const scored = unique.map(p => {
+      // Step 4: score each pair
+      const scored = pairs.map(p => {
         const ageHours = p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 9999;
         const vol = parseFloat(p.volume?.h24 || 0);
         const liq = parseFloat(p.liquidity?.usd || 0);
@@ -8227,82 +8189,70 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         const change24h = parseFloat(p.priceChange?.h24 || 0);
 
         let score = 0;
-        // Age score
         if (ageHours < 6) score += 30;
         else if (ageHours < 24) score += 25;
-        else if (ageHours < 48) score += 20;
-        else if (ageHours < 72) score += 10;
-        // Volume score
+        else if (ageHours < 48) score += 15;
+        else score += 5;
         if (vol > 500_000) score += 25;
         else if (vol > 100_000) score += 20;
         else if (vol > 10_000) score += 15;
-        else if (vol > 1_000) score += 5;
-        // Momentum (1h)
-        if (change1h > 20) score += 25;
-        else if (change1h > 5) score += 15;
+        else if (vol > 1_000) score += 8;
+        if (change1h > 50) score += 25;
+        else if (change1h > 20) score += 20;
+        else if (change1h > 5) score += 10;
         else if (change1h > 0) score += 5;
-        // Liquidity
         if (liq > 100_000) score += 20;
-        else if (liq > 10_000) score += 10;
+        else if (liq > 10_000) score += 12;
         else if (liq > 1_000) score += 5;
 
-        const baseAddr = p.baseToken?.address || p.pairAddress;
         return {
           gemScore: Math.min(100, score),
           ageHours,
-          source: 'dexscreener',
-          mint: p.pairAddress,
           name: p.baseToken?.name || 'Unknown',
-          symbol: (p.baseToken?.symbol || '???').toUpperCase(),
-          image_uri: p.info?.imageUrl || null,
+          symbol: p.baseToken?.symbol || '???',
           price: p.priceUsd,
-          usd_market_cap: parseFloat(p.fdv || p.marketCap || 0),
-          price_change_1h: change1h,
-          price_change_24h: change24h,
-          volume_24h: vol,
+          marketCap: parseFloat(p.fdv || 0),
+          change1h,
+          change24h,
+          volume24h: vol,
           liquidity: liq,
           chainId: p.chainId,
           pairAddress: p.pairAddress,
-          pumpUrl: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
-          created_timestamp: p.pairCreatedAt ? Math.floor(p.pairCreatedAt / 1000) : 0,
-          _coinKey: `${p.chainId}:${baseAddr}`,
-          _buyChain: p.chainId || 'ethereum',
-          _buyPairAddress: p.pairAddress || null,
-          _linkUrl: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
-          _linkLabel: 'DexScreener ↗',
+          url: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
+          coinId: p.baseToken?.address || p.pairAddress,
+          image: p.info?.imageUrl || null,
         };
       });
 
-      // Default order: gem score descending
       scored.sort((a, b) => b.gemScore - a.gemScore);
-
-      setCoins(scored);
+      setGems(scored);
       const now = Date.now();
-      setLastUpdated(now);
+      setGemsLastUpdated(now);
       setSecondsAgo(0);
       onUpdated?.(now);
     } catch (e) {
-      if (typeof console !== 'undefined') console.warn('Gems error:', e);
-      setCoins([]);
+      if (typeof console !== 'undefined') console.error('fetchGems error:', e?.message || e);
+      setGems([]);
     } finally {
-      setLoading(false);
+      setGemsLoading(false);
     }
   }, [onUpdated]);
 
-  // Auto-refresh every 60 seconds
+  // Auto-refresh every 60 seconds. The component only mounts while the gems
+  // sub-section is active, so this is equivalent to gating on appMode/section.
   React.useEffect(() => {
-    load();
-    const id = setInterval(load, 60_000);
+    fetchGems();
+    const id = setInterval(fetchGems, 60_000);
     return () => clearInterval(id);
-  }, [load, refreshKey]);
+  }, [fetchGems, refreshKey]);
 
-  // 1-second tick so "Last updated X seconds ago" stays live
+  // 1-second tick so "updated Xs ago" stays live
   React.useEffect(() => {
     const tick = setInterval(() => {
-      if (lastUpdated) setSecondsAgo(Math.floor((Date.now() - lastUpdated) / 1000));
+      if (gemsLastUpdated) setSecondsAgo(Math.floor((Date.now() - gemsLastUpdated) / 1000));
     }, 1000);
     return () => clearInterval(tick);
-  }, [lastUpdated]);
+  }, [gemsLastUpdated]);
 
   const loggedKeys = React.useMemo(
     () => new Set(signals.map(s => s.coinId)),
@@ -8310,7 +8260,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   );
 
   const visible = React.useMemo(() => {
-    let arr = coins;
+    let arr = gems;
     if (ageFilter !== 'all') {
       const max = parseFloat(ageFilter);
       arr = arr.filter(c => c.ageHours < max);
@@ -8319,14 +8269,14 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     else if (scoreFilter === 'gems') arr = arr.filter(c => c.gemScore >= 70);
     arr = [...arr];
     if (sortBy === 'score')        arr.sort((a, b) => b.gemScore - a.gemScore);
-    else if (sortBy === 'mcap')    arr.sort((a, b) => (b.usd_market_cap || 0) - (a.usd_market_cap || 0));
-    else if (sortBy === 'change')  arr.sort((a, b) => (b.price_change_24h || 0) - (a.price_change_24h || 0));
-    else if (sortBy === 'volume')  arr.sort((a, b) => (b.volume_24h || 0) - (a.volume_24h || 0));
-    else                           arr.sort((a, b) => (b.created_timestamp || 0) - (a.created_timestamp || 0));
+    else if (sortBy === 'mcap')    arr.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
+    else if (sortBy === 'change')  arr.sort((a, b) => (b.change24h || 0) - (a.change24h || 0));
+    else if (sortBy === 'volume')  arr.sort((a, b) => (b.volume24h || 0) - (a.volume24h || 0));
+    else                           arr.sort((a, b) => (a.ageHours || 0) - (b.ageHours || 0));
     return arr;
-  }, [coins, ageFilter, scoreFilter, sortBy]);
+  }, [gems, ageFilter, scoreFilter, sortBy]);
 
-  const launchedInLastHour = coins.filter(c => c.ageHours < 1).length;
+  const launchedInLastHour = gems.filter(c => c.ageHours < 1).length;
 
   const pillStyle = (active, accent) => ({
     padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
@@ -8335,11 +8285,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
   });
 
-  if (loading && coins.length === 0) {
+  if (gemsLoading && gems.length === 0) {
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
         <div style={{ width:24, height:24, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
-        Loading fresh launches from Pump.fun…
+        Loading fresh launches from DexScreener…
       </div>
     );
   }
@@ -8360,24 +8310,24 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
         <div style={{ fontSize:11, color:'#6b7280', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span>
-            {lastUpdated
+            {gemsLastUpdated
               ? `Last updated: ${secondsAgo < 1 ? 'just now' : secondsAgo + (secondsAgo === 1 ? ' second' : ' seconds') + ' ago'}`
               : 'Loading…'}
           </span>
           <span style={{ color:'#4b5563' }}>· source: dexscreener · auto-refreshes every 60s</span>
         </div>
         <button
-          onClick={() => load()}
-          disabled={loading}
+          onClick={() => fetchGems()}
+          disabled={gemsLoading}
           style={{
             padding:'6px 14px', borderRadius:8, border:'1px solid #2a2a3a',
             background:'#1a1a24',
-            color: loading ? '#6b7280' : '#fff',
-            fontSize:12, fontWeight:700, cursor: loading ? 'not-allowed' : 'pointer',
+            color: gemsLoading ? '#6b7280' : '#fff',
+            fontSize:12, fontWeight:700, cursor: gemsLoading ? 'not-allowed' : 'pointer',
             display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
           }}
         >
-          {loading ? (
+          {gemsLoading ? (
             <>
               <div style={{ width:12, height:12, border:'2px solid #2a2a3a', borderTopColor:'#a5b4fc', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
               Refreshing…
@@ -8422,10 +8372,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           {visible.map(coin => {
             const score = coin.gemScore;
             const badge = gemBadge(score);
-            const change = Number(coin.price_change_24h) || 0;
-            const change1h = Number(coin.price_change_1h) || 0;
-            const mcap = Number(coin.usd_market_cap) || 0;
-            const vol = Number(coin.volume_24h) || 0;
+            const change = Number(coin.change24h) || 0;
+            const change1h = Number(coin.change1h) || 0;
+            const mcap = Number(coin.marketCap) || 0;
+            const vol = Number(coin.volume24h) || 0;
             const liq = Number(coin.liquidity) || 0;
             const ageHours = coin.ageHours;
             const ageLabel = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
@@ -8439,41 +8389,37 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const chainKey = (coin.chainId || '').toLowerCase();
             const chainColor = chainColors[chainKey] || '#6b7280';
             const chainShort = ({ solana:'SOL', ethereum:'ETH', base:'BASE', bsc:'BSC' }[chainKey] || (coin.chainId || '').toUpperCase().slice(0, 4));
-            const coinKey = coin._coinKey || `solana:${coin.mint}`;
-            const logged = loggedKeys.has(coinKey);
-            // Pump.fun has a fixed 1B supply; DexScreener fallback gives us no
-            // per-token price directly so fall back to the same computation.
-            const price = mcap > 0 ? mcap / PUMP_TOTAL_SUPPLY : 0;
-            const linkUrl = coin._linkUrl || `https://pump.fun/${coin.mint}`;
-            const linkLabel = coin._linkLabel || 'Pump.fun ↗';
-            const buyChain = coin._buyChain || 'solana';
-            const buyPairAddress = coin._buyPairAddress || null;
-            const sourceLabel = coin.source === 'dexscreener' ? 'DexScreener' : 'Pump.fun';
+            // Build the chain-prefixed coinId used by signals/positions/journal
+            // so the lookup matches what we store on buy.
+            const trackedCoinId = coin.chainId && coin.coinId ? `${coin.chainId}:${coin.coinId}` : (coin.coinId || coin.pairAddress);
+            const logged = loggedKeys.has(trackedCoinId);
+            const buyEntryPrice = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : 0;
+            const linkUrl = coin.url;
             const logIt = () => {
               if (logged || !onLogSignal) return;
               onLogSignal({
                 id: Date.now(),
-                coinId: coinKey,
+                coinId: trackedCoinId,
                 name: coin.name || 'Unknown',
                 symbol: (coin.symbol || '').toUpperCase(),
                 score,
-                priceAtSignal: price,
+                priceAtSignal: buyEntryPrice,
                 change24h: change,
                 loggedAt: new Date().toISOString(),
-                notes: `From New Gems (${sourceLabel}) — ${linkUrl}`,
+                notes: `From New Gems (DexScreener) — ${linkUrl}`,
                 didTake: false, exitPrice: null, exitedAt: null,
                 targetGain: null, stopLoss: null,
                 targetHitNotified: false, stopHitNotified: false,
               });
             };
             return (
-              <div key={coin.mint} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
+              <div key={coin.pairAddress || coin.coinId} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
                     <div style={{ width:40, height:40, borderRadius:'50%', background:'#1a1a24', flexShrink:0, overflow:'hidden' }}>
-                      {coin.image_uri && (
+                      {coin.image && (
                         <img
-                          src={coin.image_uri}
+                          src={coin.image}
                           alt=""
                           loading="lazy"
                           referrerPolicy="no-referrer"
@@ -8541,13 +8487,13 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   >{logged ? 'Logged ✓' : 'Log Signal'}</button>
                   <button
                     onClick={() => onBuy?.({
-                      coinId: coinKey,
+                      coinId: trackedCoinId,
                       name: coin.name || 'Unknown',
                       symbol: (coin.symbol || '').toUpperCase(),
-                      chain: buyChain,
-                      pairAddress: buyPairAddress,
+                      chain: coin.chainId || 'ethereum',
+                      pairAddress: coin.pairAddress || null,
                       dexUrl: linkUrl,
-                      price,
+                      price: buyEntryPrice,
                     })}
                     style={{
                       flex:1, padding:'7px 10px', borderRadius:8, border:'none',
@@ -8559,7 +8505,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
                     color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
                     whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
-                  }}>{linkLabel}</a>
+                  }}>DexScreener ↗</a>
                 </div>
               </div>
             );
