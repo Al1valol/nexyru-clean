@@ -8075,6 +8075,318 @@ function CryptoNewPairs({ refreshKey, onUpdated }) {
   );
 }
 
+function gemBadge(score) {
+  if (score >= 71) return { label: '💎 GEM',  bg: 'rgba(99,102,241,0.20)', color: '#a5b4fc', desc: 'High momentum, good liquidity, very new — high risk/reward' };
+  if (score >= 51) return { label: '🟢 Hot',  bg: 'rgba(34,197,94,0.15)',  color: '#22c55e', desc: 'Good volume and momentum — worth watching' };
+  if (score >= 31) return { label: '🟡 Watch',bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', desc: 'Some activity but needs more confirmation' };
+  return                  { label: '🔴 Low',  bg: 'rgba(239,68,68,0.15)',  color: '#ef4444', desc: 'Low activity — proceed with extreme caution' };
+}
+
+function gemScore(pair) {
+  let score = 0;
+  const ageHours = pair.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 3600000 : 999;
+  const vol = parseFloat(pair.volume?.h24 || 0);
+  const liq = parseFloat(pair.liquidity?.usd || 0);
+  const c1h = parseFloat(pair.priceChange?.h1 || 0);
+  const c6h = parseFloat(pair.priceChange?.h6 || 0);
+
+  if (ageHours < 6)       score += 25;
+  else if (ageHours < 24) score += 20;
+  else if (ageHours < 48) score += 15;
+  else if (ageHours < 72) score += 10;
+
+  if (vol > 1_000_000)    score += 25;
+  else if (vol > 500_000) score += 20;
+  else if (vol > 100_000) score += 15;
+  else if (vol >  50_000) score += 10;
+  else if (vol >  10_000) score += 5;
+
+  if (c1h > 20)      score += 20;
+  else if (c1h > 10) score += 15;
+  else if (c1h > 5)  score += 10;
+  else if (c1h > 0)  score += 5;
+
+  if (c6h > 50)      score += 15;
+  else if (c6h > 20) score += 10;
+  else if (c6h > 0)  score += 5;
+
+  if (liq > 100_000)    score += 15;
+  else if (liq > 50_000)  score += 10;
+  else if (liq > 10_000)  score += 5;
+
+  return Math.min(100, score);
+}
+
+function formatAgeLabel(hours) {
+  if (hours == null || !isFinite(hours)) return '?';
+  if (hours < 1) return '<1 hour old';
+  if (hours < 24) return Math.floor(hours) + (Math.floor(hours) === 1 ? ' hour old' : ' hours old');
+  const days = Math.floor(hours / 24);
+  return days + (days === 1 ? ' day old' : ' days old');
+}
+
+function formatBigUsd(n) {
+  if (!n) return '$0';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+  return '$' + n.toFixed(0);
+}
+
+function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal }) {
+  const [pairs, setPairs] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '6' | '24' | '48' | '72'
+  const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
+  const [chainFilter, setChainFilter] = React.useState('all'); // 'all' | 'solana' | 'ethereum' | 'base' | 'bsc'
+  const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'volume' | 'age' | 'change1h'
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const sources = [
+        'https://api.dexscreener.com/latest/dex/tokens/trending',
+        'https://api.dexscreener.com/latest/dex/search?q=new',
+      ];
+      const results = await Promise.allSettled(sources.map(u => fetch(u).then(r => r.ok ? r.json() : null)));
+      const collected = [];
+      for (const r of results) {
+        if (r.status !== 'fulfilled' || !r.value) continue;
+        // /search returns { pairs }; /tokens/trending shape varies — try both
+        const arr = r.value.pairs || r.value.tokens || (Array.isArray(r.value) ? r.value : []);
+        for (const item of arr) {
+          // Some endpoints return tokens that wrap pairs; flatten if needed
+          if (item.pairs && Array.isArray(item.pairs)) collected.push(...item.pairs);
+          else collected.push(item);
+        }
+      }
+      const seen = new Set();
+      const unique = [];
+      for (const p of collected) {
+        if (!p || !p.chainId || !p.pairAddress) continue;
+        const key = `${p.chainId}:${p.pairAddress}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(p);
+      }
+      const filtered = unique.filter(p => {
+        if (!p.pairCreatedAt) return false;
+        const ageHours = (Date.now() - p.pairCreatedAt) / 3600000;
+        if (ageHours >= 72) return false;
+        const vol = parseFloat(p.volume?.h24 || 0);
+        if (vol <= 10000) return false;
+        const liq = parseFloat(p.liquidity?.usd || 0);
+        if (liq <= 5000) return false;
+        const c1h = parseFloat(p.priceChange?.h1 || 0);
+        const c6h = parseFloat(p.priceChange?.h6 || 0);
+        if (c1h <= 0 && c6h <= 0) return false;
+        return true;
+      });
+      setPairs(filtered);
+      onUpdated?.(Date.now());
+    } catch {
+      // swallow — show stale data
+    } finally {
+      setLoading(false);
+    }
+  }, [onUpdated]);
+
+  React.useEffect(() => {
+    load();
+    const id = setInterval(load, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [load, refreshKey]);
+
+  const loggedKeys = React.useMemo(
+    () => new Set(signals.map(s => s.coinId)),
+    [signals]
+  );
+
+  const visible = React.useMemo(() => {
+    let arr = pairs.map(p => ({ ...p, _score: gemScore(p), _ageH: p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 999 }));
+    if (ageFilter !== 'all') {
+      const max = parseFloat(ageFilter);
+      arr = arr.filter(p => p._ageH < max);
+    }
+    if (scoreFilter === 'hot') arr = arr.filter(p => p._score >= 50);
+    else if (scoreFilter === 'gems') arr = arr.filter(p => p._score >= 70);
+    if (chainFilter !== 'all') arr = arr.filter(p => (p.chainId || '').toLowerCase() === chainFilter);
+    arr.sort((a, b) => {
+      if (sortBy === 'volume')    return parseFloat(b.volume?.h24 || 0) - parseFloat(a.volume?.h24 || 0);
+      if (sortBy === 'age')       return (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0);
+      if (sortBy === 'change1h')  return parseFloat(b.priceChange?.h1 || 0) - parseFloat(a.priceChange?.h1 || 0);
+      return b._score - a._score;
+    });
+    return arr;
+  }, [pairs, ageFilter, scoreFilter, chainFilter, sortBy]);
+
+  const chainColors = { solana:'#9945ff', ethereum:'#627eea', base:'#0052ff', bsc:'#f0b90b' };
+  const chainColor = (c) => chainColors[(c || '').toLowerCase()] || '#6b7280';
+  const chainShort = (c) => ({ solana:'SOL', ethereum:'ETH', base:'BASE', bsc:'BSC' }[(c || '').toLowerCase()] || (c || '').toUpperCase().slice(0, 4));
+
+  const pillStyle = (active, accent) => ({
+    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
+    background: active ? (accent || '#6366f1') : '#1a1a24',
+    color: active ? '#fff' : '#9ca3af',
+    fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+  });
+
+  if (loading && pairs.length === 0) {
+    return <div style={{ color: '#6b7280', padding: 32 }}>Scanning chains for fresh launches…</div>;
+  }
+
+  return (
+    <div>
+      <div style={{ padding:'10px 14px', borderRadius:10, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', color:'#fcd34d', fontSize:12, marginBottom:16 }}>
+        ⚠️ New coins are extremely high risk. Most will go to zero. Only invest what you can afford to lose completely.
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Age</span>
+          {[['all','All'],['6','<6h'],['24','<24h'],['48','<48h'],['72','<72h']].map(([id, label]) => (
+            <button key={id} onClick={() => setAgeFilter(id)} style={pillStyle(ageFilter === id)}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Score</span>
+          {[['all','All'],['hot','Hot+ (50+)'],['gems','Gems only (70+)']].map(([id, label]) => (
+            <button key={id} onClick={() => setScoreFilter(id)} style={pillStyle(scoreFilter === id, id === 'gems' ? '#6366f1' : '#22c55e')}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Chain</span>
+          {[['all','All'],['solana','SOL'],['ethereum','ETH'],['base','BASE'],['bsc','BSC']].map(([id, label]) => (
+            <button key={id} onClick={() => setChainFilter(id)} style={pillStyle(chainFilter === id, id !== 'all' ? chainColor(id) : '#6366f1')}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Sort</span>
+          {[['score','Gem Score'],['volume','Volume'],['age','Age'],['change1h','1h Change']].map(([id, label]) => (
+            <button key={id} onClick={() => setSortBy(id)} style={pillStyle(sortBy === id)}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
+        {visible.length} {visible.length === 1 ? 'gem' : 'gems'} found · auto-refreshes every 2m
+      </div>
+
+      {visible.length === 0 ? (
+        <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#111', border:'1px dashed #1e1e2a', borderRadius:12 }}>
+          No gems matching your filters right now. Try widening the age or score filter.
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:12 }}>
+          {visible.map(p => {
+            const score = p._score;
+            const badge = gemBadge(score);
+            const ageH = p._ageH;
+            const price = parseFloat(p.priceUsd || 0);
+            const c1h = parseFloat(p.priceChange?.h1 || 0);
+            const c6h = parseFloat(p.priceChange?.h6 || 0);
+            const c24h = parseFloat(p.priceChange?.h24 || 0);
+            const vol = parseFloat(p.volume?.h24 || 0);
+            const liq = parseFloat(p.liquidity?.usd || 0);
+            const url = p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`;
+            const baseAddr = p.baseToken?.address || '';
+            const coinKey = baseAddr ? `${p.chainId}:${baseAddr}` : `${p.chainId}:${p.pairAddress}`;
+            const logged = loggedKeys.has(coinKey);
+            const priceStr = price === 0 ? '—'
+              : price < 0.0001 ? '$' + price.toExponential(2)
+              : price < 1 ? '$' + price.toFixed(6)
+              : '$' + price.toFixed(4);
+            const logIt = () => {
+              if (logged || !onLogSignal) return;
+              onLogSignal({
+                id: Date.now(),
+                coinId: coinKey,
+                name: p.baseToken?.name || p.baseToken?.symbol || 'Unknown',
+                symbol: (p.baseToken?.symbol || '').toUpperCase(),
+                score,
+                priceAtSignal: price,
+                change24h: c24h,
+                loggedAt: new Date().toISOString(),
+                didTake: false,
+                exitPrice: null,
+                exitedAt: null,
+                notes: `From New Gems — ${p.chainId?.toUpperCase()} · ${url}`,
+                targetGain: null,
+                stopLoss: null,
+                targetHitNotified: false,
+                stopHitNotified: false,
+              });
+            };
+            return (
+              <div key={coinKey} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                  <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em' }}>{badge.label}</span>
+                  <span style={{ fontSize:11, color:'#6b7280' }}>Score <span style={{ color:'#fff', fontWeight:700 }}>{score}</span></span>
+                </div>
+
+                <div>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:8, flexWrap:'wrap' }}>
+                    <div style={{ fontSize:18, fontWeight:800, color:'#fff' }}>{p.baseToken?.symbol || '???'}</div>
+                    <div style={{ fontSize:12, color:'#9ca3af' }}>{p.baseToken?.name || ''}</div>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
+                    <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:chainColor(p.chainId)+'22', color:chainColor(p.chainId), fontWeight:700 }}>{chainShort(p.chainId)}</span>
+                    <span style={{ fontSize:11, color:'#6b7280' }}>{formatAgeLabel(ageH)}</span>
+                  </div>
+                </div>
+
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                  <div style={{ fontSize:18, fontWeight:800, color:'#fff' }}>{priceStr}</div>
+                  <div style={{ display:'flex', gap:10 }}>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase' }}>1h</div>
+                      <div style={{ fontSize:12, fontWeight:700, color: c1h >= 0 ? '#22c55e' : '#ef4444' }}>{c1h >= 0 ? '+' : ''}{c1h.toFixed(1)}%</div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase' }}>6h</div>
+                      <div style={{ fontSize:12, fontWeight:700, color: c6h >= 0 ? '#22c55e' : '#ef4444' }}>{c6h >= 0 ? '+' : ''}{c6h.toFixed(1)}%</div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase' }}>24h</div>
+                      <div style={{ fontSize:12, fontWeight:700, color: c24h >= 0 ? '#22c55e' : '#ef4444' }}>{c24h >= 0 ? '+' : ''}{c24h.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display:'flex', gap:14, fontSize:11 }}>
+                  <span style={{ color:'#6b7280' }}>Vol <span style={{ color:'#fff', fontWeight:700 }}>{formatBigUsd(vol)}</span></span>
+                  <span style={{ color:'#6b7280' }}>Liq <span style={{ color:'#fff', fontWeight:700 }}>{formatBigUsd(liq)}</span></span>
+                </div>
+
+                <div style={{ fontSize:10, color:'#6b7280', fontStyle:'italic', borderTop:'1px solid #1e1e2a', paddingTop:8 }}>
+                  {badge.desc}
+                </div>
+
+                <div style={{ display:'flex', gap:8 }}>
+                  <button
+                    onClick={logIt}
+                    disabled={logged}
+                    style={{
+                      flex:1, padding:'7px 10px', borderRadius:8, border:'none',
+                      background: logged ? '#2a2a3a' : '#6366f1',
+                      color: logged ? '#6b7280' : '#fff',
+                      fontSize:12, fontWeight:700, cursor: logged ? 'default' : 'pointer',
+                    }}
+                  >{logged ? 'Logged ✓' : 'Log as Signal'}</button>
+                  <a href={url} target="_blank" rel="noreferrer" style={{
+                    padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
+                    color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
+                    whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
+                  }}>DexScreener ↗</a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CryptoGainers({ refreshKey, onUpdated }) {
   const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -9374,6 +9686,7 @@ function TradingDashboard({ session, onLogout }) {
   const cryptoSectionLabel = {
     trending: 'Trending coins',
     newpairs: 'New hot pairs (auto-refresh 2m)',
+    gems:     'New launches scored for blow-up potential (auto-refresh 2m)',
     gainers:  'Top gainers',
     watchlist:'Your watchlist (auto-refresh 1m)',
     journal:  'Logged signals & taken trades',
@@ -10185,6 +10498,7 @@ function TradingDashboard({ session, onLogout }) {
           {[
             {id:'trending', label:'Trending', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/></svg>},
             {id:'newpairs', label:'New Pairs', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>},
+            {id:'gems',     label:'New Gems', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3L8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>},
             {id:'gainers',  label:'Top Gainers', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
             {id:'watchlist',label:'Watchlist', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>},
             {id:'journal',  label:'Journal', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>},
@@ -10405,6 +10719,7 @@ function TradingDashboard({ session, onLogout }) {
             </div>
             {cryptoSection === 'trending'  && <CryptoTrending  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />}
             {cryptoSection === 'newpairs'  && <CryptoNewPairs  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
+            {cryptoSection === 'gems'      && <CryptoGems      refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} />}
             {cryptoSection === 'gainers'   && <CryptoGainers   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
             {cryptoSection === 'watchlist' && <CryptoWatchlist refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} />}
             {cryptoSection === 'journal'   && <CryptoJournal   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onUpdateSignals={updateCryptoSignals} />}
