@@ -35,23 +35,20 @@ function scoreBadge(score) {
   return { label: '🔴 Weak', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' };
 }
 
-// DexScreener coins use a contract address (with '0x' or a chain prefix like
-// 'base:0x7b...'). CoinGecko's simple/price endpoint only knows named coin
-// ids like 'bitcoin', so calling it with a contract address silently returns
-// {} and P&L collapses to $0. Detect the coin type and route accordingly.
+// Routes through /api/price so CoinGecko / DexScreener calls don't get hit
+// per-client (CoinGecko throttles aggressively from the browser). Detection:
+// '0x' or ':' in the id means a DexScreener contract address; otherwise a
+// CoinGecko named coin like 'bitcoin' / 'hyperliquid'.
 async function fetchCurrentPrice(coinId) {
   if (!coinId) return 0;
-  if (coinId.includes('0x') || coinId.includes(':')) {
-    const address = coinId.split(':').pop() || coinId;
-    try {
-      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`);
-      const data = await res.json();
-      const pair = data?.pairs?.[0];
-      return pair ? parseFloat(pair.priceUsd || '0') : 0;
-    } catch { return 0; }
-  }
   try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd`);
+    if (coinId.includes('0x') || coinId.includes(':')) {
+      const address = coinId.split(':').pop() || coinId;
+      const res = await fetch(`/api/price?address=${encodeURIComponent(address)}`);
+      const data = await res.json();
+      return data?.price || 0;
+    }
+    const res = await fetch(`/api/price?ids=${encodeURIComponent(coinId)}`);
     const data = await res.json();
     return data?.[coinId]?.usd || 0;
   } catch { return 0; }
@@ -1940,7 +1937,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
       if (!cancelled) { setLivePrices(next); onUpdated?.(Date.now()); }
     };
     load();
-    const id = setInterval(load, 60_000);
+    const id = setInterval(load, 30_000);
     return () => { cancelled = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openKey, refreshKey, onUpdated]);
@@ -2277,8 +2274,8 @@ function PositionChartModal({ position, onClose }) {
       return () => { cancelled = true; };
     }
 
-    // CoinGecko path
-    fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(position.coinId)}/market_chart?vs_currency=usd&days=${days}`)
+    // CoinGecko path — proxied to dodge per-client rate limits.
+    fetch(`/api/chart?id=${encodeURIComponent(position.coinId)}&days=${days}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error('Failed to load chart')))
       .then(d => {
         if (cancelled) return;
@@ -3027,7 +3024,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       if (!cancelled) { setLivePrices(next); onUpdated?.(Date.now()); }
     };
     load();
-    const id = setInterval(load, 60_000);
+    const id = setInterval(load, 30_000);
     return () => { cancelled = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openKey, refreshKey, onUpdated]);
