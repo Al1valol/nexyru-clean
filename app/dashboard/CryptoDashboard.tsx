@@ -57,6 +57,82 @@ async function fetchCurrentPrice(coinId) {
   } catch { return 0; }
 }
 
+// Heuristic risk classification. CoinGecko coins are gated on market-cap rank
+// (anything off the list is treated as low-tier). DexScreener coins (memecoins
+// on a contract address) are gated on liquidity, age, mcap, and vol/liq ratio.
+// Solana addresses are base58 with no '0x' / ':' so callers must tag the source
+// explicitly via coin.source.
+function getVerificationStatus(coin) {
+  const isDex = coin?.source === 'dexscreener'
+    || (coin?.coinId && (coin.coinId.includes('0x') || coin.coinId.includes(':')));
+
+  if (!isDex) {
+    const rank = coin?.market_cap_rank || coin?.marketCapRank || 999999;
+    if (rank <= 100) return { status: 'verified', label: '✓ Verified', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Top 100 by market cap', warnings: [] };
+    if (rank <= 500) return { status: 'verified', label: '✓ Verified', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Established coin', warnings: [] };
+    return { status: 'unverified', label: '⚠ Unverified', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', reason: 'Low market cap rank', warnings: [] };
+  }
+
+  const liq  = parseFloat(coin.liquidity  || 0);
+  const vol  = parseFloat(coin.volume24h  || 0);
+  const age  = coin.ageHours ?? 9999;
+  const mcap = parseFloat(coin.marketCap  || 0);
+
+  const warnings = [];
+  if (liq < 1000) warnings.push('Very low liquidity — hard to sell');
+  else if (liq < 10000) warnings.push('Low liquidity');
+  if (age < 1) warnings.push('Less than 1 hour old');
+  else if (age < 6) warnings.push('Very new coin');
+  if (mcap < 10000) warnings.push('Extremely low market cap');
+  if (vol > 0 && liq > 0 && vol / liq > 10) warnings.push('Unusual volume vs liquidity ratio');
+  if (liq < 5000 && age < 24) warnings.push('High rug pull risk');
+
+  if (warnings.length === 0 && liq > 50000 && age > 48) {
+    return { status: 'verified', label: '✓ Low Risk', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Good liquidity and age', warnings: [] };
+  }
+  if (warnings.length <= 1 && liq > 10000) {
+    return { status: 'caution', label: '⚠ Caution', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', reason: warnings[0] || 'New or low cap coin', warnings };
+  }
+  return { status: 'danger', label: '🚨 High Risk', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', reason: 'Multiple risk factors', warnings };
+}
+
+function VerificationBadge({ v }) {
+  const tooltip = v.warnings && v.warnings.length > 0
+    ? `${v.reason}\n\nWarnings:\n• ${v.warnings.join('\n• ')}`
+    : v.reason;
+  return (
+    <span
+      title={tooltip}
+      style={{
+        fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+        background: v.bg, color: v.color, border: `1px solid ${v.color}33`,
+        whiteSpace: 'nowrap', cursor: 'help',
+      }}
+    >
+      {v.label}
+    </span>
+  );
+}
+
+function VerificationBanner({ v }) {
+  if (v.status !== 'danger' || !v.warnings?.length) return null;
+  return (
+    <div style={{
+      background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+      borderRadius: 6, padding: '6px 10px', marginTop: 8, fontSize: 11, color: '#ef4444',
+    }}>
+      ⚠️ {v.warnings.join(' · ')}
+    </div>
+  );
+}
+
+// Maps a verification status to the user-facing filter bucket.
+function verificationBucket(status) {
+  if (status === 'verified') return 'low';
+  if (status === 'danger') return 'high';
+  return 'caution';
+}
+
 function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -317,6 +393,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '1' | '6' | '24' | '48'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'age' | 'mcap' | 'change' | 'volume'
+  const [riskFilter, setRiskFilter] = React.useState('all');   // 'all' | 'low' | 'caution' | 'high'
 
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
@@ -426,6 +503,9 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     }
     if (scoreFilter === 'hot') arr = arr.filter(c => c.gemScore >= 50);
     else if (scoreFilter === 'gems') arr = arr.filter(c => c.gemScore >= 70);
+    if (riskFilter !== 'all') {
+      arr = arr.filter(c => verificationBucket(getVerificationStatus({ ...c, source: 'dexscreener' }).status) === riskFilter);
+    }
     arr = [...arr];
     if (sortBy === 'score')        arr.sort((a, b) => b.gemScore - a.gemScore);
     else if (sortBy === 'mcap')    arr.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
@@ -433,7 +513,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     else if (sortBy === 'volume')  arr.sort((a, b) => (b.volume24h || 0) - (a.volume24h || 0));
     else                           arr.sort((a, b) => (a.ageHours || 0) - (b.ageHours || 0));
     return arr;
-  }, [gems, ageFilter, scoreFilter, sortBy]);
+  }, [gems, ageFilter, scoreFilter, sortBy, riskFilter]);
 
   const launchedInLastHour = gems.filter(c => c.ageHours < 1).length;
 
@@ -516,6 +596,12 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             <button key={id} onClick={() => setSortBy(id)} style={pillStyle(sortBy === id)}>{label}</button>
           ))}
         </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Risk</span>
+          {[['all','All','#6366f1'],['low','Low Risk','#22c55e'],['caution','Caution','#f59e0b'],['high','High Risk','#ef4444']].map(([id, label, accent]) => (
+            <button key={id} onClick={() => setRiskFilter(id)} style={pillStyle(riskFilter === id, accent)}>{label}</button>
+          ))}
+        </div>
       </div>
 
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
@@ -571,6 +657,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 targetHitNotified: false, stopHitNotified: false,
               });
             };
+            const verification = getVerificationStatus({ ...coin, source: 'dexscreener' });
             return (
               <div key={coin.pairAddress || coin.coinId} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
@@ -588,7 +675,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       )}
                     </div>
                     <div style={{ minWidth:0 }}>
-                      <div style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{coin.name || '—'}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                        <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{coin.name || '—'}</span>
+                        <VerificationBadge v={verification}/>
+                      </div>
                       <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
                         <span style={{ fontSize:11, color:'#6b7280' }}>{(coin.symbol || '').toUpperCase()}</span>
                         {coin.chainId && (
@@ -599,6 +689,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   </div>
                   <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em', whiteSpace:'nowrap' }}>{badge.label}</span>
                 </div>
+
+                <VerificationBanner v={verification}/>
 
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8 }}>
                   <div>
@@ -1395,6 +1487,7 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
   const [loading, setLoading] = React.useState(true);
   const [loadedAt, setLoadedAt] = React.useState(null);
   const [, setTick] = React.useState(0);
+  const [riskFilter, setRiskFilter] = React.useState('all'); // 'all' | 'low' | 'caution' | 'high'
 
   // Re-render every 30s so "updated X mins ago" stays fresh
   React.useEffect(() => {
@@ -1461,13 +1554,31 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
     );
   }
 
+  const pillStyle = (active, accent) => ({
+    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
+    background: active ? (accent || '#6366f1') : '#1a1a24',
+    color: active ? '#fff' : '#9ca3af',
+    fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+  });
+
+  const visible = React.useMemo(() => {
+    if (riskFilter === 'all') return coins;
+    return coins.filter(({ item: c }) => verificationBucket(getVerificationStatus({ ...c, source: 'coingecko' }).status) === riskFilter);
+  }, [coins, riskFilter]);
+
   return (
     <div>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:12 }}>
+        <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Risk</span>
+        {[['all','All','#6366f1'],['low','Low Risk','#22c55e'],['caution','Caution','#f59e0b'],['high','High Risk','#ef4444']].map(([id, label, accent]) => (
+          <button key={id} onClick={() => setRiskFilter(id)} style={pillStyle(riskFilter === id, accent)}>{label}</button>
+        ))}
+      </div>
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
-        {coins.length} {coins.length === 1 ? 'coin' : 'coins'} trending · updated {updatedAgo}
+        {visible.length} {visible.length === 1 ? 'coin' : 'coins'} trending · updated {updatedAgo}
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 380px), 1fr))', gap:12 }}>
-        {coins.map(({ item: c }) => {
+        {visible.map(({ item: c }) => {
           const live = prices[c.id] || {};
           const change = (live.usd_24h_change ?? c.data?.price_change_percentage_24h?.usd) || 0;
           const pos = change >= 0;
@@ -1476,6 +1587,7 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
           const volPct = maxVol > 0 ? Math.max(2, (vol / maxVol) * 100) : 0;
           const mom = momentumBadge(change);
           const logged = loggedCoinIds.has(c.id);
+          const verification = getVerificationStatus({ ...c, source: 'coingecko' });
           const onLog = () => {
             if (logged || !onLogSignal) return;
             onLogSignal({
@@ -1494,13 +1606,18 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
           };
           return (
             <div key={c.id} style={{ background: pos?"rgba(34,197,94,0.05)":"rgba(239,68,68,0.05)", border:`1px solid ${pos?"rgba(34,197,94,0.18)":"rgba(239,68,68,0.18)"}`, borderRadius:12, padding:16, display:'flex', flexDirection:'column', gap:10 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                <div>
-                  <div style={{ fontSize:15, fontWeight:800, color:'#fff' }}>{c.name}</div>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:15, fontWeight:800, color:'#fff' }}>{c.name}</span>
+                    <VerificationBadge v={verification}/>
+                  </div>
                   <div style={{ fontSize:11, color:'#6b7280' }}>{c.symbol}</div>
                 </div>
                 <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(99,102,241,0.15)', color:'#a5b4fc' }}>#{c.market_cap_rank || '?'}</span>
               </div>
+
+              <VerificationBanner v={verification}/>
 
               <div style={{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' }}>
                 <div style={{ fontSize:26, fontWeight:900, color: pos ? '#22c55e' : '#ef4444' }}>{pos?'+':''}{change.toFixed(2)}%</div>
@@ -1660,12 +1777,13 @@ function CryptoUptrends({ refreshKey, onUpdated, onBuy }) {
             return (
               <div key={c.id} style={{ display:'grid', gridTemplateColumns:'40px 2fr 1fr 60px 60px 60px 70px 80px 90px', gap:10, padding:'10px 14px', borderBottom:'1px solid #1e1e2a', alignItems:'center' }}>
                 <div style={{ fontSize:12, color:'#6b7280' }}>{i + 1}</div>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <div>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', minWidth:0 }}>
+                  <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{c.name}</div>
                     <div style={{ fontSize:11, color:'#6b7280' }}>{(c.symbol || '').toUpperCase()}</div>
                   </div>
                   <span style={{ fontSize:9, fontWeight:800, padding:'2px 6px', borderRadius:4, background: tier.color + '22', color: tier.color, letterSpacing:'0.04em' }}>{tier.label}</span>
+                  <VerificationBadge v={getVerificationStatus({ ...c, source: 'coingecko' })}/>
                 </div>
                 <div style={{ fontSize:12, color:'#fff' }}>{formatBigUsd(c.market_cap || 0)}</div>
                 <div style={{ fontSize:12, fontWeight:700, color:'#22c55e' }}>+{h1.toFixed(2)}%</div>
