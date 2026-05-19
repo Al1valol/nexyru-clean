@@ -133,6 +133,32 @@ function verificationBucket(status) {
   return 'caution';
 }
 
+// Routes a coin to the right DEX swap URL based on chain.
+// Pass _coingeckoId to fall back to the CoinGecko page when no DEX info
+// is available (eg. top-100 coins from /search/trending have no contract).
+function getBuyUrl(coin) {
+  const chain = coin?.chainId?.toLowerCase() || '';
+  const address = coin?.coinId?.split(':').pop() || coin?.pairAddress || '';
+
+  if (chain === 'solana' || chain === 'sol') {
+    return { url: `https://jup.ag/swap/SOL-${address}`, label: 'Buy on Jupiter', color: '#22c55e', icon: '⚡' };
+  }
+  if (chain === 'base') {
+    return { url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
+  }
+  if (chain === 'ethereum') {
+    return { url: `https://app.uniswap.org/swap?outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
+  }
+  if (chain === 'bsc') {
+    return { url: `https://pancakeswap.finance/swap?outputCurrency=${address}`, label: 'Buy on PancakeSwap', color: '#f59e0b', icon: '🥞' };
+  }
+  if (coin?._coingeckoId) {
+    return { url: `https://www.coingecko.com/en/coins/${coin._coingeckoId}`, label: 'View on CoinGecko', color: '#6366f1', icon: '📊' };
+  }
+  const fallbackChain = chain || 'ethereum';
+  return { url: coin?.url || `https://dexscreener.com/${fallbackChain}/${address}`, label: 'View on DexScreener', color: '#6366f1', icon: '📊' };
+}
+
 function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [coins, setCoins] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -394,6 +420,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'age' | 'mcap' | 'change' | 'volume'
   const [riskFilter, setRiskFilter] = React.useState('all');   // 'all' | 'low' | 'caution' | 'high'
+  const [copiedId, setCopiedId] = React.useState(null);
 
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
@@ -758,6 +785,47 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
                   }}>DexScreener ↗</a>
                 </div>
+
+                {(() => {
+                  const buyInfo = getBuyUrl(coin);
+                  const copyKey = coin.pairAddress || coin.coinId || trackedCoinId;
+                  const isCopied = copiedId === copyKey;
+                  return (
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      <a
+                        href={buyInfo.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                          padding:'10px 16px', borderRadius:8,
+                          background: buyInfo.color, color:'#fff',
+                          fontSize:13, fontWeight:700, textDecoration:'none',
+                          flex:1, textAlign:'center',
+                        }}
+                      >
+                        {buyInfo.icon} {buyInfo.label}
+                      </a>
+                      <button
+                        onClick={() => {
+                          const addr = coin.coinId?.split(':').pop() || coin.pairAddress || '';
+                          if (!addr) return;
+                          try { navigator.clipboard.writeText(addr); } catch {}
+                          setCopiedId(copyKey);
+                          setTimeout(() => setCopiedId(prev => (prev === copyKey ? null : prev)), 2000);
+                        }}
+                        style={{
+                          padding:'10px 12px', borderRadius:8,
+                          border:'1px solid #2a2a3a', background:'#1a1a24',
+                          color: isCopied ? '#22c55e' : '#9ca3af',
+                          fontSize:12, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap',
+                        }}
+                      >
+                        {isCopied ? '✓ Copied' : '📋 Contract'}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -1656,11 +1724,20 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
                     fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
                   }}
                 >Buy →</button>
-                <a href={`https://www.coingecko.com/en/coins/${c.id}`} target="_blank" rel="noreferrer" style={{
-                  padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
-                  color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
-                  whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
-                }}>Chart ↗</a>
+                {(() => {
+                  const buyInfo = getBuyUrl({ _coingeckoId: c.id });
+                  return (
+                    <a href={buyInfo.url} target="_blank" rel="noreferrer" style={{
+                      display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                      padding:'7px 12px', borderRadius:8,
+                      background: buyInfo.color, color:'#fff',
+                      fontSize:12, fontWeight:700, textDecoration:'none',
+                      whiteSpace:'nowrap',
+                    }}>
+                      {buyInfo.icon} {buyInfo.label}
+                    </a>
+                  );
+                })()}
               </div>
             </div>
           );
