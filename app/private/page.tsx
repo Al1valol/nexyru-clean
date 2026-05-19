@@ -1963,8 +1963,13 @@ function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
 
 const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance"];
 
+type PriceMovement = "up" | "down" | "stable";
+
+const POLY_PRICES_KEY = "nexyru_poly_prices";
+
 function PolymarketPanel() {
   const [markets, setMarkets] = useState<SimpleMarket[] | null>(null);
+  const [movements, setMovements] = useState<Record<string, PriceMovement>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("All");
@@ -1985,6 +1990,29 @@ function PolymarketPanel() {
           .map(normalizePolymarket)
           .filter((x): x is SimpleMarket => x !== null)
           .sort((a, b) => b.volume - a.volume);
+
+        // Compare each market's YES % to the value we cached on the previous
+        // page load. Anything more than 0.5 pp counts as a real move.
+        let cached: Record<string, number> = {};
+        try {
+          const raw = typeof window !== "undefined" ? localStorage.getItem(POLY_PRICES_KEY) : null;
+          if (raw) cached = JSON.parse(raw);
+        } catch {}
+        const nextMovements: Record<string, PriceMovement> = {};
+        const nextCache: Record<string, number> = {};
+        for (const m of arr) {
+          const prev = cached[m.id];
+          if (typeof prev === "number") {
+            const diff = m.yesPct - prev;
+            nextMovements[m.id] = diff > 0.5 ? "up" : diff < -0.5 ? "down" : "stable";
+          }
+          nextCache[m.id] = m.yesPct;
+        }
+        try {
+          if (typeof window !== "undefined") localStorage.setItem(POLY_PRICES_KEY, JSON.stringify(nextCache));
+        } catch {}
+
+        setMovements(nextMovements);
         setMarkets(arr);
       })
       .catch((e) => {
@@ -2009,7 +2037,7 @@ function PolymarketPanel() {
     <>
       <SectionTitle
         title="Polymarket"
-        subtitle="Real-money markets pricing real-world events · compare market prices to your own estimate"
+        subtitle="Real-money markets pricing real-world events · price moves and value signals computed automatically"
       />
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
@@ -2046,27 +2074,44 @@ function PolymarketPanel() {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 380px), 1fr))", gap: 12 }}>
-          {filtered.map((m) => <SimplePolymarketCard key={m.id} m={m}/>)}
+          {filtered.map((m) => <SimplePolymarketCard key={m.id} m={m} movement={movements[m.id]}/>)}
         </div>
       )}
     </>
   );
 }
 
-function SimplePolymarketCard({ m }: { m: SimpleMarket }) {
-  const [estimate, setEstimate] = useState("");
-  const est = parseFloat(estimate);
-  const estValid = Number.isFinite(est) && est >= 0 && est <= 100;
-  const edge = estValid ? est - m.yesPct : null;
-
-  const yesUrl = m.slug ? `https://polymarket.com/event/${m.slug}` : "https://polymarket.com";
-  const noUrl = yesUrl;
+function SimplePolymarketCard({ m, movement }: { m: SimpleMarket; movement?: PriceMovement }) {
   const fmtVol = (v: number) => {
     if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
     if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
     if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
     return `$${v.toFixed(0)}`;
   };
+
+  // Value-by-confidence signal: where the YES price sits tells us how the
+  // market is pricing the outcome (longshot, coin flip, or near-certain).
+  const valueSignal = (() => {
+    if (m.yesPct > 80) return { text: ">80% YES — Market is very confident. Low upside on YES bet.", color: C.textMuted };
+    if (m.yesPct >= 40 && m.yesPct <= 60) return { text: "40-60% YES — Uncertain outcome. Both sides have value.", color: C.green };
+    if (m.yesPct < 20) return { text: "<20% YES — Longshot. High risk, high reward on YES.", color: C.amber };
+    return null;
+  })();
+
+  // Volume signal: rough liquidity tier.
+  const volumeSignal = (() => {
+    if (m.volume > 1_000_000) return { text: "🔥 High interest — liquid market", color: C.green };
+    if (m.volume > 100_000) return { text: "Active market", color: C.text };
+    if (m.volume < 10_000) return { text: "⚠️ Low volume — be careful", color: C.amber };
+    return null;
+  })();
+
+  const movementChip = (() => {
+    if (!movement) return null;
+    if (movement === "up") return { text: "↑ YES rising", color: C.green };
+    if (movement === "down") return { text: "↓ YES falling", color: C.red };
+    return { text: "→ Stable", color: C.textMuted };
+  })();
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -2093,45 +2138,16 @@ function SimplePolymarketCard({ m }: { m: SimpleMarket }) {
         <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{fmtVol(m.volume)} total bet on this market.</div>
       </div>
 
-      <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
-        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6, fontWeight: 600 }}>
-          What do <em>you</em> think the real probability is?
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="number"
-            value={estimate}
-            onChange={(e) => setEstimate(e.target.value)}
-            placeholder="e.g. 75"
-            min={0}
-            max={100}
-            style={{ flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 10px", color: C.text, fontSize: 13, outline: "none", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-          />
-          <span style={{ fontSize: 12.5, color: C.textMuted }}>% chance</span>
-        </div>
-        {estValid && edge !== null && (
-          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.55 }}>
-            <div style={{ color: C.textDim }}>
-              You think <strong style={{ color: C.text }}>{est.toFixed(0)}%</strong> likely · Market says <strong style={{ color: C.text }}>{m.yesPct.toFixed(0)}%</strong> likely
-            </div>
-            {edge > 3 ? (
-              <div style={{ marginTop: 4, color: C.green, fontWeight: 700 }}>✅ YES has value — market is underpricing this</div>
-            ) : edge < -3 ? (
-              <div style={{ marginTop: 4, color: C.green, fontWeight: 700 }}>✅ NO has value — market is overpricing this</div>
-            ) : (
-              <div style={{ marginTop: 4, color: C.textMuted, fontWeight: 600 }}>Fair price — no clear edge</div>
-            )}
-          </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, lineHeight: 1.5 }}>
+        {movementChip && (
+          <div style={{ color: movementChip.color, fontWeight: 700 }}>{movementChip.text}</div>
         )}
-      </div>
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <a href={yesUrl} target="_blank" rel="noreferrer" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 12px", borderRadius: 8, background: C.green, color: "#fff", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
-          Bet YES →
-        </a>
-        <a href={noUrl} target="_blank" rel="noreferrer" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 12px", borderRadius: 8, background: C.red, color: "#fff", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
-          Bet NO →
-        </a>
+        {valueSignal && (
+          <div style={{ color: valueSignal.color }}>{valueSignal.text}</div>
+        )}
+        {volumeSignal && (
+          <div style={{ color: volumeSignal.color }}>{volumeSignal.text}</div>
+        )}
       </div>
     </div>
   );
