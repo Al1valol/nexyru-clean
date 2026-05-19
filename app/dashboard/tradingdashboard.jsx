@@ -8608,6 +8608,16 @@ function TradingDashboard({ session, onLogout }) {
 
           {/* Right: account selector + Log Trade + avatar */}
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+            <a href="/morning" style={{
+              padding:"6px 12px", borderRadius:6,
+              border:"1px solid rgba(0,212,255,0.3)",
+              background:"rgba(0,212,255,0.05)",
+              color:"#00d4ff", textDecoration:"none",
+              fontSize:11, fontWeight:700,
+              display:"inline-flex", alignItems:"center", gap:6, whiteSpace:"nowrap",
+            }}>
+              ⬡ Daily Briefing
+            </a>
             {supabaseUserId && <SyncIndicator status={syncStatus} />}
             {supabaseUserId && (
               <button
