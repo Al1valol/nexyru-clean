@@ -97,6 +97,11 @@ export default function PrivatePage() {
           to { transform: rotate(360deg); }
         }
         .nexyru-spin { animation: nexyru-spin 0.9s linear infinite; }
+        @keyframes nexyru-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.85); }
+        }
+        .nexyru-pulse { animation: nexyru-pulse 1.2s ease-in-out infinite; }
       `}</style>
     </div>
   );
@@ -1438,14 +1443,17 @@ interface OddsGame {
   bookmakers: OddsBookmaker[];
 }
 
-const SPORT_FILTERS: { label: string; key: string }[] = [
-  { label: "All", key: "upcoming" },
-  { label: "NFL", key: "americanfootball_nfl" },
-  { label: "NBA", key: "basketball_nba" },
-  { label: "MLB", key: "baseball_mlb" },
-  { label: "NHL", key: "icehockey_nhl" },
-  { label: "MMA", key: "mma_mixed_martial_arts" },
-  { label: "Soccer", key: "soccer_epl" },
+// Pills filter client-side against game.sport_key via .includes(needle).
+// 'all' matches everything; other needles match the league name fragment.
+const SPORT_PILLS: { label: string; key: string }[] = [
+  { label: "All", key: "all" },
+  { label: "NFL", key: "nfl" },
+  { label: "NBA", key: "nba" },
+  { label: "MLB", key: "mlb" },
+  { label: "NHL", key: "nhl" },
+  { label: "MMA", key: "mma" },
+  { label: "Soccer", key: "soccer" },
+  { label: "Tennis", key: "tennis" },
 ];
 
 interface BestOdds {
@@ -1529,29 +1537,40 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
 }
 
 export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
-  // When oddsSport is supplied by the parent (top-level mode switcher), the
-  // internal sport chip selector is hidden and we always fetch "upcoming",
-  // filtering games client-side by the supplied sport key fragment.
-  const externalFilter = typeof oddsSport === "string";
-  const [sport, setSport] = useState<string>(externalFilter ? "upcoming" : "upcoming");
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
-  const [onlyArbs, setOnlyArbs] = useState(false);
+  const [onlyArbs, setOnlyArbs] = useState(oddsSport === "arbs");
+  const [pillSport, setPillSport] = useState<string>(() => {
+    if (!oddsSport || oddsSport === "all" || oddsSport === "arbs") return "all";
+    return oddsSport;
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
+  // Sync internal state when the parent sidebar selection changes.
   useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    if (oddsSport === "arbs") {
+      setOnlyArbs(true);
+    } else if (oddsSport && oddsSport !== "all") {
+      setPillSport(oddsSport);
+      setOnlyArbs(false);
+    } else if (oddsSport === "all") {
+      setPillSport("all");
+    }
+  }, [oddsSport]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
 
-  const load = useCallback(async (sportKey: string) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/odds?sport=${encodeURIComponent(sportKey)}&daysFrom=2`);
+      const res = await fetch(`/api/odds?sport=upcoming&daysFrom=2`);
       const body = await res.json();
       if (!res.ok) {
         setError((body as { error?: string }).error ?? `Error (${res.status})`);
@@ -1568,13 +1587,9 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
     }
   }, []);
 
-  useEffect(() => {
-    // When the external filter is in use, always pull the upcoming feed and
-    // narrow client-side via sport_key. Otherwise honor the internal selector.
-    load(externalFilter ? "upcoming" : sport);
-  }, [sport, load, externalFilter, oddsSport]);
+  useEffect(() => { load(); }, [load]);
 
-  // Sort: arbs first, then by start time
+  // Sort: arbs first, then by start time. Filter by sport pill + onlyArbs toggle.
   const sorted = useMemo(() => {
     if (!games) return [];
     const decorated = games.map((g) => {
@@ -1587,25 +1602,21 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
       if (a.isArb !== b.isArb) return a.isArb ? -1 : 1;
       return new Date(a.g.commence_time).getTime() - new Date(b.g.commence_time).getTime();
     });
-    // External (top-level) filter takes precedence over the internal toggle.
-    if (externalFilter) {
-      if (oddsSport === "arbs") return decorated.filter((d) => d.isArb);
-      if (!oddsSport || oddsSport === "all") return decorated;
-      const needle = oddsSport.toLowerCase();
-      return decorated.filter((d) =>
-        (d.g.sport_key ?? "").toLowerCase().includes(needle),
-      );
+    let filtered = decorated;
+    if (pillSport !== "all") {
+      const needle = pillSport.toLowerCase();
+      filtered = filtered.filter((d) => (d.g.sport_key ?? "").toLowerCase().includes(needle));
     }
-    return onlyArbs ? decorated.filter((d) => d.isArb) : decorated;
-  }, [games, onlyArbs, externalFilter, oddsSport]);
+    if (onlyArbs) filtered = filtered.filter((d) => d.isArb);
+    return filtered;
+  }, [games, pillSport, onlyArbs]);
 
-  const refresh = () => load(externalFilter ? "upcoming" : sport);
+  const refresh = () => load();
 
   const emptyMessage = (() => {
     if (loading) return "Loading...";
-    if (externalFilter && oddsSport === "arbs") return "No arb opportunities in the selected window.";
-    if (!externalFilter && onlyArbs) return "No arb opportunities in the selected window.";
-    if (externalFilter && oddsSport && oddsSport !== "all") return `No ${oddsSport.toUpperCase()} games in the selected window.`;
+    if (onlyArbs) return "No arb opportunities in the selected window.";
+    if (pillSport !== "all") return `No ${pillSport.toUpperCase()} games in the selected window.`;
     return "No games in the selected window.";
   })();
 
@@ -1647,25 +1658,18 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
 
       <Subhead>Games</Subhead>
 
-      {!externalFilter && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 14,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
-            {SPORT_FILTERS.map((f) => (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+          {SPORT_PILLS.map((f) => {
+            const active = pillSport === f.key;
+            return (
               <button
                 key={f.key}
-                onClick={() => setSport(f.key)}
+                onClick={() => setPillSport(f.key)}
                 style={{
-                  background: sport === f.key ? C.accent : C.card2,
-                  color: sport === f.key ? "#fff" : C.text,
-                  border: `1px solid ${sport === f.key ? C.accent : C.border}`,
+                  background: active ? C.accent : C.card2,
+                  color: active ? "#fff" : C.text,
+                  border: `1px solid ${active ? C.accent : C.border}`,
                   borderRadius: 999,
                   padding: "5px 12px",
                   fontSize: 12.5,
@@ -1675,35 +1679,26 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
               >
                 {f.label}
               </button>
-            ))}
-          </div>
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              background: onlyArbs ? "rgba(34,197,94,0.12)" : C.card2,
-              border: `1px solid ${onlyArbs ? C.green : C.border}`,
-              color: onlyArbs ? C.green : C.textDim,
-              padding: "5px 12px",
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              userSelect: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={onlyArbs}
-              onChange={(e) => setOnlyArbs(e.target.checked)}
-              style={{ accentColor: C.green, margin: 0 }}
-            />
-            Show only arbs
-          </label>
+            );
+          })}
         </div>
-      )}
+        <button
+          onClick={() => setOnlyArbs((v) => !v)}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: `1px solid ${onlyArbs ? C.green : C.border}`,
+            background: onlyArbs ? "rgba(34,197,94,0.1)" : "transparent",
+            color: onlyArbs ? C.green : C.textMuted,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {onlyArbs ? "✓ Arbs Only" : "Show Arbs Only"}
+        </button>
+      </div>
 
       {error && <ErrorBox>{error}</ErrorBox>}
 
@@ -1744,9 +1739,22 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
   );
 }
 
+// American odds → multiplier on stake to compute payout (stake + profit).
+function americanPayoutMultiplier(odds: number): number {
+  return odds > 0 ? 1 + odds / 100 : 1 + 100 / -odds;
+}
+
+// Stake needed at these odds to win exactly $100 profit.
+function stakeToWin100(odds: number): number {
+  return odds > 0 ? 10000 / odds : -odds;
+}
+
 function ArbCalculator() {
   const [a, setA] = useState("");
   const [b, setB] = useState("");
+  const [stakeInput, setStakeInput] = useState("100");
+
+  const totalStake = Math.max(0, parseFloat(stakeInput) || 0);
 
   const result = useMemo(() => {
     const oa = parseFloat(a);
@@ -1755,137 +1763,93 @@ function ArbCalculator() {
     const pA = americanToImpliedProb(oa);
     const pB = americanToImpliedProb(ob);
     const overround = pA + pB;
-    if (overround >= 1) {
-      return { arb: false as const, overround };
+    const stakeAtoWin100 = stakeToWin100(oa);
+    const stakeBtoWin100 = stakeToWin100(ob);
+    if (overround >= 1 || totalStake <= 0) {
+      return { arb: false as const, overround, stakeAtoWin100, stakeBtoWin100 };
     }
-    // Spec formula: stakes proportional to implied probs, $100 total
-    const betA = (100 * pA) / overround;
-    const betB = (100 * pB) / overround;
-    const profit = 100 - 100 * overround;
-    return { arb: true as const, betA, betB, profit, overround };
-  }, [a, b]);
+    // Stakes proportional to implied probs so both sides return the same payout.
+    const betA = (totalStake * pA) / overround;
+    const betB = (totalStake * pB) / overround;
+    const payout = betA * americanPayoutMultiplier(oa);
+    const profit = payout - totalStake;
+    const roi = (profit / totalStake) * 100;
+    return {
+      arb: true as const,
+      betA, betB, profit, roi, overround, totalStake, payout,
+      stakeAtoWin100, stakeBtoWin100,
+    };
+  }, [a, b, totalStake]);
+
+  const inputStyle = {
+    width: "100%",
+    background: C.card2,
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    padding: "9px 12px",
+    color: C.text,
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box" as const,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  };
+  const labelStyle = { display: "block", fontSize: 11, color: C.textMuted, marginBottom: 4, fontWeight: 600 } as const;
 
   return (
-    <div
-      style={{
-        background: C.card,
-        border: `1px solid ${C.border}`,
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 18,
-      }}
-    >
-      <div
-        style={{
-          color: C.textMuted,
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          marginBottom: 10,
-        }}
-      >
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 18 }}>
+      <div style={{ color: C.textMuted, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
         Arb Calculator
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 10,
-          marginBottom: 12,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 11,
-              color: C.textMuted,
-              marginBottom: 4,
-              fontWeight: 600,
-            }}
-          >
-            Team A odds (American)
-          </label>
-          <input
-            type="number"
-            value={a}
-            onChange={(e) => setA(e.target.value)}
-            placeholder="+150"
-            style={{
-              width: "100%",
-              background: C.card2,
-              border: `1px solid ${C.border}`,
-              borderRadius: 8,
-              padding: "9px 12px",
-              color: C.text,
-              fontSize: 14,
-              outline: "none",
-              boxSizing: "border-box",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            }}
-          />
+          <label style={labelStyle}>Team A odds (American)</label>
+          <input type="number" value={a} onChange={(e) => setA(e.target.value)} placeholder="+150" style={inputStyle}/>
         </div>
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 11,
-              color: C.textMuted,
-              marginBottom: 4,
-              fontWeight: 600,
-            }}
-          >
-            Team B odds (American)
-          </label>
-          <input
-            type="number"
-            value={b}
-            onChange={(e) => setB(e.target.value)}
-            placeholder="+120"
-            style={{
-              width: "100%",
-              background: C.card2,
-              border: `1px solid ${C.border}`,
-              borderRadius: 8,
-              padding: "9px 12px",
-              color: C.text,
-              fontSize: 14,
-              outline: "none",
-              boxSizing: "border-box",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            }}
-          />
+          <label style={labelStyle}>Team B odds (American)</label>
+          <input type="number" value={b} onChange={(e) => setB(e.target.value)} placeholder="+120" style={inputStyle}/>
+        </div>
+        <div>
+          <label style={labelStyle}>Stake amount ($)</label>
+          <input type="number" value={stakeInput} onChange={(e) => setStakeInput(e.target.value)} placeholder="100" style={inputStyle}/>
         </div>
       </div>
+
+      {/* Per-side stake-to-win-$100 hint, always shown when both odds parse */}
+      {result && (
+        <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 12, display: "flex", gap: 18, flexWrap: "wrap" }}>
+          <span>Team A: stake <strong style={{ color: C.text }}>${result.stakeAtoWin100.toFixed(2)}</strong> to win $100</span>
+          <span>Team B: stake <strong style={{ color: C.text }}>${result.stakeBtoWin100.toFixed(2)}</strong> to win $100</span>
+        </div>
+      )}
+
       {result === null ? (
         <div style={{ color: C.textMuted, fontSize: 12.5 }}>
           Enter both odds to see if an arb exists.
         </div>
       ) : !result.arb ? (
         <div style={{ color: C.textMuted, fontSize: 12.5 }}>
-          No arb opportunity — overround {(result.overround * 100).toFixed(2)}% (one side
-          is too short).
+          {totalStake <= 0
+            ? "Enter a stake amount above $0."
+            : `No arb opportunity — overround ${(result.overround * 100).toFixed(2)}% (one side is too short).`}
         </div>
       ) : (
-        <div
-          style={{
-            background: "rgba(34,197,94,0.08)",
-            border: "1px solid rgba(34,197,94,0.35)",
-            borderRadius: 8,
-            padding: "10px 12px",
-            color: C.text,
-            fontSize: 13,
-            lineHeight: 1.6,
-          }}
-        >
-          Bet{" "}
-          <strong style={{ color: C.green }}>${result.betA.toFixed(2)}</strong> on Team A
-          + <strong style={{ color: C.green }}>${result.betB.toFixed(2)}</strong> on Team
-          B ={" "}
-          <strong style={{ color: C.green }}>
-            ${result.profit.toFixed(2)} guaranteed profit on $100
-          </strong>
+        <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: 8, padding: "12px 14px", color: C.text, fontSize: 13, lineHeight: 1.7 }}>
+          <div>
+            Bet <strong style={{ color: C.green }}>${result.betA.toFixed(2)}</strong> on Team A
+            {" + "}
+            <strong style={{ color: C.green }}>${result.betB.toFixed(2)}</strong> on Team B
+          </div>
+          <div style={{ marginTop: 6, color: C.textDim, fontSize: 12 }}>
+            Total at risk <strong style={{ color: C.text }}>${result.totalStake.toFixed(2)}</strong>
+            {" · "}Payout either side <strong style={{ color: C.text }}>${result.payout.toFixed(2)}</strong>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <strong style={{ color: C.green }}>${result.profit.toFixed(2)} guaranteed profit</strong>
+            {" · "}
+            <strong style={{ color: C.green }}>{result.roi.toFixed(2)}% ROI</strong>
+            <span style={{ color: C.textDim }}> on ${result.totalStake.toFixed(2)}</span>
+          </div>
         </div>
       )}
     </div>
@@ -1969,17 +1933,19 @@ function GameCard({
           })}
         </span>
         {cd.label && (
-          <span
-            style={{
-              fontSize: 11,
-              color: cd.live ? C.red : C.textMuted,
-              fontWeight: cd.live ? 700 : 500,
-              letterSpacing: cd.live ? "0.04em" : 0,
-              textTransform: cd.live ? "uppercase" : "none",
-            }}
-          >
-            · {cd.label}
-          </span>
+          cd.live ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: C.red, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+              <span
+                className="nexyru-pulse"
+                style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: C.red }}
+              />
+              LIVE
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500 }}>
+              · {cd.label}
+            </span>
+          )
         )}
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
           {isArb && (
@@ -2061,13 +2027,19 @@ function GameCard({
               away !== null && r.awayPrice !== null && r.awayPrice === away.price;
             const bestHome =
               home !== null && r.homePrice !== null && r.homePrice === home.price;
+            // Row contributes to a cross-book arb when it carries the best
+            // price for one team and the game has an arb overall.
+            const rowInArb = isArb && (bestAway || bestHome);
             return (
               <div
                 key={r.book}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr 1fr",
-                  padding: "5px 0",
+                  padding: "5px 8px",
+                  margin: "0 -8px",
+                  borderRadius: 6,
+                  background: rowInArb ? "rgba(34,197,94,0.08)" : "transparent",
                   fontSize: 12.5,
                   color: C.textDim,
                   alignItems: "center",
