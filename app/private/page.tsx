@@ -1850,10 +1850,44 @@ type SimpleMarket = {
   noPct: number;
   volume: number;
   liquidity: number;
+  score: number;
   category: string;
   slug: string;
   endDate: string;
 };
+
+// 0-100 score: 40pts volume + 20pts liquidity + 40pts edge (closer to 50/50
+// = more interesting bet).
+function scoreMarket(yesFrac: number, volume: number, liquidity: number): number {
+  let score = 0;
+  if (volume > 1_000_000) score += 40;
+  else if (volume > 500_000) score += 35;
+  else if (volume > 100_000) score += 28;
+  else if (volume > 50_000) score += 20;
+  else if (volume > 10_000) score += 12;
+  else score += 5;
+
+  if (liquidity > 100_000) score += 20;
+  else if (liquidity > 50_000) score += 15;
+  else if (liquidity > 10_000) score += 10;
+  else score += 3;
+
+  const distFrom50 = Math.abs(yesFrac - 0.5);
+  if (distFrom50 < 0.05) score += 40;
+  else if (distFrom50 < 0.10) score += 35;
+  else if (distFrom50 < 0.20) score += 25;
+  else if (distFrom50 < 0.30) score += 15;
+  else score += 5;
+
+  return Math.min(100, score);
+}
+
+function scoreBadgeForMarket(score: number): { label: string; color: string; bg: string } {
+  if (score >= 80) return { label: "🔥 Hot", color: "#22c55e", bg: "rgba(34,197,94,0.15)" };
+  if (score >= 60) return { label: "⭐ Good", color: "#60a5fa", bg: "rgba(96,165,250,0.15)" };
+  if (score >= 40) return { label: "👀 Watch", color: "#facc15", bg: "rgba(250,204,21,0.15)" };
+  return { label: "❄️ Low", color: "#6b7280", bg: "rgba(107,114,128,0.15)" };
+}
 
 function safeParseJson<T>(s: unknown): T | null {
   if (typeof s !== "string") return null;
@@ -1897,6 +1931,7 @@ function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
     noPct: no * 100,
     volume,
     liquidity,
+    score: scoreMarket(yes, volume, liquidity),
     category: m.category && m.category.trim() !== "" ? m.category : detectCategory(question),
     slug: m.slug ?? "",
     endDate: m.endDate ?? m.endDateIso ?? "",
@@ -1905,13 +1940,13 @@ function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
 
 const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance", "World"];
 
-type PolySortMode = "likely" | "unlikely" | "coinflip" | "volume";
+type PolySortMode = "score" | "volume" | "even" | "trending";
 
 const POLY_SORT_OPTIONS: { id: PolySortMode; label: string }[] = [
-  { id: "likely", label: "Most Likely ↓" },
-  { id: "unlikely", label: "Least Likely ↑" },
-  { id: "coinflip", label: "Coin Flips ~50%" },
-  { id: "volume", label: "Most Volume" },
+  { id: "score", label: "🏆 Best Score" },
+  { id: "volume", label: "💰 Most Volume" },
+  { id: "even", label: "⚖️ Most Even" },
+  { id: "trending", label: "🔥 Trending" },
 ];
 
 type AiPrediction = {
@@ -1926,7 +1961,7 @@ function PolymarketPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("All");
-  const [sortMode, setSortMode] = useState<PolySortMode>("likely");
+  const [sortMode, setSortMode] = useState<PolySortMode>("score");
   const [aiPredictions, setAiPredictions] = useState<Record<string, AiPrediction>>({});
   const [predicting, setPredicting] = useState<Record<string, boolean>>({});
   const [batchPredicting, setBatchPredicting] = useState(false);
@@ -1991,10 +2026,9 @@ function PolymarketPanel() {
       ? markets
       : markets.filter((m) => m.category.toLowerCase().includes(category.toLowerCase()));
     const sorted = byCat.slice();
-    if (sortMode === "likely") sorted.sort((a, b) => b.yesPct - a.yesPct);
-    else if (sortMode === "unlikely") sorted.sort((a, b) => a.yesPct - b.yesPct);
-    else if (sortMode === "coinflip") sorted.sort((a, b) => Math.abs(a.yesPct - 50) - Math.abs(b.yesPct - 50));
-    else sorted.sort((a, b) => b.volume - a.volume);
+    if (sortMode === "score") sorted.sort((a, b) => b.score - a.score);
+    else if (sortMode === "even") sorted.sort((a, b) => Math.abs(a.yesPct - 50) - Math.abs(b.yesPct - 50));
+    else sorted.sort((a, b) => b.volume - a.volume); // volume + trending
     return sorted;
   }, [markets, category, sortMode]);
 
@@ -2137,60 +2171,59 @@ function PolymarketRow({
   onPredict: () => void;
 }) {
   const url = m.slug ? `https://polymarket.com/event/${m.slug}` : "https://polymarket.com";
+  const badge = scoreBadgeForMarket(m.score);
 
   // Plain-English read on the YES price. 5 spec'd buckets, with 40-45 and
   // 55-60 folded into adjacent buckets so nothing slips through a gap.
-  const verdict = (() => {
-    if (m.yesPct > 75) return { text: "Very likely to happen — low payout if bet YES", color: C.textMuted };
-    if (m.yesPct >= 55) return { text: "Probably happens — decent odds on NO", color: C.text };
-    if (m.yesPct >= 45) return { text: "⚡ Coin flip — could go either way", color: C.green };
-    if (m.yesPct >= 25) return { text: "Probably won't happen — decent odds on YES", color: C.text };
-    return { text: "Very unlikely — high payout if bet YES", color: C.amber };
+  const signal = (() => {
+    if (m.yesPct > 75) return { text: "Market is very confident YES happens. Low upside on YES bet.", color: C.textMuted };
+    if (m.yesPct >= 55) return { text: "Market leans YES. Decent odds on NO if you disagree.", color: C.text };
+    if (m.yesPct >= 45) return { text: "⚡ Coin flip — could go either way. Both sides have value.", color: C.green };
+    if (m.yesPct >= 25) return { text: "Market leans NO. Decent odds on YES if you disagree.", color: C.text };
+    return { text: "Market is very confident NO. High risk, high reward on YES.", color: C.amber };
   })();
 
-  // Payout = $1 / price. yesPct is 0-100, so payout = 100 / yesPct.
-  const yesPayout = m.yesPct > 0 ? 100 / m.yesPct : null;
-  const noPayout = m.noPct > 0 ? 100 / m.noPct : null;
+  const fmtMoney = (v: number) => {
+    if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+    if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+    if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}k`;
+    return `$${v.toFixed(0)}`;
+  };
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: C.text, flex: 1, minWidth: 0, lineHeight: 1.4 }}>{m.question}</span>
+        <span style={{ fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 6, background: badge.bg, color: badge.color, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+          {badge.label} — {m.score}/100
+        </span>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, fontSize: 12.5, flexWrap: "wrap" }}>
+        <span><span style={{ color: C.textMuted }}>YES </span><strong style={{ color: C.green }}>{m.yesPct.toFixed(0)}%</strong></span>
+        <span style={{ color: C.textMuted }}>·</span>
+        <span><span style={{ color: C.textMuted }}>NO </span><strong style={{ color: C.red }}>{m.noPct.toFixed(0)}%</strong></span>
+        <span style={{ color: C.textMuted }}>·</span>
         <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.18)", color: "#a5b4fc", whiteSpace: "nowrap", letterSpacing: "0.04em", textTransform: "uppercase" }}>
           {m.category}
         </span>
       </div>
 
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 30, fontWeight: 900, color: C.green, lineHeight: 1.1 }}>
-          {m.yesPct.toFixed(0)}%
-        </div>
-        <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 2 }}>chance YES happens</div>
-      </div>
-
-      <div style={{ fontSize: 13, color: verdict.color, marginBottom: 12, lineHeight: 1.45 }}>
-        {verdict.text}
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: C.green, fontWeight: 700, minWidth: 36 }}>YES</span>
-        <div style={{ flex: 1, height: 10, borderRadius: 5, overflow: "hidden", display: "flex", background: C.card2, border: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ flex: 1, height: 8, borderRadius: 4, overflow: "hidden", display: "flex", background: C.card2, border: `1px solid ${C.border}` }}>
           <div style={{ width: `${m.yesPct}%`, background: C.green }}/>
           <div style={{ width: `${m.noPct}%`, background: C.red }}/>
         </div>
-        <span style={{ fontSize: 11, color: C.red, fontWeight: 700, minWidth: 28, textAlign: "right" }}>NO</span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.textMuted, marginBottom: 10 }}>
-        <span>{m.yesPct.toFixed(0)}%</span>
-        <span>{m.noPct.toFixed(0)}%</span>
       </div>
 
-      {(yesPayout !== null && noPayout !== null) && (
-        <div style={{ fontSize: 11.5, color: C.textDim, lineHeight: 1.55, marginBottom: 10 }}>
-          <div>YES pays <strong style={{ color: C.green }}>${yesPayout.toFixed(2)}</strong> per $1 bet <span style={{ color: C.textMuted }}>(if it happens)</span></div>
-          <div>NO pays <strong style={{ color: C.red }}>${noPayout.toFixed(2)}</strong> per $1 bet <span style={{ color: C.textMuted }}>(if it doesn't happen)</span></div>
-        </div>
-      )}
+      <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 8 }}>
+        Volume: <strong style={{ color: C.text }}>{fmtMoney(m.volume)}</strong>
+        {m.liquidity > 0 && <> · Liquidity: <strong style={{ color: C.text }}>{fmtMoney(m.liquidity)}</strong></>}
+      </div>
+
+      <div style={{ fontSize: 12, color: signal.color, marginBottom: 10, lineHeight: 1.45 }}>
+        Signal: {signal.text}
+      </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#a5b4fc", textDecoration: "none", fontWeight: 600 }}>
