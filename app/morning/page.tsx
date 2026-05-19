@@ -11,6 +11,8 @@ export default function MorningBriefing() {
   const [briefing, setBriefing] = useState(null);
   const [todos, setTodos] = useState([]);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [marketData, setMarketData] = useState(null);
+  const [hotGem, setHotGem] = useState(null);
   const [quickStats, setQuickStats] = useState({
     winRate: 0,
     todayPnl: 0,
@@ -108,6 +110,67 @@ export default function MorningBriefing() {
       data.arbs = { pendingArbs: pending.length };
     } catch { data.arbs = null; }
 
+    // 6. Crypto market overview — CoinGecko trending + top-10 markets.
+    try {
+      const [trendingRes, marketsRes] = await Promise.all([
+        fetch('https://api.coingecko.com/api/v3/search/trending'),
+        fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&sparkline=false&price_change_percentage=24h'),
+      ]);
+      const trending = await trendingRes.json();
+      const markets = await marketsRes.json();
+      const btc = Array.isArray(markets) ? markets.find((c) => c.id === 'bitcoin') : null;
+      const eth = Array.isArray(markets) ? markets.find((c) => c.id === 'ethereum') : null;
+      const topTrending = trending?.coins?.slice(0, 3).map((c) => ({
+        name: c.item.name,
+        symbol: c.item.symbol,
+        change: c.item.data?.price_change_percentage_24h?.usd || 0,
+      })) || [];
+      const gainers = Array.isArray(markets)
+        ? markets.filter((c) => (c.price_change_percentage_24h ?? 0) > 0).length
+        : 0;
+      const marketSentiment = gainers >= 7 ? 'bullish' : gainers >= 4 ? 'neutral' : 'bearish';
+      data.markets = {
+        btcChange: btc?.price_change_percentage_24h || 0,
+        btcPrice: btc?.current_price || 0,
+        ethChange: eth?.price_change_percentage_24h || 0,
+        ethPrice: eth?.current_price || 0,
+        topTrending,
+        marketSentiment,
+        gainers,
+        losers: 10 - gainers,
+      };
+    } catch { data.markets = null; }
+
+    // 7. Hottest gem from DexScreener — biggest 1h pop among latest profiles.
+    try {
+      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
+      const profiles = await profilesRes.json();
+      const addresses = (Array.isArray(profiles) ? profiles : [])
+        .slice(0, 5)
+        .map((p) => p.tokenAddress)
+        .filter(Boolean)
+        .join(',');
+      if (addresses) {
+        const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses}`);
+        const pairsData = await pairsRes.json();
+        const pairs = pairsData?.pairs || [];
+        const hotGem = pairs.sort(
+          (a, b) => parseFloat(b.priceChange?.h1 || 0) - parseFloat(a.priceChange?.h1 || 0),
+        )[0];
+        if (hotGem) {
+          data.hotGem = {
+            name: hotGem.baseToken?.name,
+            symbol: hotGem.baseToken?.symbol,
+            change1h: parseFloat(hotGem.priceChange?.h1 || 0),
+            change24h: parseFloat(hotGem.priceChange?.h24 || 0),
+            volume: parseFloat(hotGem.volume?.h24 || 0),
+            chain: hotGem.chainId,
+            url: hotGem.url,
+          };
+        }
+      }
+    } catch { data.hotGem = null; }
+
     return data;
   };
 
@@ -121,12 +184,28 @@ export default function MorningBriefing() {
   });
 
   const generateBriefing = async (data) => {
+    // Strip openPositions list from crypto payload — the route only needs
+    // overnightPositions for AI naming and openPositionsCount for stats.
+    const cryptoSummary = data.crypto
+      ? {
+          openPositionsCount: data.crypto.openPositionsCount,
+          overnightCount: data.crypto.overnightCount,
+          overnightPositions: data.crypto.overnightPositions,
+          totalValue: data.crypto.totalValue,
+        }
+      : null;
     const res = await fetch('/api/morning', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         date: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-        ...data,
+        trading: data.trading,
+        crypto: cryptoSummary,
+        odds: data.odds,
+        bets: data.bets,
+        arbs: data.arbs,
+        markets: data.markets,
+        hotGem: data.hotGem,
       }),
     });
     const result = await res.json();
@@ -153,6 +232,8 @@ export default function MorningBriefing() {
           setBriefing(cached.briefing);
           setTodos(cached.todos || todosFromBriefing(cached.briefing));
           if (cached.stats) setQuickStats(cached.stats);
+          if (cached.marketData) setMarketData(cached.marketData);
+          if (cached.hotGem) setHotGem(cached.hotGem);
           setLoading(false);
           return;
         }
@@ -169,7 +250,16 @@ export default function MorningBriefing() {
       setBriefing(parsed);
       setTodos(newTodos);
       setQuickStats(stats);
-      saveCache({ date: todayStamp(), briefing: parsed, todos: newTodos, stats });
+      setMarketData(data.markets || null);
+      setHotGem(data.hotGem || null);
+      saveCache({
+        date: todayStamp(),
+        briefing: parsed,
+        todos: newTodos,
+        stats,
+        marketData: data.markets || null,
+        hotGem: data.hotGem || null,
+      });
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -207,6 +297,7 @@ export default function MorningBriefing() {
   const sections = [
     { key: 'greeting', icon: '👋', label: 'GREETING', color: s.accent },
     { key: 'overnight', icon: '🌙', label: 'OVERNIGHT REPORT', color: '#7c66dc' },
+    { key: 'market_overview', icon: '📊', label: 'MARKET OVERVIEW', color: s.accent },
     { key: 'opportunities', icon: '⚡', label: 'OPPORTUNITIES', color: s.green },
     { key: 'warnings', icon: '⚠️', label: 'WARNINGS', color: s.yellow },
     { key: 'motivation', icon: '🚀', label: 'MOTIVATION', color: s.green },
@@ -283,9 +374,37 @@ export default function MorningBriefing() {
             </div>
           )}
 
+          {briefing?.hot_alert && (
+            <div style={{
+              background: 'rgba(255,100,0,0.05)',
+              border: '1px solid rgba(255,100,0,0.5)',
+              borderRadius: 12, padding: 20, marginBottom: 16,
+              boxShadow: '0 0 20px rgba(255,100,0,0.1)',
+              animation: 'jarvisFade 0.4s ease',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 20 }}>🚨</span>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#ff6400', letterSpacing: '0.15em' }}>HOT ALERT — ACT NOW</div>
+                <div style={{ marginLeft: 'auto', fontSize: 10, color: '#ff6400', padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(255,100,0,0.4)', animation: 'jarvisPulse 1s infinite alternate' }}>URGENT</div>
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.7, color: s.text }}>{briefing.hot_alert}</div>
+              {hotGem?.url && (
+                <a href={hotGem.url} target="_blank" rel="noreferrer" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 12,
+                  padding: '8px 16px', borderRadius: 8, background: 'rgba(255,100,0,0.15)',
+                  border: '1px solid rgba(255,100,0,0.4)', color: '#ff6400',
+                  textDecoration: 'none', fontSize: 12, fontWeight: 700,
+                }}>
+                  View {hotGem.symbol} on DexScreener →
+                </a>
+              )}
+            </div>
+          )}
+
           {briefing && sections.map((sec, idx) => {
             const value = briefing[sec.key];
             if (!value) return null;
+            const isMarket = sec.key === 'market_overview';
             return (
               <div key={sec.key} className="jarvis-section" style={{
                 background: s.card, border: `1px solid ${s.border}`,
@@ -299,6 +418,31 @@ export default function MorningBriefing() {
                 <div style={{ fontSize: 14, lineHeight: 1.7, color: s.text, whiteSpace: 'pre-wrap' }}>
                   {value}
                 </div>
+                {isMarket && marketData && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 12 }}>
+                    <div style={{ background: '#060f1a', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: s.muted, marginBottom: 2 }}>BTC</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: marketData.btcChange >= 0 ? s.green : s.red }}>
+                        {marketData.btcChange >= 0 ? '+' : ''}{marketData.btcChange?.toFixed(1)}%
+                      </div>
+                      <div style={{ fontSize: 11, color: '#fff' }}>${marketData.btcPrice?.toLocaleString()}</div>
+                    </div>
+                    <div style={{ background: '#060f1a', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: s.muted, marginBottom: 2 }}>ETH</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: marketData.ethChange >= 0 ? s.green : s.red }}>
+                        {marketData.ethChange >= 0 ? '+' : ''}{marketData.ethChange?.toFixed(1)}%
+                      </div>
+                      <div style={{ fontSize: 11, color: '#fff' }}>${marketData.ethPrice?.toLocaleString()}</div>
+                    </div>
+                    <div style={{ background: '#060f1a', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: s.muted, marginBottom: 2 }}>SENTIMENT</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: marketData.marketSentiment === 'bullish' ? s.green : marketData.marketSentiment === 'bearish' ? s.red : '#ffaa00' }}>
+                        {marketData.marketSentiment?.toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#fff' }}>{marketData.gainers}/10 up</div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -343,13 +487,28 @@ export default function MorningBriefing() {
           <div style={{ background: s.card, border: `1px solid ${s.border}`, borderRadius: 12, padding: 20, marginBottom: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: s.muted, letterSpacing: '0.15em', marginBottom: 12 }}>QUICK STATS</div>
             {[
+              marketData && {
+                label: 'BTC 24h',
+                value: `${marketData.btcChange >= 0 ? '+' : ''}${marketData.btcChange?.toFixed(1)}%`,
+                color: marketData.btcChange >= 0 ? s.green : s.red,
+              },
+              marketData && {
+                label: 'Market',
+                value: marketData.marketSentiment?.toUpperCase(),
+                color: marketData.marketSentiment === 'bullish' ? s.green : marketData.marketSentiment === 'bearish' ? s.red : '#ffaa00',
+              },
+              hotGem && {
+                label: 'Hot Gem',
+                value: hotGem.symbol || hotGem.name,
+                color: '#ff6400',
+              },
               { label: 'Trading Win Rate', value: `${quickStats.winRate}%`, color: quickStats.winRate >= 50 ? s.green : s.text },
               { label: "Today's P&L", value: `${quickStats.todayPnl >= 0 ? '+' : '-'}$${Math.abs(quickStats.todayPnl).toFixed(2)}`, color: quickStats.todayPnl >= 0 ? s.green : s.red },
               { label: 'Arbs Found Today', value: quickStats.arbsFound, color: s.green },
               { label: 'Open Crypto', value: `${quickStats.openCrypto} positions`, color: s.accent },
               { label: 'Pending Paper Bets', value: quickStats.pendingBets, color: s.yellow },
               { label: 'Tracked Arbs', value: quickStats.trackedArbs, color: s.green },
-            ].map((stat) => (
+            ].filter(Boolean).map((stat) => (
               <div key={stat.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${s.border}` }}>
                 <span style={{ fontSize: 12, color: s.muted }}>{stat.label}</span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: stat.color }}>{stat.value}</span>
