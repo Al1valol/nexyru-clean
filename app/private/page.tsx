@@ -1550,6 +1550,25 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
 
 type OddsTabKey = "best" | "polymarket" | "arb" | "value";
 
+// One Odds API call per sport (each costs 1 credit). The proxy at /api/odds
+// accepts a comma-separated list and fans out in parallel server-side. List
+// the sports we care about; the proxy silently skips any that the upstream
+// 404s (eg. off-season tennis events).
+const ODDS_SPORTS = [
+  "baseball_mlb",
+  "basketball_nba",
+  "americanfootball_nfl",
+  "icehockey_nhl",
+  "soccer_epl",
+  "soccer_uefa_champs_league",
+  "soccer_mls",
+  "tennis_atp_french_open",
+  "tennis_wta_french_open",
+  "mma_mixed_martial_arts",
+  "basketball_ncaab",
+  "baseball_ncaa",
+];
+
 export function OddsTab() {
   const [oddsTab, setOddsTab] = useState<OddsTabKey>("best");
   const [games, setGames] = useState<OddsGame[] | null>(null);
@@ -1559,12 +1578,12 @@ export function OddsTab() {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   // Single fetch shared across Best Odds / Arb Finder / Value Bets — Polymarket
-  // is a separate API.
+  // is a separate API. Proxy fans out to all listed sports in parallel.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/odds?sport=upcoming&daysFrom=30`);
+      const res = await fetch(`/api/odds?sports=${ODDS_SPORTS.join(",")}&daysFrom=7`);
       const body = await res.json();
       if (!res.ok) {
         setError((body as { error?: string }).error ?? `Error (${res.status})`);
@@ -1689,6 +1708,8 @@ function FanduelPanel({ games, loading, error, requestsRemaining, nowMs, onRefre
 
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
         <strong style={{ color: C.text }}>{sorted.length}</strong> {sorted.length === 1 ? "game" : "games"} available
+        {" across "}
+        <strong style={{ color: C.text }}>{new Set(sorted.map(d => d.g.sport_key)).size}</strong> {new Set(sorted.map(d => d.g.sport_key)).size === 1 ? "sport" : "sports"}
         {" · "}
         <strong style={{ color: C.text }}>{requestsRemaining ?? "—"}</strong> API calls left
       </div>
@@ -1940,7 +1961,7 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
       </div>
 
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
-        <strong style={{ color: arbCount > 0 ? C.green : C.text }}>{arbCount}</strong> {arbCount === 1 ? "arb" : "arbs"} found · {decorated.length} total games
+        <strong style={{ color: C.text }}>{decorated.length}</strong> {decorated.length === 1 ? "game" : "games"} loaded across <strong style={{ color: C.text }}>{new Set(decorated.map(d => d.g.sport_key)).size}</strong> {new Set(decorated.map(d => d.g.sport_key)).size === 1 ? "sport" : "sports"} · <strong style={{ color: arbCount > 0 ? C.green : C.text }}>{arbCount}</strong> {arbCount === 1 ? "arb" : "arbs"} found
       </div>
 
       {games === null ? (
@@ -2149,7 +2170,7 @@ function ValueBetsPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
       )}
 
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
-        <strong style={{ color: C.text }}>{decorated.length}</strong> games analyzed · sorted by best value
+        <strong style={{ color: C.text }}>{decorated.length}</strong> {decorated.length === 1 ? "game" : "games"} across <strong style={{ color: C.text }}>{new Set(decorated.map(d => d.g.sport_key)).size}</strong> {new Set(decorated.map(d => d.g.sport_key)).size === 1 ? "sport" : "sports"} · sorted by best value
         {myBets.length > 0 && <> · {myBets.length} bet{myBets.length === 1 ? "" : "s"} tracked</>}
       </div>
 
