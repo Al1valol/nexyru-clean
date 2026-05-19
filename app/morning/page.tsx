@@ -4,12 +4,21 @@ import { useState, useEffect } from 'react';
 
 // All external API calls go through /api/* proxies so keys stay server-side.
 
+const CACHE_KEY = 'jarvis_briefing';
+
 export default function MorningBriefing() {
   const [loading, setLoading] = useState(true);
   const [briefing, setBriefing] = useState(null);
   const [todos, setTodos] = useState([]);
   const [errorMsg, setErrorMsg] = useState(null);
-  const [quickStats, setQuickStats] = useState({ openCrypto: 0, pendingBets: 0, trackedArbs: 0 });
+  const [quickStats, setQuickStats] = useState({
+    winRate: 0,
+    todayPnl: 0,
+    arbsFound: 0,
+    openCrypto: 0,
+    pendingBets: 0,
+    trackedArbs: 0,
+  });
 
   const getGreeting = () => {
     const h = new Date().getHours();
@@ -17,6 +26,8 @@ export default function MorningBriefing() {
     if (h < 17) return 'Good afternoon';
     return 'Good evening';
   };
+
+  const todayStamp = () => new Date().toDateString();
 
   // Gather everything the briefing needs from localStorage + /api/odds.
   const fetchAllData = async () => {
@@ -55,6 +66,7 @@ export default function MorningBriefing() {
         return age > 8;
       });
       data.crypto = {
+        openPositions: openCrypto.map((p) => ({ symbol: p.symbol })),
         openPositionsCount: openCrypto.length,
         overnightCount: overnightPositions.length,
         overnightPositions: overnightPositions.map((p) => ({ symbol: p.symbol })),
@@ -62,7 +74,7 @@ export default function MorningBriefing() {
       };
     } catch { data.crypto = null; }
 
-    // 3. Sports betting arbs (MLB only — cheap, single API call).
+    // 3. Sports betting arbs (MLB only — single API call to keep it cheap).
     try {
       const res = await fetch('/api/odds?sport=baseball_mlb&daysFrom=2');
       const body = await res.json();
@@ -99,21 +111,14 @@ export default function MorningBriefing() {
     return data;
   };
 
-  const computeQuickStats = () => {
-    try {
-      const cryptoStore = JSON.parse(localStorage.getItem('nexyru_crypto_accounts') || '{}');
-      const openCrypto = (cryptoStore.accounts || [])
-        .flatMap((a) => a.positions || [])
-        .filter((p) => p.status === 'open').length;
-      const pendingBets = JSON.parse(localStorage.getItem('nexyru_value_bets') || '[]')
-        .filter((b) => b.status === 'pending').length;
-      const trackedArbs = JSON.parse(localStorage.getItem('nexyru_arbs') || '[]')
-        .filter((a) => a.status === 'pending').length;
-      return { openCrypto, pendingBets, trackedArbs };
-    } catch {
-      return { openCrypto: 0, pendingBets: 0, trackedArbs: 0 };
-    }
-  };
+  const statsFromData = (data) => ({
+    winRate: data?.trading?.winRate ?? 0,
+    todayPnl: data?.trading?.todayPnl ?? 0,
+    arbsFound: data?.odds?.arbsFound ?? 0,
+    openCrypto: data?.crypto?.openPositionsCount ?? 0,
+    pendingBets: data?.bets?.pendingBets ?? 0,
+    trackedArbs: data?.arbs?.pendingArbs ?? 0,
+  });
 
   const generateBriefing = async (data) => {
     const res = await fetch('/api/morning', {
@@ -125,42 +130,46 @@ export default function MorningBriefing() {
       }),
     });
     const result = await res.json();
-    if (!res.ok) {
+    if (!res.ok || !result?.briefing) {
       throw new Error(result?.error || `HTTP ${res.status}`);
     }
-    return result.text || 'Briefing unavailable.';
+    return result.briefing;
   };
 
-  const parseBriefing = (text) => {
-    const sections = {};
-    const parts = text.split(/\n(?=[A-Z_]+:)/);
-    parts.forEach((part) => {
-      const match = part.match(/^([A-Z_]+):\s*([\s\S]+)/);
-      if (match) sections[match[1]] = match[2].trim();
-    });
-    return sections;
+  const todosFromBriefing = (b) =>
+    (b?.goals || []).map((g, i) => ({ id: i, text: g, done: false }));
+
+  const saveCache = (next) => {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
   };
 
-  const generateTodos = (sections) => {
-    const goals = sections['GOALS'] || '';
-    const lines = goals.split('\n').filter((l) => l.trim());
-    return lines.map((line, i) => ({
-      id: i,
-      text: line.replace(/^\d+\.\s*/, '').replace(/^[-*•]\s*/, '').trim(),
-      done: false,
-    }));
-  };
+  const runBriefing = async ({ force = false } = {}) => {
+    // Day-keyed cache: skip the API call if we already generated today's
+    // briefing on this device. Refresh button passes { force: true }.
+    if (!force) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+        if (cached?.date === todayStamp() && cached.briefing) {
+          setBriefing(cached.briefing);
+          setTodos(cached.todos || todosFromBriefing(cached.briefing));
+          if (cached.stats) setQuickStats(cached.stats);
+          setLoading(false);
+          return;
+        }
+      } catch {}
+    }
 
-  const runBriefing = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
       const data = await fetchAllData();
-      const text = await generateBriefing(data);
-      const sections = parseBriefing(text);
-      setBriefing(sections);
-      setTodos(generateTodos(sections));
-      setQuickStats(computeQuickStats());
+      const stats = statsFromData(data);
+      const parsed = await generateBriefing(data);
+      const newTodos = todosFromBriefing(parsed);
+      setBriefing(parsed);
+      setTodos(newTodos);
+      setQuickStats(stats);
+      saveCache({ date: todayStamp(), briefing: parsed, todos: newTodos, stats });
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -168,13 +177,18 @@ export default function MorningBriefing() {
     }
   };
 
-  useEffect(() => {
-    runBriefing();
-    setQuickStats(computeQuickStats());
-  }, []);
+  useEffect(() => { runBriefing(); }, []);
 
   const toggleTodo = (id) => {
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+    setTodos((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t));
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+        cached.todos = next;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cached));
+      } catch {}
+      return next;
+    });
   };
 
   const s = {
@@ -189,23 +203,14 @@ export default function MorningBriefing() {
     text: '#c8e0f0',
   };
 
-  const sectionIcons = {
-    GREETING: '👋',
-    OVERNIGHT_REPORT: '🌙',
-    OPPORTUNITIES: '⚡',
-    WARNINGS: '⚠️',
-    GOALS: '🎯',
-    MOTIVATION: '🚀',
-  };
-
-  const sectionColors = {
-    GREETING: s.accent,
-    OVERNIGHT_REPORT: '#7c66dc',
-    OPPORTUNITIES: s.green,
-    WARNINGS: s.yellow,
-    GOALS: s.accent,
-    MOTIVATION: s.green,
-  };
+  // Predefined display order — drives both rendering and the cache shape.
+  const sections = [
+    { key: 'greeting', icon: '👋', label: 'GREETING', color: s.accent },
+    { key: 'overnight', icon: '🌙', label: 'OVERNIGHT REPORT', color: '#7c66dc' },
+    { key: 'opportunities', icon: '⚡', label: 'OPPORTUNITIES', color: s.green },
+    { key: 'warnings', icon: '⚠️', label: 'WARNINGS', color: s.yellow },
+    { key: 'motivation', icon: '🚀', label: 'MOTIVATION', color: s.green },
+  ];
 
   if (loading) {
     return (
@@ -246,7 +251,7 @@ export default function MorningBriefing() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 11, color: s.muted }}>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
           <a href="/dashboard" style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${s.border}`, color: s.muted, textDecoration: 'none', fontSize: 12 }}>← Dashboard</a>
-          <button onClick={runBriefing}
+          <button onClick={() => runBriefing({ force: true })}
             style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${s.accent}33`, background: `${s.accent}11`, color: s.accent, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
             🔄 Refresh Briefing
           </button>
@@ -278,23 +283,25 @@ export default function MorningBriefing() {
             </div>
           )}
 
-          {briefing && Object.entries(briefing).map(([key, value], idx) => (
-            key !== 'GOALS' && (
-              <div key={key} className="jarvis-section" style={{
+          {briefing && sections.map((sec, idx) => {
+            const value = briefing[sec.key];
+            if (!value) return null;
+            return (
+              <div key={sec.key} className="jarvis-section" style={{
                 background: s.card, border: `1px solid ${s.border}`,
                 borderRadius: 12, padding: 20, marginBottom: 16,
                 animation: `jarvisFade 0.4s ease ${idx * 0.1}s both`,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <span style={{ fontSize: 18 }}>{sectionIcons[key] || '◆'}</span>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: sectionColors[key] || s.accent, letterSpacing: '0.15em' }}>{key.replace(/_/g, ' ')}</div>
+                  <span style={{ fontSize: 18 }}>{sec.icon}</span>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: sec.color, letterSpacing: '0.15em' }}>{sec.label}</div>
                 </div>
                 <div style={{ fontSize: 14, lineHeight: 1.7, color: s.text, whiteSpace: 'pre-wrap' }}>
                   {value}
                 </div>
               </div>
-            )
-          ))}
+            );
+          })}
         </div>
 
         {/* Right: Goals + Quick stats + Quick actions */}
@@ -336,7 +343,10 @@ export default function MorningBriefing() {
           <div style={{ background: s.card, border: `1px solid ${s.border}`, borderRadius: 12, padding: 20, marginBottom: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: s.muted, letterSpacing: '0.15em', marginBottom: 12 }}>QUICK STATS</div>
             {[
-              { label: 'Open Crypto Positions', value: quickStats.openCrypto, color: s.accent },
+              { label: 'Trading Win Rate', value: `${quickStats.winRate}%`, color: quickStats.winRate >= 50 ? s.green : s.text },
+              { label: "Today's P&L", value: `${quickStats.todayPnl >= 0 ? '+' : '-'}$${Math.abs(quickStats.todayPnl).toFixed(2)}`, color: quickStats.todayPnl >= 0 ? s.green : s.red },
+              { label: 'Arbs Found Today', value: quickStats.arbsFound, color: s.green },
+              { label: 'Open Crypto', value: `${quickStats.openCrypto} positions`, color: s.accent },
               { label: 'Pending Paper Bets', value: quickStats.pendingBets, color: s.yellow },
               { label: 'Tracked Arbs', value: quickStats.trackedArbs, color: s.green },
             ].map((stat) => (

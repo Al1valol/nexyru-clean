@@ -8,18 +8,49 @@ const client = new Anthropic();
 
 // System prompt is constant — mark it cacheable. Daily briefing requests
 // re-use the same instructions; cache reads cut cost + latency.
-const SYSTEM = `You are JARVIS, the AI assistant from Iron Man. You are giving a personalized morning briefing to a trader/investor. Be smart, confident, slightly witty, and genuinely helpful. Use "Sir" occasionally. Keep it sharp and actionable.
+const SYSTEM = `You are JARVIS, the AI assistant from Iron Man, giving a personalized morning briefing to a trader/investor. Be smart, confident, slightly witty, and genuinely helpful. Use "Sir" occasionally. Keep it sharp and actionable.
 
-Generate a briefing with these exact sections — each label in ALL CAPS followed by a colon, then the content:
+Reply ONLY with valid JSON — no markdown, no backticks, no prose around it. Use this exact shape:
 
-GREETING: Personalized good morning, mention the date, set the tone.
-OVERNIGHT_REPORT: What happened while they were away. Comment on any overnight crypto positions specifically by name. Warn if they held meme coins overnight (high risk).
-OPPORTUNITIES: Today's best opportunities across trading, crypto, and sports betting. Be specific. If arbs found, explain the opportunity. If crypto is open, discuss.
-WARNINGS: Risks to watch out for. Include: too many pending arbs (bookmakers ban arbers), meme coins held too long, recent losses suggesting a losing streak.
-GOALS: 3-5 specific actionable goals for today as a numbered list. Smart and achievable.
-MOTIVATION: One sharp, motivating closing line. Iron Man style.
+{
+  "greeting": "Personalized Iron Man / JARVIS-style greeting, mention the date and time of day. 2-3 sentences.",
+  "overnight": "What happened overnight. Comment on any overnight crypto positions by name if listed. Warn about meme coins held overnight. 2-3 sentences.",
+  "opportunities": "Best opportunities today across trading, crypto, and sports betting. Be specific and actionable. 3-4 sentences.",
+  "warnings": "Risks to watch. If they have overnight meme coins warn them. If too many pending arbs warn about getting banned by bookmakers. Recent-loss streak warnings. 2-3 sentences.",
+  "goals": ["Goal 1 specific and actionable", "Goal 2 specific and actionable", "Goal 3 specific and actionable", "Goal 4 specific and actionable", "Goal 5 specific and actionable"],
+  "motivation": "One sharp Iron Man style closing line under 20 words."
+}`;
 
-Total response under 400 words. Conversational, smart, occasionally witty.`;
+type Briefing = {
+  greeting: string;
+  overnight: string;
+  opportunities: string;
+  warnings: string;
+  goals: string[];
+  motivation: string;
+};
+
+function coerceBriefing(parsed: unknown): Briefing | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const p = parsed as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const goals = Array.isArray(p.goals)
+    ? (p.goals as unknown[]).map((g) => String(g)).filter(Boolean)
+    : [];
+  // At least one section must be populated for this to count as a usable
+  // briefing — otherwise return null and let the route surface an error.
+  const text = [p.greeting, p.overnight, p.opportunities, p.warnings, p.motivation]
+    .filter((v) => typeof v === "string" && v.trim().length > 0).length;
+  if (text === 0 && goals.length === 0) return null;
+  return {
+    greeting: str(p.greeting),
+    overnight: str(p.overnight),
+    opportunities: str(p.opportunities),
+    warnings: str(p.warnings),
+    goals,
+    motivation: str(p.motivation),
+  };
+}
 
 export async function POST(req: Request) {
   let body: {
@@ -36,8 +67,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // Pull data with defensive fallbacks — the client gathers from localStorage
-  // so any shape may be missing.
   const t = (body.trading ?? {}) as Record<string, unknown>;
   const c = (body.crypto ?? {}) as Record<string, unknown>;
   const o = (body.odds ?? {}) as Record<string, unknown>;
@@ -77,21 +106,40 @@ SPORTS BETTING:
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1000,
+      max_tokens: 1200,
       system: [
         { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
       ],
       messages: [{ role: "user", content: userContent }],
     });
 
-    const text = message.content
+    const raw = message.content
       .filter((blk): blk is Anthropic.TextBlock => blk.type === "text")
       .map((blk) => blk.text)
-      .join("\n")
+      .join("")
+      .replace(/```json|```/g, "")
       .trim();
 
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return NextResponse.json(
+        { error: "Model returned non-JSON", raw },
+        { status: 502 },
+      );
+    }
+
+    const briefing = coerceBriefing(parsed);
+    if (!briefing) {
+      return NextResponse.json(
+        { error: "Briefing missing required fields", raw },
+        { status: 502 },
+      );
+    }
+
     return NextResponse.json({
-      text,
+      briefing,
       usage: {
         input_tokens: message.usage.input_tokens,
         output_tokens: message.usage.output_tokens,
