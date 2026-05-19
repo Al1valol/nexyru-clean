@@ -134,38 +134,59 @@ function verificationBucket(status) {
 }
 
 // Routes a coin to the right DEX swap URL based on chain.
-// Pass _coingeckoId to fall back to the CoinGecko page when no DEX info
-// is available (eg. top-100 coins from /search/trending have no contract).
+// Coins without a contract address (CoinGecko named coins like 'bitcoin')
+// resolve to the CoinGecko page. Catches any unexpected shape so a single
+// bad coin never throws and trips the ChartErrorBoundary.
 function getBuyUrl(coin) {
-  const chain = (coin?.chainId || '').toLowerCase();
-  const rawId = coin?.coinId || coin?.pairAddress || '';
-  const address = rawId.includes(':') ? rawId.split(':').pop() : rawId;
+  try {
+    const chainId = (coin?.chainId || coin?.chain || '').toLowerCase();
+    const rawId = coin?.coinId || coin?.id || '';
+    const address = rawId.includes(':') ? (rawId.split(':').pop() || '') : rawId;
+    const isPumpFun = address.endsWith('pump');
 
-  if (chain === 'solana' || chain === 'sol') {
-    return { url: `https://jup.ag/swap/SOL-${address}`, label: 'Buy on Jupiter', color: '#22c55e', icon: '⚡' };
+    if (!address || (!address.startsWith('0x') && !isPumpFun && address.length < 30)) {
+      return {
+        url: `https://www.coingecko.com/en/coins/${coin?.id || coin?.coinId || ''}`,
+        label: 'View on CoinGecko',
+        color: '#6366f1',
+        icon: '📊',
+        isPumpFun: false,
+        pumpUrl: null,
+      };
+    }
+
+    if (chainId === 'solana' || chainId === 'sol' || isPumpFun) {
+      return {
+        url: `https://jup.ag/swap/SOL-${address}`,
+        label: 'Buy on Jupiter',
+        color: '#22c55e',
+        icon: '⚡',
+        isPumpFun,
+        pumpUrl: isPumpFun ? `https://pump.fun/${address}` : null,
+      };
+    }
+    if (chainId === 'base') {
+      return { url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄', isPumpFun: false, pumpUrl: null };
+    }
+    if (chainId === 'ethereum' || chainId === 'eth') {
+      return { url: `https://app.uniswap.org/swap?chain=mainnet&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄', isPumpFun: false, pumpUrl: null };
+    }
+    if (chainId === 'bsc' || chainId === 'bnb') {
+      return { url: `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${address}`, label: 'Buy on PancakeSwap', color: '#f59e0b', icon: '🥞', isPumpFun: false, pumpUrl: null };
+    }
+    if (chainId === 'arbitrum') {
+      return { url: `https://app.uniswap.org/swap?chain=arbitrum&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄', isPumpFun: false, pumpUrl: null };
+    }
+    if (chainId === 'polygon') {
+      return { url: `https://app.uniswap.org/swap?chain=polygon&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#8247e5', icon: '🦄', isPumpFun: false, pumpUrl: null };
+    }
+    if (chainId === 'avalanche') {
+      return { url: `https://traderjoexyz.com/avalanche/trade?outputCurrency=${address}`, label: 'Buy on TraderJoe', color: '#e84142', icon: '🔴', isPumpFun: false, pumpUrl: null };
+    }
+    return { url: coin?.url || `https://dexscreener.com/${chainId}/${address}`, label: 'View on DexScreener', color: '#6366f1', icon: '📊', isPumpFun: false, pumpUrl: null };
+  } catch {
+    return { url: '#', label: 'View Chart', color: '#6366f1', icon: '📊', isPumpFun: false, pumpUrl: null };
   }
-  if (chain === 'base') {
-    return { url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
-  }
-  if (chain === 'ethereum' || chain === 'eth') {
-    return { url: `https://app.uniswap.org/swap?chain=mainnet&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
-  }
-  if (chain === 'bsc' || chain === 'bnb') {
-    return { url: `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${address}`, label: 'Buy on PancakeSwap', color: '#f59e0b', icon: '🥞' };
-  }
-  if (chain === 'arbitrum') {
-    return { url: `https://app.uniswap.org/swap?chain=arbitrum&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
-  }
-  if (chain === 'polygon') {
-    return { url: `https://app.uniswap.org/swap?chain=polygon&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#8247e5', icon: '🦄' };
-  }
-  if (chain === 'avalanche') {
-    return { url: `https://traderjoexyz.com/avalanche/trade?outputCurrency=${address}`, label: 'Buy on TraderJoe', color: '#e84142', icon: '🔴' };
-  }
-  if (coin?._coingeckoId) {
-    return { url: `https://www.coingecko.com/en/coins/${coin._coingeckoId}`, label: 'View on CoinGecko', color: '#6366f1', icon: '📊' };
-  }
-  return { url: coin?.url || `https://dexscreener.com/${chain}/${address}`, label: 'View on DexScreener', color: '#6366f1', icon: '📊' };
 }
 
 function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
@@ -1623,6 +1644,11 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
     return m + ' mins ago';
   })();
 
+  const visible = React.useMemo(() => {
+    if (riskFilter === 'all') return coins;
+    return coins.filter(({ item: c }) => verificationBucket(getVerificationStatus({ ...c, source: 'coingecko' }).status) === riskFilter);
+  }, [coins, riskFilter]);
+
   if (loading && coins.length === 0) {
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
@@ -1638,11 +1664,6 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
     color: active ? '#fff' : '#9ca3af',
     fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
   });
-
-  const visible = React.useMemo(() => {
-    if (riskFilter === 'all') return coins;
-    return coins.filter(({ item: c }) => verificationBucket(getVerificationStatus({ ...c, source: 'coingecko' }).status) === riskFilter);
-  }, [coins, riskFilter]);
 
   return (
     <div>
@@ -1735,7 +1756,7 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
                   }}
                 >Buy →</button>
                 {(() => {
-                  const buyInfo = getBuyUrl({ _coingeckoId: c.id });
+                  const buyInfo = getBuyUrl(c);
                   return (
                     <a href={buyInfo.url} target="_blank" rel="noreferrer" style={{
                       display:'flex', alignItems:'center', justifyContent:'center', gap:6,
