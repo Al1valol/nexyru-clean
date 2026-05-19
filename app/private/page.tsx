@@ -2631,7 +2631,7 @@ function PlayerStatsPanel() {
     try {
       const q = (search || "james").trim();
       const playersRes = await fetch(
-        `/api/balldontlie?path=players&per_page=25&search=${encodeURIComponent(q)}`,
+        `/api/players?sport=nba&search=${encodeURIComponent(q)}`,
       );
       const playersJson = await playersRes.json();
       if (!playersRes.ok) {
@@ -2644,9 +2644,9 @@ function PlayerStatsPanel() {
         setStatsPlayers([]);
         return;
       }
-      const idsParam = players.map((p) => `player_ids[]=${p.id}`).join("&");
+      const idsCsv = players.map((p) => p.id).join(",");
       const avgRes = await fetch(
-        `/api/balldontlie?path=season_averages&season=2024&${idsParam}`,
+        `/api/players?sport=nba&ids=${idsCsv}`,
       );
       const avgJson = await avgRes.json().catch(() => ({}));
       const avgById = new Map<number, any>();
@@ -2674,31 +2674,27 @@ function PlayerStatsPanel() {
     setStatsLoading(true);
     setError(null);
     try {
-      const cats = ["battingAverage", "homeRuns", "runsBattedIn", "onBasePlusSlugging"];
-      const r = await fetch(
-        `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${cats.join(",")}&season=2025&sportId=1&limit=25`,
-      );
+      const r = await fetch(`/api/players?sport=mlb`);
       const j = await r.json();
-      const byId = new Map<number, any>();
-      (j.leagueLeaders || []).forEach((cat: any) => {
-        const catKey = cat.leaderCategory;
-        (cat.leaders || []).forEach((leader: any) => {
-          const id = leader.person?.id;
-          if (!id) return;
-          if (!byId.has(id)) {
-            byId.set(id, {
-              id,
-              name: leader.person.fullName,
-              team: leader.team?.name || "",
-              stats: {} as Record<string, string>,
-            });
-          }
-          byId.get(id).stats[catKey] = leader.value;
-        });
-      });
-      const arr = Array.from(byId.values()).sort(
-        (a, b) => (parseFloat(b.stats.homeRuns) || 0) - (parseFloat(a.stats.homeRuns) || 0),
-      );
+      if (!r.ok) {
+        setError(j.error || `Failed (${r.status})`);
+        setStatsPlayers([]);
+        return;
+      }
+      // /v1/stats returns { stats: [{ splits: [{ player, team, stat: {...} }] }] }.
+      // Each split is one player with the full stat object inline.
+      const splits: any[] = j?.stats?.[0]?.splits ?? [];
+      const arr = splits.map((sp) => ({
+        id: sp.player?.id ?? Math.random(),
+        name: sp.player?.fullName ?? "Unknown",
+        team: sp.team?.name ?? "",
+        stats: {
+          avg: sp.stat?.avg ?? "—",
+          homeRuns: sp.stat?.homeRuns ?? "—",
+          rbi: sp.stat?.rbi ?? "—",
+          ops: sp.stat?.ops ?? "—",
+        },
+      }));
       setStatsPlayers(arr);
     } catch (e: any) {
       setError(e?.message || "Failed to load");
@@ -2976,10 +2972,10 @@ function PlayerStatsPanel() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 {[
-                  { label: "AVG", value: p.stats.battingAverage ?? "—" },
+                  { label: "AVG", value: p.stats.avg ?? "—" },
                   { label: "HR", value: p.stats.homeRuns ?? "—" },
-                  { label: "RBI", value: p.stats.runsBattedIn ?? "—" },
-                  { label: "OPS", value: p.stats.onBasePlusSlugging ?? "—" },
+                  { label: "RBI", value: p.stats.rbi ?? "—" },
+                  { label: "OPS", value: p.stats.ops ?? "—" },
                 ].map((s) => (
                   <div
                     key={s.label}
