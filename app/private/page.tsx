@@ -1599,8 +1599,16 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
+type OddsTabKey = "fanduel" | "polymarket" | "paper";
+
 export function OddsTab() {
-  const [oddsTab, setOddsTab] = useState<"fanduel" | "polymarket">("fanduel");
+  const [oddsTab, setOddsTab] = useState<OddsTabKey>("fanduel");
+  const [prefill, setPrefill] = useState<BetPrefill | null>(null);
+
+  const handlePaperBet = (p: BetPrefill) => {
+    setPrefill(p);
+    setOddsTab("paper");
+  };
 
   return (
     <section>
@@ -1608,10 +1616,11 @@ export function OddsTab() {
         {[
           { id: "fanduel", label: "📊 FanDuel" },
           { id: "polymarket", label: "🎲 Polymarket / Kalshi" },
+          { id: "paper", label: "📝 Paper Bets" },
         ].map((t) => (
           <button
             key={t.id}
-            onClick={() => setOddsTab(t.id as "fanduel" | "polymarket")}
+            onClick={() => setOddsTab(t.id as OddsTabKey)}
             style={{
               padding: "10px 20px",
               border: "none",
@@ -1629,12 +1638,14 @@ export function OddsTab() {
         ))}
       </div>
 
-      {oddsTab === "fanduel" ? <FanduelPanel /> : <PredictionMarketsPanel />}
+      {oddsTab === "fanduel" && <FanduelPanel onPaperBet={handlePaperBet} />}
+      {oddsTab === "polymarket" && <PredictionMarketsPanel />}
+      {oddsTab === "paper" && <PaperBetsPanel prefill={prefill} onPrefillConsumed={() => setPrefill(null)} />}
     </section>
   );
 }
 
-function FanduelPanel() {
+function FanduelPanel({ onPaperBet }: { onPaperBet?: (prefill: BetPrefill) => void }) {
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1775,6 +1786,7 @@ function FanduelPanel() {
               onToggle={() => setExpandedId((cur) => (cur === g.id ? null : g.id))}
               nowMs={nowMs}
               fanduelOnly
+              onPaperBet={onPaperBet}
             />
           ))}
         </div>
@@ -2040,6 +2052,598 @@ function PredictionMarketCard({ m }: { m: NormalizedMarket }) {
   );
 }
 
+// ───────────────────────── paper bets ─────────────────────────
+
+type PaperBetStatus = "pending" | "won" | "lost" | "void";
+
+type PaperBet = {
+  id: number;
+  game: string;
+  sport: string;
+  team: string;
+  odds: number;
+  bookmaker: string;
+  stake: number;
+  potentialWin: number;
+  status: PaperBetStatus;
+  placedAt: string;
+  gameTime: string;
+  result: PaperBetStatus | null;
+  notes: string;
+  settledAt?: string;
+};
+
+type PaperBetsStore = {
+  bankroll: number;
+  startingBankroll: number;
+  bets: PaperBet[];
+};
+
+type BetPrefill = {
+  game: string;
+  sport: string;
+  team: string;
+  odds: number;
+  bookmaker: string;
+  gameTime: string;
+};
+
+const PAPER_BETS_KEY = "nexyru_paper_bets";
+const DEFAULT_BANKROLL = 1000;
+
+function loadPaperBets(): PaperBetsStore {
+  const base = { bankroll: DEFAULT_BANKROLL, startingBankroll: DEFAULT_BANKROLL, bets: [] as PaperBet[] };
+  if (typeof window === "undefined") return base;
+  try {
+    const raw = localStorage.getItem(PAPER_BETS_KEY);
+    if (!raw) return base;
+    const p = JSON.parse(raw);
+    return {
+      bankroll: typeof p.bankroll === "number" ? p.bankroll : DEFAULT_BANKROLL,
+      startingBankroll: typeof p.startingBankroll === "number" ? p.startingBankroll : DEFAULT_BANKROLL,
+      bets: Array.isArray(p.bets) ? p.bets : [],
+    };
+  } catch {
+    return base;
+  }
+}
+
+function savePaperBets(store: PaperBetsStore) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(PAPER_BETS_KEY, JSON.stringify(store)); } catch {}
+}
+
+// Profit (not payout) from an American line. +120 stake $100 → $120 profit.
+function americanProfit(stake: number, odds: number): number {
+  return odds > 0 ? stake * (odds / 100) : stake * (100 / -odds);
+}
+
+function sportLabelFromKey(sportKey: string): string {
+  const k = (sportKey || "").toLowerCase();
+  if (k.includes("nfl") || k.includes("americanfootball")) return "NFL";
+  if (k.includes("nba") || k.includes("basketball")) return "NBA";
+  if (k.includes("mlb") || k.includes("baseball")) return "MLB";
+  if (k.includes("nhl") || k.includes("icehockey")) return "NHL";
+  if (k.includes("mma")) return "MMA";
+  if (k.includes("soccer")) return "Soccer";
+  if (k.includes("tennis")) return "Tennis";
+  return "Other";
+}
+
+const SPORT_OPTIONS = ["MLB", "NBA", "NFL", "NHL", "MMA", "Soccer", "Tennis", "Other"];
+
+function PaperBetsPanel({
+  prefill,
+  onPrefillConsumed,
+}: {
+  prefill: BetPrefill | null;
+  onPrefillConsumed: () => void;
+}) {
+  const [store, setStore] = useState<PaperBetsStore>(() => loadPaperBets());
+  const [addOpen, setAddOpen] = useState(false);
+  const [bankrollOpen, setBankrollOpen] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
+
+  // Hydrate from localStorage on mount (loadPaperBets returns the SSR default).
+  useEffect(() => { setStore(loadPaperBets()); }, []);
+  useEffect(() => { savePaperBets(store); }, [store]);
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Open the modal when a prefill arrives from the FanDuel tab.
+  useEffect(() => {
+    if (prefill) setAddOpen(true);
+  }, [prefill]);
+
+  const flash = (msg: string, color: string) => {
+    setToast({ msg, color });
+    setTimeout(() => setToast((cur) => (cur?.msg === msg ? null : cur)), 2500);
+  };
+
+  const handleAdd = (bet: Omit<PaperBet, "id" | "status" | "result" | "placedAt">) => {
+    const newBet: PaperBet = {
+      ...bet,
+      id: Date.now(),
+      status: "pending",
+      result: null,
+      placedAt: new Date().toISOString(),
+    };
+    setStore((s) => ({ ...s, bets: [newBet, ...s.bets] }));
+    setAddOpen(false);
+    onPrefillConsumed();
+  };
+
+  const handleSettle = (betId: number, result: "won" | "lost" | "void") => {
+    setStore((s) => {
+      const bet = s.bets.find((b) => b.id === betId);
+      if (!bet || bet.status !== "pending") return s;
+      let bankrollDelta = 0;
+      if (result === "won") {
+        bankrollDelta = bet.potentialWin; // profit only — stake was already conceptually held
+        flash(`🎉 +$${bet.potentialWin.toFixed(2)} profit!`, C.green);
+      } else if (result === "lost") {
+        bankrollDelta = -bet.stake;
+        flash(`❌ -$${bet.stake.toFixed(2)}`, C.red);
+      } else {
+        bankrollDelta = 0;
+        flash(`↺ Voided — stake returned`, C.textMuted);
+      }
+      const settledAt = new Date().toISOString();
+      return {
+        ...s,
+        bankroll: s.bankroll + bankrollDelta,
+        bets: s.bets.map((b) =>
+          b.id === betId ? { ...b, status: result, result, settledAt } : b,
+        ),
+      };
+    });
+  };
+
+  const handleDelete = (betId: number) => {
+    if (typeof window !== "undefined" && !window.confirm("Delete this bet?")) return;
+    setStore((s) => ({ ...s, bets: s.bets.filter((b) => b.id !== betId) }));
+  };
+
+  const setBankroll = (next: number) => {
+    setStore((s) => ({ ...s, bankroll: next, startingBankroll: next }));
+    setBankrollOpen(false);
+  };
+
+  const pending = store.bets.filter((b) => b.status === "pending");
+  const settled = store.bets.filter((b) => b.status !== "pending");
+  const wonBets = settled.filter((b) => b.status === "won");
+  const lostBets = settled.filter((b) => b.status === "lost");
+  const settledOutcomes = wonBets.length + lostBets.length;
+  const winRate = settledOutcomes > 0 ? (wonBets.length / settledOutcomes) * 100 : null;
+  const totalStaked = store.bets.reduce((s, b) => s + b.stake, 0);
+  const totalReturned = wonBets.reduce((s, b) => s + b.stake + b.potentialWin, 0); // stake back + profit
+  const netPnl = store.bankroll - store.startingBankroll;
+  const roi = totalStaked > 0 ? (netPnl / totalStaked) * 100 : 0;
+  const bestWin = wonBets.length > 0 ? wonBets.reduce((b, x) => (x.potentialWin > b.potentialWin ? x : b)) : null;
+  const worstLoss = lostBets.length > 0 ? lostBets.reduce((b, x) => (x.stake > b.stake ? x : b)) : null;
+  const avgOdds = store.bets.length > 0
+    ? store.bets.reduce((s, b) => s + b.odds, 0) / store.bets.length
+    : null;
+  const streak = (() => {
+    const sortedSettled = [...settled].sort((a, b) => new Date(b.settledAt ?? b.placedAt).getTime() - new Date(a.settledAt ?? a.placedAt).getTime());
+    let count = 0;
+    let kind: "won" | "lost" | null = null;
+    for (const b of sortedSettled) {
+      if (b.status !== "won" && b.status !== "lost") break;
+      if (kind === null) kind = b.status;
+      if (b.status !== kind) break;
+      count++;
+    }
+    return kind && count > 0 ? { kind, count } : null;
+  })();
+
+  return (
+    <>
+      <SectionTitle
+        title="Paper Bets"
+        subtitle="Track signals and fake bets · no real money"
+      />
+
+      {toast && (
+        <div style={{ background: `${toast.color}22`, border: `1px solid ${toast.color}`, color: toast.color, borderRadius: 8, padding: "10px 14px", fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
+        <Stat label="Bankroll" value={`$${store.bankroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} sub={`starting $${store.startingBankroll.toLocaleString()}`} color={netPnl >= 0 ? C.green : C.red}/>
+        <Stat label="Total bets" value={String(store.bets.length)} sub={`${pending.length} pending · ${settled.length} settled`}/>
+        <Stat label="Win rate" value={winRate === null ? "—" : `${winRate.toFixed(0)}%`} sub={settledOutcomes > 0 ? `${wonBets.length}W / ${lostBets.length}L` : "no results yet"}/>
+        <Stat label="ROI" value={totalStaked > 0 ? `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%` : "—"} sub={`profit vs $${totalStaked.toFixed(0)} staked`} color={roi >= 0 ? C.green : C.red}/>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+        <button
+          onClick={() => { onPrefillConsumed(); setAddOpen(true); }}
+          style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+        >
+          + Add Bet
+        </button>
+        <button
+          onClick={() => setBankrollOpen(true)}
+          style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+        >
+          Set Bankroll
+        </button>
+      </div>
+
+      <Subhead>Active bets ({pending.length})</Subhead>
+      {pending.length === 0 ? (
+        <div style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13, marginBottom: 18 }}>
+          No active bets. Click <strong style={{ color: C.text }}>+ Add Bet</strong> or use the FanDuel tab's <strong style={{ color: C.text }}>📝 Paper Bet</strong> buttons.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+          {pending.map((b) => (
+            <ActiveBetCard key={b.id} bet={b} nowMs={nowMs} onSettle={handleSettle} onDelete={handleDelete}/>
+          ))}
+        </div>
+      )}
+
+      <Subhead>Settled bets ({settled.length})</Subhead>
+      {settled.length === 0 ? (
+        <div style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13, marginBottom: 18 }}>
+          No settled bets yet.
+        </div>
+      ) : (
+        <SettledBetsTable bets={settled}/>
+      )}
+
+      <Subhead>Bankroll over time</Subhead>
+      <BankrollChart store={store}/>
+
+      <Subhead>Lifetime stats</Subhead>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 18, fontSize: 12.5 }}>
+        <StatLine label="Total staked" value={`$${totalStaked.toFixed(2)}`}/>
+        <StatLine label="Total returned" value={`$${totalReturned.toFixed(2)}`}/>
+        <StatLine label="Net P&L" value={`${netPnl >= 0 ? "+" : ""}$${netPnl.toFixed(2)}`} color={netPnl >= 0 ? C.green : C.red}/>
+        <StatLine label="Win rate" value={winRate === null ? "—" : `${winRate.toFixed(0)}%`}/>
+        <StatLine
+          label="Best win"
+          value={bestWin ? `+$${bestWin.potentialWin.toFixed(2)}` : "—"}
+          sub={bestWin ? bestWin.game : undefined}
+          color={C.green}
+        />
+        <StatLine
+          label="Worst loss"
+          value={worstLoss ? `-$${worstLoss.stake.toFixed(2)}` : "—"}
+          sub={worstLoss ? worstLoss.game : undefined}
+          color={C.red}
+        />
+        <StatLine label="Avg odds" value={avgOdds === null ? "—" : `${avgOdds > 0 ? "+" : ""}${avgOdds.toFixed(0)}`}/>
+        <StatLine label="ROI" value={totalStaked > 0 ? `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%` : "—"} color={roi >= 0 ? C.green : C.red}/>
+        <StatLine
+          label="Current streak"
+          value={streak ? `${streak.count} ${streak.kind === "won" ? "W" : "L"} in a row` : "—"}
+          color={streak ? (streak.kind === "won" ? C.green : C.red) : undefined}
+        />
+      </div>
+
+      {addOpen && (
+        <AddBetModal
+          prefill={prefill}
+          onCancel={() => { setAddOpen(false); onPrefillConsumed(); }}
+          onSubmit={handleAdd}
+        />
+      )}
+      {bankrollOpen && (
+        <SetBankrollModal
+          current={store.startingBankroll}
+          onCancel={() => setBankrollOpen(false)}
+          onSubmit={setBankroll}
+        />
+      )}
+    </>
+  );
+}
+
+function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: color ?? C.text }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function StatLine({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: color ?? C.text, marginTop: 2 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: C.textDim, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
+    </div>
+  );
+}
+
+function ActiveBetCard({
+  bet,
+  nowMs,
+  onSettle,
+  onDelete,
+}: {
+  bet: PaperBet;
+  nowMs: number;
+  onSettle: (id: number, r: "won" | "lost" | "void") => void;
+  onDelete: (id: number) => void;
+}) {
+  const cd = bet.gameTime ? countdownLabel(bet.gameTime, nowMs) : null;
+  const placedAgo = (() => {
+    const ms = nowMs - new Date(bet.placedAt).getTime();
+    if (ms < 60_000) return "just now";
+    if (ms < 3600_000) return `${Math.floor(ms / 60_000)}m ago`;
+    if (ms < 86400_000) return `${Math.floor(ms / 3600_000)}h ago`;
+    return `${Math.floor(ms / 86400_000)}d ago`;
+  })();
+  const fmtOdds = bet.odds > 0 ? `+${bet.odds}` : String(bet.odds);
+  const payout = bet.stake + bet.potentialWin;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.18)", color: "#a5b4fc", letterSpacing: "0.04em" }}>{bet.sport}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{bet.game}</span>
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          {cd?.live && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.red, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              <span className="nexyru-pulse" style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: C.red }}/>
+              LIVE
+            </span>
+          )}
+          {cd?.label && !cd.live && (
+            <span style={{ fontSize: 11, color: C.textMuted }}>{cd.label}</span>
+          )}
+        </span>
+      </div>
+
+      <div style={{ fontSize: 13, color: C.textDim, marginBottom: 8, lineHeight: 1.55 }}>
+        <div>
+          Pick: <strong style={{ color: C.text }}>{bet.team}</strong> at <strong style={{ color: C.green }}>{fmtOdds}</strong>{bet.bookmaker && <span style={{ color: C.textMuted }}> ({bet.bookmaker})</span>}
+        </div>
+        <div>
+          Stake: <strong style={{ color: C.text }}>${bet.stake.toFixed(2)}</strong> → Potential win: <strong style={{ color: C.green }}>${payout.toFixed(2)}</strong>{" "}
+          <span style={{ color: C.textMuted }}>(+${bet.potentialWin.toFixed(2)} profit)</span>
+        </div>
+        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Placed {placedAgo}</div>
+        {bet.notes && <div style={{ fontSize: 12, color: C.textDim, marginTop: 4, fontStyle: "italic" }}>“{bet.notes}”</div>}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button onClick={() => onSettle(bet.id, "won")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: C.green, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Won</button>
+        <button onClick={() => onSettle(bet.id, "lost")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: C.red, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✗ Lost</button>
+        <button onClick={() => onSettle(bet.id, "void")} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↺ Void</button>
+        <button onClick={() => onDelete(bet.id)} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 11, cursor: "pointer" }}>Delete</button>
+      </div>
+    </div>
+  );
+}
+
+function SettledBetsTable({ bets }: { bets: PaperBet[] }) {
+  const sorted = [...bets].sort((a, b) => new Date(b.settledAt ?? b.placedAt).getTime() - new Date(a.settledAt ?? a.placedAt).getTime());
+  const fmtDate = (iso?: string) => {
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }); } catch { return "—"; }
+  };
+  const pnlOf = (b: PaperBet) => b.status === "won" ? b.potentialWin : b.status === "lost" ? -b.stake : 0;
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "60px 2fr 1.4fr 70px 70px 70px 80px", padding: "8px 14px", borderBottom: `1px solid ${C.border}`, fontSize: 10, fontWeight: 700, color: C.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        <span>Date</span><span>Game</span><span>Pick</span><span style={{ textAlign: "right" }}>Odds</span><span style={{ textAlign: "right" }}>Stake</span><span style={{ textAlign: "center" }}>Result</span><span style={{ textAlign: "right" }}>P&amp;L</span>
+      </div>
+      {sorted.map((b) => {
+        const pnl = pnlOf(b);
+        return (
+          <div key={b.id} style={{ display: "grid", gridTemplateColumns: "60px 2fr 1.4fr 70px 70px 70px 80px", padding: "8px 14px", borderBottom: `1px solid ${C.borderSoft}`, fontSize: 12.5, color: C.textDim, alignItems: "center" }}>
+            <span>{fmtDate(b.settledAt ?? b.placedAt)}</span>
+            <span style={{ color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.game}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.team}</span>
+            <span style={{ textAlign: "right", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{b.odds > 0 ? `+${b.odds}` : b.odds}</span>
+            <span style={{ textAlign: "right" }}>${b.stake.toFixed(0)}</span>
+            <span style={{ textAlign: "center", fontWeight: 700, color: b.status === "won" ? C.green : b.status === "lost" ? C.red : C.textMuted }}>{b.status.toUpperCase()}</span>
+            <span style={{ textAlign: "right", fontWeight: 700, color: pnl > 0 ? C.green : pnl < 0 ? C.red : C.textMuted }}>{pnl === 0 ? "—" : `${pnl > 0 ? "+" : ""}$${pnl.toFixed(2)}`}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BankrollChart({ store }: { store: PaperBetsStore }) {
+  // Points: start + after each settled bet (in chronological order).
+  const settled = store.bets
+    .filter((b) => b.status !== "pending")
+    .sort((a, b) => new Date(a.settledAt ?? a.placedAt).getTime() - new Date(b.settledAt ?? b.placedAt).getTime());
+  let running = store.startingBankroll;
+  const points: { t: number; v: number }[] = [{ t: 0, v: running }];
+  for (const b of settled) {
+    if (b.status === "won") running += b.potentialWin;
+    else if (b.status === "lost") running -= b.stake;
+    points.push({ t: new Date(b.settledAt ?? b.placedAt).getTime(), v: running });
+  }
+  const W = 720, H = 160, PAD = 24;
+  const vals = points.map((p) => p.v);
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const range = Math.max(1, maxV - minV);
+  const xStep = points.length > 1 ? (W - PAD * 2) / (points.length - 1) : 0;
+  const yFor = (v: number) => PAD + (1 - (v - minV) / range) * (H - PAD * 2);
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${PAD + i * xStep} ${yFor(p.v)}`).join(" ");
+  const endColor = running >= store.startingBankroll ? C.green : C.red;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 18, overflow: "hidden" }}>
+      {settled.length === 0 ? (
+        <div style={{ color: C.textMuted, fontSize: 12.5, textAlign: "center", padding: "20px 0" }}>
+          Settle a bet to see your bankroll chart.
+        </div>
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, display: "block" }}>
+          <line x1={PAD} y1={yFor(store.startingBankroll)} x2={W - PAD} y2={yFor(store.startingBankroll)} stroke={C.border} strokeDasharray="4 4" strokeWidth={1}/>
+          <path d={path} fill="none" stroke={endColor} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
+          {points.map((p, i) => (
+            <circle key={i} cx={PAD + i * xStep} cy={yFor(p.v)} r={3} fill={endColor}/>
+          ))}
+          <text x={PAD} y={14} fill={C.textMuted} fontSize={10}>${maxV.toFixed(0)}</text>
+          <text x={PAD} y={H - 4} fill={C.textMuted} fontSize={10}>${minV.toFixed(0)}</text>
+          <text x={W - PAD} y={14} fill={endColor} fontSize={11} textAnchor="end" fontWeight={700}>
+            ${running.toFixed(2)} {running >= store.startingBankroll ? "▲" : "▼"}
+          </text>
+        </svg>
+      )}
+    </div>
+  );
+}
+
+function AddBetModal({
+  prefill,
+  onCancel,
+  onSubmit,
+}: {
+  prefill: BetPrefill | null;
+  onCancel: () => void;
+  onSubmit: (bet: Omit<PaperBet, "id" | "status" | "result" | "placedAt">) => void;
+}) {
+  const [game, setGame] = useState(prefill?.game ?? "");
+  const [sport, setSport] = useState(prefill?.sport ?? "MLB");
+  const [team, setTeam] = useState(prefill?.team ?? "");
+  const [oddsStr, setOddsStr] = useState(prefill?.odds != null ? String(prefill.odds) : "");
+  const [bookmaker, setBookmaker] = useState(prefill?.bookmaker ?? "FanDuel");
+  const [stakeStr, setStakeStr] = useState("100");
+  const [gameTime, setGameTime] = useState(prefill?.gameTime ?? "");
+  const [notes, setNotes] = useState("");
+
+  const odds = parseFloat(oddsStr);
+  const stake = Math.max(0, parseFloat(stakeStr) || 0);
+  const profit = Number.isFinite(odds) && stake > 0 ? americanProfit(stake, odds) : null;
+
+  const canSubmit = game.trim() && team.trim() && Number.isFinite(odds) && stake > 0;
+
+  const submit = () => {
+    if (!canSubmit || profit === null) return;
+    onSubmit({
+      game: game.trim(),
+      sport,
+      team: team.trim(),
+      odds,
+      bookmaker: bookmaker.trim(),
+      stake,
+      potentialWin: profit,
+      gameTime: gameTime || new Date().toISOString(),
+      notes: notes.trim(),
+    });
+  };
+
+  const input = {
+    width: "100%",
+    background: C.card2,
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    padding: "9px 12px",
+    color: C.text,
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box" as const,
+  };
+  const label = { display: "block", fontSize: 11, color: C.textDim, marginBottom: 4, fontWeight: 600 } as const;
+
+  return (
+    <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, width: "100%", maxWidth: 520, color: C.text }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>Place a paper bet</div>
+          <button onClick={onCancel} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+          <div>
+            <label style={label}>Game</label>
+            <input value={game} onChange={(e) => setGame(e.target.value)} placeholder="Texas Rangers vs Colorado Rockies" style={input}/>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={label}>Sport</label>
+              <select value={sport} onChange={(e) => setSport(e.target.value)} style={{ ...input, padding: "9px 12px" }}>
+                {SPORT_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={label}>Pick team / side</label>
+              <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="Texas Rangers" style={input}/>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={label}>Odds (American)</label>
+              <input type="number" value={oddsStr} onChange={(e) => setOddsStr(e.target.value)} placeholder="+120" style={input}/>
+            </div>
+            <div>
+              <label style={label}>Bookmaker</label>
+              <input value={bookmaker} onChange={(e) => setBookmaker(e.target.value)} placeholder="FanDuel" style={input}/>
+            </div>
+          </div>
+          <div>
+            <label style={label}>Stake ($)</label>
+            <input type="number" value={stakeStr} onChange={(e) => setStakeStr(e.target.value)} placeholder="100" style={input}/>
+            {profit !== null && (
+              <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 6 }}>
+                If you win: <strong style={{ color: C.green }}>+${profit.toFixed(2)} profit</strong> (payout ${(stake + profit).toFixed(2)})
+              </div>
+            )}
+          </div>
+          <div>
+            <label style={label}>Notes (optional)</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Why are you taking this bet?" rows={3} style={{ ...input, fontFamily: "inherit", resize: "vertical" }}/>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textDim, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+          <button
+            onClick={submit}
+            disabled={!canSubmit}
+            style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: canSubmit ? C.green : C.card2, color: canSubmit ? "#fff" : C.textMuted, fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "not-allowed" }}
+          >
+            Place Bet →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SetBankrollModal({ current, onCancel, onSubmit }: { current: number; onCancel: () => void; onSubmit: (n: number) => void }) {
+  const [value, setValue] = useState(String(current));
+  const n = parseFloat(value);
+  const valid = Number.isFinite(n) && n >= 0;
+  return (
+    <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, width: "100%", maxWidth: 360, color: C.text }}>
+        <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 8 }}>Set starting bankroll</div>
+        <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12 }}>This resets your current bankroll and the baseline used for P&amp;L.</div>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          style={{ width: "100%", background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 16, outline: "none", boxSizing: "border-box", marginBottom: 14 }}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textDim, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+          <button onClick={() => valid && onSubmit(n)} disabled={!valid} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: valid ? C.green : C.card2, color: valid ? "#fff" : C.textMuted, fontSize: 13, fontWeight: 700, cursor: valid ? "pointer" : "not-allowed" }}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ───────────────────────── arb math helpers ─────────────────────────
 
 // American odds → multiplier on stake to compute payout (stake + profit).
@@ -2204,6 +2808,7 @@ function GameCard({
   onToggle,
   nowMs,
   fanduelOnly,
+  onPaperBet,
 }: {
   game: OddsGame;
   home: BestOdds | null;
@@ -2213,6 +2818,7 @@ function GameCard({
   onToggle: () => void;
   nowMs: number;
   fanduelOnly?: boolean;
+  onPaperBet?: (prefill: BetPrefill) => void;
 }) {
   const arb = isArb && home && away ? calcArbStakes(home.price, away.price, 1000) : null;
   const start = new Date(game.commence_time);
@@ -2383,6 +2989,43 @@ function GameCard({
               {awayValue && homeValue && <span style={{ color: C.textMuted }}> · </span>}
               {homeValue && (
                 <span style={{ color: homeValue.color, fontWeight: 600 }}>{game.home_team}: {homeValue.label}</span>
+              )}
+            </div>
+          )}
+          {fanduelOnly && onPaperBet && (away || home) && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}
+            >
+              {away && (
+                <button
+                  onClick={() => onPaperBet({
+                    game: `${game.away_team} vs ${game.home_team}`,
+                    sport: sportLabelFromKey(game.sport_key),
+                    team: game.away_team,
+                    odds: away.price,
+                    bookmaker: away.book,
+                    gameTime: game.commence_time,
+                  })}
+                  style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  📝 Paper Bet {game.away_team} ({fmtOdds(away.price)})
+                </button>
+              )}
+              {home && (
+                <button
+                  onClick={() => onPaperBet({
+                    game: `${game.away_team} vs ${game.home_team}`,
+                    sport: sportLabelFromKey(game.sport_key),
+                    team: game.home_team,
+                    odds: home.price,
+                    bookmaker: home.book,
+                    gameTime: game.commence_time,
+                  })}
+                  style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  📝 Paper Bet {game.home_team} ({fmtOdds(home.price)})
+                </button>
               )}
             </div>
           )}
