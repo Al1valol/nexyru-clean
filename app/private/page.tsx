@@ -1923,6 +1923,7 @@ type PolyMarket = {
   outcomes?: string;
   outcomePrices?: string;
   volume?: string | number;
+  liquidity?: string | number;
   category?: string;
   slug?: string;
 };
@@ -1933,6 +1934,7 @@ type SimpleMarket = {
   yesPct: number;
   noPct: number;
   volume: number;
+  liquidity: number;
   category: string;
   slug: string;
 };
@@ -1942,6 +1944,24 @@ function safeParseJson<T>(s: unknown): T | null {
   try { return JSON.parse(s) as T; } catch { return null; }
 }
 
+// Polymarket's gamma-api returns empty `category` for most markets, so the
+// category filter never matched anything. Derive a category from keywords in
+// the question text instead.
+function detectCategory(question: string): string {
+  const q = (question || "").toLowerCase();
+  if (q.includes("bitcoin") || q.includes("crypto") || q.includes("eth") || q.includes("ether") || q.includes("sol") || q.includes("solana") || q.includes("token") || q.includes(" price"))
+    return "Crypto";
+  if (q.includes("election") || q.includes("president") || q.includes("congress") || q.includes("senate") || q.includes("democrat") || q.includes("republican") || q.includes("trump") || q.includes("biden") || q.includes("vote"))
+    return "Politics";
+  if (q.includes("nba") || q.includes("nfl") || q.includes("mlb") || q.includes("nhl") || q.includes("wimbledon") || q.includes("world cup") || q.includes("super bowl") || q.includes("champion") || q.includes("winner") || q.includes("game") || q.includes("match") || q.includes("tournament") || q.includes("league"))
+    return "Sports";
+  if (q.includes("fed") || q.includes("rate") || q.includes("gdp") || q.includes("inflation") || q.includes("stock") || q.includes("recession") || q.includes("economy") || q.includes("market"))
+    return "Finance";
+  if (q.includes("war") || q.includes("ukraine") || q.includes("russia") || q.includes("china") || q.includes("taiwan") || q.includes("ai") || q.includes("nuclear") || q.includes("israel") || q.includes("iran"))
+    return "World";
+  return "Other";
+}
+
 function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
   const prices = safeParseJson<string[]>(m.outcomePrices);
   const outcomes = safeParseJson<string[]>(m.outcomes);
@@ -1949,19 +1969,22 @@ function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
   const yes = parseFloat(prices[0]);
   const no = parseFloat(prices[1]);
   if (!Number.isFinite(yes) || !Number.isFinite(no)) return null;
-  const vol = typeof m.volume === "number" ? m.volume : parseFloat(String(m.volume ?? "0")) || 0;
+  const toNum = (v: unknown) =>
+    typeof v === "number" ? v : parseFloat(String(v ?? "0")) || 0;
+  const question = m.question ?? "Unknown market";
   return {
-    id: m.id ?? m.slug ?? m.question ?? Math.random().toString(36).slice(2),
-    question: m.question ?? "Unknown market",
+    id: m.id ?? m.slug ?? question ?? Math.random().toString(36).slice(2),
+    question,
     yesPct: yes * 100,
     noPct: no * 100,
-    volume: vol,
-    category: m.category || "Other",
+    volume: toNum(m.volume),
+    liquidity: toNum(m.liquidity),
+    category: m.category && m.category.trim() !== "" ? m.category : detectCategory(question),
     slug: m.slug ?? "",
   };
 }
 
-const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance"];
+const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance", "World"];
 
 type PriceMovement = "up" | "down" | "stable";
 
@@ -2135,7 +2158,10 @@ function SimplePolymarketCard({ m, movement }: { m: SimpleMarket; movement?: Pri
 
       <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
         <div>The crowd thinks there&apos;s a <strong style={{ color: C.green }}>{m.yesPct.toFixed(0)}%</strong> chance of YES.</div>
-        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{fmtVol(m.volume)} total bet on this market.</div>
+        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+          {fmtVol(m.volume)} total bet
+          {m.liquidity > 0 && <> · {fmtVol(m.liquidity)} liquidity</>}
+        </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, lineHeight: 1.5 }}>
