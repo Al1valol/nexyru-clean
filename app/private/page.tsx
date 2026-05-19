@@ -1489,31 +1489,6 @@ function bestPriceForTeam(game: OddsGame, team: string): BestOdds | null {
   return best;
 }
 
-function fanduelPriceForTeam(game: OddsGame, team: string): BestOdds | null {
-  const fd = (game.bookmakers ?? []).find((b) => (b.key ?? "").toLowerCase() === "fanduel");
-  if (!fd) return null;
-  const h2h = fd.markets?.find((m) => m.key === "h2h");
-  if (!h2h) return null;
-  const o = h2h.outcomes.find((o) => o.name === team);
-  if (!o) return null;
-  return { team: o.name, price: o.price, book: fd.title };
-}
-
-// Average implied probability across every book that prices this team. Used
-// to gauge whether a single book is offering above- or below-market value.
-function avgImpliedForTeam(game: OddsGame, team: string): number | null {
-  const probs: number[] = [];
-  for (const b of game.bookmakers ?? []) {
-    const h2h = b.markets?.find((m) => m.key === "h2h");
-    if (!h2h) continue;
-    const o = h2h.outcomes.find((o) => o.name === team);
-    if (!o) continue;
-    probs.push(americanToImpliedProb(o.price));
-  }
-  if (probs.length === 0) return null;
-  return probs.reduce((s, p) => s + p, 0) / probs.length;
-}
-
 function americanToImpliedProb(odds: number): number {
   return odds > 0 ? 100 / (odds + 100) : -odds / (-odds + 100);
 }
@@ -1611,7 +1586,7 @@ export function OddsTab() {
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0, flexWrap: "wrap" }}>
         {[
-          { id: "fanduel", label: "📊 FanDuel Odds" },
+          { id: "fanduel", label: "📊 Best Odds" },
           { id: "polymarket", label: "🎲 Polymarket" },
         ].map((t) => (
           <button
@@ -1638,58 +1613,6 @@ export function OddsTab() {
       {oddsTab === "polymarket" && <PolymarketPanel />}
     </section>
   );
-}
-
-// Cross-book arb where FanDuel is one of the two legs. Returns the higher-
-// profit configuration if any, computed on a $1000 total stake.
-function findFanduelArb(game: OddsGame): {
-  fdTeam: string; fdPrice: number;
-  otherTeam: string; otherPrice: number; otherBook: string;
-  stakeFd: number; stakeOther: number; profit: number; totalStake: number;
-} | null {
-  const fdAway = fanduelPriceForTeam(game, game.away_team);
-  const fdHome = fanduelPriceForTeam(game, game.home_team);
-  if (!fdAway && !fdHome) return null;
-
-  // Find the best price from any non-FanDuel book for each team.
-  const bestNonFd = (team: string): BestOdds | null => {
-    let best: BestOdds | null = null;
-    for (const b of game.bookmakers ?? []) {
-      if ((b.key ?? "").toLowerCase() === "fanduel") continue;
-      const h2h = b.markets?.find((m) => m.key === "h2h");
-      if (!h2h) continue;
-      const o = h2h.outcomes.find((o) => o.name === team);
-      if (!o) continue;
-      if (best === null || o.price > best.price) best = { team: o.name, price: o.price, book: b.title };
-    }
-    return best;
-  };
-
-  const candidates: Array<{
-    fdTeam: string; fdPrice: number;
-    otherTeam: string; otherPrice: number; otherBook: string;
-  }> = [];
-
-  const otherHome = bestNonFd(game.home_team);
-  const otherAway = bestNonFd(game.away_team);
-  if (fdAway && otherHome) candidates.push({ fdTeam: game.away_team, fdPrice: fdAway.price, otherTeam: game.home_team, otherPrice: otherHome.price, otherBook: otherHome.book });
-  if (fdHome && otherAway) candidates.push({ fdTeam: game.home_team, fdPrice: fdHome.price, otherTeam: game.away_team, otherPrice: otherAway.price, otherBook: otherAway.book });
-
-  let best: ReturnType<typeof findFanduelArb> = null;
-  for (const c of candidates) {
-    const pFd = americanToImpliedProb(c.fdPrice);
-    const pOther = americanToImpliedProb(c.otherPrice);
-    const overround = pFd + pOther;
-    if (overround <= 0 || overround >= 1) continue;
-    const totalStake = 1000;
-    const stakeFd = (totalStake * pFd) / overround;
-    const stakeOther = (totalStake * pOther) / overround;
-    const profit = totalStake * (1 - overround) / overround;
-    if (!best || profit > best.profit) {
-      best = { ...c, stakeFd, stakeOther, profit, totalStake };
-    }
-  }
-  return best;
 }
 
 function FanduelPanel() {
@@ -1728,13 +1651,14 @@ function FanduelPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Keep only games that have FanDuel odds on both teams.
+  // Best odds across every bookmaker for each team. Skip games where either
+  // side has no price at all (rare — typically markets that haven't opened).
   const decorated = useMemo(() => {
     if (!games) return [];
     const rows = [];
     for (const g of games) {
-      const home = fanduelPriceForTeam(g, g.home_team);
-      const away = fanduelPriceForTeam(g, g.away_team);
+      const home = bestPriceForTeam(g, g.home_team);
+      const away = bestPriceForTeam(g, g.away_team);
       if (!home || !away) continue;
       rows.push({ g, home, away, start: new Date(g.commence_time).getTime() });
     }
@@ -1752,8 +1676,8 @@ function FanduelPanel() {
   return (
     <>
       <SectionTitle
-        title="FanDuel Odds"
-        subtitle="Plain-English lines · cross-book arbs flagged"
+        title="Best Odds"
+        subtitle="Best line per team across all US books · bookmaker shown next to each odd"
         right={
           <button
             onClick={load}
@@ -1778,7 +1702,7 @@ function FanduelPanel() {
       {error && <ErrorBox>{error}</ErrorBox>}
 
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
-        <strong style={{ color: C.text }}>{sorted.length}</strong> FanDuel {sorted.length === 1 ? "game" : "games"} available
+        <strong style={{ color: C.text }}>{sorted.length}</strong> {sorted.length === 1 ? "game" : "games"} available
         {" · "}
         <strong style={{ color: C.text }}>{requestsRemaining ?? "—"}</strong> API calls left
       </div>
@@ -1811,7 +1735,7 @@ function FanduelPanel() {
         <LoadingBlock />
       ) : sorted.length === 0 ? (
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
-          {loading ? "Loading FanDuel lines…" : "No FanDuel games in this window."}
+          {loading ? "Loading lines…" : "No games in this window."}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1834,26 +1758,15 @@ function SimpleFanduelCard({
 }) {
   const cd = countdownLabel(game.commence_time, nowMs);
   const start = new Date(game.commence_time);
-  const arb = findFanduelArb(game);
 
   const pAway = americanToImpliedProb(away.price);
   const pHome = americanToImpliedProb(home.price);
   const overround = pAway + pHome;
   const edgePct = (overround - 1) * 100;
 
-  // Value vs market average per side. Lower implied prob at FanDuel = better
-  // payout than the average book.
-  const avgAway = avgImpliedForTeam(game, game.away_team);
-  const avgHome = avgImpliedForTeam(game, game.home_team);
-  const valueChip = (fdProb: number, avg: number | null) => {
-    if (avg === null) return null;
-    const diff = avg - fdProb;
-    if (diff > 0.005) return { label: "⭐ Good value", color: C.green };
-    if (diff < -0.005) return { label: "↓ Below average", color: C.textMuted };
-    return null;
-  };
-  const awayValue = valueChip(pAway, avgAway);
-  const homeValue = valueChip(pHome, avgHome);
+  // Cross-book arb: when the best price on each side sums to under 100%
+  // implied probability, the two books together leave a guaranteed edge.
+  const arb = overround < 1 ? calcArbStakes(away.price, home.price, 1000) : null;
 
   return (
     <div style={{ background: C.card, border: `1px solid ${arb ? C.green : C.border}`, borderRadius: 12, padding: 16 }}>
@@ -1875,8 +1788,8 @@ function SimpleFanduelCard({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <SimpleOddsColumn team={game.away_team} odds={away.price} prob={pAway} value={awayValue}/>
-        <SimpleOddsColumn team={game.home_team} odds={home.price} prob={pHome} value={homeValue}/>
+        <SimpleOddsColumn team={game.away_team} odds={away.price} prob={pAway} book={away.book}/>
+        <SimpleOddsColumn team={game.home_team} odds={home.price} prob={pHome} book={home.book}/>
       </div>
 
       <div style={{ marginTop: 10, fontSize: 11.5, color: C.textMuted }}>
@@ -1885,7 +1798,7 @@ function SimpleFanduelCard({
 
       {arb && (
         <div style={{ marginTop: 12, background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.text, lineHeight: 1.55 }}>
-          💰 <strong style={{ color: C.green }}>ARB:</strong> Bet <strong style={{ color: C.green }}>${arb.stakeFd.toFixed(2)}</strong> here on {arb.fdTeam} + <strong style={{ color: C.green }}>${arb.stakeOther.toFixed(2)}</strong> at <strong style={{ color: C.text }}>{arb.otherBook}</strong> on {arb.otherTeam} = <strong style={{ color: C.green }}>${arb.profit.toFixed(2)} guaranteed profit</strong> <span style={{ color: C.textMuted }}>(on $1,000 total)</span>
+          💰 <strong style={{ color: C.green }}>ARB:</strong> Bet <strong style={{ color: C.green }}>${arb.stakeA.toFixed(2)}</strong> on {game.away_team} at <strong style={{ color: C.text }}>{away.book}</strong> + <strong style={{ color: C.green }}>${arb.stakeB.toFixed(2)}</strong> on {game.home_team} at <strong style={{ color: C.text }}>{home.book}</strong> = <strong style={{ color: C.green }}>${arb.profit.toFixed(2)} guaranteed</strong> <span style={{ color: C.textMuted }}>(on ${arb.totalStake.toFixed(0)} total)</span>
         </div>
       )}
     </div>
@@ -1893,9 +1806,9 @@ function SimpleFanduelCard({
 }
 
 function SimpleOddsColumn({
-  team, odds, prob, value,
+  team, odds, prob, book,
 }: {
-  team: string; odds: number; prob: number; value: { label: string; color: string } | null;
+  team: string; odds: number; prob: number; book: string;
 }) {
   const oddsStr = odds > 0 ? `+${odds}` : String(odds);
   const plain = odds > 0
@@ -1904,13 +1817,13 @@ function SimpleOddsColumn({
   return (
     <div>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>{team}</div>
-      <div style={{ fontSize: 26, fontWeight: 900, color: odds > 0 ? C.green : C.text, letterSpacing: "-0.01em", marginBottom: 4 }}>{oddsStr}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 26, fontWeight: 900, color: odds > 0 ? C.green : C.text, letterSpacing: "-0.01em" }}>{oddsStr}</span>
+        <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>at {book}</span>
+      </div>
       <div style={{ fontSize: 11.5, color: C.textDim, lineHeight: 1.5 }}>
         {plain} · <span style={{ color: C.textMuted }}>{(prob * 100).toFixed(0)}% implied chance</span>
       </div>
-      {value && (
-        <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: value.color }}>{value.label}</div>
-      )}
     </div>
   );
 }
@@ -2092,7 +2005,13 @@ function PolymarketPanel() {
     setBatchPredicting(true);
     try {
       const top = ranked.slice(0, 5);
-      await Promise.all(top.map((m) => predictMarket(m)));
+      // Sequential with a small delay between calls — keeps us under rate
+      // limits and lets the UI surface results as they land instead of
+      // all-at-once when the Promise.all resolves.
+      for (const m of top) {
+        await predictMarket(m);
+        await new Promise((r) => setTimeout(r, 500));
+      }
     } finally {
       setBatchPredicting(false);
     }
@@ -2306,7 +2225,12 @@ function AiPredictionPanel({ marketYes, prediction }: { marketYes: number; predi
   if (prediction.error) {
     return (
       <div style={{ background: "rgba(239,68,68,0.08)", border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 8, padding: "10px 12px", marginTop: 10, fontSize: 12, color: "#fca5a5" }}>
-        AI prediction failed: {prediction.error}
+        <strong>AI prediction failed.</strong> {prediction.error}
+        {prediction.error.toLowerCase().includes("api key") && (
+          <div style={{ marginTop: 4, color: "#fca5a5", opacity: 0.8 }}>
+            Set ANTHROPIC_API_KEY in the Vercel project env to enable predictions.
+          </div>
+        )}
       </div>
     );
   }
@@ -2316,39 +2240,47 @@ function AiPredictionPanel({ marketYes, prediction }: { marketYes: number; predi
   return (
     <div style={{ background: C.card2, borderRadius: 8, padding: 12, marginTop: 10, border: `1px solid ${C.border}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div>
-          <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2, letterSpacing: "0.05em", textTransform: "uppercase" }}>Market says</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>{marketYes.toFixed(0)}%</div>
+        <div style={{ textAlign: "center", flex: 1 }}>
+          <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2, letterSpacing: "0.05em", textTransform: "uppercase", fontWeight: 700 }}>Market says</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: C.text }}>{marketYes.toFixed(0)}%</div>
         </div>
-        <div style={{ fontSize: 18, color: C.textMuted }}>vs</div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 10, color: "#a5b4fc", marginBottom: 2, letterSpacing: "0.05em", textTransform: "uppercase" }}>AI predicts</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#a5b4fc" }}>{aiYes}%</div>
+        <div style={{ fontSize: 18, color: C.textMuted, padding: "0 12px" }}>vs</div>
+        <div style={{ textAlign: "center", flex: 1 }}>
+          <div style={{ fontSize: 10, color: "#a5b4fc", marginBottom: 2, letterSpacing: "0.05em", textTransform: "uppercase", fontWeight: 700 }}>AI predicts</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: "#a5b4fc" }}>{aiYes}%</div>
         </div>
       </div>
 
       {meaningful ? (
         <div style={{
-          padding: "8px 12px", borderRadius: 6,
+          padding: "10px 12px", borderRadius: 6,
           background: diff > 0 ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
           border: `1px solid ${diff > 0 ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
           marginBottom: 8,
         }}>
           {diff > 0 ? (
-            <div style={{ color: C.green, fontSize: 12, fontWeight: 700 }}>
-              ✅ BET YES — AI thinks it&apos;s {diff.toFixed(0)}% more likely than market says
-              <div style={{ fontWeight: 400, marginTop: 2, color: C.textDim }}>Market underpricing YES — potential edge</div>
-            </div>
+            <>
+              <div style={{ color: C.green, fontSize: 13, fontWeight: 700 }}>
+                ✅ BET YES — AI thinks {diff.toFixed(0)}% more likely than market
+              </div>
+              <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
+                Market underpricing YES — potential edge on YES bet
+              </div>
+            </>
           ) : (
-            <div style={{ color: C.red, fontSize: 12, fontWeight: 700 }}>
-              ✅ BET NO — AI thinks it&apos;s {Math.abs(diff).toFixed(0)}% less likely than market says
-              <div style={{ fontWeight: 400, marginTop: 2, color: C.textDim }}>Market overpricing YES — NO has value</div>
-            </div>
+            <>
+              <div style={{ color: C.red, fontSize: 13, fontWeight: 700 }}>
+                ✅ BET NO — AI thinks {Math.abs(diff).toFixed(0)}% less likely than market
+              </div>
+              <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
+                Market overpricing YES — NO has value
+              </div>
+            </>
           )}
         </div>
       ) : (
         <div style={{ color: C.textMuted, fontSize: 12, marginBottom: 8 }}>
-          ≈ Fair price — AI and market agree. No clear edge.
+          ≈ Fair price — AI and market roughly agree. No clear edge.
         </div>
       )}
 
