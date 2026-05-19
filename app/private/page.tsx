@@ -1926,6 +1926,8 @@ type PolyMarket = {
   liquidity?: string | number;
   category?: string;
   slug?: string;
+  endDate?: string;
+  endDateIso?: string;
 };
 
 type SimpleMarket = {
@@ -1937,6 +1939,7 @@ type SimpleMarket = {
   liquidity: number;
   category: string;
   slug: string;
+  endDate: string;
 };
 
 function safeParseJson<T>(s: unknown): T | null {
@@ -1983,6 +1986,7 @@ function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
     liquidity,
     category: m.category && m.category.trim() !== "" ? m.category : detectCategory(question),
     slug: m.slug ?? "",
+    endDate: m.endDate ?? m.endDateIso ?? "",
   };
 }
 
@@ -1997,12 +2001,48 @@ const POLY_SORT_OPTIONS: { id: PolySortMode; label: string }[] = [
   { id: "volume", label: "Most Volume" },
 ];
 
+type AiPrediction = {
+  probability: number;
+  confidence: string;
+  reasoning: string;
+  error?: string;
+};
+
 function PolymarketPanel() {
   const [markets, setMarkets] = useState<SimpleMarket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("All");
   const [sortMode, setSortMode] = useState<PolySortMode>("likely");
+  const [aiPredictions, setAiPredictions] = useState<Record<string, AiPrediction>>({});
+  const [predicting, setPredicting] = useState<Record<string, boolean>>({});
+  const [batchPredicting, setBatchPredicting] = useState(false);
+
+  const predictMarket = useCallback(async (m: SimpleMarket) => {
+    setPredicting((p) => ({ ...p, [m.id]: true }));
+    try {
+      const res = await fetch("/api/predict-market", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: m.question,
+          yesPrice: m.yesPct / 100,
+          volume: m.volume,
+          endDate: m.endDate || "unknown",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAiPredictions((p) => ({ ...p, [m.id]: { probability: 0, confidence: "low", reasoning: "", error: data?.error || `HTTP ${res.status}` } }));
+      } else {
+        setAiPredictions((p) => ({ ...p, [m.id]: data as AiPrediction }));
+      }
+    } catch (e) {
+      setAiPredictions((p) => ({ ...p, [m.id]: { probability: 0, confidence: "low", reasoning: "", error: e instanceof Error ? e.message : "Network error" } }));
+    } finally {
+      setPredicting((p) => ({ ...p, [m.id]: false }));
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2047,11 +2087,45 @@ function PolymarketPanel() {
 
   const sortLabel = POLY_SORT_OPTIONS.find((o) => o.id === sortMode)?.label ?? "";
 
+  const predictTop5 = async () => {
+    if (batchPredicting) return;
+    setBatchPredicting(true);
+    try {
+      const top = ranked.slice(0, 5);
+      await Promise.all(top.map((m) => predictMarket(m)));
+    } finally {
+      setBatchPredicting(false);
+    }
+  };
+  const batchCount = Math.min(5, ranked.length);
+
   return (
     <>
       <SectionTitle
         title="Polymarket"
-        subtitle="Ranked 1–100 by volume, liquidity, and how close to a coin flip"
+        subtitle="Plain-English chance · AI predictions compare to market price"
+        right={
+          ranked.length > 0 ? (
+            <button
+              onClick={predictTop5}
+              disabled={batchPredicting}
+              title={`Runs ${batchCount} Claude API call${batchCount === 1 ? "" : "s"} — about $0.01 total`}
+              style={{
+                background: batchPredicting ? C.card2 : "rgba(99,102,241,0.15)",
+                color: batchPredicting ? C.textDim : "#a5b4fc",
+                border: `1px solid ${C.accent}`,
+                borderRadius: 999,
+                padding: "4px 14px",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: batchPredicting ? "wait" : "pointer",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {batchPredicting ? `🤔 Predicting ${batchCount}…` : `✦ Predict Top ${batchCount}`}
+            </button>
+          ) : null
+        }
       />
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
@@ -2116,7 +2190,15 @@ function PolymarketPanel() {
             <strong style={{ color: C.text }}>{ranked.length}</strong> {ranked.length === 1 ? "market" : "markets"} · sorted by {sortLabel}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {ranked.map((m) => <PolymarketRow key={m.id} m={m}/>)}
+            {ranked.map((m) => (
+              <PolymarketRow
+                key={m.id}
+                m={m}
+                prediction={aiPredictions[m.id]}
+                predicting={!!predicting[m.id]}
+                onPredict={() => predictMarket(m)}
+              />
+            ))}
           </div>
         </>
       )}
@@ -2124,7 +2206,17 @@ function PolymarketPanel() {
   );
 }
 
-function PolymarketRow({ m }: { m: SimpleMarket }) {
+function PolymarketRow({
+  m,
+  prediction,
+  predicting,
+  onPredict,
+}: {
+  m: SimpleMarket;
+  prediction?: AiPrediction;
+  predicting: boolean;
+  onPredict: () => void;
+}) {
   const url = m.slug ? `https://polymarket.com/event/${m.slug}` : "https://polymarket.com";
 
   // Plain-English read on the YES price. 5 spec'd buckets, with 40-45 and
@@ -2181,9 +2273,89 @@ function PolymarketRow({ m }: { m: SimpleMarket }) {
         </div>
       )}
 
-      <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#a5b4fc", textDecoration: "none", fontWeight: 600 }}>
-        View on Polymarket →
-      </a>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#a5b4fc", textDecoration: "none", fontWeight: 600 }}>
+          View on Polymarket →
+        </a>
+        {!prediction && (
+          <button
+            onClick={onPredict}
+            disabled={predicting}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 6,
+              border: `1px solid rgba(99,102,241,0.4)`,
+              background: "transparent",
+              color: predicting ? C.textMuted : "#a5b4fc",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: predicting ? "wait" : "pointer",
+            }}
+          >
+            {predicting ? "🤔 Predicting…" : "✦ AI Predict"}
+          </button>
+        )}
+      </div>
+
+      {prediction && <AiPredictionPanel marketYes={m.yesPct} prediction={prediction}/>}
+    </div>
+  );
+}
+
+function AiPredictionPanel({ marketYes, prediction }: { marketYes: number; prediction: AiPrediction }) {
+  if (prediction.error) {
+    return (
+      <div style={{ background: "rgba(239,68,68,0.08)", border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 8, padding: "10px 12px", marginTop: 10, fontSize: 12, color: "#fca5a5" }}>
+        AI prediction failed: {prediction.error}
+      </div>
+    );
+  }
+  const aiYes = prediction.probability;
+  const diff = aiYes - marketYes;
+  const meaningful = Math.abs(diff) > 5;
+  return (
+    <div style={{ background: C.card2, borderRadius: 8, padding: 12, marginTop: 10, border: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2, letterSpacing: "0.05em", textTransform: "uppercase" }}>Market says</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>{marketYes.toFixed(0)}%</div>
+        </div>
+        <div style={{ fontSize: 18, color: C.textMuted }}>vs</div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#a5b4fc", marginBottom: 2, letterSpacing: "0.05em", textTransform: "uppercase" }}>AI predicts</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#a5b4fc" }}>{aiYes}%</div>
+        </div>
+      </div>
+
+      {meaningful ? (
+        <div style={{
+          padding: "8px 12px", borderRadius: 6,
+          background: diff > 0 ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+          border: `1px solid ${diff > 0 ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+          marginBottom: 8,
+        }}>
+          {diff > 0 ? (
+            <div style={{ color: C.green, fontSize: 12, fontWeight: 700 }}>
+              ✅ BET YES — AI thinks it&apos;s {diff.toFixed(0)}% more likely than market says
+              <div style={{ fontWeight: 400, marginTop: 2, color: C.textDim }}>Market underpricing YES — potential edge</div>
+            </div>
+          ) : (
+            <div style={{ color: C.red, fontSize: 12, fontWeight: 700 }}>
+              ✅ BET NO — AI thinks it&apos;s {Math.abs(diff).toFixed(0)}% less likely than market says
+              <div style={{ fontWeight: 400, marginTop: 2, color: C.textDim }}>Market overpricing YES — NO has value</div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ color: C.textMuted, fontSize: 12, marginBottom: 8 }}>
+          ≈ Fair price — AI and market agree. No clear edge.
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, color: C.textMuted, fontStyle: "italic" }}>
+        AI confidence: {prediction.confidence}
+        {prediction.reasoning && <> · {prediction.reasoning}</>}
+      </div>
     </div>
   );
 }
