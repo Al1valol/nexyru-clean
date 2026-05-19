@@ -33,7 +33,7 @@ export default function BetsPage() {
   const fetchGames = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/odds?sport=upcoming&daysFrom=3');
+      const res = await fetch('/api/odds?sport=all');
       const body = await res.json();
       const raw = Array.isArray(body?.games) ? body.games : [];
 

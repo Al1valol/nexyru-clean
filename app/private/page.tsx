@@ -1550,25 +1550,6 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
 
 type OddsTabKey = "best" | "polymarket" | "arb" | "value";
 
-// One Odds API call per sport (each costs 1 credit). The proxy at /api/odds
-// accepts a comma-separated list and fans out in parallel server-side. List
-// the sports we care about; the proxy silently skips any that the upstream
-// 404s (eg. off-season tennis events).
-const ODDS_SPORTS = [
-  "baseball_mlb",
-  "basketball_nba",
-  "americanfootball_nfl",
-  "icehockey_nhl",
-  "soccer_epl",
-  "soccer_uefa_champs_league",
-  "soccer_mls",
-  "tennis_atp_french_open",
-  "tennis_wta_french_open",
-  "mma_mixed_martial_arts",
-  "basketball_ncaab",
-  "baseball_ncaa",
-];
-
 type ParlayLeg = {
   gameId: string;
   sport: string;
@@ -1625,7 +1606,7 @@ export function OddsTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/odds?sports=${ODDS_SPORTS.join(",")}&daysFrom=7`);
+      const res = await fetch(`/api/odds?sport=all`);
       const body = await res.json();
       if (!res.ok) {
         setError((body as { error?: string }).error ?? `Error (${res.status})`);

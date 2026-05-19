@@ -28,6 +28,22 @@ const ALLOWED_SPORTS = new Set([
   "tennis_wta_french_open",
 ]);
 
+// Default fan-out set used by ?sport=all. Each sport costs one upstream
+// credit, so keep this trimmed to leagues currently in season.
+const ACTIVE_SPORTS = [
+  "baseball_mlb",
+  "tennis_atp_french_open",
+  "tennis_wta_french_open",
+  "soccer_uefa_champs_league",
+  "soccer_epl",
+  "soccer_mls",
+  "mma_mixed_martial_arts",
+  "basketball_nba",
+  "icehockey_nhl",
+  "americanfootball_nfl",
+  "basketball_ncaab",
+];
+
 function fetchSport(sport: string, daysFrom: string) {
   const url = new URL(`https://api.the-odds-api.com/v4/sports/${sport}/odds/`);
   url.searchParams.set("apiKey", ODDS_KEY);
@@ -43,48 +59,55 @@ function fetchSport(sport: string, daysFrom: string) {
   });
 }
 
+async function fanOut(sports: string[], daysFrom: string) {
+  const results = await Promise.allSettled(sports.map((s) => fetchSport(s, daysFrom)));
+  const games: unknown[] = [];
+  const skipped: string[] = [];
+  let requestsRemaining: string | null = null;
+  let requestsUsed: string | null = null;
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const sport = sports[i];
+    if (r.status !== "fulfilled" || !r.value.ok) {
+      skipped.push(sport);
+      continue;
+    }
+    const rem = r.value.headers.get("x-requests-remaining");
+    const used = r.value.headers.get("x-requests-used");
+    if (rem) requestsRemaining = rem;
+    if (used) requestsUsed = used;
+    try {
+      const data = await r.value.json();
+      if (Array.isArray(data)) games.push(...data);
+    } catch {
+      skipped.push(sport);
+    }
+  }
+
+  return { games, requestsRemaining, requestsUsed, skipped };
+}
+
 export async function GET(req: NextRequest) {
   const daysFrom = req.nextUrl.searchParams.get("daysFrom") ?? "2";
   const sportsParam = req.nextUrl.searchParams.get("sports");
+  const sport = req.nextUrl.searchParams.get("sport");
 
-  // Multi-sport mode: ?sports=baseball_mlb,basketball_nba,...
+  // Multi-sport mode: ?sports=baseball_mlb,basketball_nba,... or ?sport=all.
   // Fans out in parallel server-side so the client makes one request and the
   // API key never crosses the wire.
-  if (sportsParam) {
+  if (sportsParam || sport === "all") {
     const requested = sportsParam
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const allowed = requested.filter((s) => ALLOWED_SPORTS.has(s));
+      ? sportsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : ACTIVE_SPORTS;
+    const allowed = sport === "all"
+      ? ACTIVE_SPORTS
+      : requested.filter((s) => ALLOWED_SPORTS.has(s));
     if (allowed.length === 0) {
       return NextResponse.json({ error: "No allowed sports in list" }, { status: 400 });
     }
 
-    const results = await Promise.allSettled(allowed.map((s) => fetchSport(s, daysFrom)));
-    const games: unknown[] = [];
-    const skipped: string[] = [];
-    let requestsRemaining: string | null = null;
-    let requestsUsed: string | null = null;
-
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      const sport = allowed[i];
-      if (r.status !== "fulfilled" || !r.value.ok) {
-        skipped.push(sport);
-        continue;
-      }
-      const rem = r.value.headers.get("x-requests-remaining");
-      const used = r.value.headers.get("x-requests-used");
-      if (rem) requestsRemaining = rem;
-      if (used) requestsUsed = used;
-      try {
-        const data = await r.value.json();
-        if (Array.isArray(data)) games.push(...data);
-      } catch {
-        skipped.push(sport);
-      }
-    }
-
+    const { games, requestsRemaining, requestsUsed, skipped } = await fanOut(allowed, daysFrom);
     return NextResponse.json({
       games,
       requestsRemaining,
@@ -95,13 +118,13 @@ export async function GET(req: NextRequest) {
   }
 
   // Legacy single-sport mode.
-  const sport = req.nextUrl.searchParams.get("sport") ?? "upcoming";
-  if (!ALLOWED_SPORTS.has(sport)) {
+  const sportKey = sport ?? "upcoming";
+  if (!ALLOWED_SPORTS.has(sportKey)) {
     return NextResponse.json({ error: "Unsupported sport" }, { status: 400 });
   }
 
   try {
-    const upstream = await fetchSport(sport, daysFrom);
+    const upstream = await fetchSport(sportKey, daysFrom);
     if (!upstream.ok) {
       const text = await upstream.text();
       return NextResponse.json(
