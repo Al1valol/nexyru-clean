@@ -1569,6 +1569,32 @@ const ODDS_SPORTS = [
   "baseball_ncaa",
 ];
 
+type ParlayLeg = {
+  gameId: string;
+  sport: string;
+  teamName: string;
+  odds: number;
+  book: string;
+  gameTime: string;
+};
+
+// Combined American odds from a list of legs. Each leg's American odds are
+// converted to decimal, multiplied, then converted back. Returns null when
+// fewer than 2 legs.
+function calcParlay(legs: ParlayLeg[], stake: number) {
+  if (legs.length < 2) return null;
+  const decimalOdds = legs.map((leg) =>
+    leg.odds > 0 ? leg.odds / 100 + 1 : 100 / Math.abs(leg.odds) + 1,
+  );
+  const combinedDecimal = decimalOdds.reduce((p, o) => p * o, 1);
+  const combinedAmerican = combinedDecimal >= 2
+    ? Math.round((combinedDecimal - 1) * 100)
+    : Math.round(-100 / (combinedDecimal - 1));
+  const payout = stake * combinedDecimal;
+  const profit = payout - stake;
+  return { combinedDecimal, combinedAmerican, payout, profit };
+}
+
 export function OddsTab() {
   const [oddsTab, setOddsTab] = useState<OddsTabKey>("best");
   const [games, setGames] = useState<OddsGame[] | null>(null);
@@ -1576,6 +1602,22 @@ export function OddsTab() {
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [parlayLegs, setParlayLegs] = useState<ParlayLeg[]>([]);
+  const [parlayStake, setParlayStake] = useState<string>("100");
+
+  // Toggle a leg: same team → remove, different team for same game → replace,
+  // new game → append. Both sides of one game can't be in the parlay.
+  const addToParlay = useCallback((leg: ParlayLeg) => {
+    setParlayLegs((prev) => {
+      const isSame = prev.some((l) => l.gameId === leg.gameId && l.teamName === leg.teamName);
+      const filtered = prev.filter((l) => l.gameId !== leg.gameId);
+      return isSame ? filtered : [...filtered, leg];
+    });
+  }, []);
+  const isInParlay = useCallback(
+    (gameId: string, teamName: string) => parlayLegs.some((l) => l.gameId === gameId && l.teamName === teamName),
+    [parlayLegs],
+  );
 
   // Single fetch shared across Best Odds / Arb Finder / Value Bets — Polymarket
   // is a separate API. Proxy fans out to all listed sports in parallel.
@@ -1637,10 +1679,27 @@ export function OddsTab() {
         ))}
       </div>
 
-      {oddsTab === "best" && <FanduelPanel games={games} loading={loading} error={error} requestsRemaining={requestsRemaining} nowMs={nowMs} onRefresh={load}/>}
+      {oddsTab === "best" && (
+        <FanduelPanel
+          games={games} loading={loading} error={error} requestsRemaining={requestsRemaining}
+          nowMs={nowMs} onRefresh={load}
+          addToParlay={addToParlay} isInParlay={isInParlay}
+          parlayCount={parlayLegs.length}
+        />
+      )}
       {oddsTab === "polymarket" && <PolymarketPanel />}
       {oddsTab === "arb" && <ArbFinderPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
       {oddsTab === "value" && <ValueBetsPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
+
+      {oddsTab === "best" && parlayLegs.length >= 2 && (
+        <ParlayBar
+          legs={parlayLegs}
+          stake={parlayStake}
+          onStakeChange={setParlayStake}
+          onRemove={(gameId) => setParlayLegs((prev) => prev.filter((l) => l.gameId !== gameId))}
+          onClear={() => setParlayLegs([])}
+        />
+      )}
     </section>
   );
 }
@@ -1653,7 +1712,15 @@ type SharedOddsProps = {
   onRefresh: () => void;
 };
 
-function FanduelPanel({ games, loading, error, requestsRemaining, nowMs, onRefresh }: SharedOddsProps & { requestsRemaining: string | null }) {
+function FanduelPanel({
+  games, loading, error, requestsRemaining, nowMs, onRefresh,
+  addToParlay, isInParlay, parlayCount,
+}: SharedOddsProps & {
+  requestsRemaining: string | null;
+  addToParlay: (leg: ParlayLeg) => void;
+  isInParlay: (gameId: string, teamName: string) => boolean;
+  parlayCount: number;
+}) {
   const [timeWindow, setTimeWindow] = useState<TimePillKey>("today");
 
   // Best odds across every bookmaker for each team. Skip games where either
@@ -1706,6 +1773,11 @@ function FanduelPanel({ games, loading, error, requestsRemaining, nowMs, onRefre
 
       {error && <ErrorBox>{error}</ErrorBox>}
 
+      <div style={{ background: "rgba(99,102,241,0.08)", border: `1px solid rgba(99,102,241,0.25)`, color: "#a5b4fc", borderRadius: 8, padding: "8px 12px", fontSize: 12, marginBottom: 12, lineHeight: 1.5 }}>
+        💡 <strong>Parlay</strong> = combine multiple bets for a much bigger payout. <strong>All legs must win.</strong> Click <strong>+ Parlay</strong> on any team to add it.
+        {parlayCount > 0 && <span style={{ color: C.green, fontWeight: 700 }}> · {parlayCount} {parlayCount === 1 ? "leg" : "legs"} selected</span>}
+      </div>
+
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
         <strong style={{ color: C.text }}>{sorted.length}</strong> {sorted.length === 1 ? "game" : "games"} available
         {" across "}
@@ -1747,7 +1819,7 @@ function FanduelPanel({ games, loading, error, requestsRemaining, nowMs, onRefre
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {sorted.map(({ g, home, away }) => (
-            <SimpleFanduelCard key={g.id} game={g} home={home} away={away} nowMs={nowMs}/>
+            <SimpleFanduelCard key={g.id} game={g} home={home} away={away} nowMs={nowMs} addToParlay={addToParlay} isInParlay={isInParlay}/>
           ))}
         </div>
       )}
@@ -1756,12 +1828,14 @@ function FanduelPanel({ games, loading, error, requestsRemaining, nowMs, onRefre
 }
 
 function SimpleFanduelCard({
-  game, home, away, nowMs,
+  game, home, away, nowMs, addToParlay, isInParlay,
 }: {
   game: OddsGame;
   home: BestOdds;
   away: BestOdds;
   nowMs: number;
+  addToParlay: (leg: ParlayLeg) => void;
+  isInParlay: (gameId: string, teamName: string) => boolean;
 }) {
   const cd = countdownLabel(game.commence_time, nowMs);
   const start = new Date(game.commence_time);
@@ -1799,6 +1873,37 @@ function SimpleFanduelCard({
         <SimpleOddsColumn team={game.home_team} odds={home.price} prob={pHome} book={home.book}/>
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 8 }}>
+        {[
+          { name: game.away_team, side: away },
+          { name: game.home_team, side: home },
+        ].map(({ name, side }) => {
+          const selected = isInParlay(game.id, name);
+          return (
+            <button
+              key={name}
+              onClick={() => addToParlay({
+                gameId: game.id,
+                sport: game.sport_title || game.sport_key,
+                teamName: name,
+                odds: side.price,
+                book: side.book,
+                gameTime: game.commence_time,
+              })}
+              style={{
+                padding: "6px 10px", borderRadius: 6,
+                border: `1px solid ${selected ? C.accent : C.border}`,
+                background: selected ? "rgba(99,102,241,0.2)" : "transparent",
+                color: selected ? "#a5b4fc" : C.textMuted,
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              {selected ? "✓ In Parlay" : "+ Parlay"}
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{ marginTop: 10, fontSize: 11.5, color: C.textMuted }}>
         Bookmaker edge: <strong style={{ color: edgePct <= 2 ? C.green : edgePct <= 5 ? C.text : C.amber }}>{edgePct.toFixed(2)}%</strong> <span>(lower = better for you)</span>
       </div>
@@ -1830,6 +1935,115 @@ function SimpleOddsColumn({
       </div>
       <div style={{ fontSize: 11.5, color: C.textDim, lineHeight: 1.5 }}>
         {plain} · <span style={{ color: C.textMuted }}>{(prob * 100).toFixed(0)}% implied chance</span>
+      </div>
+    </div>
+  );
+}
+
+function ParlayBar({
+  legs, stake, onStakeChange, onRemove, onClear,
+}: {
+  legs: ParlayLeg[];
+  stake: string;
+  onStakeChange: (s: string) => void;
+  onRemove: (gameId: string) => void;
+  onClear: () => void;
+}) {
+  const stakeNum = Math.max(0, parseFloat(stake) || 0);
+  const result = calcParlay(legs, stakeNum);
+
+  const savePaperBet = () => {
+    if (!result || stakeNum <= 0) return;
+    const bet = {
+      id: Date.now(),
+      type: "parlay",
+      legs,
+      sport: "PARLAY",
+      game: legs.map((l) => l.teamName).join(" + "),
+      pick: `${legs.length}-leg parlay`,
+      odds: result.combinedAmerican,
+      book: "Multiple",
+      stake: stakeNum,
+      potWin: result.profit,
+      status: "pending",
+      placedAt: new Date().toISOString(),
+      notes: legs.map((l) => `${l.teamName} ${l.odds > 0 ? "+" : ""}${l.odds} at ${l.book}`).join(" | "),
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem("nexyru_value_bets") || "[]");
+      localStorage.setItem("nexyru_value_bets", JSON.stringify([bet, ...existing]));
+      if (typeof window !== "undefined") window.alert(`Parlay saved to paper bets — target +$${result.profit.toFixed(2)}`);
+    } catch {}
+    onClear();
+  };
+
+  return (
+    <div style={{
+      position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
+      background: "#0a0a0f", borderTop: `1px solid ${C.border}`,
+      padding: "14px 20px", display: "flex", alignItems: "center", gap: 14,
+      flexWrap: "wrap", boxShadow: "0 -8px 24px rgba(0,0,0,0.4)",
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#a5b4fc", whiteSpace: "nowrap" }}>
+        🎰 Parlay Builder — {legs.length} legs
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flex: 1, flexWrap: "wrap", minWidth: 0 }}>
+        {legs.map((leg) => (
+          <div key={leg.gameId} style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "4px 10px", borderRadius: 6,
+            background: "rgba(99,102,241,0.15)", border: `1px solid rgba(99,102,241,0.3)`,
+            fontSize: 12, color: "#a5b4fc",
+          }}>
+            {leg.teamName} ({leg.odds > 0 ? "+" : ""}{leg.odds})
+            <button onClick={() => onRemove(leg.gameId)} aria-label="Remove leg"
+              style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 }}>
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 12, color: C.textMuted }}>Stake $</span>
+        <input
+          value={stake}
+          onChange={(e) => onStakeChange(e.target.value)}
+          type="number"
+          style={{ width: 80, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, outline: "none" }}
+        />
+      </div>
+
+      {result && (
+        <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 11, color: C.textMuted }}>
+            Combined odds: <strong style={{ color: C.text }}>{result.combinedAmerican > 0 ? "+" : ""}{result.combinedAmerican}</strong>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.green }}>
+            Win: ${result.payout.toFixed(2)} <span style={{ fontSize: 12 }}>(+${result.profit.toFixed(2)})</span>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={savePaperBet}
+          disabled={!result || stakeNum <= 0}
+          style={{
+            padding: "8px 16px", borderRadius: 8, border: "none",
+            background: !result || stakeNum <= 0 ? C.card2 : C.accent,
+            color: !result || stakeNum <= 0 ? C.textMuted : "#fff",
+            fontSize: 13, fontWeight: 700,
+            cursor: !result || stakeNum <= 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          💾 Save Parlay
+        </button>
+        <button onClick={onClear}
+          style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 13, cursor: "pointer" }}>
+          Clear
+        </button>
       </div>
     </div>
   );
