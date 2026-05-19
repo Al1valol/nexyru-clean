@@ -1468,32 +1468,6 @@ const TIME_PILL_MS: Record<TimePillKey, number> = {
   all: Infinity,
 };
 
-// Value rating A/B/C/D based on the bookmaker's vig (overround - 1).
-// A = sharp book, D = heavy juice.
-function valueRating(overround: number | null): { grade: string; color: string; label: string } | null {
-  if (overround === null || !Number.isFinite(overround)) return null;
-  const edgePct = (overround - 1) * 100;
-  if (edgePct <= 2) return { grade: "A", color: "#22c55e", label: "Sharp book — close to fair odds" };
-  if (edgePct <= 4) return { grade: "B", color: "#84cc16", label: "Good value" };
-  if (edgePct <= 6) return { grade: "C", color: "#f59e0b", label: "Average vig" };
-  return { grade: "D", color: "#ef4444", label: "Heavy bookmaker edge" };
-}
-
-// Risk tier for a game based on how lopsided the favourite is, expressed as
-// the implied-probability gap. LOW = even matchup, HIGH = heavy favourite.
-function riskLevelForOdds(
-  home: BestOdds | null,
-  away: BestOdds | null,
-): { tier: "low" | "medium" | "high"; label: string; color: string; note: string } | null {
-  if (!home || !away) return null;
-  const pH = americanToImpliedProb(home.price);
-  const pA = americanToImpliedProb(away.price);
-  const gap = Math.abs(pH - pA);
-  if (gap < 0.15) return { tier: "low", label: "LOW RISK", color: "#22c55e", note: "Even matchup — outcome is hard to predict" };
-  if (gap < 0.35) return { tier: "medium", label: "MEDIUM RISK", color: "#f59e0b", note: "Clear favourite — moderate edge" };
-  return { tier: "high", label: "HIGH RISK", color: "#ef4444", note: "Heavy favourite — big swings on either side" };
-}
-
 interface BestOdds {
   team: string;
   price: number;
@@ -1599,25 +1573,17 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-type OddsTabKey = "fanduel" | "polymarket" | "paper" | "history";
+type OddsTabKey = "fanduel" | "polymarket";
 
 export function OddsTab() {
   const [oddsTab, setOddsTab] = useState<OddsTabKey>("fanduel");
-  const [prefill, setPrefill] = useState<BetPrefill | null>(null);
-
-  const handlePaperBet = (p: BetPrefill) => {
-    setPrefill(p);
-    setOddsTab("paper");
-  };
 
   return (
     <section>
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0, flexWrap: "wrap" }}>
         {[
-          { id: "fanduel", label: "📊 FanDuel" },
+          { id: "fanduel", label: "📊 FanDuel Odds" },
           { id: "polymarket", label: "🎲 Polymarket" },
-          { id: "paper", label: "📝 Paper Bets" },
-          { id: "history", label: "📈 Past Suggestions" },
         ].map((t) => (
           <button
             key={t.id}
@@ -1639,21 +1605,70 @@ export function OddsTab() {
         ))}
       </div>
 
-      {oddsTab === "fanduel" && <FanduelPanel onPaperBet={handlePaperBet} />}
-      {oddsTab === "polymarket" && <PredictionMarketsPanel />}
-      {oddsTab === "paper" && <PaperBetsPanel prefill={prefill} onPrefillConsumed={() => setPrefill(null)} />}
-      {oddsTab === "history" && <PastSuggestionsPanel />}
+      {oddsTab === "fanduel" && <FanduelPanel />}
+      {oddsTab === "polymarket" && <PolymarketPanel />}
     </section>
   );
 }
 
-function FanduelPanel({ onPaperBet }: { onPaperBet?: (prefill: BetPrefill) => void }) {
+// Cross-book arb where FanDuel is one of the two legs. Returns the higher-
+// profit configuration if any, computed on a $1000 total stake.
+function findFanduelArb(game: OddsGame): {
+  fdTeam: string; fdPrice: number;
+  otherTeam: string; otherPrice: number; otherBook: string;
+  stakeFd: number; stakeOther: number; profit: number; totalStake: number;
+} | null {
+  const fdAway = fanduelPriceForTeam(game, game.away_team);
+  const fdHome = fanduelPriceForTeam(game, game.home_team);
+  if (!fdAway && !fdHome) return null;
+
+  // Find the best price from any non-FanDuel book for each team.
+  const bestNonFd = (team: string): BestOdds | null => {
+    let best: BestOdds | null = null;
+    for (const b of game.bookmakers ?? []) {
+      if ((b.key ?? "").toLowerCase() === "fanduel") continue;
+      const h2h = b.markets?.find((m) => m.key === "h2h");
+      if (!h2h) continue;
+      const o = h2h.outcomes.find((o) => o.name === team);
+      if (!o) continue;
+      if (best === null || o.price > best.price) best = { team: o.name, price: o.price, book: b.title };
+    }
+    return best;
+  };
+
+  const candidates: Array<{
+    fdTeam: string; fdPrice: number;
+    otherTeam: string; otherPrice: number; otherBook: string;
+  }> = [];
+
+  const otherHome = bestNonFd(game.home_team);
+  const otherAway = bestNonFd(game.away_team);
+  if (fdAway && otherHome) candidates.push({ fdTeam: game.away_team, fdPrice: fdAway.price, otherTeam: game.home_team, otherPrice: otherHome.price, otherBook: otherHome.book });
+  if (fdHome && otherAway) candidates.push({ fdTeam: game.home_team, fdPrice: fdHome.price, otherTeam: game.away_team, otherPrice: otherAway.price, otherBook: otherAway.book });
+
+  let best: ReturnType<typeof findFanduelArb> = null;
+  for (const c of candidates) {
+    const pFd = americanToImpliedProb(c.fdPrice);
+    const pOther = americanToImpliedProb(c.otherPrice);
+    const overround = pFd + pOther;
+    if (overround <= 0 || overround >= 1) continue;
+    const totalStake = 1000;
+    const stakeFd = (totalStake * pFd) / overround;
+    const stakeOther = (totalStake * pOther) / overround;
+    const profit = totalStake * (1 - overround) / overround;
+    if (!best || profit > best.profit) {
+      best = { ...c, stakeFd, stakeOther, profit, totalStake };
+    }
+  }
+  return best;
+}
+
+function FanduelPanel() {
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
   const [timeWindow, setTimeWindow] = useState<TimePillKey>("today");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   useEffect(() => {
@@ -1684,7 +1699,7 @@ function FanduelPanel({ onPaperBet }: { onPaperBet?: (prefill: BetPrefill) => vo
 
   useEffect(() => { load(); }, [load]);
 
-  // FanDuel-only decorations. Games without FanDuel odds are dropped.
+  // Keep only games that have FanDuel odds on both teams.
   const decorated = useMemo(() => {
     if (!games) return [];
     const rows = [];
@@ -1692,29 +1707,27 @@ function FanduelPanel({ onPaperBet }: { onPaperBet?: (prefill: BetPrefill) => vo
       const home = fanduelPriceForTeam(g, g.home_team);
       const away = fanduelPriceForTeam(g, g.away_team);
       if (!home || !away) continue;
-      const start = new Date(g.commence_time).getTime();
-      rows.push({ g, home, away, start });
+      rows.push({ g, home, away, start: new Date(g.commence_time).getTime() });
     }
     return rows;
   }, [games]);
 
   const sorted = useMemo(() => {
-    const cutoff = TIME_PILL_MS[timeWindow] === Infinity ? Infinity : nowMs + TIME_PILL_MS[timeWindow];
+    const span = TIME_PILL_MS[timeWindow];
+    const cutoff = span === Infinity ? Infinity : nowMs + span;
     return decorated
       .filter((d) => d.start <= cutoff)
       .sort((a, b) => a.start - b.start);
   }, [decorated, timeWindow, nowMs]);
 
-  const refresh = () => load();
-
   return (
     <>
       <SectionTitle
         title="FanDuel Odds"
-        subtitle="Live FanDuel lines · compared to market average for value"
+        subtitle="Plain-English lines · cross-book arbs flagged"
         right={
           <button
-            onClick={refresh}
+            onClick={load}
             disabled={loading}
             style={{
               background: loading ? C.card2 : C.accent,
@@ -1733,11 +1746,7 @@ function FanduelPanel({ onPaperBet }: { onPaperBet?: (prefill: BetPrefill) => vo
         }
       />
 
-      <ArbCalculator />
-
       {error && <ErrorBox>{error}</ErrorBox>}
-
-      <Subhead>Games</Subhead>
 
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
         <strong style={{ color: C.text }}>{sorted.length}</strong> FanDuel {sorted.length === 1 ? "game" : "games"} available
@@ -1778,22 +1787,102 @@ function FanduelPanel({ onPaperBet }: { onPaperBet?: (prefill: BetPrefill) => vo
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {sorted.map(({ g, home, away }) => (
-            <GameCard
-              key={g.id}
-              game={g}
-              home={home}
-              away={away}
-              isArb={false}
-              expanded={expandedId === g.id}
-              onToggle={() => setExpandedId((cur) => (cur === g.id ? null : g.id))}
-              nowMs={nowMs}
-              fanduelOnly
-              onPaperBet={onPaperBet}
-            />
+            <SimpleFanduelCard key={g.id} game={g} home={home} away={away} nowMs={nowMs}/>
           ))}
         </div>
       )}
     </>
+  );
+}
+
+function SimpleFanduelCard({
+  game, home, away, nowMs,
+}: {
+  game: OddsGame;
+  home: BestOdds;
+  away: BestOdds;
+  nowMs: number;
+}) {
+  const cd = countdownLabel(game.commence_time, nowMs);
+  const start = new Date(game.commence_time);
+  const arb = findFanduelArb(game);
+
+  const pAway = americanToImpliedProb(away.price);
+  const pHome = americanToImpliedProb(home.price);
+  const overround = pAway + pHome;
+  const edgePct = (overround - 1) * 100;
+
+  // Value vs market average per side. Lower implied prob at FanDuel = better
+  // payout than the average book.
+  const avgAway = avgImpliedForTeam(game, game.away_team);
+  const avgHome = avgImpliedForTeam(game, game.home_team);
+  const valueChip = (fdProb: number, avg: number | null) => {
+    if (avg === null) return null;
+    const diff = avg - fdProb;
+    if (diff > 0.005) return { label: "⭐ Good value", color: C.green };
+    if (diff < -0.005) return { label: "↓ Below average", color: C.textMuted };
+    return null;
+  };
+  const awayValue = valueChip(pAway, avgAway);
+  const homeValue = valueChip(pHome, avgHome);
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${arb ? C.green : C.border}`, borderRadius: 12, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap", fontSize: 12 }}>
+        <span style={{ fontSize: 16 }}>{sportIcon(game.sport_key)}</span>
+        <span style={{ fontWeight: 700, color: C.text }}>{game.away_team} <span style={{ color: C.textMuted, fontWeight: 500 }}>vs</span> {game.home_team}</span>
+        <span style={{ color: C.textMuted }}>·</span>
+        <span style={{ color: C.textDim }}>
+          {start.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+        </span>
+        {cd.label && (cd.live ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: C.red, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            <span className="nexyru-pulse" style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: C.red }}/>
+            LIVE
+          </span>
+        ) : (
+          <span style={{ fontSize: 11, color: C.textMuted }}>· {cd.label}</span>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <SimpleOddsColumn team={game.away_team} odds={away.price} prob={pAway} value={awayValue}/>
+        <SimpleOddsColumn team={game.home_team} odds={home.price} prob={pHome} value={homeValue}/>
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 11.5, color: C.textMuted }}>
+        Bookmaker edge: <strong style={{ color: edgePct <= 2 ? C.green : edgePct <= 5 ? C.text : C.amber }}>{edgePct.toFixed(2)}%</strong> <span>(lower = better for you)</span>
+      </div>
+
+      {arb && (
+        <div style={{ marginTop: 12, background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.text, lineHeight: 1.55 }}>
+          💰 <strong style={{ color: C.green }}>ARB:</strong> Bet <strong style={{ color: C.green }}>${arb.stakeFd.toFixed(2)}</strong> here on {arb.fdTeam} + <strong style={{ color: C.green }}>${arb.stakeOther.toFixed(2)}</strong> at <strong style={{ color: C.text }}>{arb.otherBook}</strong> on {arb.otherTeam} = <strong style={{ color: C.green }}>${arb.profit.toFixed(2)} guaranteed profit</strong> <span style={{ color: C.textMuted }}>(on $1,000 total)</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SimpleOddsColumn({
+  team, odds, prob, value,
+}: {
+  team: string; odds: number; prob: number; value: { label: string; color: string } | null;
+}) {
+  const oddsStr = odds > 0 ? `+${odds}` : String(odds);
+  const plain = odds > 0
+    ? `You bet $100 → win $${odds} profit`
+    : `You bet $${Math.abs(odds)} → win $100 profit`;
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>{team}</div>
+      <div style={{ fontSize: 26, fontWeight: 900, color: odds > 0 ? C.green : C.text, letterSpacing: "-0.01em", marginBottom: 4 }}>{oddsStr}</div>
+      <div style={{ fontSize: 11.5, color: C.textDim, lineHeight: 1.5 }}>
+        {plain} · <span style={{ color: C.textMuted }}>{(prob * 100).toFixed(0)}% implied chance</span>
+      </div>
+      {value && (
+        <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: value.color }}>{value.label}</div>
+      )}
+    </div>
   );
 }
 
@@ -1802,33 +1891,21 @@ function FanduelPanel({ onPaperBet }: { onPaperBet?: (prefill: BetPrefill) => vo
 type PolyMarket = {
   id?: string;
   question?: string;
-  outcomes?: string; // JSON-stringified ["Yes","No"]
-  outcomePrices?: string; // JSON-stringified ["0.67","0.33"]
+  outcomes?: string;
+  outcomePrices?: string;
   volume?: string | number;
   category?: string;
   slug?: string;
 };
 
-type KalshiMarket = {
-  ticker?: string;
-  title?: string;
-  category?: string;
-  yes_bid?: number;
-  yes_ask?: number;
-  no_bid?: number;
-  no_ask?: number;
-  volume?: number;
-};
-
-type NormalizedMarket = {
-  source: "polymarket" | "kalshi";
+type SimpleMarket = {
   id: string;
   question: string;
-  yesPct: number; // 0-100
-  noPct: number;  // 0-100
+  yesPct: number;
+  noPct: number;
   volume: number;
   category: string;
-  url: string;
+  slug: string;
 };
 
 function safeParseJson<T>(s: unknown): T | null {
@@ -1836,7 +1913,7 @@ function safeParseJson<T>(s: unknown): T | null {
   try { return JSON.parse(s) as T; } catch { return null; }
 }
 
-function normalizePolymarket(m: PolyMarket): NormalizedMarket | null {
+function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
   const prices = safeParseJson<string[]>(m.outcomePrices);
   const outcomes = safeParseJson<string[]>(m.outcomes);
   if (!prices || prices.length !== 2 || !outcomes || outcomes.length !== 2) return null;
@@ -1845,117 +1922,70 @@ function normalizePolymarket(m: PolyMarket): NormalizedMarket | null {
   if (!Number.isFinite(yes) || !Number.isFinite(no)) return null;
   const vol = typeof m.volume === "number" ? m.volume : parseFloat(String(m.volume ?? "0")) || 0;
   return {
-    source: "polymarket",
     id: m.id ?? m.slug ?? m.question ?? Math.random().toString(36).slice(2),
     question: m.question ?? "Unknown market",
     yesPct: yes * 100,
     noPct: no * 100,
     volume: vol,
     category: m.category || "Other",
-    url: m.slug ? `https://polymarket.com/event/${m.slug}` : "https://polymarket.com",
+    slug: m.slug ?? "",
   };
 }
 
-function normalizeKalshi(m: KalshiMarket): NormalizedMarket | null {
-  // Use the midpoint of bid/ask in cents → fraction.
-  const yesMid = (Number(m.yes_bid ?? NaN) + Number(m.yes_ask ?? NaN)) / 2;
-  if (!Number.isFinite(yesMid)) return null;
-  const yesPct = Math.max(0, Math.min(100, yesMid));
-  return {
-    source: "kalshi",
-    id: m.ticker ?? Math.random().toString(36).slice(2),
-    question: m.title ?? "Unknown market",
-    yesPct,
-    noPct: 100 - yesPct,
-    volume: Number(m.volume ?? 0) || 0,
-    category: m.category || "Other",
-    url: m.ticker ? `https://kalshi.com/markets/${encodeURIComponent(m.ticker)}` : "https://kalshi.com",
-  };
-}
+const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance"];
 
-const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance", "World"];
-
-function PredictionMarketsPanel() {
-  const [subTab, setSubTab] = useState<"polymarket" | "kalshi">("polymarket");
-  const [poly, setPoly] = useState<NormalizedMarket[] | null>(null);
-  const [kalshi, setKalshi] = useState<NormalizedMarket[] | null>(null);
-  const [kalshiError, setKalshiError] = useState<string | null>(null);
-  const [polyError, setPolyError] = useState<string | null>(null);
+function PolymarketPanel() {
+  const [markets, setMarkets] = useState<SimpleMarket[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("All");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([
-      fetch("/api/polymarket").then((r) => r.json()).catch((e) => ({ error: String(e) })),
-      fetch("/api/kalshi").then((r) => r.json()).catch((e) => ({ error: String(e), markets: [] })),
-    ]).then(([p, k]) => {
-      if (cancelled) return;
-      if (p?.error) setPolyError(p.error);
-      else setPoly((p?.markets as PolyMarket[] ?? []).map(normalizePolymarket).filter((x): x is NormalizedMarket => x !== null).sort((a, b) => b.volume - a.volume));
-      if (k?.error) setKalshiError(k.error);
-      const kNorm = (k?.markets as KalshiMarket[] ?? []).map(normalizeKalshi).filter((x): x is NormalizedMarket => x !== null).sort((a, b) => b.volume - a.volume);
-      setKalshi(kNorm);
-      setLoading(false);
-    });
+    fetch("/api/polymarket")
+      .then((r) => r.json())
+      .then((body) => {
+        if (cancelled) return;
+        if (body?.error) {
+          setError(body.error);
+          setMarkets([]);
+          return;
+        }
+        const arr = (body?.markets as PolyMarket[] ?? [])
+          .map(normalizePolymarket)
+          .filter((x): x is SimpleMarket => x !== null)
+          .sort((a, b) => b.volume - a.volume);
+        setMarkets(arr);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(String(e));
+        setMarkets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => { cancelled = true; };
   }, []);
 
-  const showKalshiFallback = subTab === "kalshi" && (kalshiError !== null || (kalshi !== null && kalshi.length === 0));
-  const active: NormalizedMarket[] | null = subTab === "polymarket" || showKalshiFallback ? poly : kalshi;
-  const sourceLabel = subTab === "kalshi" && showKalshiFallback ? "Kalshi requires login — showing Polymarket data" : null;
-
   const filtered = useMemo(() => {
-    if (!active) return [];
-    if (category === "All") return active;
+    if (!markets) return [];
+    if (category === "All") return markets;
     const needle = category.toLowerCase();
-    return active.filter((m) => m.category.toLowerCase().includes(needle));
-  }, [active, category]);
+    return markets.filter((m) => m.category.toLowerCase().includes(needle));
+  }, [markets, category]);
 
   return (
     <>
       <SectionTitle
-        title="Prediction Markets"
-        subtitle="Real-money markets pricing the probability of real-world events"
+        title="Polymarket"
+        subtitle="Real-money markets pricing real-world events · compare market prices to your own estimate"
       />
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {[
-          { id: "polymarket", label: "Polymarket" },
-          { id: "kalshi", label: "Kalshi" },
-        ].map((t) => {
-          const isActive = subTab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setSubTab(t.id as "polymarket" | "kalshi")}
-              style={{
-                padding: "5px 14px",
-                borderRadius: 999,
-                border: `1px solid ${isActive ? C.accent : C.border}`,
-                background: isActive ? C.accent : C.card2,
-                color: isActive ? "#fff" : C.text,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {sourceLabel && (
-        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", color: C.amber, borderRadius: 8, padding: "8px 12px", fontSize: 12, marginBottom: 12 }}>
-          ⚠️ {sourceLabel}
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {CATEGORY_PILLS.map((c) => {
-          const isActive = category === c;
+          const active = category === c;
           return (
             <button
               key={c}
@@ -1963,9 +1993,9 @@ function PredictionMarketsPanel() {
               style={{
                 padding: "5px 12px",
                 borderRadius: 999,
-                border: `1px solid ${isActive ? C.accent : C.border}`,
-                background: isActive ? C.accent : C.card2,
-                color: isActive ? "#fff" : C.text,
+                border: `1px solid ${active ? C.accent : C.border}`,
+                background: active ? C.accent : C.card2,
+                color: active ? "#fff" : C.text,
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: "pointer",
@@ -1979,1421 +2009,101 @@ function PredictionMarketsPanel() {
 
       {loading ? (
         <LoadingBlock />
-      ) : (subTab === "polymarket" && polyError) ? (
-        <ErrorBox>Polymarket failed: {polyError}</ErrorBox>
+      ) : error ? (
+        <ErrorBox>Polymarket failed: {error}</ErrorBox>
       ) : filtered.length === 0 ? (
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
           No markets in this category right now.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 360px), 1fr))", gap: 12 }}>
-          {filtered.map((m) => <PredictionMarketCard key={m.source + ":" + m.id} m={m}/>)}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 380px), 1fr))", gap: 12 }}>
+          {filtered.map((m) => <SimplePolymarketCard key={m.id} m={m}/>)}
         </div>
       )}
     </>
   );
 }
 
-function PredictionMarketCard({ m }: { m: NormalizedMarket }) {
-  const yesColor = m.yesPct >= 50 ? C.green : C.red;
-  const noColor = m.noPct >= 50 ? C.green : C.red;
+function SimplePolymarketCard({ m }: { m: SimpleMarket }) {
+  const [estimate, setEstimate] = useState("");
+  const est = parseFloat(estimate);
+  const estValid = Number.isFinite(est) && est >= 0 && est <= 100;
+  const edge = estValid ? est - m.yesPct : null;
+
+  const yesUrl = m.slug ? `https://polymarket.com/event/${m.slug}` : "https://polymarket.com";
+  const noUrl = yesUrl;
   const fmtVol = (v: number) => {
     if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
     if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
     if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
     return `$${v.toFixed(0)}`;
   };
+
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{m.question}</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.text, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{m.question}</div>
         <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.18)", color: "#a5b4fc", whiteSpace: "nowrap", letterSpacing: "0.04em", textTransform: "uppercase" }}>
           {m.category}
         </span>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
-          <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>YES</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: yesColor, marginTop: 2 }}>{m.yesPct.toFixed(0)}¢</div>
+        <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
+          <div style={{ fontSize: 10, color: C.green, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>YES</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: C.green, marginTop: 2 }}>{m.yesPct.toFixed(0)}%</div>
         </div>
-        <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
-          <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>NO</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: noColor, marginTop: 2 }}>{m.noPct.toFixed(0)}¢</div>
-        </div>
-      </div>
-
-      <div style={{ fontSize: 12, color: C.textDim }}>
-        The market thinks there&apos;s a <strong style={{ color: yesColor }}>{m.yesPct.toFixed(0)}%</strong> chance of YES
-      </div>
-
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10.5, color: C.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
-          <span>Total bet</span>
-          <span style={{ color: C.text }}>{fmtVol(m.volume)}</span>
-        </div>
-        <div style={{ height: 5, background: C.card2, borderRadius: 3, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${Math.min(100, Math.log10(Math.max(1, m.volume)) * 14)}%`, background: "linear-gradient(90deg, #6366f1, #a5b4fc)" }}/>
+        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
+          <div style={{ fontSize: 10, color: C.red, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>NO</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: C.red, marginTop: 2 }}>{m.noPct.toFixed(0)}%</div>
         </div>
       </div>
 
-      <a
-        href={m.url}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-          padding: "9px 14px", borderRadius: 8,
-          background: C.green, color: "#fff",
-          fontSize: 13, fontWeight: 700, textDecoration: "none",
-        }}
-      >
-        Bet YES on {m.source === "polymarket" ? "Polymarket" : "Kalshi"} →
-      </a>
-    </div>
-  );
-}
-
-// ───────────────────────── paper bets ─────────────────────────
-
-type PaperBetStatus = "pending" | "won" | "lost" | "void";
-
-type PaperBet = {
-  id: number;
-  game: string;
-  sport: string;
-  team: string;
-  odds: number;
-  bookmaker: string;
-  stake: number;
-  potentialWin: number;
-  status: PaperBetStatus;
-  placedAt: string;
-  gameTime: string;
-  result: PaperBetStatus | null;
-  notes: string;
-  settledAt?: string;
-};
-
-type PaperBetsStore = {
-  bankroll: number;
-  startingBankroll: number;
-  bets: PaperBet[];
-};
-
-type BetPrefill = {
-  game: string;
-  sport: string;
-  team: string;
-  odds: number;
-  bookmaker: string;
-  gameTime: string;
-};
-
-const PAPER_BETS_KEY = "nexyru_paper_bets";
-const DEFAULT_BANKROLL = 1000;
-
-function loadPaperBets(): PaperBetsStore {
-  const base = { bankroll: DEFAULT_BANKROLL, startingBankroll: DEFAULT_BANKROLL, bets: [] as PaperBet[] };
-  if (typeof window === "undefined") return base;
-  try {
-    const raw = localStorage.getItem(PAPER_BETS_KEY);
-    if (!raw) return base;
-    const p = JSON.parse(raw);
-    return {
-      bankroll: typeof p.bankroll === "number" ? p.bankroll : DEFAULT_BANKROLL,
-      startingBankroll: typeof p.startingBankroll === "number" ? p.startingBankroll : DEFAULT_BANKROLL,
-      bets: Array.isArray(p.bets) ? p.bets : [],
-    };
-  } catch {
-    return base;
-  }
-}
-
-function savePaperBets(store: PaperBetsStore) {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem(PAPER_BETS_KEY, JSON.stringify(store)); } catch {}
-}
-
-// Profit (not payout) from an American line. +120 stake $100 → $120 profit.
-function americanProfit(stake: number, odds: number): number {
-  return odds > 0 ? stake * (odds / 100) : stake * (100 / -odds);
-}
-
-function sportLabelFromKey(sportKey: string): string {
-  const k = (sportKey || "").toLowerCase();
-  if (k.includes("nfl") || k.includes("americanfootball")) return "NFL";
-  if (k.includes("nba") || k.includes("basketball")) return "NBA";
-  if (k.includes("mlb") || k.includes("baseball")) return "MLB";
-  if (k.includes("nhl") || k.includes("icehockey")) return "NHL";
-  if (k.includes("mma")) return "MMA";
-  if (k.includes("soccer")) return "Soccer";
-  if (k.includes("tennis")) return "Tennis";
-  return "Other";
-}
-
-const SPORT_OPTIONS = ["MLB", "NBA", "NFL", "NHL", "MMA", "Soccer", "Tennis", "Other"];
-
-function PaperBetsPanel({
-  prefill,
-  onPrefillConsumed,
-}: {
-  prefill: BetPrefill | null;
-  onPrefillConsumed: () => void;
-}) {
-  const [store, setStore] = useState<PaperBetsStore>(() => loadPaperBets());
-  const [addOpen, setAddOpen] = useState(false);
-  const [bankrollOpen, setBankrollOpen] = useState(false);
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
-
-  // Hydrate from localStorage on mount (loadPaperBets returns the SSR default).
-  useEffect(() => { setStore(loadPaperBets()); }, []);
-  useEffect(() => { savePaperBets(store); }, [store]);
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Open the modal when a prefill arrives from the FanDuel tab.
-  useEffect(() => {
-    if (prefill) setAddOpen(true);
-  }, [prefill]);
-
-  const flash = (msg: string, color: string) => {
-    setToast({ msg, color });
-    setTimeout(() => setToast((cur) => (cur?.msg === msg ? null : cur)), 2500);
-  };
-
-  const handleAdd = (bet: Omit<PaperBet, "id" | "status" | "result" | "placedAt">) => {
-    const newBet: PaperBet = {
-      ...bet,
-      id: Date.now(),
-      status: "pending",
-      result: null,
-      placedAt: new Date().toISOString(),
-    };
-    setStore((s) => ({ ...s, bets: [newBet, ...s.bets] }));
-    setAddOpen(false);
-    onPrefillConsumed();
-    flash(`✓ Added to paper bets!`, C.green);
-  };
-
-  const handleSettle = (betId: number, result: "won" | "lost" | "void") => {
-    setStore((s) => {
-      const bet = s.bets.find((b) => b.id === betId);
-      if (!bet || bet.status !== "pending") return s;
-      let bankrollDelta = 0;
-      if (result === "won") {
-        bankrollDelta = bet.potentialWin; // profit only — stake was already conceptually held
-        flash(`🎉 +$${bet.potentialWin.toFixed(2)} profit!`, C.green);
-      } else if (result === "lost") {
-        bankrollDelta = -bet.stake;
-        flash(`❌ -$${bet.stake.toFixed(2)}`, C.red);
-      } else {
-        bankrollDelta = 0;
-        flash(`↺ Voided — stake returned`, C.textMuted);
-      }
-      const settledAt = new Date().toISOString();
-      return {
-        ...s,
-        bankroll: s.bankroll + bankrollDelta,
-        bets: s.bets.map((b) =>
-          b.id === betId ? { ...b, status: result, result, settledAt } : b,
-        ),
-      };
-    });
-  };
-
-  const handleDelete = (betId: number) => {
-    if (typeof window !== "undefined" && !window.confirm("Delete this bet?")) return;
-    setStore((s) => ({ ...s, bets: s.bets.filter((b) => b.id !== betId) }));
-  };
-
-  const setBankroll = (next: number) => {
-    setStore((s) => ({ ...s, bankroll: next, startingBankroll: next }));
-    setBankrollOpen(false);
-  };
-
-  const pending = store.bets.filter((b) => b.status === "pending");
-  const settled = store.bets.filter((b) => b.status !== "pending");
-  const wonBets = settled.filter((b) => b.status === "won");
-  const lostBets = settled.filter((b) => b.status === "lost");
-  const settledOutcomes = wonBets.length + lostBets.length;
-  const winRate = settledOutcomes > 0 ? (wonBets.length / settledOutcomes) * 100 : null;
-  const totalStaked = store.bets.reduce((s, b) => s + b.stake, 0);
-  const totalReturned = wonBets.reduce((s, b) => s + b.stake + b.potentialWin, 0); // stake back + profit
-  const netPnl = store.bankroll - store.startingBankroll;
-  const roi = totalStaked > 0 ? (netPnl / totalStaked) * 100 : 0;
-  const bestWin = wonBets.length > 0 ? wonBets.reduce((b, x) => (x.potentialWin > b.potentialWin ? x : b)) : null;
-  const worstLoss = lostBets.length > 0 ? lostBets.reduce((b, x) => (x.stake > b.stake ? x : b)) : null;
-  const avgOdds = store.bets.length > 0
-    ? store.bets.reduce((s, b) => s + b.odds, 0) / store.bets.length
-    : null;
-  const streak = (() => {
-    const sortedSettled = [...settled].sort((a, b) => new Date(b.settledAt ?? b.placedAt).getTime() - new Date(a.settledAt ?? a.placedAt).getTime());
-    let count = 0;
-    let kind: "won" | "lost" | null = null;
-    for (const b of sortedSettled) {
-      if (b.status !== "won" && b.status !== "lost") break;
-      if (kind === null) kind = b.status;
-      if (b.status !== kind) break;
-      count++;
-    }
-    return kind && count > 0 ? { kind, count } : null;
-  })();
-
-  return (
-    <>
-      <SectionTitle
-        title="Paper Bets"
-        subtitle="Track signals and fake bets · no real money"
-      />
-
-      {toast && (
-        <div style={{ background: `${toast.color}22`, border: `1px solid ${toast.color}`, color: toast.color, borderRadius: 8, padding: "10px 14px", fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
-          {toast.msg}
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
-        <Stat label="Bankroll" value={`$${store.bankroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} sub={`starting $${store.startingBankroll.toLocaleString()}`} color={netPnl >= 0 ? C.green : C.red}/>
-        <Stat label="Total bets" value={String(store.bets.length)} sub={`${pending.length} pending · ${settled.length} settled`}/>
-        <Stat label="Win rate" value={winRate === null ? "—" : `${winRate.toFixed(0)}%`} sub={settledOutcomes > 0 ? `${wonBets.length}W / ${lostBets.length}L` : "no results yet"}/>
-        <Stat label="ROI" value={totalStaked > 0 ? `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%` : "—"} sub={`profit vs $${totalStaked.toFixed(0)} staked`} color={roi >= 0 ? C.green : C.red}/>
+      <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+        <div>The crowd thinks there&apos;s a <strong style={{ color: C.green }}>{m.yesPct.toFixed(0)}%</strong> chance of YES.</div>
+        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{fmtVol(m.volume)} total bet on this market.</div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        <button
-          onClick={() => { onPrefillConsumed(); setAddOpen(true); }}
-          style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-        >
-          + Add Bet
-        </button>
-        <button
-          onClick={() => setBankrollOpen(true)}
-          style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-        >
-          Set Bankroll
-        </button>
-      </div>
-
-      <Subhead>Active bets ({pending.length})</Subhead>
-      {pending.length === 0 ? (
-        <div style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13, marginBottom: 18 }}>
-          No active bets. Click <strong style={{ color: C.text }}>+ Add Bet</strong> or use the FanDuel tab's <strong style={{ color: C.text }}>📝 Paper Bet</strong> buttons.
+      <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
+        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6, fontWeight: 600 }}>
+          What do <em>you</em> think the real probability is?
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
-          {pending.map((b) => (
-            <ActiveBetCard key={b.id} bet={b} nowMs={nowMs} onSettle={handleSettle} onDelete={handleDelete}/>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="number"
+            value={estimate}
+            onChange={(e) => setEstimate(e.target.value)}
+            placeholder="e.g. 75"
+            min={0}
+            max={100}
+            style={{ flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 10px", color: C.text, fontSize: 13, outline: "none", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+          />
+          <span style={{ fontSize: 12.5, color: C.textMuted }}>% chance</span>
         </div>
-      )}
-
-      <Subhead>Settled bets ({settled.length})</Subhead>
-      {settled.length === 0 ? (
-        <div style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13, marginBottom: 18 }}>
-          No settled bets yet.
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
-          {[...settled]
-            .sort((a, b) => new Date(b.settledAt ?? b.placedAt).getTime() - new Date(a.settledAt ?? a.placedAt).getTime())
-            .map((b) => <SettledBetCard key={b.id} bet={b}/>)}
-        </div>
-      )}
-
-      <Subhead>Bankroll over time</Subhead>
-      <BankrollChart store={store}/>
-
-      <Subhead>Lifetime stats</Subhead>
-      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 18, fontSize: 12.5 }}>
-        <StatLine label="Total staked" value={`$${totalStaked.toFixed(2)}`}/>
-        <StatLine label="Total returned" value={`$${totalReturned.toFixed(2)}`}/>
-        <StatLine label="Net P&L" value={`${netPnl >= 0 ? "+" : ""}$${netPnl.toFixed(2)}`} color={netPnl >= 0 ? C.green : C.red}/>
-        <StatLine label="Win rate" value={winRate === null ? "—" : `${winRate.toFixed(0)}%`}/>
-        <StatLine
-          label="Best win"
-          value={bestWin ? `+$${bestWin.potentialWin.toFixed(2)}` : "—"}
-          sub={bestWin ? bestWin.game : undefined}
-          color={C.green}
-        />
-        <StatLine
-          label="Worst loss"
-          value={worstLoss ? `-$${worstLoss.stake.toFixed(2)}` : "—"}
-          sub={worstLoss ? worstLoss.game : undefined}
-          color={C.red}
-        />
-        <StatLine label="Avg odds" value={avgOdds === null ? "—" : `${avgOdds > 0 ? "+" : ""}${avgOdds.toFixed(0)}`}/>
-        <StatLine label="ROI" value={totalStaked > 0 ? `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%` : "—"} color={roi >= 0 ? C.green : C.red}/>
-        <StatLine
-          label="Current streak"
-          value={streak ? `${streak.count} ${streak.kind === "won" ? "W" : "L"} in a row` : "—"}
-          color={streak ? (streak.kind === "won" ? C.green : C.red) : undefined}
-        />
-      </div>
-
-      {addOpen && (
-        <AddBetModal
-          prefill={prefill}
-          onCancel={() => { setAddOpen(false); onPrefillConsumed(); }}
-          onSubmit={handleAdd}
-        />
-      )}
-      {bankrollOpen && (
-        <SetBankrollModal
-          current={store.startingBankroll}
-          onCancel={() => setBankrollOpen(false)}
-          onSubmit={setBankroll}
-        />
-      )}
-    </>
-  );
-}
-
-function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 800, color: color ?? C.text }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{sub}</div>}
-    </div>
-  );
-}
-
-function StatLine({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: color ?? C.text, marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: C.textDim, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
-    </div>
-  );
-}
-
-function ActiveBetCard({
-  bet,
-  nowMs,
-  onSettle,
-  onDelete,
-}: {
-  bet: PaperBet;
-  nowMs: number;
-  onSettle: (id: number, r: "won" | "lost" | "void") => void;
-  onDelete: (id: number) => void;
-}) {
-  const cd = bet.gameTime ? countdownLabel(bet.gameTime, nowMs) : null;
-  const placedAgo = (() => {
-    const ms = nowMs - new Date(bet.placedAt).getTime();
-    if (ms < 60_000) return "just now";
-    if (ms < 3600_000) return `${Math.floor(ms / 60_000)}m ago`;
-    if (ms < 86400_000) return `${Math.floor(ms / 3600_000)}h ago`;
-    return `${Math.floor(ms / 86400_000)}d ago`;
-  })();
-  const fmtOdds = bet.odds > 0 ? `+${bet.odds}` : String(bet.odds);
-  const payout = bet.stake + bet.potentialWin;
-  const gameStarted = bet.gameTime && new Date(bet.gameTime).getTime() <= nowMs;
-
-  return (
-    <div style={{ background: C.card, border: `1px solid ${gameStarted ? C.amber : C.border}`, borderRadius: 12, padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.18)", color: "#a5b4fc", letterSpacing: "0.04em" }}>{bet.sport}</span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{bet.game}</span>
-        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
-          {cd?.live && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: C.red, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-              <span className="nexyru-pulse" style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: C.red }}/>
-              LIVE
-            </span>
-          )}
-          {cd?.label && !cd.live && (
-            <span style={{ fontSize: 11, color: C.textMuted }}>{cd.label}</span>
-          )}
-        </span>
-      </div>
-
-      <div style={{ fontSize: 13, color: C.textDim, marginBottom: 8, lineHeight: 1.55 }}>
-        <div>
-          Pick: <strong style={{ color: C.text }}>{bet.team}</strong> at <strong style={{ color: C.green }}>{fmtOdds}</strong>{bet.bookmaker && <span style={{ color: C.textMuted }}> ({bet.bookmaker})</span>}
-        </div>
-        <div>
-          Stake: <strong style={{ color: C.text }}>${bet.stake.toFixed(2)}</strong> → Potential win: <strong style={{ color: C.green }}>${payout.toFixed(2)}</strong>{" "}
-          <span style={{ color: C.textMuted }}>(+${bet.potentialWin.toFixed(2)} profit)</span>
-        </div>
-        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Placed {placedAgo}</div>
-        {bet.notes && <div style={{ fontSize: 12, color: C.textDim, marginTop: 4, fontStyle: "italic" }}>“{bet.notes}”</div>}
-      </div>
-
-      {gameStarted ? (
-        <div style={{ background: "rgba(245,158,11,0.1)", border: `1px solid ${C.amber}`, borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: C.amber, flex: 1, minWidth: 0 }}>
-            ⏰ Game has started — did this hit?
-          </span>
-          <button onClick={() => onSettle(bet.id, "won")} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>✅ Won</button>
-          <button onClick={() => onSettle(bet.id, "lost")} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>❌ Lost</button>
-          <button onClick={() => onSettle(bet.id, "void")} style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↺ Void</button>
-          <button onClick={() => onDelete(bet.id)} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 11, cursor: "pointer" }}>Delete</button>
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button onClick={() => onSettle(bet.id, "won")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: C.green, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Won</button>
-          <button onClick={() => onSettle(bet.id, "lost")} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: C.red, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✗ Lost</button>
-          <button onClick={() => onSettle(bet.id, "void")} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>↺ Void</button>
-          <button onClick={() => onDelete(bet.id)} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 11, cursor: "pointer" }}>Delete</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SettledBetCard({ bet }: { bet: PaperBet }) {
-  const fmtOdds = bet.odds > 0 ? `+${bet.odds}` : String(bet.odds);
-  const isWon = bet.status === "won";
-  const isLost = bet.status === "lost";
-  const isVoid = bet.status === "void";
-  const accent = isWon ? C.green : isLost ? C.red : C.textMuted;
-  const bg = isWon
-    ? "rgba(34,197,94,0.08)"
-    : isLost
-      ? "rgba(239,68,68,0.08)"
-      : "rgba(107,114,128,0.06)";
-  const headline = isWon
-    ? `✅ HIT — +$${bet.potentialWin.toFixed(2)} profit`
-    : isLost
-      ? `❌ MISSED — -$${bet.stake.toFixed(2)}`
-      : `↩ VOID — $${bet.stake.toFixed(2)} returned`;
-  const detail = isWon
-    ? `${bet.team} won at ${fmtOdds}`
-    : isLost
-      ? `${bet.team} lost at ${fmtOdds}`
-      : `${bet.team} at ${fmtOdds} was voided`;
-  const settledLabel = (() => {
-    if (!bet.settledAt) return null;
-    try {
-      return new Date(bet.settledAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    } catch { return null; }
-  })();
-
-  return (
-    <div style={{ background: bg, border: `1px solid ${accent}40`, borderLeft: `3px solid ${accent}`, borderRadius: 10, padding: "12px 14px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.18)", color: "#a5b4fc", letterSpacing: "0.04em" }}>{bet.sport}</span>
-        <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>{bet.game}</span>
-        {settledLabel && <span style={{ marginLeft: "auto", fontSize: 11, color: C.textMuted }}>{settledLabel}</span>}
-      </div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: accent, marginBottom: 2 }}>{headline}</div>
-      <div style={{ fontSize: 12.5, color: C.textDim }}>
-        {detail}
-        {bet.bookmaker && <span style={{ color: C.textMuted }}> · {bet.bookmaker}</span>}
-        <span style={{ color: C.textMuted }}> · stake ${bet.stake.toFixed(2)}</span>
-      </div>
-      {bet.notes && <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 4, fontStyle: "italic" }}>“{bet.notes}”</div>}
-    </div>
-  );
-}
-
-function BankrollChart({ store }: { store: PaperBetsStore }) {
-  // Points: start + after each settled bet (in chronological order).
-  const settled = store.bets
-    .filter((b) => b.status !== "pending")
-    .sort((a, b) => new Date(a.settledAt ?? a.placedAt).getTime() - new Date(b.settledAt ?? b.placedAt).getTime());
-  let running = store.startingBankroll;
-  const points: { t: number; v: number }[] = [{ t: 0, v: running }];
-  for (const b of settled) {
-    if (b.status === "won") running += b.potentialWin;
-    else if (b.status === "lost") running -= b.stake;
-    points.push({ t: new Date(b.settledAt ?? b.placedAt).getTime(), v: running });
-  }
-  const W = 720, H = 160, PAD = 24;
-  const vals = points.map((p) => p.v);
-  const minV = Math.min(...vals);
-  const maxV = Math.max(...vals);
-  const range = Math.max(1, maxV - minV);
-  const xStep = points.length > 1 ? (W - PAD * 2) / (points.length - 1) : 0;
-  const yFor = (v: number) => PAD + (1 - (v - minV) / range) * (H - PAD * 2);
-  const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${PAD + i * xStep} ${yFor(p.v)}`).join(" ");
-  const endColor = running >= store.startingBankroll ? C.green : C.red;
-
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 18, overflow: "hidden" }}>
-      {settled.length === 0 ? (
-        <div style={{ color: C.textMuted, fontSize: 12.5, textAlign: "center", padding: "20px 0" }}>
-          Settle a bet to see your bankroll chart.
-        </div>
-      ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, display: "block" }}>
-          <line x1={PAD} y1={yFor(store.startingBankroll)} x2={W - PAD} y2={yFor(store.startingBankroll)} stroke={C.border} strokeDasharray="4 4" strokeWidth={1}/>
-          <path d={path} fill="none" stroke={endColor} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
-          {points.map((p, i) => (
-            <circle key={i} cx={PAD + i * xStep} cy={yFor(p.v)} r={3} fill={endColor}/>
-          ))}
-          <text x={PAD} y={14} fill={C.textMuted} fontSize={10}>${maxV.toFixed(0)}</text>
-          <text x={PAD} y={H - 4} fill={C.textMuted} fontSize={10}>${minV.toFixed(0)}</text>
-          <text x={W - PAD} y={14} fill={endColor} fontSize={11} textAnchor="end" fontWeight={700}>
-            ${running.toFixed(2)} {running >= store.startingBankroll ? "▲" : "▼"}
-          </text>
-        </svg>
-      )}
-    </div>
-  );
-}
-
-function AddBetModal({
-  prefill,
-  onCancel,
-  onSubmit,
-}: {
-  prefill: BetPrefill | null;
-  onCancel: () => void;
-  onSubmit: (bet: Omit<PaperBet, "id" | "status" | "result" | "placedAt">) => void;
-}) {
-  const [game, setGame] = useState(prefill?.game ?? "");
-  const [sport, setSport] = useState(prefill?.sport ?? "MLB");
-  const [team, setTeam] = useState(prefill?.team ?? "");
-  const [oddsStr, setOddsStr] = useState(prefill?.odds != null ? String(prefill.odds) : "");
-  const [bookmaker, setBookmaker] = useState(prefill?.bookmaker ?? "FanDuel");
-  const [stakeStr, setStakeStr] = useState("100");
-  const [gameTime, setGameTime] = useState(prefill?.gameTime ?? "");
-  const [notes, setNotes] = useState("");
-
-  const odds = parseFloat(oddsStr);
-  const stake = Math.max(0, parseFloat(stakeStr) || 0);
-  const profit = Number.isFinite(odds) && stake > 0 ? americanProfit(stake, odds) : null;
-
-  const canSubmit = game.trim() && team.trim() && Number.isFinite(odds) && stake > 0;
-
-  const submit = () => {
-    if (!canSubmit || profit === null) return;
-    onSubmit({
-      game: game.trim(),
-      sport,
-      team: team.trim(),
-      odds,
-      bookmaker: bookmaker.trim(),
-      stake,
-      potentialWin: profit,
-      gameTime: gameTime || new Date().toISOString(),
-      notes: notes.trim(),
-    });
-  };
-
-  const input = {
-    width: "100%",
-    background: C.card2,
-    border: `1px solid ${C.border}`,
-    borderRadius: 8,
-    padding: "9px 12px",
-    color: C.text,
-    fontSize: 14,
-    outline: "none",
-    boxSizing: "border-box" as const,
-  };
-  const label = { display: "block", fontSize: 11, color: C.textDim, marginBottom: 4, fontWeight: 600 } as const;
-
-  return (
-    <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, width: "100%", maxWidth: 520, color: C.text }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 17, fontWeight: 800 }}>Place a paper bet</div>
-          <button onClick={onCancel} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
-        </div>
-
-        <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
-          <div>
-            <label style={label}>Game</label>
-            <input value={game} onChange={(e) => setGame(e.target.value)} placeholder="Texas Rangers vs Colorado Rockies" style={input}/>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={label}>Sport</label>
-              <select value={sport} onChange={(e) => setSport(e.target.value)} style={{ ...input, padding: "9px 12px" }}>
-                {SPORT_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+        {estValid && edge !== null && (
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.55 }}>
+            <div style={{ color: C.textDim }}>
+              You think <strong style={{ color: C.text }}>{est.toFixed(0)}%</strong> likely · Market says <strong style={{ color: C.text }}>{m.yesPct.toFixed(0)}%</strong> likely
             </div>
-            <div>
-              <label style={label}>Pick team / side</label>
-              <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="Texas Rangers" style={input}/>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={label}>Odds (American)</label>
-              <input type="number" value={oddsStr} onChange={(e) => setOddsStr(e.target.value)} placeholder="+120" style={input}/>
-            </div>
-            <div>
-              <label style={label}>Bookmaker</label>
-              <input value={bookmaker} onChange={(e) => setBookmaker(e.target.value)} placeholder="FanDuel" style={input}/>
-            </div>
-          </div>
-          <div>
-            <label style={label}>Stake ($)</label>
-            <input type="number" value={stakeStr} onChange={(e) => setStakeStr(e.target.value)} placeholder="100" style={input}/>
-            {profit !== null && (
-              <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 6 }}>
-                If you win: <strong style={{ color: C.green }}>+${profit.toFixed(2)} profit</strong> (payout ${(stake + profit).toFixed(2)})
-              </div>
+            {edge > 3 ? (
+              <div style={{ marginTop: 4, color: C.green, fontWeight: 700 }}>✅ YES has value — market is underpricing this</div>
+            ) : edge < -3 ? (
+              <div style={{ marginTop: 4, color: C.green, fontWeight: 700 }}>✅ NO has value — market is overpricing this</div>
+            ) : (
+              <div style={{ marginTop: 4, color: C.textMuted, fontWeight: 600 }}>Fair price — no clear edge</div>
             )}
           </div>
-          <div>
-            <label style={label}>Notes (optional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Why are you taking this bet?" rows={3} style={{ ...input, fontFamily: "inherit", resize: "vertical" }}/>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textDim, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-          <button
-            onClick={submit}
-            disabled={!canSubmit}
-            style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: canSubmit ? C.green : C.card2, color: canSubmit ? "#fff" : C.textMuted, fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "not-allowed" }}
-          >
-            Place Bet →
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type HistoryFilter = "all" | "won" | "lost" | "pending" | "void";
-
-function PastSuggestionsPanel() {
-  const [store, setStore] = useState<PaperBetsStore>(() => loadPaperBets());
-  const [filter, setFilter] = useState<HistoryFilter>("all");
-
-  useEffect(() => { setStore(loadPaperBets()); }, []);
-
-  // Lifetime stats — same logic as PaperBetsPanel but computed here so the
-  // tab works standalone.
-  const wonBets = store.bets.filter((b) => b.status === "won");
-  const lostBets = store.bets.filter((b) => b.status === "lost");
-  const settledOutcomes = wonBets.length + lostBets.length;
-  const winRate = settledOutcomes > 0 ? (wonBets.length / settledOutcomes) * 100 : null;
-  const totalStaked = store.bets.reduce((s, b) => s + b.stake, 0);
-  const netPnl = store.bankroll - store.startingBankroll;
-  const roi = totalStaked > 0 ? (netPnl / totalStaked) * 100 : 0;
-  const bestWin = wonBets.length > 0 ? wonBets.reduce((b, x) => (x.potentialWin > b.potentialWin ? x : b)) : null;
-  const worstLoss = lostBets.length > 0 ? lostBets.reduce((b, x) => (x.stake > b.stake ? x : b)) : null;
-  const avgOdds = store.bets.length > 0 ? store.bets.reduce((s, b) => s + b.odds, 0) / store.bets.length : null;
-  const streak = (() => {
-    const sortedSettled = store.bets
-      .filter((b) => b.status === "won" || b.status === "lost")
-      .sort((a, b) => new Date(b.settledAt ?? b.placedAt).getTime() - new Date(a.settledAt ?? a.placedAt).getTime());
-    let count = 0;
-    let kind: "won" | "lost" | null = null;
-    for (const b of sortedSettled) {
-      if (kind === null) kind = b.status as "won" | "lost";
-      if (b.status !== kind) break;
-      count++;
-    }
-    return kind && count > 0 ? { kind, count } : null;
-  })();
-
-  // Pre-compute running bankroll per bet (settled bets only, chronological).
-  const settledChrono = store.bets
-    .filter((b) => b.status !== "pending")
-    .sort((a, b) => new Date(a.settledAt ?? a.placedAt).getTime() - new Date(b.settledAt ?? b.placedAt).getTime());
-  const runningByBetId = new Map<number, number>();
-  let running = store.startingBankroll;
-  for (const b of settledChrono) {
-    if (b.status === "won") running += b.potentialWin;
-    else if (b.status === "lost") running -= b.stake;
-    runningByBetId.set(b.id, running);
-  }
-
-  const filtered = useMemo(() => {
-    const arr = filter === "all" ? store.bets.slice() : store.bets.filter((b) => b.status === filter);
-    arr.sort((a, b) => new Date(b.settledAt ?? b.placedAt).getTime() - new Date(a.settledAt ?? a.placedAt).getTime());
-    return arr;
-  }, [store.bets, filter]);
-
-  const exportCsv = () => {
-    const header = ["Date", "Sport", "Game", "Pick", "Odds", "Stake", "Bookmaker", "Result", "PnL", "RunningBankroll", "Notes"];
-    const esc = (s: string) => `"${String(s).replace(/"/g, '""')}"`;
-    const rows = store.bets
-      .slice()
-      .sort((a, b) => new Date(a.settledAt ?? a.placedAt).getTime() - new Date(b.settledAt ?? b.placedAt).getTime())
-      .map((b) => {
-        const pnl = b.status === "won" ? b.potentialWin : b.status === "lost" ? -b.stake : 0;
-        const date = b.settledAt ?? b.placedAt;
-        return [
-          date,
-          b.sport,
-          b.game,
-          b.team,
-          b.odds > 0 ? `+${b.odds}` : String(b.odds),
-          b.stake.toFixed(2),
-          b.bookmaker,
-          b.status,
-          pnl.toFixed(2),
-          runningByBetId.has(b.id) ? runningByBetId.get(b.id)!.toFixed(2) : "",
-          b.notes,
-        ].map(esc).join(",");
-      });
-    const csv = [header.join(","), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `paper-bets-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const filterPills: { id: HistoryFilter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "won", label: "Won ✅" },
-    { id: "lost", label: "Lost ❌" },
-    { id: "pending", label: "Pending ⏳" },
-    { id: "void", label: "Void ↩" },
-  ];
-
-  return (
-    <>
-      <SectionTitle
-        title="Past Suggestions"
-        subtitle="Complete bet history with running bankroll"
-        right={
-          <button
-            onClick={exportCsv}
-            disabled={store.bets.length === 0}
-            style={{
-              background: store.bets.length === 0 ? C.card2 : C.accent,
-              color: store.bets.length === 0 ? C.textMuted : "#fff",
-              border: `1px solid ${store.bets.length === 0 ? C.border : C.accent}`,
-              borderRadius: 999,
-              padding: "4px 14px",
-              fontSize: 11.5,
-              fontWeight: 700,
-              cursor: store.bets.length === 0 ? "not-allowed" : "pointer",
-              letterSpacing: "0.02em",
-            }}
-          >
-            ⬇ Export History
-          </button>
-        }
-      />
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
-        <Stat label="Total suggestions" value={String(store.bets.length)} sub={`${wonBets.length}W · ${lostBets.length}L · ${store.bets.filter((b) => b.status === "pending").length} pending`}/>
-        <Stat label="Win rate" value={winRate === null ? "—" : `${winRate.toFixed(0)}%`} sub={settledOutcomes > 0 ? `${wonBets.length}/${settledOutcomes} settled` : "no results yet"}/>
-        <Stat label="Total profit" value={`${netPnl >= 0 ? "+" : ""}$${netPnl.toFixed(2)}`} color={netPnl >= 0 ? C.green : C.red} sub={`bankroll ${store.bankroll.toFixed(2)}`}/>
-        <Stat label="ROI" value={totalStaked > 0 ? `${roi >= 0 ? "+" : ""}${roi.toFixed(2)}%` : "—"} color={roi >= 0 ? C.green : C.red} sub={`vs $${totalStaked.toFixed(0)} staked`}/>
-        <Stat label="Best bet" value={bestWin ? `+$${bestWin.potentialWin.toFixed(2)}` : "—"} sub={bestWin ? bestWin.game : undefined} color={C.green}/>
-        <Stat label="Worst bet" value={worstLoss ? `-$${worstLoss.stake.toFixed(2)}` : "—"} sub={worstLoss ? worstLoss.game : undefined} color={C.red}/>
-        <Stat label="Avg odds" value={avgOdds === null ? "—" : `${avgOdds > 0 ? "+" : ""}${avgOdds.toFixed(0)}`}/>
-        <Stat label="Current streak" value={streak ? `${streak.count} ${streak.kind === "won" ? "W" : "L"}` : "—"} sub="in a row" color={streak ? (streak.kind === "won" ? C.green : C.red) : undefined}/>
-      </div>
-
-      <Subhead>Bankroll over time</Subhead>
-      <BankrollChart store={store}/>
-
-      <Subhead>All bets ({filtered.length})</Subhead>
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-        {filterPills.map((p) => {
-          const active = filter === p.id;
-          return (
-            <button
-              key={p.id}
-              onClick={() => setFilter(p.id)}
-              style={{
-                padding: "5px 12px",
-                borderRadius: 999,
-                border: `1px solid ${active ? C.accent : C.border}`,
-                background: active ? C.accent : C.card2,
-                color: active ? "#fff" : C.text,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {p.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {filtered.length === 0 ? (
-        <div style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
-          No bets match this filter.
-        </div>
-      ) : (
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "70px 60px 1.8fr 1.2fr 60px 60px 70px 80px 90px", padding: "8px 14px", borderBottom: `1px solid ${C.border}`, fontSize: 10, fontWeight: 700, color: C.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            <span>Date</span>
-            <span>Sport</span>
-            <span>Game</span>
-            <span>Pick</span>
-            <span style={{ textAlign: "right" }}>Odds</span>
-            <span style={{ textAlign: "right" }}>Stake</span>
-            <span style={{ textAlign: "center" }}>Result</span>
-            <span style={{ textAlign: "right" }}>P&amp;L</span>
-            <span style={{ textAlign: "right" }}>Bankroll</span>
-          </div>
-          {filtered.map((b) => {
-            const pnl = b.status === "won" ? b.potentialWin : b.status === "lost" ? -b.stake : 0;
-            const bg =
-              b.status === "won" ? "rgba(34,197,94,0.06)"
-              : b.status === "lost" ? "rgba(239,68,68,0.06)"
-              : b.status === "void" ? "rgba(107,114,128,0.04)"
-              : "transparent";
-            const resultColor =
-              b.status === "won" ? C.green
-              : b.status === "lost" ? C.red
-              : b.status === "pending" ? C.amber
-              : C.textMuted;
-            const fmtDate = (iso?: string) => {
-              if (!iso) return "—";
-              try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }); } catch { return "—"; }
-            };
-            const running = runningByBetId.get(b.id);
-            return (
-              <div key={b.id} style={{ display: "grid", gridTemplateColumns: "70px 60px 1.8fr 1.2fr 60px 60px 70px 80px 90px", padding: "8px 14px", borderBottom: `1px solid ${C.borderSoft}`, fontSize: 12.5, color: C.textDim, alignItems: "center", background: bg }}>
-                <span>{fmtDate(b.settledAt ?? b.placedAt)}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.textDim }}>{b.sport}</span>
-                <span style={{ color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.game}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.team}</span>
-                <span style={{ textAlign: "right", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{b.odds > 0 ? `+${b.odds}` : b.odds}</span>
-                <span style={{ textAlign: "right" }}>${b.stake.toFixed(0)}</span>
-                <span style={{ textAlign: "center", fontWeight: 700, color: resultColor }}>{b.status.toUpperCase()}</span>
-                <span style={{ textAlign: "right", fontWeight: 700, color: pnl > 0 ? C.green : pnl < 0 ? C.red : C.textMuted }}>
-                  {b.status === "pending" ? "—" : pnl === 0 ? "$0" : `${pnl > 0 ? "+" : ""}$${pnl.toFixed(2)}`}
-                </span>
-                <span style={{ textAlign: "right", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: C.text }}>
-                  {running !== undefined ? `$${running.toFixed(2)}` : "—"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
-}
-
-function SetBankrollModal({ current, onCancel, onSubmit }: { current: number; onCancel: () => void; onSubmit: (n: number) => void }) {
-  const [value, setValue] = useState(String(current));
-  const n = parseFloat(value);
-  const valid = Number.isFinite(n) && n >= 0;
-  return (
-    <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, width: "100%", maxWidth: 360, color: C.text }}>
-        <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 8 }}>Set starting bankroll</div>
-        <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12 }}>This resets your current bankroll and the baseline used for P&amp;L.</div>
-        <input
-          type="number"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          style={{ width: "100%", background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 16, outline: "none", boxSizing: "border-box", marginBottom: 14 }}
-        />
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button onClick={onCancel} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textDim, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-          <button onClick={() => valid && onSubmit(n)} disabled={!valid} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: valid ? C.green : C.card2, color: valid ? "#fff" : C.textMuted, fontSize: 13, fontWeight: 700, cursor: valid ? "pointer" : "not-allowed" }}>Save</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ───────────────────────── arb math helpers ─────────────────────────
-
-// American odds → multiplier on stake to compute payout (stake + profit).
-function americanPayoutMultiplier(odds: number): number {
-  return odds > 0 ? 1 + odds / 100 : 1 + 100 / -odds;
-}
-
-// Stake needed at these odds to win exactly $100 profit.
-function stakeToWin100(odds: number): number {
-  return odds > 0 ? 10000 / odds : -odds;
-}
-
-// "+150 means you'd win $150 on a $100 bet" / "-120 means you'd risk $120 to win $100"
-function americanOddsPlainEnglish(odds: number): string {
-  if (!Number.isFinite(odds)) return "";
-  if (odds > 0) return `Bet $100 → win $${odds.toFixed(0)}`;
-  return `Bet $${(-odds).toFixed(0)} → win $100`;
-}
-
-function ArbCalculator() {
-  const [a, setA] = useState("");
-  const [b, setB] = useState("");
-  const [stakeInput, setStakeInput] = useState("1000");
-
-  const totalStake = Math.max(0, parseFloat(stakeInput) || 0);
-  const oa = parseFloat(a);
-  const ob = parseFloat(b);
-  const aValid = Number.isFinite(oa);
-  const bValid = Number.isFinite(ob);
-
-  const result = useMemo(() => {
-    if (!aValid || !bValid) return null;
-    const pA = americanToImpliedProb(oa);
-    const pB = americanToImpliedProb(ob);
-    const overround = pA + pB;
-    if (overround >= 1 || totalStake <= 0) {
-      return { arb: false as const, pA, pB, overround };
-    }
-    const betA = (totalStake * pA) / overround;
-    const betB = (totalStake * pB) / overround;
-    const payoutA = betA * americanPayoutMultiplier(oa);
-    const payoutB = betB * americanPayoutMultiplier(ob);
-    const profit = Math.min(payoutA, payoutB) - totalStake;
-    const roi = (profit / totalStake) * 100;
-    return { arb: true as const, betA, betB, payoutA, payoutB, profit, roi, totalStake, pA, pB, overround };
-  }, [aValid, bValid, oa, ob, totalStake]);
-
-  const inputStyle = {
-    width: "100%",
-    background: C.card2,
-    border: `1px solid ${C.border}`,
-    borderRadius: 8,
-    padding: "9px 12px",
-    color: C.text,
-    fontSize: 14,
-    outline: "none",
-    boxSizing: "border-box" as const,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  };
-  const labelStyle = { display: "block", fontSize: 12, color: C.textDim, marginBottom: 4, fontWeight: 600 } as const;
-  const hintStyle = { fontSize: 11, color: C.textMuted, marginTop: 4 } as const;
-
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 2 }}>
-        💰 Find Your Guaranteed Profit
-      </div>
-      <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14 }}>
-        Enter odds from two different bookmakers on the same game.
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-        <div>
-          <label style={labelStyle}>Team A odds (e.g. +150)</label>
-          <input type="number" value={a} onChange={(e) => setA(e.target.value)} placeholder="+150" style={inputStyle}/>
-          {aValid && (
-            <div style={hintStyle}>
-              If you bet $100, you win ${oa > 0 ? oa.toFixed(0) : (10000 / Math.abs(oa)).toFixed(0)}
-            </div>
-          )}
-        </div>
-        <div>
-          <label style={labelStyle}>Team B odds (e.g. +120)</label>
-          <input type="number" value={b} onChange={(e) => setB(e.target.value)} placeholder="+120" style={inputStyle}/>
-          {bValid && (
-            <div style={hintStyle}>
-              If you bet $100, you win ${ob > 0 ? ob.toFixed(0) : (10000 / Math.abs(ob)).toFixed(0)}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <label style={{ fontSize: 12.5, color: C.textDim, fontWeight: 600 }}>Total amount you want to bet: $</label>
-        <input
-          type="number"
-          value={stakeInput}
-          onChange={(e) => setStakeInput(e.target.value)}
-          placeholder="1000"
-          style={{ ...inputStyle, width: 130, padding: "6px 10px", fontSize: 13 }}
-        />
-      </div>
-
-      {result === null ? (
-        <div style={{ background: C.card2, border: `1px dashed ${C.border}`, borderRadius: 10, padding: "14px 16px", color: C.textMuted, fontSize: 13 }}>
-          Enter both teams' odds above to see if there's a guaranteed profit.
-        </div>
-      ) : !result.arb ? (
-        (() => {
-          const edge = (result.overround - 1) * 100;
-          const favSide = result.pA > result.pB ? "A" : "B";
-          const favOdds = favSide === "A" ? oa : ob;
-          return (
-            <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", color: C.textDim, fontSize: 13, lineHeight: 1.75 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-                No guaranteed profit on these odds
-              </div>
-              {totalStake <= 0 ? (
-                <div>Enter a stake amount above $0.</div>
-              ) : (
-                <>
-                  <div>The bookmaker edge is <strong style={{ color: C.amber }}>{edge.toFixed(2)}%</strong> (they have the advantage).</div>
-                  <div>
-                    Implied probability: A=<strong style={{ color: C.text }}>{(result.pA * 100).toFixed(1)}%</strong> + B=<strong style={{ color: C.text }}>{(result.pB * 100).toFixed(1)}%</strong> = <strong style={{ color: C.text }}>{(result.overround * 100).toFixed(1)}%</strong> total (needs to be under 100% for arb)
-                  </div>
-                  <div style={{ marginTop: 6 }}>
-                    💡 Tip: Try finding better odds on Team {favSide} ({favOdds > 0 ? "+" : ""}{favOdds}) at a different bookmaker.
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()
-      ) : (
-        <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.4)", borderRadius: 10, padding: "16px 18px", color: C.text, fontSize: 13.5, lineHeight: 1.75 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: C.green, marginBottom: 6, letterSpacing: "0.04em" }}>
-            🎯 GUARANTEED PROFIT FOUND!
-          </div>
-          <div style={{ borderTop: `1px solid rgba(34,197,94,0.3)`, margin: "8px 0" }}/>
-          <div>
-            Bet <strong style={{ color: C.green }}>${result.betA.toFixed(2)}</strong> on Team A → You win <strong style={{ color: C.text }}>${result.payoutA.toFixed(2)}</strong> no matter what
-          </div>
-          <div>
-            Bet <strong style={{ color: C.green }}>${result.betB.toFixed(2)}</strong> on Team B → You win <strong style={{ color: C.text }}>${result.payoutB.toFixed(2)}</strong> no matter what
-          </div>
-          <div style={{ borderTop: `1px solid rgba(34,197,94,0.3)`, margin: "8px 0" }}/>
-          <div>💰 Profit: <strong style={{ color: C.green }}>+${result.profit.toFixed(2)}</strong> guaranteed</div>
-          <div>📊 Return: <strong style={{ color: C.green }}>+{result.roi.toFixed(2)}%</strong> on your ${result.totalStake.toLocaleString()}</div>
-          <div>⚡ Risk: <strong style={{ color: C.green }}>ZERO</strong> <span style={{ color: C.textDim }}>(both sides covered)</span></div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function GameCard({
-  game,
-  home,
-  away,
-  isArb,
-  expanded,
-  onToggle,
-  nowMs,
-  fanduelOnly,
-  onPaperBet,
-}: {
-  game: OddsGame;
-  home: BestOdds | null;
-  away: BestOdds | null;
-  isArb: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  nowMs: number;
-  fanduelOnly?: boolean;
-  onPaperBet?: (prefill: BetPrefill) => void;
-}) {
-  const arb = isArb && home && away ? calcArbStakes(home.price, away.price, 1000) : null;
-  const start = new Date(game.commence_time);
-  const cd = countdownLabel(game.commence_time, nowMs);
-  const risk = riskLevelForOdds(home, away);
-
-  const overround = home && away
-    ? americanToImpliedProb(home.price) + americanToImpliedProb(away.price)
-    : null;
-  const edgePct = overround !== null ? (overround - 1) * 100 : null;
-  const rating = valueRating(overround);
-  const pAway = away ? americanToImpliedProb(away.price) : null;
-  const pHome = home ? americanToImpliedProb(home.price) : null;
-  const fmtOdds = (n: number) => `${n > 0 ? "+" : ""}${n}`;
-
-  // FanDuel value vs market average. Lower implied prob at FanDuel = better
-  // value (longer payout) than the average book on this team.
-  const avgAway = fanduelOnly ? avgImpliedForTeam(game, game.away_team) : null;
-  const avgHome = fanduelOnly ? avgImpliedForTeam(game, game.home_team) : null;
-  const valueChip = (fdProb: number | null, avg: number | null) => {
-    if (fdProb === null || avg === null) return null;
-    const diff = avg - fdProb;
-    if (diff > 0.005) return { label: "✓ Good value", color: C.green };
-    if (diff < -0.005) return { label: "↓ Below average", color: C.textMuted };
-    return { label: "Market average", color: C.textDim };
-  };
-  const awayValue = valueChip(pAway, avgAway);
-  const homeValue = valueChip(pHome, avgHome);
-
-  // All bookmaker rows for expanded view
-  const bookRows = useMemo(() => {
-    const rows: { book: string; awayPrice: number | null; homePrice: number | null }[] = [];
-    for (const b of game.bookmakers ?? []) {
-      const h2h = b.markets?.find((m) => m.key === "h2h");
-      if (!h2h) continue;
-      const aw = h2h.outcomes.find((o) => o.name === game.away_team)?.price ?? null;
-      const ho = h2h.outcomes.find((o) => o.name === game.home_team)?.price ?? null;
-      rows.push({ book: b.title, awayPrice: aw, homePrice: ho });
-    }
-    return rows;
-  }, [game]);
-
-  return (
-    <div
-      onClick={onToggle}
-      style={{
-        background: C.card,
-        border: `1px solid ${isArb ? C.green : C.border}`,
-        borderRadius: 12,
-        padding: 16,
-        cursor: "pointer",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ fontSize: 16 }}>{sportIcon(game.sport_key)}</span>
-        <span
-          style={{
-            fontSize: 11,
-            color: C.textMuted,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          {game.sport_title}
-        </span>
-        <span style={{ color: C.textMuted, fontSize: 12 }}>·</span>
-        <span style={{ fontSize: 12, color: C.textDim }}>
-          {start.toLocaleString(undefined, {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </span>
-        {cd.label && (
-          cd.live ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: C.red, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              <span
-                className="nexyru-pulse"
-                style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: C.red }}
-              />
-              LIVE
-            </span>
-          ) : (
-            <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500 }}>
-              · {cd.label}
-            </span>
-          )
         )}
-        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
-          {risk && (
-            <span
-              title={risk.note}
-              style={{
-                background: `${risk.color}22`,
-                border: `1px solid ${risk.color}66`,
-                color: risk.color,
-                padding: "2px 10px",
-                borderRadius: 999,
-                fontSize: 10.5,
-                fontWeight: 800,
-                letterSpacing: "0.04em",
-              }}
-            >
-              {risk.label}
-            </span>
-          )}
-          {isArb && (
-            <span
-              style={{
-                background: "rgba(34,197,94,0.15)",
-                border: `1px solid ${C.green}`,
-                color: C.green,
-                padding: "2px 10px",
-                borderRadius: 999,
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.04em",
-              }}
-            >
-              ARB ✓
-            </span>
-          )}
-          <span style={{ color: C.textMuted, fontSize: 11 }}>
-            {expanded ? "▲" : "▼"}
-          </span>
-        </span>
       </div>
 
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 10 }}>
-        {game.away_team} <span style={{ color: C.textMuted, fontWeight: 500 }}>vs</span> {game.home_team}
+      <div style={{ display: "flex", gap: 8 }}>
+        <a href={yesUrl} target="_blank" rel="noreferrer" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 12px", borderRadius: 8, background: C.green, color: "#fff", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
+          Bet YES →
+        </a>
+        <a href={noUrl} target="_blank" rel="noreferrer" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 12px", borderRadius: 8, background: C.red, color: "#fff", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
+          Bet NO →
+        </a>
       </div>
-
-      {(home || away) && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5, lineHeight: 1.5, color: C.textDim }}>
-          {away && home && (
-            <div>
-              📊 <span style={{ color: C.textMuted }}>{fanduelOnly ? "FanDuel:" : "Best odds:"}</span>{" "}
-              <strong style={{ color: C.green }}>{game.away_team} {fmtOdds(away.price)}</strong>
-              {!fanduelOnly && <span style={{ color: C.textMuted }}> ({away.book})</span>}
-              {" vs "}
-              <strong style={{ color: C.green }}>{game.home_team} {fmtOdds(home.price)}</strong>
-              {!fanduelOnly && <span style={{ color: C.textMuted }}> ({home.book})</span>}
-            </div>
-          )}
-          {pAway !== null && pHome !== null && (
-            <div>
-              💰 <span style={{ color: C.textMuted }}>Implied chance:</span>{" "}
-              {game.away_team} has <strong style={{ color: C.text }}>{(pAway * 100).toFixed(0)}%</strong> likely · {game.home_team} has <strong style={{ color: C.text }}>{(pHome * 100).toFixed(0)}%</strong> likely
-            </div>
-          )}
-          {fanduelOnly && (awayValue || homeValue) && (
-            <div>
-              ⚡ <span style={{ color: C.textMuted }}>Value vs market:</span>{" "}
-              {awayValue && (
-                <span style={{ color: awayValue.color, fontWeight: 600 }}>{game.away_team}: {awayValue.label}</span>
-              )}
-              {awayValue && homeValue && <span style={{ color: C.textMuted }}> · </span>}
-              {homeValue && (
-                <span style={{ color: homeValue.color, fontWeight: 600 }}>{game.home_team}: {homeValue.label}</span>
-              )}
-            </div>
-          )}
-          {fanduelOnly && onPaperBet && (away || home) && (() => {
-            // Pick the team with the longer payout (lower implied probability)
-            // as the prefill. User can change it in the modal.
-            let bestSide: BestOdds | null = null;
-            let bestTeam = "";
-            if (away && home) {
-              const pickAway = americanToImpliedProb(away.price) <= americanToImpliedProb(home.price);
-              bestSide = pickAway ? away : home;
-              bestTeam = pickAway ? game.away_team : game.home_team;
-            } else if (away) { bestSide = away; bestTeam = game.away_team; }
-            else if (home) { bestSide = home; bestTeam = game.home_team; }
-            if (!bestSide) return null;
-            return (
-              <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8 }}>
-                <button
-                  onClick={() => onPaperBet({
-                    game: `${game.away_team} vs ${game.home_team}`,
-                    sport: sportLabelFromKey(game.sport_key),
-                    team: bestTeam,
-                    odds: bestSide!.price,
-                    bookmaker: "FanDuel",
-                    gameTime: game.commence_time,
-                  })}
-                  style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
-                >
-                  + Paper Bet
-                </button>
-              </div>
-            );
-          })()}
-          {!fanduelOnly && edgePct !== null && rating && (
-            <div>
-              ⚡ <span style={{ color: C.textMuted }}>Bookmaker edge:</span>{" "}
-              <strong style={{ color: edgePct <= 0 ? C.green : edgePct <= 4 ? C.text : C.amber }}>{edgePct.toFixed(2)}%</strong>{" "}
-              <span style={{ color: C.textMuted }}>(lower = closer to fair odds)</span>
-              {" · "}
-              <span title={rating.label} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <span style={{ color: C.textMuted }}>Value:</span>{" "}
-                <strong style={{ color: rating.color, fontSize: 13 }}>{rating.grade}</strong>
-              </span>
-            </div>
-          )}
-          {risk && (
-            <div style={{ fontSize: 11, color: C.textMuted }}>{risk.note}</div>
-          )}
-        </div>
-      )}
-
-      {arb && (
-        <div style={{ marginTop: 12, background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, borderRadius: 10, padding: "12px 14px", fontSize: 13, lineHeight: 1.65, color: C.text }}>
-          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.green, marginBottom: 6, letterSpacing: "0.03em" }}>
-            🎯 ARB OPPORTUNITY — Guaranteed profit!
-          </div>
-          <div>
-            Bet <strong style={{ color: C.green }}>${arb.stakeA.toFixed(2)}</strong> on {away?.team} at <strong style={{ color: C.text }}>{away?.book}</strong>{" + "}
-            <strong style={{ color: C.green }}>${arb.stakeB.toFixed(2)}</strong> on {home?.team} at <strong style={{ color: C.text }}>{home?.book}</strong>
-          </div>
-          <div style={{ marginTop: 4 }}>
-            = <strong style={{ color: C.green }}>${arb.profit.toFixed(2)} profit guaranteed</strong> on ${arb.totalStake.toLocaleString(undefined, { maximumFractionDigits: 0 })} total stake
-          </div>
-          <div>
-            = <strong style={{ color: C.green }}>{((arb.profit / arb.totalStake) * 100).toFixed(2)}% return</strong>
-            {" · "}
-            <strong style={{ color: C.green }}>ZERO risk</strong>
-          </div>
-        </div>
-      )}
-
-      {expanded && bookRows.length > 0 && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: `1px solid ${C.border}`,
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              padding: "6px 0",
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: C.textMuted,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              borderBottom: `1px solid ${C.borderSoft}`,
-              marginBottom: 4,
-            }}
-          >
-            <span>Bookmaker</span>
-            <span style={{ textAlign: "right" }}>{game.away_team}</span>
-            <span style={{ textAlign: "right" }}>{game.home_team}</span>
-          </div>
-          {bookRows.map((r) => {
-            const bestAway =
-              away !== null && r.awayPrice !== null && r.awayPrice === away.price;
-            const bestHome =
-              home !== null && r.homePrice !== null && r.homePrice === home.price;
-            // Row contributes to a cross-book arb when it carries the best
-            // price for one team and the game has an arb overall.
-            const rowInArb = isArb && (bestAway || bestHome);
-            return (
-              <div
-                key={r.book}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  padding: "5px 8px",
-                  margin: "0 -8px",
-                  borderRadius: 6,
-                  background: rowInArb ? "rgba(34,197,94,0.08)" : "transparent",
-                  fontSize: 12.5,
-                  color: C.textDim,
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ color: C.text }}>{r.book}</span>
-                <span
-                  style={{
-                    textAlign: "right",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                    color: r.awayPrice === null ? C.textMuted : bestAway ? C.green : C.textDim,
-                    fontWeight: bestAway ? 700 : 500,
-                  }}
-                >
-                  {r.awayPrice === null
-                    ? "—"
-                    : `${r.awayPrice > 0 ? "+" : ""}${r.awayPrice}`}
-                </span>
-                <span
-                  style={{
-                    textAlign: "right",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                    color: r.homePrice === null ? C.textMuted : bestHome ? C.green : C.textDim,
-                    fontWeight: bestHome ? 700 : 500,
-                  }}
-                >
-                  {r.homePrice === null
-                    ? "—"
-                    : `${r.homePrice > 0 ? "+" : ""}${r.homePrice}`}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
