@@ -1493,29 +1493,6 @@ function americanToImpliedProb(odds: number): number {
   return odds > 0 ? 100 / (odds + 100) : -odds / (-odds + 100);
 }
 
-interface ArbStakes {
-  stakeA: number;
-  stakeB: number;
-  totalStake: number;
-  profit: number;
-}
-
-function calcArbStakes(oddsA: number, oddsB: number, targetProfit = 100): ArbStakes | null {
-  const pA = americanToImpliedProb(oddsA);
-  const pB = americanToImpliedProb(oddsB);
-  const overround = pA + pB;
-  if (overround >= 1) return null;
-  const totalPayout = targetProfit / (1 - overround);
-  const stakeA = totalPayout * pA;
-  const stakeB = totalPayout * pB;
-  return {
-    stakeA,
-    stakeB,
-    totalStake: stakeA + stakeB,
-    profit: totalPayout - (stakeA + stakeB),
-  };
-}
-
 function sportIcon(sportKey: string): string {
   if (sportKey.startsWith("soccer_")) return "⚽";
   if (sportKey.includes("basketball")) return "🏀";
@@ -1828,12 +1805,8 @@ function SimpleFanduelCard({
   const overround = pAway + pHome;
   const edgePct = (overround - 1) * 100;
 
-  // Cross-book arb: when the best price on each side sums to under 100%
-  // implied probability, the two books together leave a guaranteed edge.
-  const arb = overround < 1 ? calcArbStakes(away.price, home.price, 1000) : null;
-
   return (
-    <div style={{ background: C.card, border: `1px solid ${arb ? C.green : C.border}`, borderRadius: 12, padding: 16 }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap", fontSize: 12 }}>
         <span style={{ fontSize: 16 }}>{sportIcon(game.sport_key)}</span>
         <span style={{ fontWeight: 700, color: C.text }}>{game.away_team} <span style={{ color: C.textMuted, fontWeight: 500 }}>vs</span> {game.home_team}</span>
@@ -1890,12 +1863,6 @@ function SimpleFanduelCard({
       <div style={{ marginTop: 10, fontSize: 11.5, color: C.textMuted }}>
         Bookmaker edge: <strong style={{ color: edgePct <= 2 ? C.green : edgePct <= 5 ? C.text : C.amber }}>{edgePct.toFixed(2)}%</strong> <span>(lower = better for you)</span>
       </div>
-
-      {arb && (
-        <div style={{ marginTop: 12, background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.text, lineHeight: 1.55 }}>
-          💰 <strong style={{ color: C.green }}>ARB:</strong> Bet <strong style={{ color: C.green }}>${arb.stakeA.toFixed(2)}</strong> on {game.away_team} at <strong style={{ color: C.text }}>{away.book}</strong> + <strong style={{ color: C.green }}>${arb.stakeB.toFixed(2)}</strong> on {game.home_team} at <strong style={{ color: C.text }}>{home.book}</strong> = <strong style={{ color: C.green }}>${arb.profit.toFixed(2)} guaranteed</strong> <span style={{ color: C.textMuted }}>(on ${arb.totalStake.toFixed(0)} total)</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -2113,17 +2080,24 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
       // Real cross-book arbs require two different books. Same-book "arbs"
       // are stale-feed artifacts — books always bake in vig on their own line.
       const sameBook = away.book === home.book;
-      const isArb = overround < 1 && stakeNum > 0 && !sameBook;
+      // overround > 0.85 sanity-checks the upstream feed: implied probs on a
+      // 2-outcome market should sum near 1.0. Anything way below means at
+      // least one price is broken — not a real arb opportunity.
+      const dataPlausible = overround > 0.85 && overround < 1;
+      const potentialArb = dataPlausible && stakeNum > 0 && !sameBook;
       let stakeAway, stakeHome, profit, roi;
-      if (isArb) {
+      if (potentialArb) {
         stakeAway = (stakeNum * pAway) / overround;
         stakeHome = (stakeNum * pHome) / overround;
         profit = (stakeNum * (1 - overround)) / overround;
         roi = (profit / stakeNum) * 100;
       }
-      // ROI > 10% is virtually never a real arb on h2h markets — flag for
-      // manual verification instead of presenting it as guaranteed.
-      const suspicious = isArb && (roi ?? 0) > 10;
+      // Real arb: passes all sanity checks AND ROI is in the believable range.
+      // Anything ≥ 8% on h2h is almost always one book's stale line, not a
+      // real edge — flag for manual verification, no profit display, no Track.
+      const r = roi ?? 0;
+      const isArb = potentialArb && r > 0 && r < 8;
+      const suspicious = potentialArb && r >= 8;
       rows.push({ g, home, away, overround, isArb, sameBook, suspicious, stakeAway, stakeHome, profit, roi });
     }
     // Arbs first (highest profit), then non-arbs by start time.
@@ -2287,15 +2261,10 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
                 </div>
 
                 {row.suspicious ? (
-                  <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "12px 14px", fontSize: 13, lineHeight: 1.55, color: C.text }}>
-                    <div style={{ fontWeight: 800, color: "#fbbf24", marginBottom: 4 }}>
-                      Suspicious arb — likely stale data
-                    </div>
-                    <div style={{ color: C.textMuted, marginBottom: 6 }}>
-                      Reported ROI of <strong style={{ color: "#fbbf24" }}>{row.roi!.toFixed(2)}%</strong> is too high to be real (legit arbs cap out at ~5%). One book&apos;s feed is probably outdated. <strong>Verify both prices manually before betting.</strong>
-                    </div>
-                    <div style={{ fontSize: 12, color: C.textMuted }}>
-                      If real → bet ${row.stakeAway!.toFixed(2)} on {row.g.away_team} at {row.away.book} + ${row.stakeHome!.toFixed(2)} on {row.g.home_team} at {row.home.book}.
+                  <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "12px 14px", fontSize: 13, lineHeight: 1.55, color: "#fbbf24", fontWeight: 600 }}>
+                    ⚠️ Possible arb but odds may be stale — verify manually before betting.
+                    <div style={{ color: C.textMuted, fontWeight: 500, marginTop: 4, fontSize: 12 }}>
+                      Reported ROI {row.roi!.toFixed(2)}% is above the 8% threshold where h2h arbs are almost always feed errors.
                     </div>
                   </div>
                 ) : isArb ? (
