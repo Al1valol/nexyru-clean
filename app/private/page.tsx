@@ -2116,6 +2116,8 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
       away: BestOdds;
       overround: number;
       isArb: boolean;
+      sameBook: boolean;
+      suspicious: boolean;
       stakeAway?: number; stakeHome?: number; profit?: number; roi?: number;
     }> = [];
     for (const g of games) {
@@ -2125,7 +2127,10 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
       const pAway = americanToImpliedProb(away.price);
       const pHome = americanToImpliedProb(home.price);
       const overround = pAway + pHome;
-      const isArb = overround < 1 && stakeNum > 0;
+      // Real cross-book arbs require two different books. Same-book "arbs"
+      // are stale-feed artifacts — books always bake in vig on their own line.
+      const sameBook = away.book === home.book;
+      const isArb = overround < 1 && stakeNum > 0 && !sameBook;
       let stakeAway, stakeHome, profit, roi;
       if (isArb) {
         stakeAway = (stakeNum * pAway) / overround;
@@ -2133,7 +2138,10 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
         profit = (stakeNum * (1 - overround)) / overround;
         roi = (profit / stakeNum) * 100;
       }
-      rows.push({ g, home, away, overround, isArb, stakeAway, stakeHome, profit, roi });
+      // ROI > 10% is virtually never a real arb on h2h markets — flag for
+      // manual verification instead of presenting it as guaranteed.
+      const suspicious = isArb && (roi ?? 0) > 10;
+      rows.push({ g, home, away, overround, isArb, sameBook, suspicious, stakeAway, stakeHome, profit, roi });
     }
     // Arbs first (highest profit), then non-arbs by start time.
     rows.sort((a, b) => {
@@ -2144,7 +2152,7 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
     return rows;
   }, [games, stakeNum]);
 
-  const arbCount = decorated.filter((d) => d.isArb).length;
+  const arbCount = decorated.filter((d) => d.isArb && !d.suspicious).length;
 
   const trackArb = (row: typeof decorated[number]) => {
     if (!row.isArb) return;
@@ -2271,14 +2279,43 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
                   <span style={{ color: C.textDim }}>
                     {cd.live ? <span style={{ color: C.red, fontWeight: 700 }}>🔴 LIVE</span> : (cd.label || "")}
                   </span>
-                  {isArb && (
+                  {isArb && !row.suspicious && (
                     <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 6, background: "rgba(34,197,94,0.15)", color: C.green, letterSpacing: "0.04em" }}>
                       ✓ GUARANTEED PROFIT
                     </span>
                   )}
+                  {row.suspicious && (
+                    <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 6, background: "rgba(245,158,11,0.15)", color: "#fbbf24", letterSpacing: "0.04em" }}>
+                      ⚠️ VERIFY ODDS
+                    </span>
+                  )}
                 </div>
 
-                {isArb ? (
+                <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>
+                  {row.sameBook ? (
+                    <span style={{ color: "#fbbf24" }}>Both odds from <strong>{row.away.book}</strong> — not a real arb</span>
+                  ) : (
+                    <>
+                      {row.g.away_team} {fmtOdds(row.away.price)} at <strong style={{ color: C.text }}>{row.away.book}</strong>
+                      <span style={{ margin: "0 6px" }}>·</span>
+                      {row.g.home_team} {fmtOdds(row.home.price)} at <strong style={{ color: C.text }}>{row.home.book}</strong>
+                    </>
+                  )}
+                </div>
+
+                {row.suspicious ? (
+                  <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "12px 14px", fontSize: 13, lineHeight: 1.55, color: C.text }}>
+                    <div style={{ fontWeight: 800, color: "#fbbf24", marginBottom: 4 }}>
+                      Suspicious arb — likely stale data
+                    </div>
+                    <div style={{ color: C.textMuted, marginBottom: 6 }}>
+                      Reported ROI of <strong style={{ color: "#fbbf24" }}>{row.roi!.toFixed(2)}%</strong> is too high to be real (legit arbs cap out at ~5%). One book&apos;s feed is probably outdated. <strong>Verify both prices manually before betting.</strong>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textMuted }}>
+                      If real → bet ${row.stakeAway!.toFixed(2)} on {row.g.away_team} at {row.away.book} + ${row.stakeHome!.toFixed(2)} on {row.g.home_team} at {row.home.book}.
+                    </div>
+                  </div>
+                ) : isArb ? (
                   <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, lineHeight: 1.6, color: C.text }}>
                     {(() => {
                       const risk = getArbRisk(row.away.book, row.home.book, row.roi ?? 0);
@@ -2305,11 +2342,13 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: C.textMuted }}>
-                    No arb — book edge {((row.overround - 1) * 100).toFixed(2)}% · Best: <strong style={{ color: C.text }}>{row.away.book} {fmtOdds(row.away.price)}</strong> / <strong style={{ color: C.text }}>{row.home.book} {fmtOdds(row.home.price)}</strong>
+                    {row.sameBook
+                      ? `Same-book offer — can't be arbed across two books.`
+                      : `No arb — book edge ${((row.overround - 1) * 100).toFixed(2)}%.`}
                   </div>
                 )}
 
-                {isArb && (
+                {isArb && !row.suspicious && (
                   <button
                     onClick={() => trackArb(row)}
                     style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.green}`, background: "transparent", color: C.green, fontSize: 12, fontWeight: 700, cursor: "pointer" }}

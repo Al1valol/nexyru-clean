@@ -95,7 +95,11 @@ export default function ArbPage() {
         const impA = implied(a.price);
         const impB = implied(b.price);
         const total = impA + impB;
-        const isArb = total < 1;
+        // Both team's best odds must come from DIFFERENT bookmakers — you
+        // can't actually execute a cross-book arb at the same book (and when
+        // the data reports it, it's almost always a stale-feed glitch).
+        const sameBook = a.book === b.book;
+        const isRealArb = total < 1 && !sameBook;
 
         return {
           id: game.id,
@@ -103,7 +107,7 @@ export default function ArbPage() {
           time: game.commence_time,
           teamA: { name: teams[0], ...a },
           teamB: { name: teams[1], ...b },
-          impA, impB, total, isArb,
+          impA, impB, total, isArb: isRealArb, sameBook,
         };
       }).filter(Boolean).sort((x, y) => (y.isArb ? 1 : 0) - (x.isArb ? 1 : 0));
 
@@ -117,7 +121,9 @@ export default function ArbPage() {
   useEffect(() => { fetchGames(); }, []);
 
   // Recalc on current stake so the displayed arb scales with the input.
+  // Returns null when the configuration isn't a real cross-book arb.
   const arbForGame = (game) => {
+    if (game.sameBook) return null;
     const s = parseFloat(stake) || 1000;
     const { impA, impB, total } = game;
     if (total >= 1) return null;
@@ -324,7 +330,33 @@ export default function ArbPage() {
                         ))}
                       </div>
 
-                      {arb ? (
+                      <div style={{ fontSize: 12, color: s.muted, marginBottom: 8 }}>
+                        {game.sameBook ? (
+                          <span style={{ color: '#fbbf24' }}>
+                            Both odds from <strong>{game.teamA.book}</strong> — not a real arb
+                          </span>
+                        ) : (
+                          <>
+                            {game.teamA.name} {game.teamA.price > 0 ? '+' : ''}{game.teamA.price} at <strong style={{ color: '#fff' }}>{game.teamA.book}</strong>
+                            <span style={{ margin: '0 6px' }}>·</span>
+                            {game.teamB.name} {game.teamB.price > 0 ? '+' : ''}{game.teamB.price} at <strong style={{ color: '#fff' }}>{game.teamB.book}</strong>
+                          </>
+                        )}
+                      </div>
+
+                      {arb && arb.roi > 10 ? (
+                        <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 8, padding: 14, marginBottom: 12 }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: '#fbbf24', marginBottom: 6 }}>
+                            ⚠️ Suspicious arb — likely stale data
+                          </div>
+                          <div style={{ fontSize: 12.5, color: s.muted, marginBottom: 8, lineHeight: 1.55 }}>
+                            Reported ROI of <strong style={{ color: '#fbbf24' }}>{arb.roi.toFixed(2)}%</strong> is too high to be real (legit arbs cap out at ~5%). The odds feed for one book is probably outdated. <strong>Verify both prices manually before betting anything.</strong>
+                          </div>
+                          <div style={{ fontSize: 12, color: s.muted }}>
+                            If real → bet ${arb.betA.toFixed(2)} on {game.teamA.name} at {game.teamA.book} + ${arb.betB.toFixed(2)} on {game.teamB.name} at {game.teamB.book}.
+                          </div>
+                        </div>
+                      ) : arb ? (
                         <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, padding: 14, marginBottom: 12 }}>
                           {(() => {
                             const risk = getArbRisk(game);
@@ -351,11 +383,13 @@ export default function ArbPage() {
                         </div>
                       ) : (
                         <div style={{ fontSize: 12, color: s.muted, marginBottom: 12 }}>
-                          No arb on this game. Book edge: {((game.total - 1) * 100).toFixed(1)}%
+                          {game.sameBook
+                            ? `Same-book offer — can't be arbed across two books.`
+                            : `No arb on this game. Book edge: ${((game.total - 1) * 100).toFixed(1)}%`}
                         </div>
                       )}
 
-                      {arb && (
+                      {arb && arb.roi <= 10 && (
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => paperBet(game)} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: s.accent, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                             🎮 Paper Bet
