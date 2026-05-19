@@ -102,6 +102,14 @@ export default function PrivatePage() {
           50% { opacity: 0.4; transform: scale(0.85); }
         }
         .nexyru-pulse { animation: nexyru-pulse 1.2s ease-in-out infinite; }
+        .odds-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 260px;
+          gap: 18px;
+        }
+        @media (max-width: 820px) {
+          .odds-grid { grid-template-columns: minmax(0, 1fr); }
+        }
       `}</style>
     </div>
   );
@@ -1443,18 +1451,40 @@ interface OddsGame {
   bookmakers: OddsBookmaker[];
 }
 
-// Pills filter client-side against game.sport_key via .includes(needle).
-// 'all' matches everything; other needles match the league name fragment.
-const SPORT_PILLS: { label: string; key: string }[] = [
-  { label: "All", key: "all" },
-  { label: "NFL", key: "nfl" },
-  { label: "NBA", key: "nba" },
-  { label: "MLB", key: "mlb" },
-  { label: "NHL", key: "nhl" },
-  { label: "MMA", key: "mma" },
-  { label: "Soccer", key: "soccer" },
-  { label: "Tennis", key: "tennis" },
+// Time window pills filter games client-side by commence_time.
+const TIME_PILLS: { label: string; key: "today" | "week" | "month" | "all" }[] = [
+  { label: "Today", key: "today" },
+  { label: "This Week", key: "week" },
+  { label: "This Month", key: "month" },
+  { label: "All Time", key: "all" },
 ];
+
+// Window edges for the time pills. "today" is the calendar day in local tz.
+function windowEndMs(key: "today" | "week" | "month" | "all", nowMs: number): number | null {
+  if (key === "all") return null;
+  if (key === "today") {
+    const end = new Date(nowMs);
+    end.setHours(23, 59, 59, 999);
+    return end.getTime();
+  }
+  if (key === "week") return nowMs + 7 * 24 * 3600 * 1000;
+  return nowMs + 30 * 24 * 3600 * 1000;
+}
+
+// Risk tier for a game based on how lopsided the favourite is, expressed as
+// the implied-probability gap. LOW = even matchup, HIGH = heavy favourite.
+function riskLevelForOdds(
+  home: BestOdds | null,
+  away: BestOdds | null,
+): { tier: "low" | "medium" | "high"; label: string; color: string; note: string } | null {
+  if (!home || !away) return null;
+  const pH = americanToImpliedProb(home.price);
+  const pA = americanToImpliedProb(away.price);
+  const gap = Math.abs(pH - pA);
+  if (gap < 0.15) return { tier: "low", label: "LOW RISK", color: "#22c55e", note: "Even matchup — outcome is hard to predict" };
+  if (gap < 0.35) return { tier: "medium", label: "MEDIUM RISK", color: "#f59e0b", note: "Clear favourite — moderate edge" };
+  return { tier: "high", label: "HIGH RISK", color: "#ef4444", note: "Heavy favourite — big swings on either side" };
+}
 
 interface BestOdds {
   team: string;
@@ -1542,23 +1572,18 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
   const [onlyArbs, setOnlyArbs] = useState(oddsSport === "arbs");
-  const [pillSport, setPillSport] = useState<string>(() => {
-    if (!oddsSport || oddsSport === "all" || oddsSport === "arbs") return "all";
-    return oddsSport;
-  });
+  const [timeWindow, setTimeWindow] = useState<"today" | "week" | "month" | "all">("week");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
-  // Sync internal state when the parent sidebar selection changes.
+  // Parent sidebar still drives the "Arbs" shortcut. Sport-name selections
+  // from the sidebar narrow the games list silently (no in-tab pill for it).
+  const sportNeedle = useMemo(() => {
+    if (!oddsSport || oddsSport === "all" || oddsSport === "arbs") return null;
+    return oddsSport.toLowerCase();
+  }, [oddsSport]);
   useEffect(() => {
-    if (oddsSport === "arbs") {
-      setOnlyArbs(true);
-    } else if (oddsSport && oddsSport !== "all") {
-      setPillSport(oddsSport);
-      setOnlyArbs(false);
-    } else if (oddsSport === "all") {
-      setPillSport("all");
-    }
+    if (oddsSport === "arbs") setOnlyArbs(true);
   }, [oddsSport]);
 
   useEffect(() => {
@@ -1570,7 +1595,7 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/odds?sport=upcoming&daysFrom=2`);
+      const res = await fetch(`/api/odds?sport=upcoming&daysFrom=30`);
       const body = await res.json();
       if (!res.ok) {
         setError((body as { error?: string }).error ?? `Error (${res.status})`);
@@ -1589,34 +1614,62 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Sort: arbs first, then by start time. Filter by sport pill + onlyArbs toggle.
-  const sorted = useMemo(() => {
+  // Decorate every game with best lines + arb flag. Used for both the games
+  // list (filtered below) and the stats sidebar (unfiltered totals).
+  const decorated = useMemo(() => {
     if (!games) return [];
-    const decorated = games.map((g) => {
+    return games.map((g) => {
       const home = bestPriceForTeam(g, g.home_team);
       const away = bestPriceForTeam(g, g.away_team);
       const isArb = home !== null && away !== null && home.price > 0 && away.price > 0;
-      return { g, home, away, isArb };
+      const start = new Date(g.commence_time).getTime();
+      let arbProfit500: number | null = null;
+      if (isArb && home && away) {
+        const overround = americanToImpliedProb(home.price) + americanToImpliedProb(away.price);
+        if (overround > 0 && overround < 1) {
+          arbProfit500 = 500 * (1 - overround) / overround;
+        }
+      }
+      return { g, home, away, isArb, start, arbProfit500 };
     });
-    decorated.sort((a, b) => {
+  }, [games]);
+
+  const sorted = useMemo(() => {
+    const cutoff = windowEndMs(timeWindow, nowMs);
+    let filtered = decorated.slice();
+    filtered.sort((a, b) => {
       if (a.isArb !== b.isArb) return a.isArb ? -1 : 1;
-      return new Date(a.g.commence_time).getTime() - new Date(b.g.commence_time).getTime();
+      return a.start - b.start;
     });
-    let filtered = decorated;
-    if (pillSport !== "all") {
-      const needle = pillSport.toLowerCase();
-      filtered = filtered.filter((d) => (d.g.sport_key ?? "").toLowerCase().includes(needle));
-    }
+    if (cutoff !== null) filtered = filtered.filter((d) => d.start <= cutoff);
+    if (sportNeedle) filtered = filtered.filter((d) => (d.g.sport_key ?? "").toLowerCase().includes(sportNeedle));
     if (onlyArbs) filtered = filtered.filter((d) => d.isArb);
     return filtered;
-  }, [games, pillSport, onlyArbs]);
+  }, [decorated, timeWindow, nowMs, sportNeedle, onlyArbs]);
+
+  // Stats use unfiltered decorated set so the sidebar doesn't shift with pills.
+  const stats = useMemo(() => {
+    const startOfToday = new Date(nowMs); startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(nowMs); endOfToday.setHours(23, 59, 59, 999);
+    const weekEnd = nowMs + 7 * 24 * 3600 * 1000;
+    const arbs = decorated.filter((d) => d.isArb && d.arbProfit500 !== null);
+    const todayArbs = arbs.filter((d) => d.start >= startOfToday.getTime() && d.start <= endOfToday.getTime());
+    const weekArbs = arbs.filter((d) => d.start >= nowMs && d.start <= weekEnd);
+    const bestToday = todayArbs.length > 0
+      ? todayArbs.reduce((b, d) => (d.arbProfit500! > b.arbProfit500! ? d : b))
+      : null;
+    const avgProfit = arbs.length > 0
+      ? arbs.reduce((s, d) => s + (d.arbProfit500 ?? 0), 0) / arbs.length
+      : null;
+    return { totalArbs: arbs.length, todayArbs: todayArbs.length, weekArbs: weekArbs.length, bestToday, avgProfit };
+  }, [decorated, nowMs]);
 
   const refresh = () => load();
 
   const emptyMessage = (() => {
     if (loading) return "Loading...";
     if (onlyArbs) return "No arb opportunities in the selected window.";
-    if (pillSport !== "all") return `No ${pillSport.toUpperCase()} games in the selected window.`;
+    if (sportNeedle) return `No ${sportNeedle.toUpperCase()} games in the selected window.`;
     return "No games in the selected window.";
   })();
 
@@ -1656,86 +1709,120 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
       {/* Arb calculator */}
       <ArbCalculator />
 
-      <Subhead>Games</Subhead>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
-          {SPORT_PILLS.map((f) => {
-            const active = pillSport === f.key;
-            return (
-              <button
-                key={f.key}
-                onClick={() => setPillSport(f.key)}
-                style={{
-                  background: active ? C.accent : C.card2,
-                  color: active ? "#fff" : C.text,
-                  border: `1px solid ${active ? C.accent : C.border}`,
-                  borderRadius: 999,
-                  padding: "5px 12px",
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {f.label}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => setOnlyArbs((v) => !v)}
-          style={{
-            padding: "8px 16px",
-            borderRadius: 8,
-            border: `1px solid ${onlyArbs ? C.green : C.border}`,
-            background: onlyArbs ? "rgba(34,197,94,0.1)" : "transparent",
-            color: onlyArbs ? C.green : C.textMuted,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {onlyArbs ? "✓ Arbs Only" : "Show Arbs Only"}
-        </button>
-      </div>
-
       {error && <ErrorBox>{error}</ErrorBox>}
 
-      {games === null ? (
-        <LoadingBlock />
-      ) : sorted.length === 0 ? (
-        <div
-          style={{
-            background: C.card,
-            border: `1px solid ${C.border}`,
-            borderRadius: 12,
-            padding: 18,
-            color: C.textMuted,
-            fontSize: 13,
-          }}
-        >
-          {emptyMessage}
+      <div className="odds-grid">
+        <div style={{ minWidth: 0 }}>
+          <Subhead>Games</Subhead>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+              {TIME_PILLS.map((f) => {
+                const active = timeWindow === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => setTimeWindow(f.key)}
+                    style={{
+                      background: active ? C.accent : C.card2,
+                      color: active ? "#fff" : C.text,
+                      border: `1px solid ${active ? C.accent : C.border}`,
+                      borderRadius: 999,
+                      padding: "5px 12px",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setOnlyArbs((v) => !v)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: `1px solid ${onlyArbs ? C.green : C.border}`,
+                background: onlyArbs ? "rgba(34,197,94,0.1)" : "transparent",
+                color: onlyArbs ? C.green : C.textMuted,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {onlyArbs ? "✓ Arbs Only" : "Show Arbs Only"}
+            </button>
+          </div>
+
+          {games === null ? (
+            <LoadingBlock />
+          ) : sorted.length === 0 ? (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
+              {emptyMessage}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {sorted.map(({ g, home, away, isArb }) => (
+                <GameCard
+                  key={g.id}
+                  game={g}
+                  home={home}
+                  away={away}
+                  isArb={isArb}
+                  expanded={expandedId === g.id}
+                  onToggle={() => setExpandedId((cur) => (cur === g.id ? null : g.id))}
+                  nowMs={nowMs}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {sorted.map(({ g, home, away, isArb }) => (
-            <GameCard
-              key={g.id}
-              game={g}
-              home={home}
-              away={away}
-              isArb={isArb}
-              expanded={expandedId === g.id}
-              onToggle={() =>
-                setExpandedId((cur) => (cur === g.id ? null : g.id))
-              }
-              nowMs={nowMs}
-            />
-          ))}
-        </div>
-      )}
+
+        <OddsStatsSidebar stats={stats}/>
+      </div>
     </section>
+  );
+}
+
+function OddsStatsSidebar({ stats }: { stats: { totalArbs: number; todayArbs: number; weekArbs: number; bestToday: { g: OddsGame; arbProfit500: number | null } | null; avgProfit: number | null } }) {
+  const teamsLabel = (g: OddsGame) => `${g.away_team} @ ${g.home_team}`;
+  const row = (label: string, value: React.ReactNode, sub?: string) => (
+    <div style={{ padding: "10px 0", borderBottom: `1px solid ${C.borderSoft}` }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+  return (
+    <aside style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 16px 16px", alignSelf: "start", position: "sticky", top: 18 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", padding: "12px 0 6px" }}>
+        Arb Stats
+      </div>
+      {row("Today's arbs found", stats.todayArbs)}
+      {row("This week", `${stats.weekArbs} arbs`)}
+      {row(
+        "Best opportunity today",
+        stats.bestToday && stats.bestToday.arbProfit500 !== null
+          ? <span style={{ color: C.green }}>+${stats.bestToday.arbProfit500.toFixed(2)}</span>
+          : <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 600 }}>—</span>,
+        stats.bestToday ? teamsLabel(stats.bestToday.g) : "no arbs today yet",
+      )}
+      {row(
+        "Avg profit per arb",
+        stats.avgProfit !== null
+          ? <span style={{ color: C.green }}>${stats.avgProfit.toFixed(2)}</span>
+          : <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 600 }}>—</span>,
+        "on a $500 stake",
+      )}
+      <div style={{ marginTop: 12, fontSize: 11, color: C.textMuted, lineHeight: 1.5 }}>
+        Low risk = small guaranteed profit. High risk = bigger swings but the same payout either way.
+      </div>
+    </aside>
   );
 }
 
@@ -1749,37 +1836,39 @@ function stakeToWin100(odds: number): number {
   return odds > 0 ? 10000 / odds : -odds;
 }
 
+// "+150 means you'd win $150 on a $100 bet" / "-120 means you'd risk $120 to win $100"
+function americanOddsPlainEnglish(odds: number): string {
+  if (!Number.isFinite(odds)) return "";
+  if (odds > 0) return `Bet $100 → win $${odds.toFixed(0)}`;
+  return `Bet $${(-odds).toFixed(0)} → win $100`;
+}
+
 function ArbCalculator() {
   const [a, setA] = useState("");
   const [b, setB] = useState("");
-  const [stakeInput, setStakeInput] = useState("100");
+  const [stakeInput, setStakeInput] = useState("500");
 
   const totalStake = Math.max(0, parseFloat(stakeInput) || 0);
+  const oa = parseFloat(a);
+  const ob = parseFloat(b);
+  const aValid = Number.isFinite(oa);
+  const bValid = Number.isFinite(ob);
 
   const result = useMemo(() => {
-    const oa = parseFloat(a);
-    const ob = parseFloat(b);
-    if (!Number.isFinite(oa) || !Number.isFinite(ob)) return null;
+    if (!aValid || !bValid) return null;
     const pA = americanToImpliedProb(oa);
     const pB = americanToImpliedProb(ob);
     const overround = pA + pB;
-    const stakeAtoWin100 = stakeToWin100(oa);
-    const stakeBtoWin100 = stakeToWin100(ob);
     if (overround >= 1 || totalStake <= 0) {
-      return { arb: false as const, overround, stakeAtoWin100, stakeBtoWin100 };
+      return { arb: false as const, pA, pB, overround };
     }
-    // Stakes proportional to implied probs so both sides return the same payout.
     const betA = (totalStake * pA) / overround;
     const betB = (totalStake * pB) / overround;
     const payout = betA * americanPayoutMultiplier(oa);
     const profit = payout - totalStake;
     const roi = (profit / totalStake) * 100;
-    return {
-      arb: true as const,
-      betA, betB, profit, roi, overround, totalStake, payout,
-      stakeAtoWin100, stakeBtoWin100,
-    };
-  }, [a, b, totalStake]);
+    return { arb: true as const, betA, betB, payout, profit, roi, totalStake, pA, pB, overround };
+  }, [aValid, bValid, oa, ob, totalStake]);
 
   const inputStyle = {
     width: "100%",
@@ -1793,62 +1882,91 @@ function ArbCalculator() {
     boxSizing: "border-box" as const,
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   };
-  const labelStyle = { display: "block", fontSize: 11, color: C.textMuted, marginBottom: 4, fontWeight: 600 } as const;
+  const labelStyle = { display: "block", fontSize: 12, color: C.textDim, marginBottom: 4, fontWeight: 600 } as const;
+  const hintStyle = { fontSize: 11, color: C.textMuted, marginTop: 4 } as const;
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 18 }}>
-      <div style={{ color: C.textMuted, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-        Arb Calculator
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, marginBottom: 18 }}>
+      <div style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 2 }}>
+        Guaranteed Profit Calculator
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+      <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14 }}>
+        Find games where you can bet both sides and win no matter what.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
-          <label style={labelStyle}>Team A odds (American)</label>
+          <label style={labelStyle}>Team A odds</label>
           <input type="number" value={a} onChange={(e) => setA(e.target.value)} placeholder="+150" style={inputStyle}/>
+          {aValid && (
+            <div style={hintStyle}>
+              {americanOddsPlainEnglish(oa)} · bookmaker thinks {(americanToImpliedProb(oa) * 100).toFixed(0)}% chance
+            </div>
+          )}
         </div>
         <div>
-          <label style={labelStyle}>Team B odds (American)</label>
+          <label style={labelStyle}>Team B odds</label>
           <input type="number" value={b} onChange={(e) => setB(e.target.value)} placeholder="+120" style={inputStyle}/>
-        </div>
-        <div>
-          <label style={labelStyle}>Stake amount ($)</label>
-          <input type="number" value={stakeInput} onChange={(e) => setStakeInput(e.target.value)} placeholder="100" style={inputStyle}/>
+          {bValid && (
+            <div style={hintStyle}>
+              {americanOddsPlainEnglish(ob)} · bookmaker thinks {(americanToImpliedProb(ob) * 100).toFixed(0)}% chance
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Per-side stake-to-win-$100 hint, always shown when both odds parse */}
-      {result && (
-        <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 12, display: "flex", gap: 18, flexWrap: "wrap" }}>
-          <span>Team A: stake <strong style={{ color: C.text }}>${result.stakeAtoWin100.toFixed(2)}</strong> to win $100</span>
-          <span>Team B: stake <strong style={{ color: C.text }}>${result.stakeBtoWin100.toFixed(2)}</strong> to win $100</span>
-        </div>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12.5, color: C.textDim, fontWeight: 600 }}>Stake:</label>
+        <input
+          type="number"
+          value={stakeInput}
+          onChange={(e) => setStakeInput(e.target.value)}
+          style={{ ...inputStyle, width: 110, padding: "6px 10px", fontSize: 13 }}
+        />
+        <span style={{ fontSize: 12.5, color: C.textDim }}>total (split across both sides)</span>
+      </div>
 
       {result === null ? (
-        <div style={{ color: C.textMuted, fontSize: 12.5 }}>
-          Enter both odds to see if an arb exists.
+        <div style={{ background: C.card2, border: `1px dashed ${C.border}`, borderRadius: 10, padding: "14px 16px", color: C.textMuted, fontSize: 13 }}>
+          Enter both teams' odds above to see if there's a guaranteed profit.
         </div>
       ) : !result.arb ? (
-        <div style={{ color: C.textMuted, fontSize: 12.5 }}>
-          {totalStake <= 0
-            ? "Enter a stake amount above $0."
-            : `No arb opportunity — overround ${(result.overround * 100).toFixed(2)}% (one side is too short).`}
-        </div>
+        (() => {
+          const edge = (result.overround - 1) * 100;
+          const favSide = result.pA > result.pB ? "A" : "B";
+          const favOdds = favSide === "A" ? oa : ob;
+          return (
+            <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", color: C.textDim, fontSize: 13, lineHeight: 1.7 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+                No guaranteed profit on these odds
+              </div>
+              {totalStake <= 0 ? (
+                <div>Enter a stake amount above $0.</div>
+              ) : (
+                <>
+                  <div>The bookmaker has an edge of <strong style={{ color: C.amber }}>{edge.toFixed(2)}%</strong> — combined odds add up to more than 100% implied chance.</div>
+                  <div style={{ marginTop: 4 }}>Best bet: <strong style={{ color: C.text }}>Team {favSide}</strong> at {favOdds > 0 ? "+" : ""}{favOdds} (the bookmaker rates it more likely to win).</div>
+                </>
+              )}
+            </div>
+          );
+        })()
       ) : (
-        <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: 8, padding: "12px 14px", color: C.text, fontSize: 13, lineHeight: 1.7 }}>
+        <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.4)", borderRadius: 10, padding: "14px 16px", color: C.text, fontSize: 13, lineHeight: 1.75 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.green, marginBottom: 8, letterSpacing: "0.04em" }}>
+            🎯 ARB OPPORTUNITY
+          </div>
           <div>
-            Bet <strong style={{ color: C.green }}>${result.betA.toFixed(2)}</strong> on Team A
-            {" + "}
-            <strong style={{ color: C.green }}>${result.betB.toFixed(2)}</strong> on Team B
+            Bet <strong style={{ color: C.green }}>${result.betA.toFixed(0)}</strong> on Team A ({oa > 0 ? "+" : ""}{oa}) → Win <strong style={{ color: C.text }}>${(result.betA * americanPayoutMultiplier(oa)).toFixed(2)}</strong> if Team A wins
           </div>
-          <div style={{ marginTop: 6, color: C.textDim, fontSize: 12 }}>
-            Total at risk <strong style={{ color: C.text }}>${result.totalStake.toFixed(2)}</strong>
-            {" · "}Payout either side <strong style={{ color: C.text }}>${result.payout.toFixed(2)}</strong>
+          <div>
+            Bet <strong style={{ color: C.green }}>${result.betB.toFixed(0)}</strong> on Team B ({ob > 0 ? "+" : ""}{ob}) → Win <strong style={{ color: C.text }}>${(result.betB * americanPayoutMultiplier(ob)).toFixed(2)}</strong> if Team B wins
           </div>
-          <div style={{ marginTop: 6 }}>
-            <strong style={{ color: C.green }}>${result.profit.toFixed(2)} guaranteed profit</strong>
-            {" · "}
-            <strong style={{ color: C.green }}>{result.roi.toFixed(2)}% ROI</strong>
-            <span style={{ color: C.textDim }}> on ${result.totalStake.toFixed(2)}</span>
+          <div style={{ marginTop: 8, fontSize: 13.5 }}>
+            💰 Guaranteed profit: <strong style={{ color: C.green }}>${result.profit.toFixed(2)}</strong> no matter who wins
+          </div>
+          <div style={{ fontSize: 13 }}>
+            📊 ROI: <strong style={{ color: C.green }}>{result.roi.toFixed(2)}%</strong> return on ${result.totalStake.toFixed(0)}
           </div>
         </div>
       )}
@@ -1876,6 +1994,7 @@ function GameCard({
   const arb = isArb && home && away ? calcArbStakes(home.price, away.price) : null;
   const start = new Date(game.commence_time);
   const cd = countdownLabel(game.commence_time, nowMs);
+  const risk = riskLevelForOdds(home, away);
 
   // All bookmaker rows for expanded view
   const bookRows = useMemo(() => {
@@ -1948,6 +2067,23 @@ function GameCard({
           )
         )}
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {risk && (
+            <span
+              title={risk.note}
+              style={{
+                background: `${risk.color}22`,
+                border: `1px solid ${risk.color}66`,
+                color: risk.color,
+                padding: "2px 10px",
+                borderRadius: 999,
+                fontSize: 10.5,
+                fontWeight: 800,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {risk.label}
+            </span>
+          )}
           {isArb && (
             <span
               style={{
@@ -1974,6 +2110,12 @@ function GameCard({
         <TeamLine team={game.away_team} odds={away} />
         <TeamLine team={game.home_team} odds={home} alignRight />
       </div>
+
+      {risk && (
+        <div style={{ marginTop: 8, fontSize: 11, color: C.textMuted }}>
+          {risk.note}
+        </div>
+      )}
 
       {arb && (
         <div
