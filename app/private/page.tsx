@@ -2625,43 +2625,21 @@ function PlayerStatsPanel() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [propLines, setPropLines] = useState<Record<string, string>>({});
 
-  const loadNBA = useCallback(async (search: string) => {
+  // Single fetch — proxy returns the season leaderboard pre-flattened. Search
+  // filters happen client-side so typing is instant; the search box doesn't
+  // need to round-trip.
+  const loadNBA = useCallback(async () => {
     setStatsLoading(true);
     setError(null);
     try {
-      const q = (search || "james").trim();
-      const playersRes = await fetch(
-        `/api/players?sport=nba&search=${encodeURIComponent(q)}`,
-      );
-      const playersJson = await playersRes.json();
-      if (!playersRes.ok) {
-        setError(playersJson.error || `Failed (${playersRes.status})`);
+      const r = await fetch(`/api/players?sport=nba`);
+      const j = await r.json();
+      if (!r.ok) {
+        setError(j.error || `Failed (${r.status})`);
         setStatsPlayers([]);
         return;
       }
-      const players: any[] = playersJson.data || [];
-      if (players.length === 0) {
-        setStatsPlayers([]);
-        return;
-      }
-      const idsCsv = players.map((p) => p.id).join(",");
-      const avgRes = await fetch(
-        `/api/players?sport=nba&ids=${idsCsv}`,
-      );
-      const avgJson = await avgRes.json().catch(() => ({}));
-      const avgById = new Map<number, any>();
-      (avgJson.data || []).forEach((a: any) => avgById.set(a.player_id, a));
-      const merged = players
-        .map((p) => ({
-          id: p.id,
-          name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
-          team: p.team?.full_name || p.team?.abbreviation || "",
-          position: p.position || "",
-          avg: avgById.get(p.id),
-        }))
-        .filter((p) => p.avg)
-        .sort((a, b) => (b.avg?.pts ?? 0) - (a.avg?.pts ?? 0));
-      setStatsPlayers(merged);
+      setStatsPlayers(j.data || []);
     } catch (e: any) {
       setError(e?.message || "Failed to load");
       setStatsPlayers([]);
@@ -2706,14 +2684,20 @@ function PlayerStatsPanel() {
 
   useEffect(() => {
     setActiveId(null);
-    if (statsSport === "nba") loadNBA("");
+    if (statsSport === "nba") loadNBA();
     else if (statsSport === "mlb") loadMLB();
     else setStatsPlayers([]);
   }, [statsSport, loadNBA, loadMLB]);
 
+  // Client-side filter — proxy already returned the full leaderboard.
+  const visiblePlayers = statsSport === "nba" && statsSearch.trim()
+    ? statsPlayers.filter((p) => p.name.toLowerCase().includes(statsSearch.trim().toLowerCase()))
+    : statsPlayers;
+
   const onSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (statsSport === "nba") loadNBA(statsSearch);
+    // No-op: filter is applied live on input change. Form here so Enter
+    // doesn't reload the page.
   };
 
   const sportBtn = (id: StatsSport, label: string) => (
@@ -2817,23 +2801,24 @@ function PlayerStatsPanel() {
         </div>
       )}
 
-      {!statsLoading && statsSport === "nba" && statsPlayers.length === 0 && !error && (
+      {!statsLoading && statsSport === "nba" && visiblePlayers.length === 0 && !error && (
         <div style={{ textAlign: "center", padding: 32, color: C.textDim, fontSize: 13 }}>
-          No NBA players found. Try a different search.
+          {statsSearch.trim()
+            ? `No NBA players matching "${statsSearch}". Note: only qualified leaders are listed.`
+            : "No NBA players found."}
         </div>
       )}
 
-      {!statsLoading && statsSport === "nba" && statsPlayers.length > 0 && (
+      {!statsLoading && statsSport === "nba" && visiblePlayers.length > 0 && (
         <div style={{ display: "grid", gap: 12 }}>
-          {statsPlayers.map((p) => {
+          {visiblePlayers.map((p) => {
             const isActive = activeId === p.id;
-            const a = p.avg || {};
-            const ppg = Number(a.pts) || 0;
-            const rpg = Number(a.reb) || 0;
-            const apg = Number(a.ast) || 0;
-            const mpg = a.min ?? "—";
-            const fgPct = a.fg_pct != null ? (Number(a.fg_pct) * 100).toFixed(1) + "%" : "—";
-            const gp = a.games_played ?? "—";
+            const ppg = Number(p.ppg) || 0;
+            const rpg = Number(p.rpg) || 0;
+            const apg = Number(p.apg) || 0;
+            const mpg = Number(p.mpg) || 0;
+            const fgPct = p.fg_pct != null ? (Number(p.fg_pct) * 100).toFixed(1) + "%" : "—";
+            const gp = p.gp ?? "—";
             return (
               <div
                 key={p.id}
@@ -2852,7 +2837,6 @@ function PlayerStatsPanel() {
                     <div style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
                     <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
                       {p.team}
-                      {p.position ? ` · ${p.position}` : ""}
                       {gp !== "—" ? ` · ${gp} GP` : ""}
                     </div>
                   </div>
@@ -2870,7 +2854,7 @@ function PlayerStatsPanel() {
                   {[
                     { label: "REB", value: rpg.toFixed(1) },
                     { label: "AST", value: apg.toFixed(1) },
-                    { label: "MIN", value: String(mpg) },
+                    { label: "MIN", value: mpg.toFixed(1) },
                     { label: "FG%", value: fgPct },
                   ].map((s) => (
                     <div
