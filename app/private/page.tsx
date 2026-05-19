@@ -1548,7 +1548,7 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-type OddsTabKey = "best" | "polymarket" | "arb" | "value";
+type OddsTabKey = "best" | "polymarket" | "arb" | "value" | "playerstats";
 
 type ParlayLeg = {
   gameId: string;
@@ -1634,6 +1634,7 @@ export function OddsTab() {
     { id: "polymarket", label: "🎲 Polymarket" },
     { id: "arb", label: "💰 Arb Finder" },
     { id: "value", label: "⭐ Value Bets" },
+    { id: "playerstats", label: "🏀 Player Stats" },
   ];
 
   return (
@@ -1671,6 +1672,7 @@ export function OddsTab() {
       {oddsTab === "polymarket" && <PolymarketPanel />}
       {oddsTab === "arb" && <ArbFinderPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
       {oddsTab === "value" && <ValueBetsPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
+      {oddsTab === "playerstats" && <PlayerStatsPanel />}
 
       {oddsTab === "best" && parlayLegs.length >= 2 && (
         <ParlayBar
@@ -2594,6 +2596,410 @@ function ValueBetsPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
         </>
       )}
     </>
+  );
+}
+
+// ───────────────────────── player stats ─────────────────────────
+
+type StatsSport = "nba" | "mlb" | "nfl";
+
+// Verdict for a given season average vs a user-entered prop line. Threshold
+// is a percentage of the average so a 0.5-point edge on 24 PPG isn't treated
+// the same as a 0.5-rebound edge on 5 RPG.
+function propVerdict(avg: number, lineStr: string): { text: string; color: string } | null {
+  const line = parseFloat(lineStr);
+  if (!Number.isFinite(line) || line <= 0) return null;
+  const delta = avg - line;
+  const pct = Math.abs(delta) / Math.max(avg, 0.001);
+  if (pct < 0.05) return { text: `TOO CLOSE (avg ${avg.toFixed(1)} vs line ${line})`, color: C.amber };
+  if (delta > 0) return { text: `OVER looks good (avg ${avg.toFixed(1)} beats ${line} by ${delta.toFixed(1)})`, color: C.green };
+  return { text: `UNDER looks good (avg ${avg.toFixed(1)} is ${Math.abs(delta).toFixed(1)} below ${line})`, color: C.red };
+}
+
+function PlayerStatsPanel() {
+  const [statsSport, setStatsSport] = useState<StatsSport>("nba");
+  const [statsPlayers, setStatsPlayers] = useState<any[]>([]);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsSearch, setStatsSearch] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [propLines, setPropLines] = useState<Record<string, string>>({});
+
+  const loadNBA = useCallback(async (search: string) => {
+    setStatsLoading(true);
+    setError(null);
+    try {
+      const q = (search || "james").trim();
+      const playersRes = await fetch(
+        `/api/balldontlie?path=players&per_page=25&search=${encodeURIComponent(q)}`,
+      );
+      const playersJson = await playersRes.json();
+      if (!playersRes.ok) {
+        setError(playersJson.error || `Failed (${playersRes.status})`);
+        setStatsPlayers([]);
+        return;
+      }
+      const players: any[] = playersJson.data || [];
+      if (players.length === 0) {
+        setStatsPlayers([]);
+        return;
+      }
+      const idsParam = players.map((p) => `player_ids[]=${p.id}`).join("&");
+      const avgRes = await fetch(
+        `/api/balldontlie?path=season_averages&season=2024&${idsParam}`,
+      );
+      const avgJson = await avgRes.json().catch(() => ({}));
+      const avgById = new Map<number, any>();
+      (avgJson.data || []).forEach((a: any) => avgById.set(a.player_id, a));
+      const merged = players
+        .map((p) => ({
+          id: p.id,
+          name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
+          team: p.team?.full_name || p.team?.abbreviation || "",
+          position: p.position || "",
+          avg: avgById.get(p.id),
+        }))
+        .filter((p) => p.avg)
+        .sort((a, b) => (b.avg?.pts ?? 0) - (a.avg?.pts ?? 0));
+      setStatsPlayers(merged);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load");
+      setStatsPlayers([]);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  const loadMLB = useCallback(async () => {
+    setStatsLoading(true);
+    setError(null);
+    try {
+      const cats = ["battingAverage", "homeRuns", "runsBattedIn", "onBasePlusSlugging"];
+      const r = await fetch(
+        `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${cats.join(",")}&season=2025&sportId=1&limit=25`,
+      );
+      const j = await r.json();
+      const byId = new Map<number, any>();
+      (j.leagueLeaders || []).forEach((cat: any) => {
+        const catKey = cat.leaderCategory;
+        (cat.leaders || []).forEach((leader: any) => {
+          const id = leader.person?.id;
+          if (!id) return;
+          if (!byId.has(id)) {
+            byId.set(id, {
+              id,
+              name: leader.person.fullName,
+              team: leader.team?.name || "",
+              stats: {} as Record<string, string>,
+            });
+          }
+          byId.get(id).stats[catKey] = leader.value;
+        });
+      });
+      const arr = Array.from(byId.values()).sort(
+        (a, b) => (parseFloat(b.stats.homeRuns) || 0) - (parseFloat(a.stats.homeRuns) || 0),
+      );
+      setStatsPlayers(arr);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load");
+      setStatsPlayers([]);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setActiveId(null);
+    if (statsSport === "nba") loadNBA("");
+    else if (statsSport === "mlb") loadMLB();
+    else setStatsPlayers([]);
+  }, [statsSport, loadNBA, loadMLB]);
+
+  const onSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (statsSport === "nba") loadNBA(statsSearch);
+  };
+
+  const sportBtn = (id: StatsSport, label: string) => (
+    <button
+      key={id}
+      onClick={() => setStatsSport(id)}
+      style={{
+        padding: "8px 16px",
+        borderRadius: 8,
+        border: `1px solid ${statsSport === id ? C.accent : C.border}`,
+        background: statsSport === id ? "rgba(99,102,241,0.15)" : "transparent",
+        color: statsSport === id ? "#fff" : C.textDim,
+        fontSize: 13,
+        fontWeight: statsSport === id ? 700 : 500,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {sportBtn("nba", "🏀 NBA")}
+        {sportBtn("mlb", "⚾ MLB")}
+        {sportBtn("nfl", "🏈 NFL")}
+      </div>
+
+      {statsSport === "nba" && (
+        <form onSubmit={onSearchSubmit} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <input
+            value={statsSearch}
+            onChange={(e) => setStatsSearch(e.target.value)}
+            placeholder="Search players (e.g. curry, jokic) — blank shows top 'james' results"
+            style={{
+              flex: 1,
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: `1px solid ${C.border}`,
+              background: C.card2,
+              color: "#fff",
+              fontSize: 13,
+              outline: "none",
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: "9px 16px",
+              borderRadius: 8,
+              border: "none",
+              background: C.accent,
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Search
+          </button>
+        </form>
+      )}
+
+      {error && (
+        <div
+          style={{
+            background: "rgba(239,68,68,0.08)",
+            border: `1px solid rgba(239,68,68,0.35)`,
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 16,
+            color: C.red,
+            fontSize: 13,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {statsSport === "nfl" && (
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            padding: 32,
+            textAlign: "center",
+            color: C.textDim,
+            fontSize: 14,
+            lineHeight: 1.7,
+          }}
+        >
+          🏈 NFL season starts September 2026 — check back then for player stats and prop bet helpers.
+        </div>
+      )}
+
+      {statsLoading && (
+        <div style={{ textAlign: "center", padding: 32, color: C.textDim, fontSize: 13 }}>
+          Loading player stats…
+        </div>
+      )}
+
+      {!statsLoading && statsSport === "nba" && statsPlayers.length === 0 && !error && (
+        <div style={{ textAlign: "center", padding: 32, color: C.textDim, fontSize: 13 }}>
+          No NBA players found. Try a different search.
+        </div>
+      )}
+
+      {!statsLoading && statsSport === "nba" && statsPlayers.length > 0 && (
+        <div style={{ display: "grid", gap: 12 }}>
+          {statsPlayers.map((p) => {
+            const isActive = activeId === p.id;
+            const a = p.avg || {};
+            const ppg = Number(a.pts) || 0;
+            const rpg = Number(a.reb) || 0;
+            const apg = Number(a.ast) || 0;
+            const mpg = a.min ?? "—";
+            const fgPct = a.fg_pct != null ? (Number(a.fg_pct) * 100).toFixed(1) + "%" : "—";
+            const gp = a.games_played ?? "—";
+            return (
+              <div
+                key={p.id}
+                style={{
+                  background: C.card,
+                  border: `1px solid ${isActive ? C.accent : C.border}`,
+                  borderRadius: 12,
+                  padding: 16,
+                  cursor: "pointer",
+                  transition: "border-color 0.15s",
+                }}
+                onClick={() => setActiveId(isActive ? null : p.id)}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
+                    <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
+                      {p.team}
+                      {p.position ? ` · ${p.position}` : ""}
+                      {gp !== "—" ? ` · ${gp} GP` : ""}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
+                      {ppg.toFixed(1)}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 }}>
+                      PPG
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                  {[
+                    { label: "REB", value: rpg.toFixed(1) },
+                    { label: "AST", value: apg.toFixed(1) },
+                    { label: "MIN", value: String(mpg) },
+                    { label: "FG%", value: fgPct },
+                  ].map((s) => (
+                    <div
+                      key={s.label}
+                      style={{
+                        background: C.card2,
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>{s.value}</div>
+                      <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {isActive && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      paddingTop: 14,
+                      borderTop: `1px solid ${C.border}`,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      🎯 Prop Bet Helper
+                    </div>
+                    {(
+                      [
+                        { key: "pts", label: "Points", avg: ppg },
+                        { key: "reb", label: "Rebounds", avg: rpg },
+                        { key: "ast", label: "Assists", avg: apg },
+                      ] as const
+                    ).map((row) => {
+                      const stateKey = `${p.id}:${row.key}`;
+                      const lineVal = propLines[stateKey] ?? "";
+                      const verdict = propVerdict(row.avg, lineVal);
+                      return (
+                        <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                          <div style={{ width: 80, fontSize: 13, color: C.textDim }}>{row.label}</div>
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={lineVal}
+                            onChange={(e) =>
+                              setPropLines((prev) => ({ ...prev, [stateKey]: e.target.value }))
+                            }
+                            placeholder={`line (avg ${row.avg.toFixed(1)})`}
+                            style={{
+                              width: 110,
+                              padding: "6px 8px",
+                              borderRadius: 6,
+                              border: `1px solid ${C.border}`,
+                              background: C.bg,
+                              color: "#fff",
+                              fontSize: 13,
+                              outline: "none",
+                            }}
+                          />
+                          <div style={{ fontSize: 12, color: verdict?.color || C.textMuted, fontWeight: 600 }}>
+                            {verdict ? verdict.text : "Enter the prop line to compare"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!statsLoading && statsSport === "mlb" && statsPlayers.length === 0 && !error && (
+        <div style={{ textAlign: "center", padding: 32, color: C.textDim, fontSize: 13 }}>
+          No MLB leaders returned for the 2025 season.
+        </div>
+      )}
+
+      {!statsLoading && statsSport === "mlb" && statsPlayers.length > 0 && (
+        <div style={{ display: "grid", gap: 12 }}>
+          {statsPlayers.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                padding: 16,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>{p.team}</div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {[
+                  { label: "AVG", value: p.stats.battingAverage ?? "—" },
+                  { label: "HR", value: p.stats.homeRuns ?? "—" },
+                  { label: "RBI", value: p.stats.runsBattedIn ?? "—" },
+                  { label: "OPS", value: p.stats.onBasePlusSlugging ?? "—" },
+                ].map((s) => (
+                  <div
+                    key={s.label}
+                    style={{
+                      background: C.card2,
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>{s.value}</div>
+                    <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
