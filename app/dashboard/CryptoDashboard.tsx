@@ -137,8 +137,9 @@ function verificationBucket(status) {
 // Pass _coingeckoId to fall back to the CoinGecko page when no DEX info
 // is available (eg. top-100 coins from /search/trending have no contract).
 function getBuyUrl(coin) {
-  const chain = coin?.chainId?.toLowerCase() || '';
-  const address = coin?.coinId?.split(':').pop() || coin?.pairAddress || '';
+  const chain = (coin?.chainId || '').toLowerCase();
+  const rawId = coin?.coinId || coin?.pairAddress || '';
+  const address = rawId.includes(':') ? rawId.split(':').pop() : rawId;
 
   if (chain === 'solana' || chain === 'sol') {
     return { url: `https://jup.ag/swap/SOL-${address}`, label: 'Buy on Jupiter', color: '#22c55e', icon: '⚡' };
@@ -146,17 +147,25 @@ function getBuyUrl(coin) {
   if (chain === 'base') {
     return { url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
   }
-  if (chain === 'ethereum') {
-    return { url: `https://app.uniswap.org/swap?outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
+  if (chain === 'ethereum' || chain === 'eth') {
+    return { url: `https://app.uniswap.org/swap?chain=mainnet&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
   }
-  if (chain === 'bsc') {
-    return { url: `https://pancakeswap.finance/swap?outputCurrency=${address}`, label: 'Buy on PancakeSwap', color: '#f59e0b', icon: '🥞' };
+  if (chain === 'bsc' || chain === 'bnb') {
+    return { url: `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${address}`, label: 'Buy on PancakeSwap', color: '#f59e0b', icon: '🥞' };
+  }
+  if (chain === 'arbitrum') {
+    return { url: `https://app.uniswap.org/swap?chain=arbitrum&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄' };
+  }
+  if (chain === 'polygon') {
+    return { url: `https://app.uniswap.org/swap?chain=polygon&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#8247e5', icon: '🦄' };
+  }
+  if (chain === 'avalanche') {
+    return { url: `https://traderjoexyz.com/avalanche/trade?outputCurrency=${address}`, label: 'Buy on TraderJoe', color: '#e84142', icon: '🔴' };
   }
   if (coin?._coingeckoId) {
     return { url: `https://www.coingecko.com/en/coins/${coin._coingeckoId}`, label: 'View on CoinGecko', color: '#6366f1', icon: '📊' };
   }
-  const fallbackChain = chain || 'ethereum';
-  return { url: coin?.url || `https://dexscreener.com/${fallbackChain}/${address}`, label: 'View on DexScreener', color: '#6366f1', icon: '📊' };
+  return { url: coin?.url || `https://dexscreener.com/${chain}/${address}`, label: 'View on DexScreener', color: '#6366f1', icon: '📊' };
 }
 
 function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
@@ -808,9 +817,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       </a>
                       <button
                         onClick={() => {
-                          const addr = coin.coinId?.split(':').pop() || coin.pairAddress || '';
-                          if (!addr) return;
-                          try { navigator.clipboard.writeText(addr); } catch {}
+                          const rawId = coin.coinId || coin.pairAddress || '';
+                          const cleanAddress = rawId.includes(':') ? rawId.split(':').pop() : rawId;
+                          if (!cleanAddress) return;
+                          try { navigator.clipboard.writeText(cleanAddress); } catch {}
                           setCopiedId(copyKey);
                           setTimeout(() => setCopiedId(prev => (prev === copyKey ? null : prev)), 2000);
                         }}
