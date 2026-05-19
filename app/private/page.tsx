@@ -1580,6 +1580,35 @@ export function OddsTab() {
 
   return (
     <section>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <a
+          href="/arb"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "10px 18px", borderRadius: 10,
+            background: "rgba(34,197,94,0.12)", border: `1px solid ${C.green}`,
+            color: C.green, fontSize: 13, fontWeight: 800, textDecoration: "none",
+          }}
+        >
+          💰 Open Arb Finder ↗
+        </a>
+        <a
+          href="/bets"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "10px 18px", borderRadius: 10,
+            background: "rgba(99,102,241,0.12)", border: `1px solid ${C.accent}`,
+            color: "#a5b4fc", fontSize: 13, fontWeight: 800, textDecoration: "none",
+          }}
+        >
+          ⭐ Open Value Bets ↗
+        </a>
+      </div>
+
       <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0, flexWrap: "wrap" }}>
         {[
           { id: "fanduel", label: "📊 FanDuel Odds" },
