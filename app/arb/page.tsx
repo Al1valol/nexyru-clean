@@ -12,6 +12,9 @@ export default function ArbPage() {
   const [activeTab, setActiveTab] = useState('finder'); // finder | tracked | paper
   const [paperBets, setPaperBets] = useState([]);
   const [bankroll, setBankroll] = useState(1000);
+  // Per-day per-book arb counts — used to warn when bookmaker exposure gets
+  // high enough to risk an account limit.
+  const [arbCounts, setArbCounts] = useState({ date: '', books: {} });
 
   // Hydrate from localStorage post-mount to avoid SSR/hydration mismatch.
   useEffect(() => {
@@ -22,8 +25,43 @@ export default function ArbPage() {
       if (p) setPaperBets(JSON.parse(p));
       const b = localStorage.getItem('nexyru_arb_bankroll');
       if (b) setBankroll(parseFloat(b) || 1000);
+      const today = new Date().toDateString();
+      const c = JSON.parse(localStorage.getItem('nexyru_arb_counts') || '{}');
+      if (c && c.date === today) setArbCounts(c);
+      else setArbCounts({ date: today, books: {} });
     } catch {}
   }, []);
+
+  const getArbRisk = (game) => {
+    if (!game?.isArb || !game?.teamA?.book || !game?.teamB?.book) return null;
+    if (game.teamA.book === game.teamB.book) {
+      return { level: 'EXTREME', color: '#ef4444', msg: 'Both books are the same — DO NOT do this arb' };
+    }
+    const roi = arbForGame(game)?.roi ?? 0;
+    if (roi > 5) return { level: 'HIGH', color: '#f97316', msg: 'High ROI arbs are more suspicious — bet small' };
+    if (roi > 2) return { level: 'MEDIUM', color: '#fbbf24', msg: 'Medium risk — keep stakes moderate' };
+    return { level: 'LOW', color: '#22c55e', msg: 'Low risk — normal sized arb, hard to detect' };
+  };
+
+  // Bump book counts whenever a real arb action is recorded. Resets on a new
+  // calendar day.
+  const bumpBookCounts = (bookA, bookB) => {
+    const today = new Date().toDateString();
+    setArbCounts((prev) => {
+      const base = prev?.date === today ? prev : { date: today, books: {} };
+      const books = { ...base.books };
+      if (bookA) books[bookA] = (books[bookA] || 0) + 1;
+      if (bookB && bookB !== bookA) books[bookB] = (books[bookB] || 0) + 1;
+      const next = { date: today, books };
+      try { localStorage.setItem('nexyru_arb_counts', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const todayBookEntries = () =>
+    Object.entries(arbCounts?.books || {}).sort((a, b) => b[1] - a[1]);
+  const todayTotalArbs = () =>
+    Object.values(arbCounts?.books || {}).reduce((s, n) => s + n, 0);
 
   const implied = (odds) => {
     const o = parseFloat(odds);
@@ -106,6 +144,7 @@ export default function ArbPage() {
     const updated = [entry, ...tracked];
     setTracked(updated);
     try { localStorage.setItem('nexyru_arbs', JSON.stringify(updated)); } catch {}
+    bumpBookCounts(game.teamA.book, game.teamB.book);
   };
 
   const paperBet = (game) => {
@@ -128,6 +167,7 @@ export default function ArbPage() {
       localStorage.setItem('nexyru_arb_paper', JSON.stringify(updated));
       localStorage.setItem('nexyru_arb_bankroll', String(newBankroll));
     } catch {}
+    bumpBookCounts(game.teamA.book, game.teamB.book);
     setActiveTab('paper');
   };
 
@@ -197,6 +237,34 @@ export default function ArbPage() {
         {/* FINDER */}
         {activeTab === 'finder' && (
           <div>
+            <div style={{
+              background: 'rgba(245,158,11,0.08)',
+              border: '1px solid rgba(245,158,11,0.25)',
+              borderRadius: 10, padding: 14, marginBottom: 20,
+              fontSize: 13, color: '#fbbf24', lineHeight: 1.6,
+            }}>
+              ⚠️ <strong>Arbing Warning:</strong> Bookmakers monitor for arbing and will limit your account if detected.
+              To stay under the radar: never bet both sides at the same book · mix in some normal bets ·
+              don&apos;t always bet the maximum · withdraw winnings gradually ·
+              <strong> never do more than 2-3 arbs per day per bookmaker.</strong>
+            </div>
+
+            {(() => {
+              const total = todayTotalArbs();
+              const overLimit = todayBookEntries().filter(([, n]) => n > 2);
+              if (total === 0 && overLimit.length === 0) return null;
+              return (
+                <div style={{ background: s.card, border: `1px solid ${s.border}`, borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12.5, color: s.muted }}>
+                  Today: <strong style={{ color: '#fff' }}>{total}</strong> {total === 1 ? 'arb' : 'arbs'} placed
+                  {overLimit.length > 0 && overLimit.map(([book, n]) => (
+                    <div key={book} style={{ color: '#ef4444', marginTop: 6, fontSize: 12, fontWeight: 600 }}>
+                      ⚠️ You&apos;ve placed {n} arbs at <strong>{book}</strong> today — consider stopping to avoid detection
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             <div style={{ background: s.card, border: `1px solid ${s.border}`, borderRadius: 12, padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, color: s.muted }}>I want to bet a total of:</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -258,6 +326,19 @@ export default function ArbPage() {
 
                       {arb ? (
                         <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, padding: 14, marginBottom: 12 }}>
+                          {(() => {
+                            const risk = getArbRisk(game);
+                            return risk && (
+                              <div style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                background: `${risk.color}15`, border: `1px solid ${risk.color}40`,
+                                color: risk.color, marginBottom: 10,
+                              }}>
+                                🛡️ Risk: {risk.level} — {risk.msg}
+                              </div>
+                            );
+                          })()}
                           <div style={{ fontSize: 13, color: s.green, marginBottom: 4 }}>
                             ✅ Bet <strong>${arb.betA.toFixed(2)}</strong> on {game.teamA.name} at {game.teamA.book}
                           </div>
@@ -295,9 +376,24 @@ export default function ArbPage() {
         {/* TRACKED */}
         {activeTab === 'tracked' && (
           <div>
-            <div style={{ fontSize: 14, color: s.muted, marginBottom: 16 }}>
-              Arbs you've spotted and want to remember. Mark as Hit or Miss after the game.
+            <div style={{ fontSize: 14, color: s.muted, marginBottom: 8 }}>
+              Arbs you&apos;ve spotted and want to remember. Mark as Hit or Miss after the game.
             </div>
+            {(() => {
+              const total = todayTotalArbs();
+              const overLimit = todayBookEntries().filter(([, n]) => n > 2);
+              if (total === 0 && overLimit.length === 0) return null;
+              return (
+                <div style={{ background: s.card, border: `1px solid ${s.border}`, borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12.5, color: s.muted }}>
+                  Today: <strong style={{ color: '#fff' }}>{total}</strong> {total === 1 ? 'arb' : 'arbs'} placed
+                  {overLimit.map(([book, n]) => (
+                    <div key={book} style={{ color: '#ef4444', marginTop: 6, fontSize: 12, fontWeight: 600 }}>
+                      ⚠️ You&apos;ve placed {n} arbs at <strong>{book}</strong> today — consider stopping to avoid detection
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {tracked.length === 0 ? (
               <div style={{ background: s.card, border: `1px solid ${s.border}`, borderRadius: 12, padding: 32, textAlign: 'center', color: s.muted }}>
                 No tracked arbs yet. Go to Arb Finder and click "Track" on any opportunity.

@@ -2052,19 +2052,58 @@ function ParlayBar({
 // ───────────────────────── arb finder panel ─────────────────────────
 
 const ARB_TRACK_KEY = "nexyru_arbs";
+const ARB_COUNTS_KEY = "nexyru_arb_counts";
+
+type ArbRiskLevel = { level: string; color: string; msg: string };
+
+function getArbRisk(awayBook: string, homeBook: string, roi: number): ArbRiskLevel {
+  if (awayBook && homeBook && awayBook === homeBook) {
+    return { level: "EXTREME", color: "#ef4444", msg: "Both books are the same — DO NOT do this arb" };
+  }
+  if (roi > 5) return { level: "HIGH", color: "#f97316", msg: "High ROI arbs are more suspicious — bet small" };
+  if (roi > 2) return { level: "MEDIUM", color: "#fbbf24", msg: "Medium risk — keep stakes moderate" };
+  return { level: "LOW", color: "#22c55e", msg: "Low risk — normal sized arb, hard to detect" };
+}
 
 function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
   const [stake, setStake] = useState<string>("1000");
   const [tracked, setTracked] = useState<{ id: number }[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
+  // Per-day per-book arb counts — used to warn when bookmaker exposure gets
+  // high enough to risk an account limit.
+  const [arbCounts, setArbCounts] = useState<{ date: string; books: Record<string, number> }>({
+    date: "",
+    books: {},
+  });
 
-  // Hydrate tracked list from localStorage post-mount.
+  // Hydrate tracked list + counts from localStorage post-mount.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(ARB_TRACK_KEY);
       if (raw) setTracked(JSON.parse(raw));
+      const today = new Date().toDateString();
+      const c = JSON.parse(localStorage.getItem(ARB_COUNTS_KEY) || "{}");
+      if (c && c.date === today) setArbCounts(c);
+      else setArbCounts({ date: today, books: {} });
     } catch {}
   }, []);
+
+  const bumpBookCounts = (bookA: string, bookB: string) => {
+    const today = new Date().toDateString();
+    setArbCounts((prev) => {
+      const base = prev?.date === today ? prev : { date: today, books: {} };
+      const books = { ...base.books };
+      if (bookA) books[bookA] = (books[bookA] || 0) + 1;
+      if (bookB && bookB !== bookA) books[bookB] = (books[bookB] || 0) + 1;
+      const next = { date: today, books };
+      try { localStorage.setItem(ARB_COUNTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const todayBookEntries = Object.entries(arbCounts?.books || {}).sort((a, b) => b[1] - a[1]);
+  const todayTotalArbs = Object.values(arbCounts?.books || {}).reduce((s, n) => s + n, 0);
+  const overLimitBooks = todayBookEntries.filter(([, n]) => n > 2);
 
   const stakeNum = Math.max(0, parseFloat(stake) || 0);
 
@@ -2124,6 +2163,7 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
     const next = [entry, ...tracked];
     setTracked(next);
     try { localStorage.setItem(ARB_TRACK_KEY, JSON.stringify(next)); } catch {}
+    bumpBookCounts(row.away.book, row.home.book);
     setFlash(`✓ Tracked — ${row.g.away_team} vs ${row.g.home_team}`);
     setTimeout(() => setFlash(null), 2500);
   };
@@ -2160,6 +2200,29 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
       {flash && (
         <div style={{ background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, color: C.green, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
           {flash}
+        </div>
+      )}
+
+      <div style={{
+        background: "rgba(245,158,11,0.08)",
+        border: "1px solid rgba(245,158,11,0.25)",
+        borderRadius: 10, padding: 14, marginBottom: 16,
+        fontSize: 13, color: "#fbbf24", lineHeight: 1.6,
+      }}>
+        ⚠️ <strong>Arbing Warning:</strong> Bookmakers monitor for arbing and will limit your account if detected.
+        To stay under the radar: never bet both sides at the same book · mix in some normal bets ·
+        don&apos;t always bet the maximum · withdraw winnings gradually ·
+        <strong> never do more than 2-3 arbs per day per bookmaker.</strong>
+      </div>
+
+      {(todayTotalArbs > 0 || overLimitBooks.length > 0) && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 12.5, color: C.textMuted }}>
+          Today: <strong style={{ color: C.text }}>{todayTotalArbs}</strong> {todayTotalArbs === 1 ? "arb" : "arbs"} placed
+          {overLimitBooks.map(([book, n]) => (
+            <div key={book} style={{ color: C.red, marginTop: 6, fontSize: 12, fontWeight: 600 }}>
+              ⚠️ You&apos;ve placed {n} arbs at <strong>{book}</strong> today — consider stopping to avoid detection
+            </div>
+          ))}
         </div>
       )}
 
@@ -2217,6 +2280,19 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
 
                 {isArb ? (
                   <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, lineHeight: 1.6, color: C.text }}>
+                    {(() => {
+                      const risk = getArbRisk(row.away.book, row.home.book, row.roi ?? 0);
+                      return (
+                        <div style={{
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                          background: `${risk.color}15`, border: `1px solid ${risk.color}40`,
+                          color: risk.color, marginBottom: 10,
+                        }}>
+                          🛡️ Risk: {risk.level} — {risk.msg}
+                        </div>
+                      );
+                    })()}
                     <div>
                       Bet <strong style={{ color: C.green }}>${row.stakeAway!.toFixed(2)}</strong> on {row.g.away_team} at <strong>{row.away.book}</strong> ({fmtOdds(row.away.price)})
                     </div>
