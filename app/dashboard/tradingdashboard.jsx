@@ -7886,7 +7886,6 @@ function TradingDashboard({ session, onLogout }) {
   }, []);
   const [tab,           setTab]           = useState("dashboard");
   const [appMode,            setAppMode]            = useState('trading');
-  const [oddsSport,          setOddsSport]          = useState('all');
   const userPlan = useUserPlan();
   // isAdminEmail uses the lib/plan ADMIN_EMAILS list — admins always get elite,
   // computed synchronously from the session prop so the gate doesn't flash on
@@ -8574,31 +8573,6 @@ function TradingDashboard({ session, onLogout }) {
         <SidebarItem icon={SIDEBAR_ICONS.gear} label="Settings" href="/settings"/>
       </aside>}
 
-      {/* ── Odds Sidebar (admin only) ── */}
-      {appMode === 'odds' && isAdmin && (
-        <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
-          {[
-            {id:'all',    label:'All Games', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>},
-            {id:'nfl',    label:'NFL', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><ellipse cx="12" cy="12" rx="10" ry="6"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="6" x2="12" y2="18"/></svg>},
-            {id:'nba',    label:'NBA', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>},
-            {id:'mlb',    label:'MLB', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 8c0 2.5-1 4.5-2 6s-2 2.5-2 4"/><path d="M12 8c0 2.5 1 4.5 2 6s2 2.5 2 4"/></svg>},
-            {id:'nhl',    label:'NHL', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><ellipse cx="12" cy="17" rx="9" ry="3"/><path d="M6 17V7l6-4 6 4v10"/></svg>},
-            {id:'mma',    label:'MMA', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>},
-            {id:'soccer', label:'Soccer', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/></svg>},
-            {id:'tennis', label:'Tennis', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 2C8 6 8 18 12 22"/><path d="M12 2c4 4 4 16 0 20"/></svg>},
-            {id:'arbs',   label:'Arbs', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>},
-          ].map(s=>(
-            <div key={s.id} onClick={()=>setOddsSport(s.id)} title={s.label} style={{
-              width:56, height:48, display:'flex', alignItems:'center', justifyContent:'center',
-              cursor:'pointer', color: oddsSport===s.id ? '#22c55e' : '#6b7280',
-              background: oddsSport===s.id ? 'rgba(34,197,94,0.08)' : 'transparent',
-              borderLeft: oddsSport===s.id ? '2px solid #22c55e' : '2px solid transparent',
-              transition:'all 0.15s', marginBottom:4
-            }}>{s.icon}</div>
-          ))}
-        </aside>
-      )}
-
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
         {/* ── TOP MODE SWITCHER (admin only) ── */}
@@ -8759,7 +8733,7 @@ function TradingDashboard({ session, onLogout }) {
 
         {appMode === 'odds' && isAdmin && (
           <div style={{ flex:1, padding:24, overflowY:"auto" }}>
-            <OddsTab oddsSport={oddsSport}/>
+            <OddsTab />
           </div>
         )}
       </div>

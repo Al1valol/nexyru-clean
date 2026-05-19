@@ -1453,19 +1453,19 @@ interface OddsGame {
 
 // Countdown-based time pills. Each pill is an upper bound on time-until-start
 // (live games count for every bucket since they're more imminent than upcoming).
-type TimePillKey = "soon" | "3h" | "today" | "week";
+type TimePillKey = "soon" | "today" | "week" | "all";
 const TIME_PILLS: { label: string; key: TimePillKey }[] = [
-  { label: "Starting Soon", key: "soon" },
-  { label: "Next 3 Hours", key: "3h" },
+  { label: "Starting Soon <1h", key: "soon" },
   { label: "Today", key: "today" },
   { label: "This Week", key: "week" },
+  { label: "All", key: "all" },
 ];
 
 const TIME_PILL_MS: Record<TimePillKey, number> = {
-  soon: 30 * 60 * 1000,
-  "3h": 3 * 3600 * 1000,
+  soon: 60 * 60 * 1000,
   today: 24 * 3600 * 1000,
   week: 7 * 24 * 3600 * 1000,
+  all: Infinity,
 };
 
 // Value rating A/B/C/D based on the bookmaker's vig (overround - 1).
@@ -1513,6 +1513,31 @@ function bestPriceForTeam(game: OddsGame, team: string): BestOdds | null {
     }
   }
   return best;
+}
+
+function fanduelPriceForTeam(game: OddsGame, team: string): BestOdds | null {
+  const fd = (game.bookmakers ?? []).find((b) => (b.key ?? "").toLowerCase() === "fanduel");
+  if (!fd) return null;
+  const h2h = fd.markets?.find((m) => m.key === "h2h");
+  if (!h2h) return null;
+  const o = h2h.outcomes.find((o) => o.name === team);
+  if (!o) return null;
+  return { team: o.name, price: o.price, book: fd.title };
+}
+
+// Average implied probability across every book that prices this team. Used
+// to gauge whether a single book is offering above- or below-market value.
+function avgImpliedForTeam(game: OddsGame, team: string): number | null {
+  const probs: number[] = [];
+  for (const b of game.bookmakers ?? []) {
+    const h2h = b.markets?.find((m) => m.key === "h2h");
+    if (!h2h) continue;
+    const o = h2h.outcomes.find((o) => o.name === team);
+    if (!o) continue;
+    probs.push(americanToImpliedProb(o.price));
+  }
+  if (probs.length === 0) return null;
+  return probs.reduce((s, p) => s + p, 0) / probs.length;
 }
 
 function americanToImpliedProb(odds: number): number {
@@ -1574,25 +1599,49 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
+export function OddsTab() {
+  const [oddsTab, setOddsTab] = useState<"fanduel" | "polymarket">("fanduel");
+
+  return (
+    <section>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 }}>
+        {[
+          { id: "fanduel", label: "📊 FanDuel" },
+          { id: "polymarket", label: "🎲 Polymarket / Kalshi" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setOddsTab(t.id as "fanduel" | "polymarket")}
+            style={{
+              padding: "10px 20px",
+              border: "none",
+              background: "transparent",
+              color: oddsTab === t.id ? "#fff" : "#6b7280",
+              fontSize: 13,
+              fontWeight: oddsTab === t.id ? 700 : 500,
+              borderBottom: oddsTab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
+              cursor: "pointer",
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {oddsTab === "fanduel" ? <FanduelPanel /> : <PredictionMarketsPanel />}
+    </section>
+  );
+}
+
+function FanduelPanel() {
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
-  const [onlyArbs, setOnlyArbs] = useState(oddsSport === "arbs");
   const [timeWindow, setTimeWindow] = useState<TimePillKey>("today");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
-
-  // Parent sidebar still drives the "Arbs" shortcut. Sport-name selections
-  // from the sidebar narrow the games list silently (no in-tab pill for it).
-  const sportNeedle = useMemo(() => {
-    if (!oddsSport || oddsSport === "all" || oddsSport === "arbs") return null;
-    return oddsSport.toLowerCase();
-  }, [oddsSport]);
-  useEffect(() => {
-    if (oddsSport === "arbs") setOnlyArbs(true);
-  }, [oddsSport]);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -1622,230 +1671,376 @@ export function OddsTab({ oddsSport }: { oddsSport?: string } = {}) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Decorate every game with best lines + arb flag. Used for both the games
-  // list (filtered below) and the stats sidebar (unfiltered totals).
+  // FanDuel-only decorations. Games without FanDuel odds are dropped.
   const decorated = useMemo(() => {
     if (!games) return [];
-    return games.map((g) => {
-      const home = bestPriceForTeam(g, g.home_team);
-      const away = bestPriceForTeam(g, g.away_team);
-      const isArb = home !== null && away !== null && home.price > 0 && away.price > 0;
+    const rows = [];
+    for (const g of games) {
+      const home = fanduelPriceForTeam(g, g.home_team);
+      const away = fanduelPriceForTeam(g, g.away_team);
+      if (!home || !away) continue;
       const start = new Date(g.commence_time).getTime();
-      let arbProfit1000: number | null = null;
-      let arbReturnPct: number | null = null;
-      if (isArb && home && away) {
-        const overround = americanToImpliedProb(home.price) + americanToImpliedProb(away.price);
-        if (overround > 0 && overround < 1) {
-          arbReturnPct = ((1 - overround) / overround) * 100;
-          arbProfit1000 = (1000 * (1 - overround)) / overround;
-        }
-      }
-      return { g, home, away, isArb, start, arbProfit1000, arbReturnPct };
-    });
+      rows.push({ g, home, away, start });
+    }
+    return rows;
   }, [games]);
 
   const sorted = useMemo(() => {
-    const cutoff = nowMs + TIME_PILL_MS[timeWindow];
-    let filtered = decorated.slice();
-    filtered.sort((a, b) => {
-      if (a.isArb !== b.isArb) return a.isArb ? -1 : 1;
-      return a.start - b.start;
-    });
-    // Live games (start < nowMs) count for every bucket — they're already "now".
-    filtered = filtered.filter((d) => d.start <= cutoff);
-    if (sportNeedle) filtered = filtered.filter((d) => (d.g.sport_key ?? "").toLowerCase().includes(sportNeedle));
-    if (onlyArbs) filtered = filtered.filter((d) => d.isArb);
-    return filtered;
-  }, [decorated, timeWindow, nowMs, sportNeedle, onlyArbs]);
-
-  // Stats use unfiltered decorated set so the sidebar doesn't shift with pills.
-  const stats = useMemo(() => {
-    const startOfToday = new Date(nowMs); startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(nowMs); endOfToday.setHours(23, 59, 59, 999);
-    const arbs = decorated.filter((d) => d.isArb && d.arbProfit1000 !== null);
-    const todayArbs = arbs.filter((d) => d.start >= startOfToday.getTime() && d.start <= endOfToday.getTime());
-    const bestToday = todayArbs.length > 0
-      ? todayArbs.reduce((b, d) => (d.arbProfit1000! > b.arbProfit1000! ? d : b))
-      : null;
-    const avgReturnPct = arbs.length > 0
-      ? arbs.reduce((s, d) => s + (d.arbReturnPct ?? 0), 0) / arbs.length
-      : null;
-    return { totalArbs: arbs.length, todayArbs: todayArbs.length, bestToday, avgReturnPct };
-  }, [decorated, nowMs]);
+    const cutoff = TIME_PILL_MS[timeWindow] === Infinity ? Infinity : nowMs + TIME_PILL_MS[timeWindow];
+    return decorated
+      .filter((d) => d.start <= cutoff)
+      .sort((a, b) => a.start - b.start);
+  }, [decorated, timeWindow, nowMs]);
 
   const refresh = () => load();
 
-  const emptyMessage = (() => {
-    if (loading) return "Loading...";
-    if (onlyArbs) return "No arb opportunities in the selected window.";
-    if (sportNeedle) return `No ${sportNeedle.toUpperCase()} games in the selected window.`;
-    return "No games in the selected window.";
-  })();
-
   return (
-    <section>
+    <>
       <SectionTitle
-        title="Odds"
-        subtitle="Best line per team across US books · arbs sorted first"
+        title="FanDuel Odds"
+        subtitle="Live FanDuel lines · compared to market average for value"
         right={
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-            <button
-              onClick={refresh}
-              disabled={loading}
-              style={{
-                background: loading ? C.card2 : C.accent,
-                color: loading ? C.textDim : "#fff",
-                border: `1px solid ${loading ? C.border : C.accent}`,
-                borderRadius: 999,
-                padding: "4px 12px",
-                fontSize: 11.5,
-                fontWeight: 700,
-                cursor: loading ? "not-allowed" : "pointer",
-                letterSpacing: "0.02em",
-              }}
-            >
-              {loading ? "Refreshing…" : "Refresh"}
-            </button>
-          </span>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            style={{
+              background: loading ? C.card2 : C.accent,
+              color: loading ? C.textDim : "#fff",
+              border: `1px solid ${loading ? C.border : C.accent}`,
+              borderRadius: 999,
+              padding: "4px 12px",
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              letterSpacing: "0.02em",
+            }}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
         }
       />
 
-      {/* Arb calculator */}
       <ArbCalculator />
 
       {error && <ErrorBox>{error}</ErrorBox>}
 
-      <div className="odds-grid">
-        <div style={{ minWidth: 0 }}>
-          <Subhead>Games</Subhead>
+      <Subhead>Games</Subhead>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
-              {TIME_PILLS.map((f) => {
-                const active = timeWindow === f.key;
-                return (
-                  <button
-                    key={f.key}
-                    onClick={() => setTimeWindow(f.key)}
-                    style={{
-                      background: active ? C.accent : C.card2,
-                      color: active ? "#fff" : C.text,
-                      border: `1px solid ${active ? C.accent : C.border}`,
-                      borderRadius: 999,
-                      padding: "5px 12px",
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
+      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+        <strong style={{ color: C.text }}>{sorted.length}</strong> FanDuel {sorted.length === 1 ? "game" : "games"} available
+        {" · "}
+        <strong style={{ color: C.text }}>{requestsRemaining ?? "—"}</strong> API calls left
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        {TIME_PILLS.map((f) => {
+          const active = timeWindow === f.key;
+          return (
             <button
-              onClick={() => setOnlyArbs((v) => !v)}
+              key={f.key}
+              onClick={() => setTimeWindow(f.key)}
               style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: `1px solid ${onlyArbs ? C.green : C.border}`,
-                background: onlyArbs ? "rgba(34,197,94,0.1)" : "transparent",
-                color: onlyArbs ? C.green : C.textMuted,
+                background: active ? C.accent : C.card2,
+                color: active ? "#fff" : C.text,
+                border: `1px solid ${active ? C.accent : C.border}`,
+                borderRadius: 999,
+                padding: "5px 12px",
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {games === null ? (
+        <LoadingBlock />
+      ) : sorted.length === 0 ? (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
+          {loading ? "Loading FanDuel lines…" : "No FanDuel games in this window."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {sorted.map(({ g, home, away }) => (
+            <GameCard
+              key={g.id}
+              game={g}
+              home={home}
+              away={away}
+              isArb={false}
+              expanded={expandedId === g.id}
+              onToggle={() => setExpandedId((cur) => (cur === g.id ? null : g.id))}
+              nowMs={nowMs}
+              fanduelOnly
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ───────────────────────── prediction markets ─────────────────────────
+
+type PolyMarket = {
+  id?: string;
+  question?: string;
+  outcomes?: string; // JSON-stringified ["Yes","No"]
+  outcomePrices?: string; // JSON-stringified ["0.67","0.33"]
+  volume?: string | number;
+  category?: string;
+  slug?: string;
+};
+
+type KalshiMarket = {
+  ticker?: string;
+  title?: string;
+  category?: string;
+  yes_bid?: number;
+  yes_ask?: number;
+  no_bid?: number;
+  no_ask?: number;
+  volume?: number;
+};
+
+type NormalizedMarket = {
+  source: "polymarket" | "kalshi";
+  id: string;
+  question: string;
+  yesPct: number; // 0-100
+  noPct: number;  // 0-100
+  volume: number;
+  category: string;
+  url: string;
+};
+
+function safeParseJson<T>(s: unknown): T | null {
+  if (typeof s !== "string") return null;
+  try { return JSON.parse(s) as T; } catch { return null; }
+}
+
+function normalizePolymarket(m: PolyMarket): NormalizedMarket | null {
+  const prices = safeParseJson<string[]>(m.outcomePrices);
+  const outcomes = safeParseJson<string[]>(m.outcomes);
+  if (!prices || prices.length !== 2 || !outcomes || outcomes.length !== 2) return null;
+  const yes = parseFloat(prices[0]);
+  const no = parseFloat(prices[1]);
+  if (!Number.isFinite(yes) || !Number.isFinite(no)) return null;
+  const vol = typeof m.volume === "number" ? m.volume : parseFloat(String(m.volume ?? "0")) || 0;
+  return {
+    source: "polymarket",
+    id: m.id ?? m.slug ?? m.question ?? Math.random().toString(36).slice(2),
+    question: m.question ?? "Unknown market",
+    yesPct: yes * 100,
+    noPct: no * 100,
+    volume: vol,
+    category: m.category || "Other",
+    url: m.slug ? `https://polymarket.com/event/${m.slug}` : "https://polymarket.com",
+  };
+}
+
+function normalizeKalshi(m: KalshiMarket): NormalizedMarket | null {
+  // Use the midpoint of bid/ask in cents → fraction.
+  const yesMid = (Number(m.yes_bid ?? NaN) + Number(m.yes_ask ?? NaN)) / 2;
+  if (!Number.isFinite(yesMid)) return null;
+  const yesPct = Math.max(0, Math.min(100, yesMid));
+  return {
+    source: "kalshi",
+    id: m.ticker ?? Math.random().toString(36).slice(2),
+    question: m.title ?? "Unknown market",
+    yesPct,
+    noPct: 100 - yesPct,
+    volume: Number(m.volume ?? 0) || 0,
+    category: m.category || "Other",
+    url: m.ticker ? `https://kalshi.com/markets/${encodeURIComponent(m.ticker)}` : "https://kalshi.com",
+  };
+}
+
+const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance", "World"];
+
+function PredictionMarketsPanel() {
+  const [subTab, setSubTab] = useState<"polymarket" | "kalshi">("polymarket");
+  const [poly, setPoly] = useState<NormalizedMarket[] | null>(null);
+  const [kalshi, setKalshi] = useState<NormalizedMarket[] | null>(null);
+  const [kalshiError, setKalshiError] = useState<string | null>(null);
+  const [polyError, setPolyError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState("All");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      fetch("/api/polymarket").then((r) => r.json()).catch((e) => ({ error: String(e) })),
+      fetch("/api/kalshi").then((r) => r.json()).catch((e) => ({ error: String(e), markets: [] })),
+    ]).then(([p, k]) => {
+      if (cancelled) return;
+      if (p?.error) setPolyError(p.error);
+      else setPoly((p?.markets as PolyMarket[] ?? []).map(normalizePolymarket).filter((x): x is NormalizedMarket => x !== null).sort((a, b) => b.volume - a.volume));
+      if (k?.error) setKalshiError(k.error);
+      const kNorm = (k?.markets as KalshiMarket[] ?? []).map(normalizeKalshi).filter((x): x is NormalizedMarket => x !== null).sort((a, b) => b.volume - a.volume);
+      setKalshi(kNorm);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const showKalshiFallback = subTab === "kalshi" && (kalshiError !== null || (kalshi !== null && kalshi.length === 0));
+  const active: NormalizedMarket[] | null = subTab === "polymarket" || showKalshiFallback ? poly : kalshi;
+  const sourceLabel = subTab === "kalshi" && showKalshiFallback ? "Kalshi requires login — showing Polymarket data" : null;
+
+  const filtered = useMemo(() => {
+    if (!active) return [];
+    if (category === "All") return active;
+    const needle = category.toLowerCase();
+    return active.filter((m) => m.category.toLowerCase().includes(needle));
+  }, [active, category]);
+
+  return (
+    <>
+      <SectionTitle
+        title="Prediction Markets"
+        subtitle="Real-money markets pricing the probability of real-world events"
+      />
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {[
+          { id: "polymarket", label: "Polymarket" },
+          { id: "kalshi", label: "Kalshi" },
+        ].map((t) => {
+          const isActive = subTab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setSubTab(t.id as "polymarket" | "kalshi")}
+              style={{
+                padding: "5px 14px",
+                borderRadius: 999,
+                border: `1px solid ${isActive ? C.accent : C.border}`,
+                background: isActive ? C.accent : C.card2,
+                color: isActive ? "#fff" : C.text,
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
-                whiteSpace: "nowrap",
               }}
             >
-              {onlyArbs ? "✓ Arbs Only" : "Show Arbs Only"}
+              {t.label}
             </button>
-          </div>
-
-          {games === null ? (
-            <LoadingBlock />
-          ) : sorted.length === 0 ? (
-            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
-              {emptyMessage}
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {sorted.map(({ g, home, away, isArb }) => (
-                <GameCard
-                  key={g.id}
-                  game={g}
-                  home={home}
-                  away={away}
-                  isArb={isArb}
-                  expanded={expandedId === g.id}
-                  onToggle={() => setExpandedId((cur) => (cur === g.id ? null : g.id))}
-                  nowMs={nowMs}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <OddsStatsSidebar stats={stats} requestsRemaining={requestsRemaining}/>
+          );
+        })}
       </div>
-    </section>
+
+      {sourceLabel && (
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", color: C.amber, borderRadius: 8, padding: "8px 12px", fontSize: 12, marginBottom: 12 }}>
+          ⚠️ {sourceLabel}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {CATEGORY_PILLS.map((c) => {
+          const isActive = category === c;
+          return (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              style={{
+                padding: "5px 12px",
+                borderRadius: 999,
+                border: `1px solid ${isActive ? C.accent : C.border}`,
+                background: isActive ? C.accent : C.card2,
+                color: isActive ? "#fff" : C.text,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <LoadingBlock />
+      ) : (subTab === "polymarket" && polyError) ? (
+        <ErrorBox>Polymarket failed: {polyError}</ErrorBox>
+      ) : filtered.length === 0 ? (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
+          No markets in this category right now.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 360px), 1fr))", gap: 12 }}>
+          {filtered.map((m) => <PredictionMarketCard key={m.source + ":" + m.id} m={m}/>)}
+        </div>
+      )}
+    </>
   );
 }
 
-function OddsStatsSidebar({
-  stats,
-  requestsRemaining,
-}: {
-  stats: {
-    totalArbs: number;
-    todayArbs: number;
-    bestToday: { g: OddsGame; arbProfit1000: number | null } | null;
-    avgReturnPct: number | null;
+function PredictionMarketCard({ m }: { m: NormalizedMarket }) {
+  const yesColor = m.yesPct >= 50 ? C.green : C.red;
+  const noColor = m.noPct >= 50 ? C.green : C.red;
+  const fmtVol = (v: number) => {
+    if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+    if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+    if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
+    return `$${v.toFixed(0)}`;
   };
-  requestsRemaining: string | null;
-}) {
-  const teamsLabel = (g: OddsGame) => `${g.away_team} vs ${g.home_team}`;
-  const row = (label: string, value: React.ReactNode, sub?: string) => (
-    <div style={{ padding: "10px 0", borderBottom: `1px solid ${C.borderSoft}` }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-        {label}
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{m.question}</div>
+        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.18)", color: "#a5b4fc", whiteSpace: "nowrap", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          {m.category}
+        </span>
       </div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{sub}</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>YES</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: yesColor, marginTop: 2 }}>{m.yesPct.toFixed(0)}¢</div>
+        </div>
+        <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>NO</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: noColor, marginTop: 2 }}>{m.noPct.toFixed(0)}¢</div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 12, color: C.textDim }}>
+        The market thinks there&apos;s a <strong style={{ color: yesColor }}>{m.yesPct.toFixed(0)}%</strong> chance of YES
+      </div>
+
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10.5, color: C.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
+          <span>Total bet</span>
+          <span style={{ color: C.text }}>{fmtVol(m.volume)}</span>
+        </div>
+        <div style={{ height: 5, background: C.card2, borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${Math.min(100, Math.log10(Math.max(1, m.volume)) * 14)}%`, background: "linear-gradient(90deg, #6366f1, #a5b4fc)" }}/>
+        </div>
+      </div>
+
+      <a
+        href={m.url}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          padding: "9px 14px", borderRadius: 8,
+          background: C.green, color: "#fff",
+          fontSize: 13, fontWeight: 700, textDecoration: "none",
+        }}
+      >
+        Bet YES on {m.source === "polymarket" ? "Polymarket" : "Kalshi"} →
+      </a>
     </div>
   );
-  return (
-    <aside style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 16px 16px", alignSelf: "start", position: "sticky", top: 18 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", padding: "12px 0 6px" }}>
-        Arb Stats
-      </div>
-      {row(
-        "Today's best arb",
-        stats.bestToday && stats.bestToday.arbProfit1000 !== null
-          ? <span style={{ color: C.green }}>+${stats.bestToday.arbProfit1000.toFixed(2)}</span>
-          : <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 600 }}>—</span>,
-        stats.bestToday ? `on ${teamsLabel(stats.bestToday.g)}` : "no arbs today yet · on $1,000 stake",
-      )}
-      {row(
-        "Arbs found today",
-        `${stats.todayArbs} ${stats.todayArbs === 1 ? "game" : "games"}`,
-      )}
-      {row(
-        "Avg guaranteed return",
-        stats.avgReturnPct !== null
-          ? <span style={{ color: C.green }}>{stats.avgReturnPct.toFixed(2)}%</span>
-          : <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 600 }}>—</span>,
-        "across all open arbs",
-      )}
-      {row(
-        "API calls left",
-        requestsRemaining ?? <span style={{ color: C.textMuted, fontSize: 14, fontWeight: 600 }}>—</span>,
-      )}
-      <div style={{ marginTop: 12, fontSize: 11, color: C.textMuted, lineHeight: 1.5 }}>
-        Low risk = small guaranteed profit. High risk = bigger swings but the same payout either way.
-      </div>
-    </aside>
-  );
 }
+
+// ───────────────────────── arb math helpers ─────────────────────────
 
 // American odds → multiplier on stake to compute payout (stake + profit).
 function americanPayoutMultiplier(odds: number): number {
@@ -2008,6 +2203,7 @@ function GameCard({
   expanded,
   onToggle,
   nowMs,
+  fanduelOnly,
 }: {
   game: OddsGame;
   home: BestOdds | null;
@@ -2016,6 +2212,7 @@ function GameCard({
   expanded: boolean;
   onToggle: () => void;
   nowMs: number;
+  fanduelOnly?: boolean;
 }) {
   const arb = isArb && home && away ? calcArbStakes(home.price, away.price, 1000) : null;
   const start = new Date(game.commence_time);
@@ -2030,6 +2227,20 @@ function GameCard({
   const pAway = away ? americanToImpliedProb(away.price) : null;
   const pHome = home ? americanToImpliedProb(home.price) : null;
   const fmtOdds = (n: number) => `${n > 0 ? "+" : ""}${n}`;
+
+  // FanDuel value vs market average. Lower implied prob at FanDuel = better
+  // value (longer payout) than the average book on this team.
+  const avgAway = fanduelOnly ? avgImpliedForTeam(game, game.away_team) : null;
+  const avgHome = fanduelOnly ? avgImpliedForTeam(game, game.home_team) : null;
+  const valueChip = (fdProb: number | null, avg: number | null) => {
+    if (fdProb === null || avg === null) return null;
+    const diff = avg - fdProb;
+    if (diff > 0.005) return { label: "✓ Good value", color: C.green };
+    if (diff < -0.005) return { label: "↓ Below average", color: C.textMuted };
+    return { label: "Market average", color: C.textDim };
+  };
+  const awayValue = valueChip(pAway, avgAway);
+  const homeValue = valueChip(pHome, avgHome);
 
   // All bookmaker rows for expanded view
   const bookRows = useMemo(() => {
@@ -2149,21 +2360,33 @@ function GameCard({
         <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5, lineHeight: 1.5, color: C.textDim }}>
           {away && home && (
             <div>
-              📊 <span style={{ color: C.textMuted }}>Best odds:</span>{" "}
+              📊 <span style={{ color: C.textMuted }}>{fanduelOnly ? "FanDuel:" : "Best odds:"}</span>{" "}
               <strong style={{ color: C.green }}>{game.away_team} {fmtOdds(away.price)}</strong>
-              <span style={{ color: C.textMuted }}> ({away.book})</span>
+              {!fanduelOnly && <span style={{ color: C.textMuted }}> ({away.book})</span>}
               {" vs "}
               <strong style={{ color: C.green }}>{game.home_team} {fmtOdds(home.price)}</strong>
-              <span style={{ color: C.textMuted }}> ({home.book})</span>
+              {!fanduelOnly && <span style={{ color: C.textMuted }}> ({home.book})</span>}
             </div>
           )}
           {pAway !== null && pHome !== null && (
             <div>
               💰 <span style={{ color: C.textMuted }}>Implied chance:</span>{" "}
-              {game.away_team} has <strong style={{ color: C.text }}>{(pAway * 100).toFixed(0)}%</strong> chance · {game.home_team} has <strong style={{ color: C.text }}>{(pHome * 100).toFixed(0)}%</strong> chance
+              {game.away_team} has <strong style={{ color: C.text }}>{(pAway * 100).toFixed(0)}%</strong> likely · {game.home_team} has <strong style={{ color: C.text }}>{(pHome * 100).toFixed(0)}%</strong> likely
             </div>
           )}
-          {edgePct !== null && rating && (
+          {fanduelOnly && (awayValue || homeValue) && (
+            <div>
+              ⚡ <span style={{ color: C.textMuted }}>Value vs market:</span>{" "}
+              {awayValue && (
+                <span style={{ color: awayValue.color, fontWeight: 600 }}>{game.away_team}: {awayValue.label}</span>
+              )}
+              {awayValue && homeValue && <span style={{ color: C.textMuted }}> · </span>}
+              {homeValue && (
+                <span style={{ color: homeValue.color, fontWeight: 600 }}>{game.home_team}: {homeValue.label}</span>
+              )}
+            </div>
+          )}
+          {!fanduelOnly && edgePct !== null && rating && (
             <div>
               ⚡ <span style={{ color: C.textMuted }}>Bookmaker edge:</span>{" "}
               <strong style={{ color: edgePct <= 0 ? C.green : edgePct <= 4 ? C.text : C.amber }}>{edgePct.toFixed(2)}%</strong>{" "}
