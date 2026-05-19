@@ -1935,9 +1935,42 @@ type SimpleMarket = {
   noPct: number;
   volume: number;
   liquidity: number;
+  score: number;
   category: string;
   slug: string;
 };
+
+// 0-100 score: 40pts volume, 20pts liquidity, 40pts edge (closer to 50/50 = more interesting).
+function scoreMarket(yesFrac: number, volume: number, liquidity: number): number {
+  let score = 0;
+  if (volume > 1_000_000) score += 40;
+  else if (volume > 500_000) score += 35;
+  else if (volume > 100_000) score += 28;
+  else if (volume > 50_000) score += 20;
+  else if (volume > 10_000) score += 12;
+  else score += 5;
+
+  if (liquidity > 100_000) score += 20;
+  else if (liquidity > 50_000) score += 15;
+  else if (liquidity > 10_000) score += 10;
+  else score += 3;
+
+  const distFrom50 = Math.abs(yesFrac - 0.5);
+  if (distFrom50 < 0.05) score += 40;
+  else if (distFrom50 < 0.10) score += 35;
+  else if (distFrom50 < 0.20) score += 25;
+  else if (distFrom50 < 0.30) score += 15;
+  else score += 5;
+
+  return Math.min(100, score);
+}
+
+function scoreBadgeForMarket(score: number): { label: string; color: string; bg: string } {
+  if (score >= 80) return { label: "🔥 Hot", color: "#22c55e", bg: "rgba(34,197,94,0.15)" };
+  if (score >= 60) return { label: "⭐ Good", color: "#60a5fa", bg: "rgba(96,165,250,0.15)" };
+  if (score >= 40) return { label: "👀 Watch", color: "#facc15", bg: "rgba(250,204,21,0.15)" };
+  return { label: "❄️ Low", color: "#6b7280", bg: "rgba(107,114,128,0.15)" };
+}
 
 function safeParseJson<T>(s: unknown): T | null {
   if (typeof s !== "string") return null;
@@ -1972,13 +2005,16 @@ function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
   const toNum = (v: unknown) =>
     typeof v === "number" ? v : parseFloat(String(v ?? "0")) || 0;
   const question = m.question ?? "Unknown market";
+  const volume = toNum(m.volume);
+  const liquidity = toNum(m.liquidity);
   return {
     id: m.id ?? m.slug ?? question ?? Math.random().toString(36).slice(2),
     question,
     yesPct: yes * 100,
     noPct: no * 100,
-    volume: toNum(m.volume),
-    liquidity: toNum(m.liquidity),
+    volume,
+    liquidity,
+    score: scoreMarket(yes, volume, liquidity),
     category: m.category && m.category.trim() !== "" ? m.category : detectCategory(question),
     slug: m.slug ?? "",
   };
@@ -1986,16 +2022,28 @@ function normalizePolymarket(m: PolyMarket): SimpleMarket | null {
 
 const CATEGORY_PILLS = ["All", "Sports", "Politics", "Crypto", "Finance", "World"];
 
-type PriceMovement = "up" | "down" | "stable";
+type PolySortMode = "score" | "volume" | "even" | "trending";
 
-const POLY_PRICES_KEY = "nexyru_poly_prices";
+const POLY_SORT_OPTIONS: { id: PolySortMode; label: string }[] = [
+  { id: "score", label: "🏆 Best Score" },
+  { id: "volume", label: "💰 Most Volume" },
+  { id: "even", label: "⚖️ Most Even" },
+  { id: "trending", label: "🔥 Trending" },
+];
+
+function fmtMoney(v: number): string {
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}k`;
+  return `$${v.toFixed(0)}`;
+}
 
 function PolymarketPanel() {
   const [markets, setMarkets] = useState<SimpleMarket[] | null>(null);
-  const [movements, setMovements] = useState<Record<string, PriceMovement>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("All");
+  const [sortMode, setSortMode] = useState<PolySortMode>("score");
 
   useEffect(() => {
     let cancelled = false;
@@ -2011,31 +2059,7 @@ function PolymarketPanel() {
         }
         const arr = (body?.markets as PolyMarket[] ?? [])
           .map(normalizePolymarket)
-          .filter((x): x is SimpleMarket => x !== null)
-          .sort((a, b) => b.volume - a.volume);
-
-        // Compare each market's YES % to the value we cached on the previous
-        // page load. Anything more than 0.5 pp counts as a real move.
-        let cached: Record<string, number> = {};
-        try {
-          const raw = typeof window !== "undefined" ? localStorage.getItem(POLY_PRICES_KEY) : null;
-          if (raw) cached = JSON.parse(raw);
-        } catch {}
-        const nextMovements: Record<string, PriceMovement> = {};
-        const nextCache: Record<string, number> = {};
-        for (const m of arr) {
-          const prev = cached[m.id];
-          if (typeof prev === "number") {
-            const diff = m.yesPct - prev;
-            nextMovements[m.id] = diff > 0.5 ? "up" : diff < -0.5 ? "down" : "stable";
-          }
-          nextCache[m.id] = m.yesPct;
-        }
-        try {
-          if (typeof window !== "undefined") localStorage.setItem(POLY_PRICES_KEY, JSON.stringify(nextCache));
-        } catch {}
-
-        setMovements(nextMovements);
+          .filter((x): x is SimpleMarket => x !== null);
         setMarkets(arr);
       })
       .catch((e) => {
@@ -2049,19 +2073,50 @@ function PolymarketPanel() {
     return () => { cancelled = true; };
   }, []);
 
-  const filtered = useMemo(() => {
+  const ranked = useMemo(() => {
     if (!markets) return [];
-    if (category === "All") return markets;
-    const needle = category.toLowerCase();
-    return markets.filter((m) => m.category.toLowerCase().includes(needle));
-  }, [markets, category]);
+    const byCat = category === "All"
+      ? markets
+      : markets.filter((m) => m.category.toLowerCase().includes(category.toLowerCase()));
+    const sorted = byCat.slice();
+    if (sortMode === "score") sorted.sort((a, b) => b.score - a.score);
+    else if (sortMode === "even") sorted.sort((a, b) => Math.abs(a.yesPct - 50) - Math.abs(b.yesPct - 50));
+    else sorted.sort((a, b) => b.volume - a.volume); // volume + trending
+    return sorted;
+  }, [markets, category, sortMode]);
+
+  const sortLabel = POLY_SORT_OPTIONS.find((o) => o.id === sortMode)?.label.replace(/^[^ ]+\s/, "") ?? "";
 
   return (
     <>
       <SectionTitle
         title="Polymarket"
-        subtitle="Real-money markets pricing real-world events · price moves and value signals computed automatically"
+        subtitle="Ranked 1–100 by volume, liquidity, and how close to a coin flip"
       />
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+        {POLY_SORT_OPTIONS.map((o) => {
+          const active = sortMode === o.id;
+          return (
+            <button
+              key={o.id}
+              onClick={() => setSortMode(o.id)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 999,
+                border: `1px solid ${active ? C.accent : C.border}`,
+                background: active ? C.accent : C.card2,
+                color: active ? "#fff" : C.text,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {CATEGORY_PILLS.map((c) => {
@@ -2091,90 +2146,85 @@ function PolymarketPanel() {
         <LoadingBlock />
       ) : error ? (
         <ErrorBox>Polymarket failed: {error}</ErrorBox>
-      ) : filtered.length === 0 ? (
+      ) : ranked.length === 0 ? (
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
           No markets in this category right now.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 380px), 1fr))", gap: 12 }}>
-          {filtered.map((m) => <SimplePolymarketCard key={m.id} m={m} movement={movements[m.id]}/>)}
-        </div>
+        <>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 10 }}>
+            <strong style={{ color: C.text }}>{ranked.length}</strong> {ranked.length === 1 ? "market" : "markets"} · sorted by {sortLabel}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {ranked.map((m, i) => <PolymarketRow key={m.id} m={m} rank={i + 1}/>)}
+          </div>
+        </>
       )}
     </>
   );
 }
 
-function SimplePolymarketCard({ m, movement }: { m: SimpleMarket; movement?: PriceMovement }) {
-  const fmtVol = (v: number) => {
-    if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-    if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
-    if (v >= 1e3) return `$${(v / 1e3).toFixed(1)}K`;
-    return `$${v.toFixed(0)}`;
-  };
+function PolymarketRow({ m, rank }: { m: SimpleMarket; rank: number }) {
+  const badge = scoreBadgeForMarket(m.score);
+  const url = m.slug ? `https://polymarket.com/event/${m.slug}` : "https://polymarket.com";
 
-  // Value-by-confidence signal: where the YES price sits tells us how the
-  // market is pricing the outcome (longshot, coin flip, or near-certain).
-  const valueSignal = (() => {
-    if (m.yesPct > 80) return { text: ">80% YES — Market is very confident. Low upside on YES bet.", color: C.textMuted };
-    if (m.yesPct >= 40 && m.yesPct <= 60) return { text: "40-60% YES — Uncertain outcome. Both sides have value.", color: C.green };
-    if (m.yesPct < 20) return { text: "<20% YES — Longshot. High risk, high reward on YES.", color: C.amber };
-    return null;
+  // Plain-English read on where the YES price sits. 5 spec'd buckets, with
+  // 40-45 and 55-60 folded into the nearest adjacent bucket so nothing slips
+  // through a gap.
+  const yesSignal = (() => {
+    if (m.yesPct > 75) return { text: "Market is very confident YES happens. High risk to bet NO.", color: C.textMuted };
+    if (m.yesPct >= 60) return { text: "Market leans YES. Decent odds on NO if you disagree.", color: C.text };
+    if (m.yesPct >= 45) return { text: "⚡ Coin flip! Most uncertain market — good for betting either side.", color: C.green };
+    if (m.yesPct >= 25) return { text: "Market leans NO. Decent odds on YES if you disagree.", color: C.text };
+    return { text: "Market is very confident NO. High risk to bet YES.", color: C.textMuted };
   })();
 
-  // Volume signal: rough liquidity tier.
   const volumeSignal = (() => {
-    if (m.volume > 1_000_000) return { text: "🔥 High interest — liquid market", color: C.green };
+    if (m.volume > 1_000_000) return { text: "🔥 Very active market — liquid and reliable", color: C.green };
     if (m.volume > 100_000) return { text: "Active market", color: C.text };
-    if (m.volume < 10_000) return { text: "⚠️ Low volume — be careful", color: C.amber };
+    if (m.volume < 10_000) return { text: "⚠️ Low volume — odds may not be accurate", color: C.amber };
     return null;
-  })();
-
-  const movementChip = (() => {
-    if (!movement) return null;
-    if (movement === "up") return { text: "↑ YES rising", color: C.green };
-    if (movement === "down") return { text: "↓ YES falling", color: C.red };
-    return { text: "→ Stable", color: C.textMuted };
   })();
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: C.text, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{m.question}</div>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 700, minWidth: 30 }}>#{rank}</span>
+        <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 6, background: badge.bg, color: badge.color, letterSpacing: "0.04em" }}>
+          {badge.label} {m.score}/100
+        </span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: C.text, flex: 1, minWidth: 0 }}>{m.question}</span>
         <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.18)", color: "#a5b4fc", whiteSpace: "nowrap", letterSpacing: "0.04em", textTransform: "uppercase" }}>
           {m.category}
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-          <div style={{ fontSize: 10, color: C.green, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>YES</div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: C.green, marginTop: 2 }}>{m.yesPct.toFixed(0)}%</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <span style={{ fontSize: 12.5, color: C.green, fontWeight: 700, minWidth: 60 }}>YES {m.yesPct.toFixed(0)}%</span>
+        <div style={{ flex: 1, height: 10, borderRadius: 5, overflow: "hidden", display: "flex", background: C.card2, border: `1px solid ${C.border}` }}>
+          <div style={{ width: `${m.yesPct}%`, background: C.green }}/>
+          <div style={{ width: `${m.noPct}%`, background: C.red }}/>
         </div>
-        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-          <div style={{ fontSize: 10, color: C.red, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>NO</div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: C.red, marginTop: 2 }}>{m.noPct.toFixed(0)}%</div>
-        </div>
+        <span style={{ fontSize: 12.5, color: C.red, fontWeight: 700, minWidth: 60, textAlign: "right" }}>NO {m.noPct.toFixed(0)}%</span>
       </div>
 
-      <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
-        <div>The crowd thinks there&apos;s a <strong style={{ color: C.green }}>{m.yesPct.toFixed(0)}%</strong> chance of YES.</div>
-        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-          {fmtVol(m.volume)} total bet
-          {m.liquidity > 0 && <> · {fmtVol(m.liquidity)} liquidity</>}
-        </div>
+      <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 6 }}>
+        Volume: <strong style={{ color: C.text }}>{fmtMoney(m.volume)}</strong>
+        {m.liquidity > 0 && <> · Liquidity: <strong style={{ color: C.text }}>{fmtMoney(m.liquidity)}</strong></>}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, lineHeight: 1.5 }}>
-        {movementChip && (
-          <div style={{ color: movementChip.color, fontWeight: 700 }}>{movementChip.text}</div>
-        )}
-        {valueSignal && (
-          <div style={{ color: valueSignal.color }}>{valueSignal.text}</div>
-        )}
-        {volumeSignal && (
-          <div style={{ color: volumeSignal.color }}>{volumeSignal.text}</div>
-        )}
+      <div style={{ fontSize: 12, color: yesSignal.color, marginBottom: volumeSignal ? 4 : 8, lineHeight: 1.45 }}>
+        Signal: {yesSignal.text}
       </div>
+      {volumeSignal && (
+        <div style={{ fontSize: 11.5, color: volumeSignal.color, marginBottom: 8 }}>
+          {volumeSignal.text}
+        </div>
+      )}
+
+      <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#a5b4fc", textDecoration: "none", fontWeight: 600 }}>
+        View on Polymarket →
+      </a>
     </div>
   );
 }
