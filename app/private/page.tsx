@@ -1548,86 +1548,18 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-type OddsTabKey = "fanduel" | "polymarket";
+type OddsTabKey = "best" | "polymarket" | "arb" | "value";
 
 export function OddsTab() {
-  const [oddsTab, setOddsTab] = useState<OddsTabKey>("fanduel");
-
-  return (
-    <section>
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        <a
-          href="/arb"
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "10px 18px", borderRadius: 10,
-            background: "rgba(34,197,94,0.12)", border: `1px solid ${C.green}`,
-            color: C.green, fontSize: 13, fontWeight: 800, textDecoration: "none",
-          }}
-        >
-          💰 Open Arb Finder ↗
-        </a>
-        <a
-          href="/bets"
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "10px 18px", borderRadius: 10,
-            background: "rgba(99,102,241,0.12)", border: `1px solid ${C.accent}`,
-            color: "#a5b4fc", fontSize: 13, fontWeight: 800, textDecoration: "none",
-          }}
-        >
-          ⭐ Open Value Bets ↗
-        </a>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0, flexWrap: "wrap" }}>
-        {[
-          { id: "fanduel", label: "📊 Best Odds" },
-          { id: "polymarket", label: "🎲 Polymarket" },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setOddsTab(t.id as OddsTabKey)}
-            style={{
-              padding: "10px 20px",
-              border: "none",
-              background: "transparent",
-              color: oddsTab === t.id ? "#fff" : "#6b7280",
-              fontSize: 13,
-              fontWeight: oddsTab === t.id ? 700 : 500,
-              borderBottom: oddsTab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
-              cursor: "pointer",
-              marginBottom: -1,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {oddsTab === "fanduel" && <FanduelPanel />}
-      {oddsTab === "polymarket" && <PolymarketPanel />}
-    </section>
-  );
-}
-
-function FanduelPanel() {
+  const [oddsTab, setOddsTab] = useState<OddsTabKey>("best");
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
-  const [timeWindow, setTimeWindow] = useState<TimePillKey>("today");
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
+  // Single fetch shared across Best Odds / Arb Finder / Value Bets — Polymarket
+  // is a separate API.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1650,6 +1582,60 @@ function FanduelPanel() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const oddsTabs: { id: OddsTabKey; label: string }[] = [
+    { id: "best", label: "📊 Best Odds" },
+    { id: "polymarket", label: "🎲 Polymarket" },
+    { id: "arb", label: "💰 Arb Finder" },
+    { id: "value", label: "⭐ Value Bets" },
+  ];
+
+  return (
+    <section>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0, flexWrap: "wrap" }}>
+        {oddsTabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setOddsTab(t.id)}
+            style={{
+              padding: "10px 20px",
+              border: "none",
+              background: "transparent",
+              color: oddsTab === t.id ? "#fff" : "#6b7280",
+              fontSize: 13,
+              fontWeight: oddsTab === t.id ? 700 : 500,
+              borderBottom: oddsTab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
+              cursor: "pointer",
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {oddsTab === "best" && <FanduelPanel games={games} loading={loading} error={error} requestsRemaining={requestsRemaining} nowMs={nowMs} onRefresh={load}/>}
+      {oddsTab === "polymarket" && <PolymarketPanel />}
+      {oddsTab === "arb" && <ArbFinderPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
+      {oddsTab === "value" && <ValueBetsPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
+    </section>
+  );
+}
+
+type SharedOddsProps = {
+  games: OddsGame[] | null;
+  loading: boolean;
+  error: string | null;
+  nowMs: number;
+  onRefresh: () => void;
+};
+
+function FanduelPanel({ games, loading, error, requestsRemaining, nowMs, onRefresh }: SharedOddsProps & { requestsRemaining: string | null }) {
+  const [timeWindow, setTimeWindow] = useState<TimePillKey>("today");
 
   // Best odds across every bookmaker for each team. Skip games where either
   // side has no price at all (rare — typically markets that haven't opened).
@@ -1680,7 +1666,7 @@ function FanduelPanel() {
         subtitle="Best line per team across all US books · bookmaker shown next to each odd"
         right={
           <button
-            onClick={load}
+            onClick={onRefresh}
             disabled={loading}
             style={{
               background: loading ? C.card2 : C.accent,
@@ -1825,6 +1811,458 @@ function SimpleOddsColumn({
         {plain} · <span style={{ color: C.textMuted }}>{(prob * 100).toFixed(0)}% implied chance</span>
       </div>
     </div>
+  );
+}
+
+// ───────────────────────── arb finder panel ─────────────────────────
+
+const ARB_TRACK_KEY = "nexyru_arbs";
+
+function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
+  const [stake, setStake] = useState<string>("1000");
+  const [tracked, setTracked] = useState<{ id: number }[]>([]);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  // Hydrate tracked list from localStorage post-mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ARB_TRACK_KEY);
+      if (raw) setTracked(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const stakeNum = Math.max(0, parseFloat(stake) || 0);
+
+  // Decorate each game with best price per side + arb math at current stake.
+  const decorated = useMemo(() => {
+    if (!games) return [];
+    const rows: Array<{
+      g: OddsGame;
+      home: BestOdds;
+      away: BestOdds;
+      overround: number;
+      isArb: boolean;
+      stakeAway?: number; stakeHome?: number; profit?: number; roi?: number;
+    }> = [];
+    for (const g of games) {
+      const home = bestPriceForTeam(g, g.home_team);
+      const away = bestPriceForTeam(g, g.away_team);
+      if (!home || !away) continue;
+      const pAway = americanToImpliedProb(away.price);
+      const pHome = americanToImpliedProb(home.price);
+      const overround = pAway + pHome;
+      const isArb = overround < 1 && stakeNum > 0;
+      let stakeAway, stakeHome, profit, roi;
+      if (isArb) {
+        stakeAway = (stakeNum * pAway) / overround;
+        stakeHome = (stakeNum * pHome) / overround;
+        profit = (stakeNum * (1 - overround)) / overround;
+        roi = (profit / stakeNum) * 100;
+      }
+      rows.push({ g, home, away, overround, isArb, stakeAway, stakeHome, profit, roi });
+    }
+    // Arbs first (highest profit), then non-arbs by start time.
+    rows.sort((a, b) => {
+      if (a.isArb !== b.isArb) return a.isArb ? -1 : 1;
+      if (a.isArb && b.isArb) return (b.profit ?? 0) - (a.profit ?? 0);
+      return new Date(a.g.commence_time).getTime() - new Date(b.g.commence_time).getTime();
+    });
+    return rows;
+  }, [games, stakeNum]);
+
+  const arbCount = decorated.filter((d) => d.isArb).length;
+
+  const trackArb = (row: typeof decorated[number]) => {
+    if (!row.isArb) return;
+    const entry = {
+      id: Date.now(),
+      sport: row.g.sport_key?.replace(/_/g, " ").toUpperCase(),
+      gameTime: row.g.commence_time,
+      teamA: row.g.away_team, oddsA: row.away.price, bookA: row.away.book,
+      teamB: row.g.home_team, oddsB: row.home.price, bookB: row.home.book,
+      stake: stakeNum,
+      betA: row.stakeAway, betB: row.stakeHome,
+      profit: row.profit, roi: row.roi,
+      status: "pending",
+      trackedAt: new Date().toISOString(),
+    };
+    const next = [entry, ...tracked];
+    setTracked(next);
+    try { localStorage.setItem(ARB_TRACK_KEY, JSON.stringify(next)); } catch {}
+    setFlash(`✓ Tracked — ${row.g.away_team} vs ${row.g.home_team}`);
+    setTimeout(() => setFlash(null), 2500);
+  };
+
+  const fmtOdds = (n: number) => `${n > 0 ? "+" : ""}${n}`;
+
+  return (
+    <>
+      <SectionTitle
+        title="Arb Finder"
+        subtitle="Cross-book guaranteed-profit opportunities · uses Best Odds data"
+        right={
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            style={{
+              background: loading ? C.card2 : C.accent,
+              color: loading ? C.textDim : "#fff",
+              border: `1px solid ${loading ? C.border : C.accent}`,
+              borderRadius: 999,
+              padding: "4px 12px",
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              letterSpacing: "0.02em",
+            }}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        }
+      />
+
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {flash && (
+        <div style={{ background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, color: C.green, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+          {flash}
+        </div>
+      )}
+
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: C.textDim }}>Calculate for: $</span>
+        <input
+          type="number"
+          value={stake}
+          onChange={(e) => setStake(e.target.value)}
+          style={{ width: 110, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 15, fontWeight: 700, outline: "none" }}
+        />
+        <span style={{ fontSize: 13, color: C.textDim }}>total stake — split across both sides</span>
+      </div>
+
+      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+        <strong style={{ color: arbCount > 0 ? C.green : C.text }}>{arbCount}</strong> {arbCount === 1 ? "arb" : "arbs"} found · {decorated.length} total games
+      </div>
+
+      {games === null ? (
+        <LoadingBlock />
+      ) : decorated.length === 0 ? (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
+          {loading ? "Loading games…" : "No games available."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {decorated.map((row) => {
+            const cd = countdownLabel(row.g.commence_time, nowMs);
+            const isArb = row.isArb;
+            return (
+              <div
+                key={row.g.id}
+                style={{
+                  background: C.card,
+                  border: `1px solid ${isArb ? C.green : C.border}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  opacity: isArb ? 1 : 0.6,
+                  boxShadow: isArb ? "0 0 20px rgba(34,197,94,0.08)" : "none",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap", fontSize: 12 }}>
+                  <span style={{ fontSize: 16 }}>{sportIcon(row.g.sport_key)}</span>
+                  <span style={{ fontWeight: 700, color: C.text }}>{row.g.away_team} <span style={{ color: C.textMuted, fontWeight: 500 }}>vs</span> {row.g.home_team}</span>
+                  <span style={{ color: C.textMuted }}>·</span>
+                  <span style={{ color: C.textDim }}>
+                    {cd.live ? <span style={{ color: C.red, fontWeight: 700 }}>🔴 LIVE</span> : (cd.label || "")}
+                  </span>
+                  {isArb && (
+                    <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 6, background: "rgba(34,197,94,0.15)", color: C.green, letterSpacing: "0.04em" }}>
+                      ✓ GUARANTEED PROFIT
+                    </span>
+                  )}
+                </div>
+
+                {isArb ? (
+                  <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, lineHeight: 1.6, color: C.text }}>
+                    <div>
+                      Bet <strong style={{ color: C.green }}>${row.stakeAway!.toFixed(2)}</strong> on {row.g.away_team} at <strong>{row.away.book}</strong> ({fmtOdds(row.away.price)})
+                    </div>
+                    <div>
+                      Bet <strong style={{ color: C.green }}>${row.stakeHome!.toFixed(2)}</strong> on {row.g.home_team} at <strong>{row.home.book}</strong> ({fmtOdds(row.home.price)})
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 15, fontWeight: 800, color: C.green }}>
+                      = +${row.profit!.toFixed(2)} guaranteed profit · {row.roi!.toFixed(2)}% ROI
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: C.textMuted }}>
+                    No arb — book edge {((row.overround - 1) * 100).toFixed(2)}% · Best: <strong style={{ color: C.text }}>{row.away.book} {fmtOdds(row.away.price)}</strong> / <strong style={{ color: C.text }}>{row.home.book} {fmtOdds(row.home.price)}</strong>
+                  </div>
+                )}
+
+                {isArb && (
+                  <button
+                    onClick={() => trackArb(row)}
+                    style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.green}`, background: "transparent", color: C.green, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    + Track Arb
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tracked.length > 0 && (
+        <div style={{ marginTop: 24, fontSize: 11, color: C.textMuted }}>
+          {tracked.length} arb{tracked.length === 1 ? "" : "s"} tracked · stored locally on this device
+        </div>
+      )}
+    </>
+  );
+}
+
+// ───────────────────────── value bets panel ─────────────────────────
+
+const VALUE_BETS_KEY = "nexyru_value_bets";
+
+type ValueTeam = { name: string; bestPrice: number; bestBook: string; avgImplied: number; edge: number };
+
+function valueLabel(edge: number): { label: string; color: string } {
+  if (edge > 0.05) return { label: "⭐⭐⭐ Great Value", color: "#22c55e" };
+  if (edge > 0.02) return { label: "⭐⭐ Good Value", color: "#86efac" };
+  if (edge > 0) return { label: "⭐ Slight Value", color: "#fbbf24" };
+  return { label: "No Edge", color: C.textMuted };
+}
+
+function ValueBetsPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
+  const [myBets, setMyBets] = useState<{ id: number }[]>([]);
+  const [addModal, setAddModal] = useState<{ game: OddsGame; team: ValueTeam } | null>(null);
+  const [stakeInput, setStakeInput] = useState("100");
+  const [notesInput, setNotesInput] = useState("");
+  const [flash, setFlash] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(VALUE_BETS_KEY);
+      if (raw) setMyBets(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  // Decorate each game with per-team best price + market-average implied prob.
+  // Edge = avgImplied - impliedAtBestBook (positive = best book paying more).
+  const decorated = useMemo(() => {
+    if (!games) return [];
+    const rows: Array<{ g: OddsGame; teams: ValueTeam[]; maxEdge: number }> = [];
+    for (const g of games) {
+      const teamData: ValueTeam[] = [];
+      for (const teamName of [g.away_team, g.home_team]) {
+        const probs: number[] = [];
+        let bestPrice = -Infinity;
+        let bestBook = "";
+        for (const b of g.bookmakers ?? []) {
+          const h2h = b.markets?.find((m) => m.key === "h2h");
+          if (!h2h) continue;
+          const o = h2h.outcomes.find((o) => o.name === teamName);
+          if (!o) continue;
+          probs.push(americanToImpliedProb(o.price));
+          if (o.price > bestPrice) { bestPrice = o.price; bestBook = b.title; }
+        }
+        if (probs.length === 0) continue;
+        const avgImplied = probs.reduce((s, p) => s + p, 0) / probs.length;
+        const edge = avgImplied - americanToImpliedProb(bestPrice);
+        teamData.push({ name: teamName, bestPrice, bestBook, avgImplied, edge });
+      }
+      if (teamData.length < 2) continue;
+      const maxEdge = Math.max(...teamData.map((t) => t.edge));
+      rows.push({ g, teams: teamData, maxEdge });
+    }
+    rows.sort((a, b) => b.maxEdge - a.maxEdge);
+    return rows;
+  }, [games]);
+
+  const openAdd = (game: OddsGame, team: ValueTeam) => {
+    setAddModal({ game, team });
+    setStakeInput("100");
+    setNotesInput("");
+  };
+
+  const confirmBet = () => {
+    if (!addModal) return;
+    const stakeNum = Math.max(0, parseFloat(stakeInput) || 0);
+    if (stakeNum <= 0) return;
+    const odds = addModal.team.bestPrice;
+    const potWin = odds > 0 ? (stakeNum * odds) / 100 : (stakeNum * 100) / Math.abs(odds);
+    const entry = {
+      id: Date.now(),
+      sport: addModal.game.sport_key?.replace(/_/g, " ").toUpperCase(),
+      game: `${addModal.game.away_team} vs ${addModal.game.home_team}`,
+      pick: addModal.team.name,
+      odds, book: addModal.team.bestBook,
+      stake: stakeNum, potWin,
+      edge: addModal.team.edge,
+      status: "pending",
+      placedAt: new Date().toISOString(),
+      gameTime: addModal.game.commence_time,
+      notes: notesInput,
+    };
+    const next = [entry, ...myBets];
+    setMyBets(next);
+    try { localStorage.setItem(VALUE_BETS_KEY, JSON.stringify(next)); } catch {}
+    setAddModal(null);
+    setFlash(`✓ Added bet — ${addModal.team.name} (${odds > 0 ? "+" : ""}${odds})`);
+    setTimeout(() => setFlash(null), 2500);
+  };
+
+  const fmtOdds = (n: number) => `${n > 0 ? "+" : ""}${n}`;
+
+  return (
+    <>
+      <SectionTitle
+        title="Value Bets"
+        subtitle="Per-team value rating vs market average · uses Best Odds data"
+        right={
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            style={{
+              background: loading ? C.card2 : C.accent,
+              color: loading ? C.textDim : "#fff",
+              border: `1px solid ${loading ? C.border : C.accent}`,
+              borderRadius: 999,
+              padding: "4px 12px",
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              letterSpacing: "0.02em",
+            }}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        }
+      />
+
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {flash && (
+        <div style={{ background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, color: C.green, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+          {flash}
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+        <strong style={{ color: C.text }}>{decorated.length}</strong> games analyzed · sorted by best value
+        {myBets.length > 0 && <> · {myBets.length} bet{myBets.length === 1 ? "" : "s"} tracked</>}
+      </div>
+
+      {games === null ? (
+        <LoadingBlock />
+      ) : decorated.length === 0 ? (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
+          {loading ? "Loading games…" : "No games available."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {decorated.map((row) => {
+            const cd = countdownLabel(row.g.commence_time, nowMs);
+            return (
+              <div key={row.g.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap", fontSize: 12 }}>
+                  <span style={{ fontSize: 16 }}>{sportIcon(row.g.sport_key)}</span>
+                  <span style={{ fontWeight: 700, color: C.text }}>{row.g.away_team} <span style={{ color: C.textMuted, fontWeight: 500 }}>vs</span> {row.g.home_team}</span>
+                  <span style={{ color: C.textMuted }}>·</span>
+                  <span style={{ color: C.textDim }}>{cd.live ? <span style={{ color: C.red, fontWeight: 700 }}>🔴 LIVE</span> : cd.label}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  {row.teams.map((team) => {
+                    const v = valueLabel(team.edge);
+                    return (
+                      <div
+                        key={team.name}
+                        style={{
+                          background: C.card2,
+                          borderRadius: 10,
+                          padding: 12,
+                          border: `1px solid ${team.edge > 0.02 ? "rgba(34,197,94,0.3)" : C.border}`,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>{team.name}</div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 22, fontWeight: 900, color: team.bestPrice > 0 ? C.green : C.text }}>{fmtOdds(team.bestPrice)}</span>
+                          <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>at {team.bestBook}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 6 }}>
+                          {(americanToImpliedProb(team.bestPrice) * 100).toFixed(0)}% implied · market avg {(team.avgImplied * 100).toFixed(0)}%
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: v.color, marginBottom: 8 }}>
+                          {v.label}
+                          {team.edge > 0 && <span style={{ color: C.textMuted }}> (+{(team.edge * 100).toFixed(1)}% edge)</span>}
+                        </div>
+                        <button
+                          onClick={() => openAdd(row.g, team)}
+                          style={{
+                            width: "100%",
+                            padding: "7px 10px",
+                            borderRadius: 6,
+                            border: team.edge > 0.02 ? "none" : `1px solid ${C.border}`,
+                            background: team.edge > 0.02 ? C.accent : C.card,
+                            color: team.edge > 0.02 ? "#fff" : C.text,
+                            fontSize: 12, fontWeight: 700, cursor: "pointer",
+                          }}
+                        >
+                          + Add Bet
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {addModal && (
+        <>
+          <div onClick={() => setAddModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000 }} />
+          <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 1001, background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 22, width: 380, color: C.text }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Add Bet</div>
+            <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: 14 }}>
+              {addModal.game.away_team} vs {addModal.game.home_team}
+            </div>
+            <div style={{ background: C.card2, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>{addModal.team.name}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: addModal.team.bestPrice > 0 ? C.green : C.text }}>{fmtOdds(addModal.team.bestPrice)}</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>at {addModal.team.bestBook}</div>
+            </div>
+            <label style={{ fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4, fontWeight: 600 }}>Stake ($)</label>
+            <input
+              type="number"
+              value={stakeInput}
+              onChange={(e) => setStakeInput(e.target.value)}
+              style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 6 }}
+            />
+            {(() => {
+              const s = parseFloat(stakeInput) || 0;
+              if (s <= 0) return null;
+              const odds = addModal.team.bestPrice;
+              const profit = odds > 0 ? (s * odds) / 100 : (s * 100) / Math.abs(odds);
+              return <div style={{ fontSize: 12.5, color: C.green, marginBottom: 12 }}>If wins: +${profit.toFixed(2)} profit</div>;
+            })()}
+            <label style={{ fontSize: 11, color: C.textMuted, display: "block", marginBottom: 4, fontWeight: 600 }}>Notes (optional)</label>
+            <textarea
+              value={notesInput}
+              onChange={(e) => setNotesInput(e.target.value)}
+              placeholder="Why this bet?"
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 12.5, outline: "none", boxSizing: "border-box", resize: "vertical", minHeight: 50, marginBottom: 14, fontFamily: "inherit" }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setAddModal(null)} style={{ flex: 1, padding: "9px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.textDim, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+              <button onClick={confirmBet} style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Place Bet →</button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
