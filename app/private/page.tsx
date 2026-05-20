@@ -1525,7 +1525,7 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-type OddsTabKey = "best" | "polymarket" | "arb" | "value" | "playerstats";
+type OddsTabKey = "best" | "polymarket" | "arb" | "value" | "playerstats" | "esports";
 
 type ParlayLeg = {
   gameId: string;
@@ -1612,6 +1612,7 @@ export function OddsTab() {
     { id: "arb", label: "💰 Arb Finder" },
     { id: "value", label: "⭐ Value Bets" },
     { id: "playerstats", label: "🏀 Player Stats" },
+    { id: "esports", label: "🎮 Esports" },
   ];
 
   return (
@@ -1650,6 +1651,7 @@ export function OddsTab() {
       {oddsTab === "arb" && <ArbFinderPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
       {oddsTab === "value" && <ValueBetsPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
       {oddsTab === "playerstats" && <PlayerStatsPanel />}
+      {oddsTab === "esports" && <EsportsPanel />}
 
       {oddsTab === "best" && parlayLegs.length >= 2 && (
         <ParlayBar
@@ -2946,6 +2948,421 @@ function PlayerStatsPanel() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ───────────────────────── esports ─────────────────────────
+
+type EsportGame = "csgo" | "lol" | "valorant" | "dota2";
+
+const ESPORT_GAMES: { id: EsportGame; label: string; color: string }[] = [
+  { id: "csgo", label: "🔫 CS2", color: "#f59e0b" },
+  { id: "lol", label: "⚔️ LoL", color: "#6366f1" },
+  { id: "valorant", label: "🎯 Valorant", color: "#ef4444" },
+  { id: "dota2", label: "🌿 Dota 2", color: "#22c55e" },
+];
+
+const ESPORT_MANUAL_KEY = "nexyru_esports_manual";
+
+type ManualMatch = {
+  id: number;
+  game: EsportGame;
+  team1: string;
+  team2: string;
+  tournament: string;
+  startsAt: string;
+  bo: number;
+  pick: string;
+};
+
+type EsportMatch = {
+  id: number;
+  begin_at: string | null;
+  status: string;
+  bo: number;
+  tournament: string;
+  league: string;
+  opponents: { id?: number; name: string; image?: string; acronym?: string }[];
+};
+
+type EsportTeam = {
+  id: number;
+  name: string;
+  acronym?: string;
+  location?: string;
+  image?: string;
+};
+
+function EsportsPanel() {
+  const [game, setGame] = useState<EsportGame>("csgo");
+  const [matches, setMatches] = useState<EsportMatch[] | null>(null);
+  const [teams, setTeams] = useState<EsportTeam[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [manual, setManual] = useState<ManualMatch[]>([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [draft, setDraft] = useState<Omit<ManualMatch, "id" | "game">>({
+    team1: "",
+    team2: "",
+    tournament: "",
+    startsAt: "",
+    bo: 3,
+    pick: "",
+  });
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ESPORT_MANUAL_KEY);
+      if (raw) setManual(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const load = useCallback(async (g: EsportGame) => {
+    setLoading(true);
+    setError(null);
+    setMatches(null);
+    setTeams(null);
+    try {
+      const [matchRes, teamRes] = await Promise.all([
+        fetch(`/api/esports?game=${g}&type=matches`),
+        fetch(`/api/esports?game=${g}&type=teams`),
+      ]);
+      const matchJson = await matchRes.json();
+      const teamJson = await teamRes.json();
+      if (!matchRes.ok) {
+        setError(matchJson.error || `Failed (${matchRes.status})`);
+        setMatches([]);
+        setTeams([]);
+        return;
+      }
+      setMatches(matchJson.data || []);
+      setTeams(teamRes.ok ? teamJson.data || [] : []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load");
+      setMatches([]);
+      setTeams([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(game); }, [game, load]);
+
+  const persistManual = (next: ManualMatch[]) => {
+    setManual(next);
+    try { localStorage.setItem(ESPORT_MANUAL_KEY, JSON.stringify(next)); } catch {}
+  };
+
+  const addManualMatch = () => {
+    if (!draft.team1.trim() || !draft.team2.trim()) return;
+    const entry: ManualMatch = {
+      id: Date.now(),
+      game,
+      team1: draft.team1.trim(),
+      team2: draft.team2.trim(),
+      tournament: draft.tournament.trim(),
+      startsAt: draft.startsAt,
+      bo: draft.bo,
+      pick: draft.pick.trim(),
+    };
+    persistManual([entry, ...manual]);
+    setDraft({ team1: "", team2: "", tournament: "", startsAt: "", bo: 3, pick: "" });
+    setShowAdd(false);
+  };
+
+  const removeManualMatch = (id: number) => {
+    persistManual(manual.filter((m) => m.id !== id));
+  };
+
+  const gameManual = manual.filter((m) => m.game === game);
+  const gameMeta = ESPORT_GAMES.find((g) => g.id === game)!;
+
+  const gameBtn = (id: EsportGame, label: string, color: string) => (
+    <button
+      key={id}
+      onClick={() => setGame(id)}
+      style={{
+        padding: "8px 16px",
+        borderRadius: 8,
+        border: `1px solid ${game === id ? color : C.border}`,
+        background: game === id ? `${color}26` : "transparent",
+        color: game === id ? "#fff" : C.textDim,
+        fontSize: 13,
+        fontWeight: game === id ? 700 : 500,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {ESPORT_GAMES.map((g) => gameBtn(g.id, g.label, g.color))}
+      </div>
+
+      {error && (
+        <div
+          style={{
+            background: "rgba(245,158,11,0.08)",
+            border: "1px solid rgba(245,158,11,0.35)",
+            borderRadius: 10,
+            padding: 14,
+            marginBottom: 16,
+            color: "#fbbf24",
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          <strong>🎮 No live esports data.</strong> {error}
+          <div style={{ color: C.textMuted, marginTop: 6, fontSize: 12 }}>
+            Sign up free at <a href="https://pandascore.co" target="_blank" rel="noreferrer" style={{ color: C.accent }}>pandascore.co</a>,
+            add <code>PANDASCORE_TOKEN</code> to Vercel env, and this section will populate automatically.
+            You can still track matches manually below.
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: 24, color: C.textDim, fontSize: 13 }}>
+          Loading {gameMeta.label} matches…
+        </div>
+      )}
+
+      {!loading && !error && matches && matches.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Upcoming matches
+          </div>
+          <div style={{ display: "grid", gap: 10, marginBottom: 24 }}>
+            {matches.map((m) => {
+              const cd = m.begin_at ? countdownLabel(m.begin_at, nowMs) : { label: "", live: false };
+              const opp1 = m.opponents[0];
+              const opp2 = m.opponents[1];
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 12,
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 12, color: C.textMuted, flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ color: gameMeta.color, fontWeight: 700 }}>{gameMeta.label}</span>
+                    <span>{m.tournament || m.league || "—"}</span>
+                    <span style={{ color: cd.live ? C.red : C.textDim, fontWeight: cd.live ? 700 : 500 }}>
+                      {cd.live ? "🔴 LIVE" : cd.label || (m.begin_at ? new Date(m.begin_at).toLocaleString() : "—")}
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
+                    <div style={{ textAlign: "right", fontSize: 14, fontWeight: 700 }}>
+                      {opp1?.name ?? "TBD"}
+                      {opp1?.acronym && <span style={{ color: C.textMuted, fontWeight: 500, marginLeft: 6 }}>({opp1.acronym})</span>}
+                    </div>
+                    <div style={{ color: C.textMuted, fontSize: 12, fontWeight: 700 }}>vs</div>
+                    <div style={{ textAlign: "left", fontSize: 14, fontWeight: 700 }}>
+                      {opp2?.name ?? "TBD"}
+                      {opp2?.acronym && <span style={{ color: C.textMuted, fontWeight: 500, marginLeft: 6 }}>({opp2.acronym})</span>}
+                    </div>
+                  </div>
+                  {m.bo > 0 && (
+                    <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted, textAlign: "center" }}>
+                      Best of {m.bo}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {!loading && !error && matches && matches.length === 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13, marginBottom: 24 }}>
+          No upcoming {gameMeta.label} matches in PandaScore right now.
+        </div>
+      )}
+
+      {!loading && !error && teams && teams.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Top teams
+          </div>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+            {teams.map((t, i) => (
+              <div
+                key={t.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "40px 1fr auto auto",
+                  gap: 12,
+                  alignItems: "center",
+                  padding: "10px 14px",
+                  borderBottom: i < teams.length - 1 ? `1px solid ${C.border}` : "none",
+                  fontSize: 13,
+                }}
+              >
+                <span style={{ color: C.textMuted, fontWeight: 700 }}>#{i + 1}</span>
+                <span style={{ fontWeight: 600 }}>{t.name}</span>
+                <span style={{ fontSize: 11, color: C.textMuted }}>{t.acronym || ""}</span>
+                <span style={{ fontSize: 11, color: C.textMuted }}>{t.location || ""}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* manual tracker — always available */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Your tracked matches ({gameManual.length})
+        </div>
+        <button
+          onClick={() => setShowAdd((s) => !s)}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 8,
+            border: `1px solid ${C.border}`,
+            background: showAdd ? C.card2 : C.accent,
+            color: showAdd ? C.textDim : "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {showAdd ? "Cancel" : "+ Add match"}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 14, display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <input
+              placeholder="Team 1"
+              value={draft.team1}
+              onChange={(e) => setDraft({ ...draft, team1: e.target.value })}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, outline: "none" }}
+            />
+            <input
+              placeholder="Team 2"
+              value={draft.team2}
+              onChange={(e) => setDraft({ ...draft, team2: e.target.value })}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, outline: "none" }}
+            />
+          </div>
+          <input
+            placeholder="Tournament (e.g. ESL Pro League S20)"
+            value={draft.tournament}
+            onChange={(e) => setDraft({ ...draft, tournament: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, outline: "none" }}
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 10 }}>
+            <input
+              type="datetime-local"
+              value={draft.startsAt}
+              onChange={(e) => setDraft({ ...draft, startsAt: e.target.value })}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, outline: "none" }}
+            />
+            <select
+              value={draft.bo}
+              onChange={(e) => setDraft({ ...draft, bo: parseInt(e.target.value, 10) })}
+              style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, outline: "none" }}
+            >
+              <option value={1}>BO1</option>
+              <option value={3}>BO3</option>
+              <option value={5}>BO5</option>
+            </select>
+          </div>
+          <input
+            placeholder="Your pick (optional)"
+            value={draft.pick}
+            onChange={(e) => setDraft({ ...draft, pick: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 13, outline: "none" }}
+          />
+          <button
+            onClick={addManualMatch}
+            disabled={!draft.team1.trim() || !draft.team2.trim()}
+            style={{
+              padding: "9px",
+              borderRadius: 8,
+              border: "none",
+              background: !draft.team1.trim() || !draft.team2.trim() ? C.card2 : C.green,
+              color: !draft.team1.trim() || !draft.team2.trim() ? C.textDim : "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: !draft.team1.trim() || !draft.team2.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            Save match
+          </button>
+        </div>
+      )}
+
+      {gameManual.length === 0 ? (
+        <div style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 12.5, textAlign: "center" }}>
+          No matches tracked for {gameMeta.label}. Add one above to log a match you're watching.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {gameManual.map((m) => {
+            const cd = m.startsAt ? countdownLabel(m.startsAt, nowMs) : { label: "", live: false };
+            return (
+              <div
+                key={m.id}
+                style={{
+                  background: C.card,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 10,
+                  padding: 12,
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>
+                    {m.team1} <span style={{ color: C.textMuted, fontWeight: 500 }}>vs</span> {m.team2}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
+                    {m.tournament || "—"} · BO{m.bo}
+                    {cd.label && <> · <span style={{ color: cd.live ? C.red : C.textDim, fontWeight: cd.live ? 700 : 500 }}>{cd.live ? "🔴 LIVE" : cd.label}</span></>}
+                  </div>
+                  {m.pick && (
+                    <div style={{ fontSize: 11, color: C.accent, marginTop: 3, fontWeight: 600 }}>
+                      Pick: {m.pick}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => removeManualMatch(m.id)}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 6,
+                    border: `1px solid ${C.border}`,
+                    background: "transparent",
+                    color: C.textMuted,
+                    fontSize: 11,
+                    cursor: "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
