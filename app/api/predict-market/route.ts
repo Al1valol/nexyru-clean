@@ -43,7 +43,7 @@ Current market price: YES at ${(yesPrice * 100).toFixed(0)}%`;
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 200,
+      max_tokens: 150,
       system: [
         { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
       ],

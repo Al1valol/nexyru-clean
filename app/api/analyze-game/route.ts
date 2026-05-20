@@ -9,25 +9,29 @@ export const maxDuration = 60;
 const client = new Anthropic();
 
 // Constant system prompt — mark cacheable so back-to-back analyses reuse it.
-const SYSTEM = `You are a sharp sports betting analyst. Given a single game (two teams, current odds, time), search the web for the most recent injury reports, last-5-game form, head-to-head history, and any newsworthy context (travel, weather for outdoor games, suspensions). Use 2-3 targeted searches max.
+// No live data: web search removed to cut cost. Reasoning is grounded in
+// training knowledge with an explicit disclaimer for users to verify
+// time-sensitive details (injuries) on real sources.
+const SYSTEM = `You are a sharp sports betting analyst with knowledge up to early 2026. Analyze the given game using your training knowledge — no live web data.
 
-Then reply with ONLY a JSON object — no prose, no markdown — matching this shape exactly:
+Reply with ONLY a JSON object — no prose, no markdown — matching this shape exactly:
 
 {
   "pick": "<team name verbatim from input> | SKIP",
   "confidence": "high | medium | low",
-  "reasoning": "2-3 sentences explaining the pick based on what you actually found",
-  "injuries": "key injury info found or \"none\"",
-  "form": "<team1>: W-L last 5, <team2>: W-L last 5",
+  "reasoning": "2-3 sentences based on team quality and historical performance",
+  "injuries": "any known injury concerns or \"none\"",
+  "form": "general team quality assessment",
   "edge": "what gives this pick its edge",
   "warning": "any red flag or null",
   "avoid": true | false
 }
 
 Rules:
-- If your research can't justify a confident lean, set pick to "SKIP" and avoid to true.
+- If you can't justify a confident lean from your knowledge, set pick to "SKIP" and avoid to true.
 - Use the team names exactly as given (don't reformat).
-- Don't fabricate stats — if a search returned nothing useful, say so in reasoning.`;
+- Don't invent specific recent stats or injuries you can't verify; speak in general team-quality terms.
+- For current injuries always recommend the user verify on ESPN or the team's official site.`;
 
 type GameAnalysis = {
   pick: string;
@@ -111,17 +115,9 @@ Current odds: ${team1} at ${odds1}, ${team2} at ${odds2}`;
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1500,
+      max_tokens: 300,
       system: [
         { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
-      ],
-      tools: [
-        {
-          type: "web_search_20260209",
-          name: "web_search",
-          // Bound the cost: at most 3 searches per request.
-          max_uses: 3,
-        },
       ],
       messages: [{ role: "user", content: userContent }],
     });

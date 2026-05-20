@@ -61,7 +61,7 @@ Format: ${format}`;
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 300,
+      max_tokens: 150,
       system: [
         { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
       ],
