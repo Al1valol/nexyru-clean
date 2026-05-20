@@ -21,6 +21,7 @@ import MobileDashboard from "./MobileDashboard";
 import CryptoDashboard from "./CryptoDashboard";
 import { getUserPlan, getLimit, trackDailyUsage, incrementUsage, useUserPlan, isAdminEmail, applyAdminPlanForEmail } from "@/lib/plan";
 import { CryptoTab, OddsTab } from "@/app/private/page";
+import PlayerStatsDashboard from './PlayerStatsDashboard'
 
 // ── Supabase browser client — single instance so storage stays consistent
 // across the App. Using the SDK avoids guessing the localStorage key name,
