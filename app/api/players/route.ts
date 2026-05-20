@@ -82,27 +82,58 @@ export async function GET(req: NextRequest) {
     }
 
     if (sport === "mlb") {
-      const upstream = new URL("https://statsapi.mlb.com/api/v1/stats");
-      upstream.searchParams.set("stats", "season");
-      upstream.searchParams.set("season", MLB_SEASON);
-      upstream.searchParams.set("group", "hitting");
-      upstream.searchParams.set("gameType", "R");
-      upstream.searchParams.set("limit", "50");
-      upstream.searchParams.set("offset", "0");
-      upstream.searchParams.set("sortStat", "battingAverage");
-      upstream.searchParams.set("order", "desc");
-      const r = await fetch(upstream.toString(), {
-        headers: { Accept: "application/json" },
-        next: { revalidate: 300 },
-      });
-      const data = await r.json().catch(() => null);
-      if (!r.ok) {
-        return NextResponse.json(
-          { error: `MLB stats error (${r.status})`, detail: data },
-          { status: r.status },
-        );
+      // Fetch HR leaders AND AVG leaders in parallel, dedupe, return a flat
+      // {players:[…]} shape. Catches both power hitters (high HR / low AVG)
+      // and contact hitters (high AVG / low HR) that a single sort would miss.
+      const mkUrl = (sortStat: string) => {
+        const u = new URL("https://statsapi.mlb.com/api/v1/stats");
+        u.searchParams.set("stats", "season");
+        u.searchParams.set("season", MLB_SEASON);
+        u.searchParams.set("group", "hitting");
+        u.searchParams.set("gameType", "R");
+        u.searchParams.set("limit", "25");
+        u.searchParams.set("sortStat", sortStat);
+        u.searchParams.set("order", "desc");
+        u.searchParams.set("playerPool", "ALL");
+        return u.toString();
+      };
+      try {
+        const [hrRes, avgRes] = await Promise.all([
+          fetch(mkUrl("homeRuns"), { headers: { Accept: "application/json" }, next: { revalidate: 300 } }),
+          fetch(mkUrl("battingAverage"), { headers: { Accept: "application/json" }, next: { revalidate: 300 } }),
+        ]);
+        const hrData = await hrRes.json().catch(() => null);
+        const avgData = await avgRes.json().catch(() => null);
+        const hrSplits = hrData?.stats?.[0]?.splits ?? [];
+        const avgSplits = avgData?.stats?.[0]?.splits ?? [];
+        const seen = new Set<number>();
+        const combined = [...hrSplits, ...avgSplits].filter((s: any) => {
+          const id = s.player?.id;
+          if (!id || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+        const players = combined
+          .map((s: any) => ({
+            id: s.player?.id,
+            name: s.player?.fullName,
+            team: s.team?.name || s.team?.abbreviation || "N/A",
+            avg: s.stat?.avg || ".000",
+            homeRuns: s.stat?.homeRuns ?? 0,
+            rbi: s.stat?.rbi ?? 0,
+            hits: s.stat?.hits ?? 0,
+            ops: s.stat?.ops || ".000",
+            atBats: s.stat?.atBats ?? 0,
+            runs: s.stat?.runs ?? 0,
+            strikeouts: s.stat?.strikeOuts ?? 0,
+            gamesPlayed: s.stat?.gamesPlayed ?? 0,
+          }))
+          .filter((p: any) => p.name)
+          .sort((a: any, b: any) => (b.homeRuns ?? 0) - (a.homeRuns ?? 0));
+        return NextResponse.json({ players });
+      } catch (e: any) {
+        return NextResponse.json({ error: e?.message ?? "Fetch failed", players: [] });
       }
-      return NextResponse.json(data);
     }
 
     return NextResponse.json({ data: [] });

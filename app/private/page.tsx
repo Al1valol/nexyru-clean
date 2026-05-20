@@ -4210,22 +4210,24 @@ function PlayerStatsPanel() {
         setStatsPlayers([]);
         return;
       }
-      // /v1/stats returns { stats: [{ splits: [{ player, team, stat: {...} }] }] }.
-      // Each split is one player with the full stat object inline.
-      const splits: any[] = j?.stats?.[0]?.splits ?? [];
-      // Rank = position in the AVG-sorted leaderboard (api already returns
-      // them sorted desc). One-based for display.
-      const arr = splits.map((sp, i) => ({
-        id: sp.player?.id ?? Math.random(),
-        name: sp.player?.fullName ?? "Unknown",
-        team: sp.team?.name ?? "",
+      // New shape from route: { players: [{ id, name, team, avg, homeRuns,
+      // rbi, hits, ops, atBats, runs, strikeouts, gamesPlayed }] }, already
+      // sorted by HR desc and deduped across HR+AVG fetches.
+      const raw: any[] = Array.isArray(j.players) ? j.players : [];
+      const arr = raw.map((p, i) => ({
+        id: p.id ?? Math.random(),
+        name: p.name ?? "Unknown",
+        team: p.team ?? "",
         rank: i + 1,
         stats: {
-          avg: sp.stat?.avg ?? "—",
-          homeRuns: sp.stat?.homeRuns ?? "—",
-          rbi: sp.stat?.rbi ?? "—",
-          ops: sp.stat?.ops ?? "—",
-          hits: sp.stat?.hits ?? "—",
+          avg: p.avg ?? "—",
+          homeRuns: p.homeRuns ?? 0,
+          rbi: p.rbi ?? 0,
+          ops: p.ops ?? "—",
+          hits: p.hits ?? 0,
+          runs: p.runs ?? 0,
+          atBats: p.atBats ?? 0,
+          gp: p.gamesPlayed ?? 0,
         },
       }));
       setStatsPlayers(arr);
@@ -4292,7 +4294,7 @@ function PlayerStatsPanel() {
     const bet = {
       id: Date.now(),
       type: "prop",
-      sport: "NBA",
+      sport: statsSport === "mlb" ? "MLB" : "NBA",
       game: `${player.name} — ${propLabel}`,
       pick: `${side} ${line} ${propLabel}`,
       odds,
@@ -4848,14 +4850,36 @@ function PlayerStatsPanel() {
 
       {!statsLoading && statsSport === "mlb" && statsPlayers.length > 0 && (
         <div style={{ display: "grid", gap: 12 }}>
-          {statsPlayers.map((p) => (
+          {statsPlayers.map((p) => {
+            const isSelected = selectedPlayer?.id === p.id;
+            // Per-game rates for MLB props. Prefer gp; fall back to atBats/3.3
+            // approximation when gp is missing (matches user's spec formula).
+            const gp = Number(p.stats.gp) || 0;
+            const ab = Number(p.stats.atBats) || 0;
+            const hits = Number(p.stats.hits) || 0;
+            const hr = Number(p.stats.homeRuns) || 0;
+            const rbi = Number(p.stats.rbi) || 0;
+            const hitsPerGame = gp > 0 ? hits / gp : (ab > 0 ? (hits / ab) * 3.3 : 0);
+            const hrPerGame = gp > 0 ? hr / gp : 0;
+            const rbiPerGame = gp > 0 ? rbi / gp : 0;
+            return (
             <div
               key={p.id}
               style={{
                 background: C.card,
-                border: `1px solid ${C.border}`,
+                border: `1px solid ${isSelected ? C.accent : C.border}`,
                 borderRadius: 12,
                 padding: 16,
+                cursor: "pointer",
+                transition: "border-color 0.15s",
+              }}
+              onClick={() => {
+                if (isSelected) {
+                  setSelectedPlayer(null);
+                } else {
+                  setSelectedPlayer(p);
+                  setPropLines({ pts: "", reb: "", ast: "" });
+                }
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
@@ -4863,11 +4887,11 @@ function PlayerStatsPanel() {
                   <div style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
                     {p.team}
-                    {p.rank != null && <span style={{ color: C.textMuted }}> · AVG #{p.rank}</span>}
+                    {p.rank != null && <span style={{ color: C.textMuted }}> · HR #{p.rank}</span>}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: C.amber, lineHeight: 1 }}>
                     {p.stats.homeRuns ?? "—"}
                   </div>
                   <div style={{ fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 }}>
@@ -4879,8 +4903,8 @@ function PlayerStatsPanel() {
                 {[
                   { label: "AVG", value: p.stats.avg ?? "—" },
                   { label: "RBI", value: p.stats.rbi ?? "—" },
-                  { label: "H", value: p.stats.hits ?? "—" },
                   { label: "OPS", value: p.stats.ops ?? "—" },
+                  { label: "R", value: p.stats.runs ?? "—" },
                 ].map((s) => (
                   <div
                     key={s.label}
@@ -4896,8 +4920,84 @@ function PlayerStatsPanel() {
                   </div>
                 ))}
               </div>
+
+              {isSelected && (
+                <div
+                  style={{
+                    marginTop: 14,
+                    paddingTop: 14,
+                    borderTop: `1px solid ${C.border}`,
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, color: "#a5b4fc" }}>
+                    🎯 MLB Prop Helper
+                  </div>
+                  {([
+                    { key: "pts" as const, label: "Hits", avg: hitsPerGame, paperLabel: "Hits" },
+                    { key: "reb" as const, label: "HR", avg: hrPerGame, paperLabel: "HR" },
+                    { key: "ast" as const, label: "RBI", avg: rbiPerGame, paperLabel: "RBI" },
+                  ]).map((row) => {
+                    const lineVal = propLines[row.key];
+                    const verdict = propVerdict(row.avg, lineVal);
+                    return (
+                      <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 12, color: C.textDim, width: 70 }}>{row.label}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted }}>
+                          Per-game: <strong style={{ color: "#fff" }}>{row.avg.toFixed(2)}</strong>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={lineVal}
+                          onChange={(e) => setPropLines((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                          placeholder="Line"
+                          style={{
+                            width: 90,
+                            padding: "4px 8px",
+                            borderRadius: 6,
+                            border: `1px solid ${C.border}`,
+                            background: C.card2,
+                            color: "#fff",
+                            fontSize: 12,
+                            outline: "none",
+                          }}
+                        />
+                        {verdict && (
+                          <>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: verdict.color }}>
+                              {verdict.rec === "OVER" ? "✅ OVER" : verdict.rec === "UNDER" ? "⬇️ UNDER" : "⚡ TOO CLOSE"}
+                            </span>
+                            {verdict.rec !== "TOO CLOSE" && (
+                              <button
+                                onClick={() => addInlinePaperBet(p, row.paperLabel, lineVal, verdict.rec as "OVER" | "UNDER")}
+                                style={{
+                                  padding: "3px 9px",
+                                  borderRadius: 6,
+                                  border: "none",
+                                  background: "rgba(99,102,241,0.2)",
+                                  color: "#a5b4fc",
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                + Paper Bet
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 8, fontStyle: "italic" }}>
+                    Per-game = season total ÷ games played{gp === 0 && ab > 0 ? " (or hits/AB × 3.3 when GP missing)" : ""}.
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
