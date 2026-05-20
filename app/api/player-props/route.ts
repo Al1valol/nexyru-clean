@@ -10,14 +10,28 @@ const ODDS_KEY =
 // (/sports/{sport}/events/{event_id}/odds), not the bulk /odds path — that one
 // 422s with "Markets not supported by this endpoint".
 const MARKET_LABELS: Record<string, string> = {
+  // NBA
   player_points: "Points",
   player_rebounds: "Rebounds",
   player_assists: "Assists",
   player_threes: "3-Pointers",
   player_points_rebounds_assists: "PRA",
+  // MLB
+  batter_hits: "Hits",
+  batter_home_runs: "Home Runs",
+  batter_rbis: "RBIs",
+  batter_runs_scored: "Runs",
+  batter_total_bases: "Total Bases",
+  pitcher_strikeouts: "Strikeouts",
+  pitcher_record_a_win: "Pitcher Win",
 };
 
 const ALLOWED_MARKETS = new Set(Object.keys(MARKET_LABELS));
+
+// Cap events fetched per call to protect The Odds API quota. NBA usually has
+// 2-12 games/day, MLB up to 16-18 — at 1 request per event the daily volume
+// adds up fast on the 500/mo plan.
+const MAX_EVENTS_PER_REQUEST = 12;
 
 type Prop = {
   player: string;
@@ -70,10 +84,13 @@ export async function GET(req: NextRequest) {
         { status: evRes.status },
       );
     }
-    const events: any[] = await evRes.json();
-    if (!Array.isArray(events) || events.length === 0) {
+    const allEvents: any[] = await evRes.json();
+    if (!Array.isArray(allEvents) || allEvents.length === 0) {
       return NextResponse.json({ data: [], total: 0, events: 0 });
     }
+    // Trim to MAX_EVENTS_PER_REQUEST (earliest-first since the list is
+    // ordered by commence_time ascending).
+    const events = allEvents.slice(0, MAX_EVENTS_PER_REQUEST);
 
     // Step 2: fetch per-event props in parallel. One request per event,
     // regardless of how many markets are bundled in the query.
