@@ -159,7 +159,14 @@ export default function PlayerStatsDashboard() {
 
         return (
           <div key={player.id||i}>
-            <div onClick={() => { setSelectedPlayer(isSelected?null:player); setPropLines({}) }}
+            <div onClick={() => {
+              if (selectedPlayer?.id === player.id) {
+                setSelectedPlayer(null)
+              } else {
+                setSelectedPlayer(player)
+                setPropLines({})
+              }
+            }}
               style={{background: isSelected?'rgba(99,102,241,0.08)':s.card,
               border:`1px solid ${isSelected?'rgba(99,102,241,0.3)':s.border}`,
               borderRadius:12, padding:16, marginBottom: isSelected?0:10, cursor:'pointer'}}>
@@ -205,9 +212,15 @@ export default function PlayerStatsDashboard() {
                   ))}
                 </div>
               )}
+              <div style={{fontSize:10, color:'#6b7280', marginTop:8, textAlign:'center'}}>
+                {isSelected ? '▲ Click to close' : '▼ Click for prop bets'}
+              </div>
             </div>
-            {isSelected && <PropHelper player={player} />}
-            {isSelected && <div style={{marginBottom:10}}/>}
+            {isSelected && (
+              <div style={{marginBottom:10}}>
+                <PropHelper player={player} />
+              </div>
+            )}
           </div>
         )
       })}

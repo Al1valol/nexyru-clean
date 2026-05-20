@@ -2169,6 +2169,26 @@ function EsportsPlayersPanel() {
   const [players, setPlayers] = useState<EsportPlayer[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [watchlist, setWatchlist] = useState<number[]>(() => {
+    if (typeof window === "undefined") return [];
+    try { return JSON.parse(localStorage.getItem("nexyru_esports_watchlist") || "[]"); }
+    catch { return []; }
+  });
+  const [pickNote, setPickNote] = useState<string | null>(null);
+
+  const toggleWatch = (p: EsportPlayer) => {
+    const next = watchlist.includes(p.id)
+      ? watchlist.filter((x) => x !== p.id)
+      : [...watchlist, p.id];
+    setWatchlist(next);
+    try { localStorage.setItem("nexyru_esports_watchlist", JSON.stringify(next)); } catch {}
+  };
+
+  const showPick = (p: EsportPlayer, rank: number) => {
+    const team = p.team || "their team";
+    const role = p.role || "rostered";
+    setPickNote(`If ${team} plays today, ${p.name} is worth watching — ${role} player ranked #${rank}`);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -2241,55 +2261,98 @@ function EsportsPlayersPanel() {
         </div>
       )}
 
+      {pickNote && (
+        <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 10, padding: 12, marginBottom: 12, color: "#a5b4fc", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <span>🎯 {pickNote}</span>
+          <button onClick={() => setPickNote(null)} style={{ background: "transparent", border: "none", color: "#a5b4fc", cursor: "pointer", fontSize: 14 }}>✕</button>
+        </div>
+      )}
+
       {!loading && players && players.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
-          {players.map((p) => (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+          {players.map((p, i) => {
+            const watched = watchlist.includes(p.id);
+            return (
             <div
               key={p.id}
               style={{
                 background: C.card,
-                border: `1px solid ${C.border}`,
+                border: `1px solid ${watched ? "rgba(245,158,11,0.4)" : C.border}`,
                 borderRadius: 10,
                 padding: 12,
                 display: "flex",
+                flexDirection: "column",
                 gap: 10,
-                alignItems: "center",
               }}
             >
-              {p.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={p.image}
-                  alt={p.name}
-                  style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", background: C.card2, flexShrink: 0 }}
-                />
-              ) : (
-                <div style={{ width: 40, height: 40, borderRadius: 6, background: C.card2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-                  {flagFromCode(p.nationality) || "🎮"}
-                </div>
-              )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {flagFromCode(p.nationality)} {p.name}
-                </div>
-                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                  {p.team || "Free agent"}
-                </div>
-                {(p.role || p.fullName) && (
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
-                    {p.role && (
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: `${gameMeta.color}26`, color: gameMeta.color, letterSpacing: 0.3 }}>
-                        {p.role.toUpperCase()}
-                      </span>
-                    )}
-                    {p.fullName && (
-                      <span style={{ fontSize: 10, color: C.textMuted }}>{p.fullName}</span>
-                    )}
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                {p.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.image}
+                    alt={p.name}
+                    style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", background: C.card2, flexShrink: 0 }}
+                  />
+                ) : (
+                  <div style={{ width: 40, height: 40, borderRadius: 6, background: C.card2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                    {flagFromCode(p.nationality) || "🎮"}
                   </div>
                 )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {flagFromCode(p.nationality)} {p.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                    {p.team || "Free agent"}
+                  </div>
+                  {(p.role || p.fullName) && (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+                      {p.role && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: `${gameMeta.color}26`, color: gameMeta.color, letterSpacing: 0.3 }}>
+                          {p.role.toUpperCase()}
+                        </span>
+                      )}
+                      {p.fullName && (
+                        <span style={{ fontSize: 10, color: C.textMuted }}>{p.fullName}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => showPick(p, i + 1)} style={{ flex: 1, padding: "6px 8px", borderRadius: 6, border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.08)", color: "#a5b4fc", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  🎯 Performance Pick
+                </button>
+                <button onClick={() => toggleWatch(p)} style={{ flex: 1, padding: "6px 8px", borderRadius: 6, border: `1px solid ${watched ? "rgba(245,158,11,0.5)" : C.border}`, background: watched ? "rgba(245,158,11,0.12)" : "transparent", color: watched ? "#fbbf24" : C.textDim, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  {watched ? "★ Watching" : "☆ Watchlist"}
+                </button>
               </div>
             </div>
-          ))}
+          );})}
+        </div>
+      )}
+
+      {!loading && players && players.length > 0 && (
+        <div style={{ marginTop: 16, padding: 14, borderRadius: 10, background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.textDim, marginBottom: 8 }}>
+            Place esports player prop bets:
+          </div>
+          <div style={{display:'flex', gap:8, flexWrap:'wrap', marginTop:8}}>
+            {[
+              {name:'Betway Esports', url:'https://betway.com/esports/player-props', color:'#00a651'},
+              {name:'GG.bet', url:'https://gg.bet/en/player-props', color:'#ff6b00'},
+              {name:'Pinnacle', url:'https://www.pinnacle.com/en/esports', color:'#e63946'},
+            ].map(site => (
+              <a key={site.name} href={site.url} target="_blank" rel="noreferrer" style={{
+                padding:'6px 12px', borderRadius:6, fontSize:11, fontWeight:700,
+                background:`${site.color}15`, border:`1px solid ${site.color}40`,
+                color:site.color, textDecoration:'none'
+              }}>{site.name} →</a>
+            ))}
+          </div>
+          <div style={{fontSize:11, color:'#6b7280', marginTop:6}}>
+            ⚠️ Esports player prop odds must be placed directly on betting sites — we show stats and picks only.
+          </div>
         </div>
       )}
     </div>
