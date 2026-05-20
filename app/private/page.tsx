@@ -2579,6 +2579,42 @@ type StatsSport = "nba" | "mlb" | "nfl";
 // isn't treated the same as a 0.5-point edge on 24 PPG.
 type PropVerdict = { rec: "OVER" | "UNDER" | "TOO CLOSE"; confidence: "HIGH" | "MEDIUM" | "LOW"; color: string };
 
+type PlayerProp = {
+  player: string;
+  game: string;
+  gameId: string;
+  commenceTime: string;
+  market: string;
+  marketLabel: string;
+  line: number;
+  overOdds: number | null;
+  overBook: string | null;
+  underOdds: number | null;
+  underBook: string | null;
+};
+
+const PROP_MARKET_PILLS: { id: string; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "player_points", label: "Points" },
+  { id: "player_rebounds", label: "Rebounds" },
+  { id: "player_assists", label: "Assists" },
+  { id: "player_threes", label: "3-Pointers" },
+];
+
+// Map a prop market key to the corresponding season-average field on the NBA
+// stats row. Skip markets without a clean mapping (e.g. threes — not in our
+// leagueLeaders payload).
+function statValueForMarket(player: any, market: string): number | null {
+  switch (market) {
+    case "player_points": return Number(player?.ppg) || null;
+    case "player_rebounds": return Number(player?.rpg) || null;
+    case "player_assists": return Number(player?.apg) || null;
+    case "player_points_rebounds_assists":
+      return (Number(player?.ppg) || 0) + (Number(player?.rpg) || 0) + (Number(player?.apg) || 0) || null;
+    default: return null;
+  }
+}
+
 function propVerdict(avg: number, lineStr: string): PropVerdict | null {
   const line = parseFloat(lineStr);
   if (!Number.isFinite(line) || line <= 0 || !avg) return null;
@@ -2599,6 +2635,12 @@ function PlayerStatsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<any | null>(null);
   const [propLines, setPropLines] = useState<{ pts: string; reb: string; ast: string }>({ pts: "", reb: "", ast: "" });
+  const [propOdds, setPropOdds] = useState<PlayerProp[]>([]);
+  const [propsLoading, setPropsLoading] = useState(false);
+  const [propsError, setPropsError] = useState<string | null>(null);
+  const [propsSearch, setPropsSearch] = useState("");
+  const [propsFilter, setPropsFilter] = useState<string>("all");
+  const [propFlash, setPropFlash] = useState<string | null>(null);
 
   // Single fetch — proxy returns the season leaderboard pre-flattened. Search
   // filters happen client-side so typing is instant; the search box doesn't
@@ -2660,13 +2702,82 @@ function PlayerStatsPanel() {
     }
   }, []);
 
+  const loadProps = useCallback(async () => {
+    setPropsLoading(true);
+    setPropsError(null);
+    try {
+      const r = await fetch(
+        `/api/player-props?sport=basketball_nba&markets=player_points,player_rebounds,player_assists,player_threes`,
+      );
+      const j = await r.json();
+      if (!r.ok) {
+        setPropsError(j.error || `Props failed (${r.status})`);
+        setPropOdds([]);
+        return;
+      }
+      setPropOdds((j.data as PlayerProp[]) || []);
+    } catch (e: any) {
+      setPropsError(e?.message || "Props failed");
+      setPropOdds([]);
+    } finally {
+      setPropsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setSelectedPlayer(null);
     setPropLines({ pts: "", reb: "", ast: "" });
-    if (statsSport === "nba") loadNBA();
-    else if (statsSport === "mlb") loadMLB();
-    else setStatsPlayers([]);
-  }, [statsSport, loadNBA, loadMLB]);
+    if (statsSport === "nba") {
+      loadNBA();
+      loadProps();
+    } else if (statsSport === "mlb") {
+      loadMLB();
+      setPropOdds([]);
+    } else {
+      setStatsPlayers([]);
+      setPropOdds([]);
+    }
+  }, [statsSport, loadNBA, loadMLB, loadProps]);
+
+  const addPropBet = (prop: PlayerProp, side: "over" | "under") => {
+    const odds = side === "over" ? prop.overOdds : prop.underOdds;
+    const book = side === "over" ? prop.overBook : prop.underBook;
+    if (odds === null || !book) return;
+    const stake = 100;
+    const potWin = odds > 0 ? (stake * odds) / 100 : (stake * 100) / Math.abs(odds);
+    const bet = {
+      id: Date.now(),
+      type: "prop",
+      sport: "NBA",
+      game: `${prop.player} — ${prop.marketLabel}`,
+      pick: `${side.toUpperCase()} ${prop.line} ${prop.marketLabel}`,
+      odds,
+      book,
+      stake,
+      potWin,
+      edge: 0,
+      status: "pending",
+      placedAt: new Date().toISOString(),
+      gameTime: prop.commenceTime,
+      notes: `${prop.player} prop · ${prop.game}`,
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem(VALUE_BETS_KEY) || "[]");
+      localStorage.setItem(VALUE_BETS_KEY, JSON.stringify([bet, ...existing]));
+    } catch {}
+    setPropFlash(`✓ Added ${prop.player} ${side.toUpperCase()} ${prop.line} ${prop.marketLabel} to paper bets`);
+    setTimeout(() => setPropFlash(null), 3000);
+  };
+
+  // Search + market filter applied client-side over the prop list.
+  const visibleProps = propOdds.filter((p) => {
+    if (propsFilter !== "all" && p.market !== propsFilter) return false;
+    if (propsSearch.trim() && !p.player.toLowerCase().includes(propsSearch.trim().toLowerCase())) return false;
+    return true;
+  });
+
+  const playerByName = new Map<string, any>();
+  statsPlayers.forEach((p) => playerByName.set(p.name.toLowerCase().trim(), p));
 
   // Client-side filter — proxy already returned the full leaderboard.
   const visiblePlayers = statsSport === "nba" && statsSearch.trim()
@@ -2955,6 +3066,207 @@ function PlayerStatsPanel() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {statsSport === "nba" && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 4 }}>
+            🎯 Player Props — Live Odds
+          </div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+            Best Over/Under across US books · season averages compared · click to add to paper bets
+          </div>
+
+          {propFlash && (
+            <div
+              style={{
+                background: "rgba(34,197,94,0.1)",
+                border: `1px solid ${C.green}`,
+                color: C.green,
+                borderRadius: 8,
+                padding: "8px 12px",
+                fontSize: 13,
+                fontWeight: 700,
+                marginBottom: 12,
+              }}
+            >
+              {propFlash}
+            </div>
+          )}
+
+          {propsError && (
+            <div
+              style={{
+                background: "rgba(245,158,11,0.08)",
+                border: "1px solid rgba(245,158,11,0.3)",
+                borderRadius: 10,
+                padding: 12,
+                marginBottom: 12,
+                color: "#fbbf24",
+                fontSize: 13,
+              }}
+            >
+              {propsError}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
+            <input
+              value={propsSearch}
+              onChange={(e) => setPropsSearch(e.target.value)}
+              placeholder="Search player props…"
+              style={{
+                flex: "1 1 200px",
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: `1px solid ${C.border}`,
+                background: C.card2,
+                color: "#fff",
+                fontSize: 13,
+                outline: "none",
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {PROP_MARKET_PILLS.map((pill) => (
+              <button
+                key={pill.id}
+                onClick={() => setPropsFilter(pill.id)}
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: 999,
+                  border: `1px solid ${propsFilter === pill.id ? C.accent : C.border}`,
+                  background: propsFilter === pill.id ? "rgba(99,102,241,0.2)" : "transparent",
+                  color: propsFilter === pill.id ? "#a5b4fc" : C.textDim,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+
+          {propsLoading ? (
+            <div style={{ textAlign: "center", padding: 24, color: C.textDim, fontSize: 13 }}>
+              Loading player props…
+            </div>
+          ) : visibleProps.length === 0 ? (
+            <div style={{ background: C.card, border: `1px dashed ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13, textAlign: "center" }}>
+              {propOdds.length === 0
+                ? "No NBA player props available right now (off-season or no upcoming games)."
+                : `No props match "${propsSearch}" in ${propsFilter === "all" ? "any market" : PROP_MARKET_PILLS.find((p) => p.id === propsFilter)?.label}.`}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {visibleProps.map((prop) => {
+                const match = playerByName.get(prop.player.toLowerCase().trim());
+                const seasonAvg = match ? statValueForMarket(match, prop.market) : null;
+                const overBetter = seasonAvg != null ? seasonAvg > prop.line + 0.5 : null;
+                const underBetter = seasonAvg != null ? seasonAvg < prop.line - 0.5 : null;
+                const propKey = `${prop.gameId}|${prop.market}|${prop.player}|${prop.line}`;
+                return (
+                  <div
+                    key={propKey}
+                    style={{
+                      background: C.card,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 12,
+                      padding: 14,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{prop.player}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                          {prop.game} · {prop.marketLabel}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: C.textMuted, whiteSpace: "nowrap" }}>
+                        Line: <strong style={{ color: C.text }}>{prop.line}</strong>
+                      </div>
+                    </div>
+
+                    {seasonAvg != null && (
+                      <div
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          marginBottom: 10,
+                          background: overBetter ? "rgba(34,197,94,0.08)" : underBetter ? "rgba(239,68,68,0.08)" : "rgba(99,102,241,0.06)",
+                          border: `1px solid ${overBetter ? "rgba(34,197,94,0.25)" : underBetter ? "rgba(239,68,68,0.25)" : C.border}`,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: overBetter ? C.green : underBetter ? C.red : C.textDim,
+                        }}
+                      >
+                        Season avg: <strong>{seasonAvg.toFixed(1)}</strong>
+                        {overBetter && " — ✅ OVER looks good"}
+                        {underBetter && " — ⬇️ UNDER looks good"}
+                        {!overBetter && !underBetter && " — too close to call"}
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      {[
+                        { side: "over" as const, label: "OVER", odds: prop.overOdds, book: prop.overBook },
+                        { side: "under" as const, label: "UNDER", odds: prop.underOdds, book: prop.underBook },
+                      ].map((col) => (
+                        <div key={col.side} style={{ background: C.card2, borderRadius: 8, padding: 10, textAlign: "center" }}>
+                          <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>
+                            {col.label} {prop.line}
+                          </div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: col.odds != null && col.odds > 0 ? C.green : "#fff" }}>
+                            {col.odds != null ? (col.odds > 0 ? "+" : "") + col.odds : "—"}
+                          </div>
+                          <div style={{ fontSize: 10, color: C.textMuted }}>{col.book ?? "—"}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <button
+                        onClick={() => addPropBet(prop, "over")}
+                        disabled={prop.overOdds === null}
+                        style={{
+                          flex: 1,
+                          padding: 8,
+                          borderRadius: 6,
+                          border: "none",
+                          background: prop.overOdds === null ? C.card2 : "rgba(34,197,94,0.15)",
+                          color: prop.overOdds === null ? C.textMuted : C.green,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: prop.overOdds === null ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        Bet OVER
+                      </button>
+                      <button
+                        onClick={() => addPropBet(prop, "under")}
+                        disabled={prop.underOdds === null}
+                        style={{
+                          flex: 1,
+                          padding: 8,
+                          borderRadius: 6,
+                          border: "none",
+                          background: prop.underOdds === null ? C.card2 : "rgba(239,68,68,0.15)",
+                          color: prop.underOdds === null ? C.textMuted : C.red,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: prop.underOdds === null ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        Bet UNDER
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
