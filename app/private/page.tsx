@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PlayerStatsDashboard from "@/app/dashboard/PlayerStatsDashboard";
 
 // ───────────────────────── auth ─────────────────────────
 const PASSWORD = "nexyru2026";
@@ -2729,7 +2730,7 @@ function BestPicksPanel({
         ))}
       </div>
 
-      {section === "playerprops" && <PlayerStatsPanel />}
+      {section === "playerprops" && <PlayerStatsDashboard />}
       {section === "esports" && <EsportsPanel />}
       {section === "esportsplayers" && <EsportsPlayersPanel />}
 
