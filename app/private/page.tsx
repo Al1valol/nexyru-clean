@@ -1525,7 +1525,7 @@ function countdownLabel(commenceISO: string, nowMs: number): { label: string; li
   return { label: `Starts in ${formatDuration(diff)}`, live: false };
 }
 
-type OddsTabKey = "best" | "polymarket" | "arb" | "value" | "playerstats" | "esports";
+type OddsTabKey = "best" | "arb" | "parlays";
 
 type ParlayLeg = {
   gameId: string;
@@ -1607,12 +1607,9 @@ export function OddsTab() {
   }, []);
 
   const oddsTabs: { id: OddsTabKey; label: string }[] = [
-    { id: "best", label: "📊 Best Odds" },
-    { id: "polymarket", label: "🎲 Polymarket" },
+    { id: "best", label: "🎯 Best Picks" },
     { id: "arb", label: "💰 Arb Finder" },
-    { id: "value", label: "⭐ Value Bets" },
-    { id: "playerstats", label: "🏀 Player Stats" },
-    { id: "esports", label: "🎮 Esports" },
+    { id: "parlays", label: "🎰 Parlays" },
   ];
 
   return (
@@ -1639,29 +1636,9 @@ export function OddsTab() {
         ))}
       </div>
 
-      {oddsTab === "best" && (
-        <FanduelPanel
-          games={games} loading={loading} error={error} requestsRemaining={requestsRemaining}
-          nowMs={nowMs} onRefresh={load}
-          addToParlay={addToParlay} isInParlay={isInParlay}
-          parlayCount={parlayLegs.length}
-        />
-      )}
-      {oddsTab === "polymarket" && <PolymarketPanel />}
+      {oddsTab === "best" && <BestPicksPanel games={games} loading={loading} error={error} requestsRemaining={requestsRemaining} nowMs={nowMs} onRefresh={load}/>}
       {oddsTab === "arb" && <ArbFinderPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
-      {oddsTab === "value" && <ValueBetsPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
-      {oddsTab === "playerstats" && <PlayerStatsPanel />}
-      {oddsTab === "esports" && <EsportsPanel />}
-
-      {oddsTab === "best" && parlayLegs.length >= 2 && (
-        <ParlayBar
-          legs={parlayLegs}
-          stake={parlayStake}
-          onStakeChange={setParlayStake}
-          onRemove={(gameId) => setParlayLegs((prev) => prev.filter((l) => l.gameId !== gameId))}
-          onClear={() => setParlayLegs([])}
-        />
-      )}
+      {oddsTab === "parlays" && <ParlaysPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
     </section>
   );
 }
@@ -2015,6 +1992,691 @@ function getArbRisk(awayBook: string, homeBook: string, roi: number): ArbRiskLev
   if (roi > 5) return { level: "HIGH", color: "#f97316", msg: "High ROI arbs are more suspicious — bet small" };
   if (roi > 2) return { level: "MEDIUM", color: "#fbbf24", msg: "Medium risk — keep stakes moderate" };
   return { level: "LOW", color: "#22c55e", msg: "Low risk — normal sized arb, hard to detect" };
+}
+
+// ───────────────────────── best picks ─────────────────────────
+
+type Pick = {
+  game: OddsGame;
+  team: string;
+  bestPrice: number;
+  bestBook: string;
+  impliedProb: number;
+  avgImplied: number;
+  edge: number;
+  score: number;
+};
+
+// Score each pick 0-100 based on three factors:
+//  1. Sweet-spot implied probability (40-65% range = most value)
+//  2. Odds in a reasonable range (avoid huge favorites and longshots)
+//  3. Edge vs market average (best book paying more than the consensus)
+function scorePick(bestPrice: number, impliedProb: number, edge: number): number {
+  let score = 0;
+  if (impliedProb > 0.35 && impliedProb < 0.65) score += 40;
+  else if (impliedProb > 0.25 && impliedProb < 0.75) score += 25;
+  else score += 5;
+
+  if (bestPrice < 0 && bestPrice > -200) score += 30;
+  else if (bestPrice > 0 && bestPrice < 200) score += 25;
+  else if (bestPrice > 200) score += 10;
+  else if (bestPrice < -300) score += 5;
+
+  if (edge > 0.03) score += 30;
+  else if (edge > 0.01) score += 15;
+
+  return Math.min(100, score);
+}
+
+function scoreBadge(score: number): { label: string; color: string } {
+  if (score >= 75) return { label: "🔥 Strong", color: C.green };
+  if (score >= 55) return { label: "⭐ Good", color: "#60a5fa" };
+  if (score >= 35) return { label: "👀 Fair", color: C.amber };
+  return { label: "❄️ Weak", color: C.textMuted };
+}
+
+function scoreReasoning(score: number): string {
+  if (score >= 70) return "✅ Good value odds, near 50/50 probability";
+  if (score >= 50) return "👍 Reasonable odds, slight edge detected";
+  return "⚠️ Risky pick — odds may not be in your favor";
+}
+
+// Build the per-team pick list from games (same structure used by both
+// BestPicksPanel and ParlaysPanel).
+function buildPicks(games: OddsGame[] | null): Pick[] {
+  if (!games) return [];
+  const out: Pick[] = [];
+  for (const g of games) {
+    for (const teamName of [g.away_team, g.home_team]) {
+      const probs: number[] = [];
+      let bestPrice = -Infinity;
+      let bestBook = "";
+      for (const b of g.bookmakers ?? []) {
+        const h2h = b.markets?.find((m) => m.key === "h2h");
+        if (!h2h) continue;
+        const o = h2h.outcomes.find((o) => o.name === teamName);
+        if (!o) continue;
+        probs.push(americanToImpliedProb(o.price));
+        if (o.price > bestPrice) {
+          bestPrice = o.price;
+          bestBook = b.title;
+        }
+      }
+      if (probs.length === 0 || !Number.isFinite(bestPrice)) continue;
+      const impliedProb = americanToImpliedProb(bestPrice);
+      const avgImplied = probs.reduce((s, p) => s + p, 0) / probs.length;
+      const edge = avgImplied - impliedProb;
+      const score = scorePick(bestPrice, impliedProb, edge);
+      out.push({
+        game: g,
+        team: teamName,
+        bestPrice,
+        bestBook,
+        impliedProb,
+        avgImplied,
+        edge,
+        score,
+      });
+    }
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+const SPORT_FILTERS: { id: string; label: string; matches: (key: string) => boolean }[] = [
+  { id: "all", label: "All", matches: () => true },
+  { id: "mlb", label: "MLB", matches: (k) => k.includes("baseball_mlb") },
+  { id: "soccer", label: "Soccer", matches: (k) => k.startsWith("soccer_") },
+  { id: "tennis", label: "Tennis", matches: (k) => k.startsWith("tennis_") },
+  { id: "mma", label: "MMA", matches: (k) => k.startsWith("mma_") },
+];
+
+const TIME_FILTERS: { id: string; label: string; hours: number | null }[] = [
+  { id: "today", label: "Today", hours: 24 },
+  { id: "week", label: "This Week", hours: 24 * 7 },
+  { id: "all", label: "All", hours: null },
+];
+
+function BestPicksPanel({
+  games, loading, error, requestsRemaining, nowMs, onRefresh,
+}: SharedOddsProps & { requestsRemaining: string | null }) {
+  const [sportFilter, setSportFilter] = useState("all");
+  const [timeFilter, setTimeFilter] = useState("today");
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const allPicks = useMemo(() => buildPicks(games), [games]);
+
+  const filtered = useMemo(() => {
+    const sportMatch = SPORT_FILTERS.find((s) => s.id === sportFilter)!;
+    const timeMatch = TIME_FILTERS.find((t) => t.id === timeFilter)!;
+    return allPicks.filter((p) => {
+      if (!sportMatch.matches(p.game.sport_key || "")) return false;
+      if (timeMatch.hours != null) {
+        const start = new Date(p.game.commence_time).getTime();
+        const cutoff = nowMs + timeMatch.hours * 3600_000;
+        if (!Number.isFinite(start) || start > cutoff) return false;
+      }
+      return true;
+    });
+  }, [allPicks, sportFilter, timeFilter, nowMs]);
+
+  const top3 = filtered.slice(0, 3);
+  const rest = filtered.slice(3);
+  const strongCount = filtered.filter((p) => p.score >= 75).length;
+
+  const addPaperBet = (p: Pick) => {
+    const odds = p.bestPrice;
+    const stake = 100;
+    const potWin = odds > 0 ? (stake * odds) / 100 : (stake * 100) / Math.abs(odds);
+    const bet = {
+      id: Date.now(),
+      type: "best-pick",
+      sport: p.game.sport_key?.replace(/_/g, " ").toUpperCase(),
+      game: `${p.game.away_team} vs ${p.game.home_team}`,
+      pick: p.team,
+      odds,
+      book: p.bestBook,
+      stake,
+      potWin,
+      edge: p.edge,
+      score: p.score,
+      status: "pending",
+      placedAt: new Date().toISOString(),
+      gameTime: p.game.commence_time,
+      notes: `Best Picks score ${p.score}/100`,
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem(VALUE_BETS_KEY) || "[]");
+      localStorage.setItem(VALUE_BETS_KEY, JSON.stringify([bet, ...existing]));
+    } catch {}
+    setFlash(`✓ Added ${p.team} (${odds > 0 ? "+" : ""}${odds}) to paper bets`);
+    setTimeout(() => setFlash(null), 2500);
+  };
+
+  const renderCard = (p: Pick, highlighted = false) => {
+    const badge = scoreBadge(p.score);
+    const cd = countdownLabel(p.game.commence_time, nowMs);
+    return (
+      <div
+        key={`${p.game.id}-${p.team}`}
+        style={{
+          background: C.card,
+          border: `1px solid ${highlighted ? "#fbbf24" : C.border}`,
+          borderRadius: 12,
+          padding: 14,
+          boxShadow: highlighted ? "0 0 24px rgba(251,191,36,0.10)" : "none",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{p.team}</div>
+            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+              {p.game.away_team} vs {p.game.home_team} · {cd.live ? <span style={{ color: C.red, fontWeight: 700 }}>🔴 LIVE</span> : cd.label}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 800, background: `${badge.color}26`, color: badge.color, border: `1px solid ${badge.color}40`, letterSpacing: 0.4 }}>
+              {badge.label}
+            </span>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: p.score >= 75 ? C.green : p.score >= 55 ? "#60a5fa" : p.score >= 35 ? C.amber : C.textMuted, lineHeight: 1 }}>
+                {p.score}
+              </div>
+              <div style={{ fontSize: 9, color: C.textMuted, letterSpacing: 0.4 }}>/ 100</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", marginBottom: 6 }}>
+          <span style={{ fontSize: 22, fontWeight: 800, color: p.bestPrice > 0 ? C.green : "#fff" }}>
+            {p.bestPrice > 0 ? "+" : ""}{p.bestPrice}
+          </span>
+          <span style={{ fontSize: 12, color: C.textMuted }}>at <strong style={{ color: C.text }}>{p.bestBook}</strong></span>
+          <span style={{ fontSize: 12, color: C.textMuted }}>· {Math.round(p.impliedProb * 100)}% implied chance</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 10 }}>
+          Bet $100 → win ${(p.bestPrice > 0 ? p.bestPrice : (100 * 100) / Math.abs(p.bestPrice)).toFixed(0)}
+        </div>
+        <div style={{ fontSize: 11.5, color: badge.color, marginBottom: 10, fontWeight: 600 }}>
+          {scoreReasoning(p.score)}
+        </div>
+        <button
+          onClick={() => addPaperBet(p)}
+          style={{
+            width: "100%",
+            padding: "7px 10px",
+            borderRadius: 6,
+            border: `1px solid ${C.border}`,
+            background: C.card2,
+            color: C.text,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          + Paper Bet
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <SectionTitle
+        title="Best Picks"
+        subtitle="Every pick scored 0-100 by implied probability, odds range, and edge"
+        right={
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            style={{
+              background: loading ? C.card2 : C.accent,
+              color: loading ? C.textDim : "#fff",
+              border: `1px solid ${loading ? C.border : C.accent}`,
+              borderRadius: 999,
+              padding: "4px 12px",
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              letterSpacing: "0.02em",
+            }}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        }
+      />
+
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {flash && (
+        <div style={{ background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, color: C.green, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+          {flash}
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+        <strong style={{ color: C.text }}>{filtered.length}</strong> picks analyzed ·
+        <strong style={{ color: C.green, marginLeft: 6 }}>{strongCount}</strong> strong
+        {requestsRemaining && <> · <strong style={{ color: C.text }}>{requestsRemaining}</strong> Odds API calls left this month</>}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {SPORT_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setSportFilter(f.id)}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 999,
+              border: `1px solid ${sportFilter === f.id ? C.accent : C.border}`,
+              background: sportFilter === f.id ? "rgba(99,102,241,0.2)" : "transparent",
+              color: sportFilter === f.id ? "#a5b4fc" : C.textDim,
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+        {TIME_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setTimeFilter(f.id)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: `1px solid ${timeFilter === f.id ? C.accent : C.border}`,
+              background: timeFilter === f.id ? "rgba(99,102,241,0.2)" : "transparent",
+              color: timeFilter === f.id ? "#a5b4fc" : C.textDim,
+              fontSize: 10.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {games === null ? (
+        <LoadingBlock />
+      ) : filtered.length === 0 ? (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, color: C.textMuted, fontSize: 13 }}>
+          No picks match the current filters.
+        </div>
+      ) : (
+        <>
+          {top3.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#fbbf24", marginBottom: 8, letterSpacing: 0.6, textTransform: "uppercase" }}>
+                🏆 Today's Top Picks
+              </div>
+              <div style={{ display: "grid", gap: 10, marginBottom: 20 }}>
+                {top3.map((p) => renderCard(p, true))}
+              </div>
+            </>
+          )}
+          {rest.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>
+                All other picks
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {rest.map((p) => renderCard(p))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ───────────────────────── parlays ─────────────────────────
+
+type ParlayCalc = {
+  combinedDecimal: number;
+  combinedAmerican: number;
+  combinedProb: number;
+  payout: number;
+  profit: number;
+  ev: number;
+};
+
+function calcParlayMath(legs: Pick[], stake: number): ParlayCalc | null {
+  if (legs.length < 2) return null;
+  const combinedProb = legs.reduce((p, l) => p * l.impliedProb, 1);
+  const combinedDecimal = legs.reduce((p, l) => {
+    const dec = l.bestPrice > 0 ? l.bestPrice / 100 + 1 : 100 / Math.abs(l.bestPrice) + 1;
+    return p * dec;
+  }, 1);
+  const combinedAmerican =
+    combinedDecimal >= 2
+      ? Math.round((combinedDecimal - 1) * 100)
+      : Math.round(-100 / (combinedDecimal - 1));
+  const payout = stake * combinedDecimal;
+  const profit = payout - stake;
+  // EV = expected return − stake. With independence assumption: prob of all hitting × payout.
+  const ev = combinedProb * payout - stake;
+  return { combinedDecimal, combinedAmerican, combinedProb, payout, profit, ev };
+}
+
+function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
+  const [stake, setStake] = useState<string>("100");
+  const [manualLegIds, setManualLegIds] = useState<Set<string>>(new Set());
+  const [flash, setFlash] = useState<string | null>(null);
+
+  const allPicks = useMemo(() => buildPicks(games), [games]);
+  // Only suggest from picks that start within a week — avoids stale far-out games.
+  const eligiblePicks = useMemo(
+    () =>
+      allPicks.filter((p) => {
+        const start = new Date(p.game.commence_time).getTime();
+        return Number.isFinite(start) && start - nowMs < 24 * 7 * 3600_000 && start - nowMs > -3 * 3600_000;
+      }),
+    [allPicks, nowMs],
+  );
+
+  // Auto-suggested parlays: safe = top 2 heavy favorites; balanced = 1 strong
+  // + 2 moderates; longshot = 4 underdogs. Greedily pick from sorted lists
+  // skipping picks that share a game.
+  const suggested = useMemo(() => {
+    const usedGameIds = new Set<string>();
+    const pickN = (pool: Pick[], n: number, reset = false) => {
+      if (reset) usedGameIds.clear();
+      const out: Pick[] = [];
+      for (const p of pool) {
+        if (out.length === n) break;
+        if (usedGameIds.has(p.game.id)) continue;
+        out.push(p);
+        usedGameIds.add(p.game.id);
+      }
+      return out;
+    };
+
+    const heavyFavs = [...eligiblePicks]
+      .filter((p) => p.impliedProb > 0.55)
+      .sort((a, b) => b.score - a.score);
+    const safe = pickN(heavyFavs, 2, true);
+
+    const strongOne = [...eligiblePicks]
+      .filter((p) => p.impliedProb > 0.6)
+      .sort((a, b) => b.score - a.score);
+    const moderates = [...eligiblePicks]
+      .filter((p) => p.impliedProb >= 0.45 && p.impliedProb <= 0.55)
+      .sort((a, b) => b.score - a.score);
+    usedGameIds.clear();
+    const balancedOne = pickN(strongOne, 1);
+    const balancedTwo = pickN(moderates, 2);
+    const balanced = [...balancedOne, ...balancedTwo];
+
+    const underdogs = [...eligiblePicks]
+      .filter((p) => p.impliedProb < 0.45 && p.impliedProb > 0.2)
+      .sort((a, b) => b.score - a.score);
+    const longshot = pickN(underdogs, 4, true);
+
+    return { safe, balanced, longshot };
+  }, [eligiblePicks]);
+
+  const manualLegs = useMemo(() => {
+    const lookup = new Map<string, Pick>();
+    eligiblePicks.forEach((p) => lookup.set(`${p.game.id}-${p.team}`, p));
+    return Array.from(manualLegIds)
+      .map((id) => lookup.get(id))
+      .filter((p): p is Pick => Boolean(p));
+  }, [eligiblePicks, manualLegIds]);
+
+  const stakeNum = Math.max(0, parseFloat(stake) || 0);
+
+  const toggleLeg = (p: Pick) => {
+    const id = `${p.game.id}-${p.team}`;
+    setManualLegIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        // Same-game replacement: dropping both sides of one game first.
+        for (const existingId of Array.from(next)) {
+          if (existingId.startsWith(`${p.game.id}-`)) next.delete(existingId);
+        }
+        if (next.size >= 6) return prev;
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const savePaperBet = (legs: Pick[], label: string) => {
+    if (legs.length < 2 || stakeNum <= 0) return;
+    const calc = calcParlayMath(legs, stakeNum);
+    if (!calc) return;
+    const bet = {
+      id: Date.now(),
+      type: "parlay",
+      sport: "MIXED",
+      game: `${label} parlay (${legs.length} legs)`,
+      pick: legs.map((l) => `${l.team} ${l.bestPrice > 0 ? "+" : ""}${l.bestPrice}`).join(" / "),
+      odds: calc.combinedAmerican,
+      book: "MIXED",
+      stake: stakeNum,
+      potWin: calc.profit,
+      edge: 0,
+      status: "pending",
+      placedAt: new Date().toISOString(),
+      gameTime: legs[0].game.commence_time,
+      notes: `Combined ${(calc.combinedProb * 100).toFixed(1)}% · EV ${calc.ev >= 0 ? "+" : ""}$${calc.ev.toFixed(2)}`,
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem(VALUE_BETS_KEY) || "[]");
+      localStorage.setItem(VALUE_BETS_KEY, JSON.stringify([bet, ...existing]));
+    } catch {}
+    setFlash(`✓ Saved ${label} parlay to paper bets`);
+    setTimeout(() => setFlash(null), 2500);
+  };
+
+  const renderParlayBlock = (title: string, subtitle: string, legs: Pick[], emptyMsg: string) => {
+    if (legs.length === 0) {
+      return (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{title}</div>
+          <div style={{ fontSize: 11.5, color: C.textMuted }}>{emptyMsg}</div>
+        </div>
+      );
+    }
+    const calc = calcParlayMath(legs, stakeNum)!;
+    const evColor = calc.ev > 0 ? C.green : calc.ev < -20 ? C.red : C.amber;
+    return (
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 10 }}>{subtitle}</div>
+        {legs.map((l, i) => (
+          <div key={`${l.game.id}-${l.team}`} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12.5, borderBottom: i < legs.length - 1 ? `1px solid ${C.border}` : "none" }}>
+            <div>
+              <strong>Leg {i + 1}:</strong> {l.team} <span style={{ color: l.bestPrice > 0 ? C.green : C.text, fontWeight: 700 }}>{l.bestPrice > 0 ? "+" : ""}{l.bestPrice}</span> <span style={{ color: C.textMuted }}>({l.bestBook})</span>
+            </div>
+            <div style={{ color: C.textMuted }}>{Math.round(l.impliedProb * 100)}%</div>
+          </div>
+        ))}
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 12.5, color: C.text }}>
+          <div>Combined odds: <strong style={{ color: calc.combinedAmerican > 0 ? C.green : C.text }}>{calc.combinedAmerican > 0 ? "+" : ""}{calc.combinedAmerican}</strong></div>
+          <div>All {legs.length} must win: <strong>{(calc.combinedProb * 100).toFixed(1)}%</strong> combined probability</div>
+          <div>Bet ${stakeNum} → win <strong style={{ color: C.green }}>${calc.profit.toFixed(2)}</strong></div>
+          <div style={{ marginTop: 6, color: evColor, fontWeight: 700 }}>
+            Expected value: {calc.ev >= 0 ? "+" : ""}${calc.ev.toFixed(2)} per ${stakeNum} bet
+          </div>
+          {calc.ev > 0 && <div style={{ color: C.green, fontSize: 11, marginTop: 2 }}>Positive EV — rare opportunity</div>}
+          {calc.ev < -20 && <div style={{ color: C.red, fontSize: 11, marginTop: 2 }}>High negative EV — bet small or skip</div>}
+        </div>
+        <button
+          onClick={() => savePaperBet(legs, title)}
+          style={{
+            marginTop: 10,
+            width: "100%",
+            padding: "7px 10px",
+            borderRadius: 6,
+            border: `1px solid ${C.border}`,
+            background: C.card2,
+            color: C.text,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          Save to Paper Bets
+        </button>
+      </div>
+    );
+  };
+
+  const manualCalc = manualLegs.length >= 2 ? calcParlayMath(manualLegs, stakeNum) : null;
+
+  return (
+    <>
+      <SectionTitle
+        title="Smart Parlays"
+        subtitle="Auto-suggested combos · honest EV math · save your own builds"
+        right={
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            style={{
+              background: loading ? C.card2 : C.accent,
+              color: loading ? C.textDim : "#fff",
+              border: `1px solid ${loading ? C.border : C.accent}`,
+              borderRadius: 999,
+              padding: "4px 12px",
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              letterSpacing: "0.02em",
+            }}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        }
+      />
+
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {flash && (
+        <div style={{ background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, color: C.green, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+          {flash}
+        </div>
+      )}
+
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: C.textDim }}>Stake: $</span>
+        <input
+          type="number"
+          value={stake}
+          onChange={(e) => setStake(e.target.value)}
+          style={{ width: 100, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 14, fontWeight: 700, outline: "none" }}
+        />
+        <span style={{ fontSize: 12, color: C.textMuted }}>used for every parlay calc below</span>
+      </div>
+
+      {games === null ? (
+        <LoadingBlock />
+      ) : (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            Auto-suggested
+          </div>
+          {renderParlayBlock(
+            "SAFE",
+            "2-leg parlay · both heavy favorites (implied > 55%)",
+            suggested.safe,
+            "Not enough heavy favorites in the current odds set.",
+          )}
+          {renderParlayBlock(
+            "BALANCED",
+            "3-leg parlay · one strong favorite + two coin-flip picks",
+            suggested.balanced,
+            "Not enough coin-flip picks to build a balanced parlay right now.",
+          )}
+          {renderParlayBlock(
+            "LONGSHOT",
+            "4-leg parlay · moderate underdogs (high risk, high reward)",
+            suggested.longshot,
+            "Not enough underdog picks in the current odds set.",
+          )}
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, marginTop: 24, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            Build your own ({manualLegs.length}/6 legs)
+          </div>
+          {manualCalc && (
+            <div style={{ background: C.card, border: `1px solid ${C.accent}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+              <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.6 }}>
+                <div>Combined odds: <strong style={{ color: manualCalc.combinedAmerican > 0 ? C.green : C.text }}>{manualCalc.combinedAmerican > 0 ? "+" : ""}{manualCalc.combinedAmerican}</strong></div>
+                <div>All {manualLegs.length} must win: <strong>{(manualCalc.combinedProb * 100).toFixed(1)}%</strong></div>
+                <div>Bet ${stakeNum} → win <strong style={{ color: C.green }}>${manualCalc.profit.toFixed(2)}</strong></div>
+                <div style={{ marginTop: 6, color: manualCalc.ev > 0 ? C.green : manualCalc.ev < -20 ? C.red : C.amber, fontWeight: 700 }}>
+                  Expected value: {manualCalc.ev >= 0 ? "+" : ""}${manualCalc.ev.toFixed(2)} per ${stakeNum} bet
+                </div>
+              </div>
+              <button
+                onClick={() => savePaperBet(manualLegs, "Custom")}
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: C.accent,
+                  color: "#fff",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Save Custom Parlay to Paper Bets
+              </button>
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8 }}>
+            Click picks to add/remove. Same-game picks replace each other.
+          </div>
+          <div style={{ display: "grid", gap: 6, maxHeight: 500, overflowY: "auto" }}>
+            {eligiblePicks.slice(0, 60).map((p) => {
+              const id = `${p.game.id}-${p.team}`;
+              const selected = manualLegIds.has(id);
+              return (
+                <button
+                  key={id}
+                  onClick={() => toggleLeg(p)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: `1px solid ${selected ? C.accent : C.border}`,
+                    background: selected ? "rgba(99,102,241,0.15)" : C.card,
+                    color: C.text,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span>
+                    <input type="checkbox" checked={selected} readOnly style={{ marginRight: 8 }} />
+                    <strong>{p.team}</strong>
+                    <span style={{ color: C.textMuted, marginLeft: 6 }}>vs {p.team === p.game.away_team ? p.game.home_team : p.game.away_team}</span>
+                  </span>
+                  <span>
+                    <span style={{ color: p.bestPrice > 0 ? C.green : C.text, fontWeight: 700 }}>
+                      {p.bestPrice > 0 ? "+" : ""}{p.bestPrice}
+                    </span>
+                    <span style={{ color: C.textMuted, marginLeft: 6 }}>{Math.round(p.impliedProb * 100)}%</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
 }
 
 function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
