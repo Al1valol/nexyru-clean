@@ -2145,6 +2145,157 @@ const TIME_FILTERS: { id: string; label: string; hours: number | null }[] = [
   { id: "all", label: "All", hours: null },
 ];
 
+type EsportPlayer = {
+  id: number;
+  name: string;
+  fullName?: string;
+  role?: string;
+  nationality?: string;
+  image?: string;
+  team?: string;
+};
+
+// Country code (ISO 3166-1 alpha-2) → flag emoji via regional indicator
+// symbols. Returns empty string for missing/invalid codes.
+function flagFromCode(code: string | undefined): string {
+  if (!code || code.length !== 2) return "";
+  const cc = code.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(cc)) return "";
+  return [...cc].map((c) => String.fromCodePoint(c.charCodeAt(0) - 65 + 0x1f1e6)).join("");
+}
+
+function EsportsPlayersPanel() {
+  const [game, setGame] = useState<EsportGame>("csgo");
+  const [players, setPlayers] = useState<EsportPlayer[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      setPlayers(null);
+      try {
+        const r = await fetch(`/api/esports?game=${game}&type=players`);
+        const j = await r.json();
+        if (cancelled) return;
+        if (!r.ok) {
+          setError(j.error || `Failed (${r.status})`);
+          setPlayers([]);
+          return;
+        }
+        setPlayers((j.data as EsportPlayer[]) || []);
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message || "Failed to load");
+          setPlayers([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [game]);
+
+  const gameMeta = ESPORT_GAMES.find((g) => g.id === game)!;
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {ESPORT_GAMES.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => setGame(g.id)}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: `1px solid ${game === g.id ? g.color : C.border}`,
+              background: game === g.id ? `${g.color}26` : "transparent",
+              color: game === g.id ? "#fff" : C.textDim,
+              fontSize: 13,
+              fontWeight: game === g.id ? 700 : 500,
+              cursor: "pointer",
+            }}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: 12, marginBottom: 12, color: "#fbbf24", fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: 24, color: C.textDim, fontSize: 13 }}>
+          Loading {gameMeta.label} players…
+        </div>
+      )}
+
+      {!loading && players && players.length === 0 && !error && (
+        <div style={{ textAlign: "center", padding: 24, color: C.textMuted, fontSize: 13 }}>
+          No {gameMeta.label} players returned.
+        </div>
+      )}
+
+      {!loading && players && players.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+          {players.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: 12,
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              {p.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={p.image}
+                  alt={p.name}
+                  style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", background: C.card2, flexShrink: 0 }}
+                />
+              ) : (
+                <div style={{ width: 40, height: 40, borderRadius: 6, background: C.card2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                  {flagFromCode(p.nationality) || "🎮"}
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {flagFromCode(p.nationality)} {p.name}
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                  {p.team || "Free agent"}
+                </div>
+                {(p.role || p.fullName) && (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+                    {p.role && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: `${gameMeta.color}26`, color: gameMeta.color, letterSpacing: 0.3 }}>
+                        {p.role.toUpperCase()}
+                      </span>
+                    )}
+                    {p.fullName && (
+                      <span style={{ fontSize: 10, color: C.textMuted }}>{p.fullName}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type GameAnalysis = {
   pick: string;
   confidence: "high" | "medium" | "low";
@@ -2164,6 +2315,7 @@ function BestPicksPanel({
   const [flash, setFlash] = useState<string | null>(null);
   const [gameAnalysis, setGameAnalysis] = useState<Record<string, GameAnalysis>>({});
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+  const [section, setSection] = useState<"gamepicks" | "playerprops" | "esports" | "esportsplayers">("gamepicks");
 
   const allPicks = useMemo(() => buildPicks(games), [games]);
 
@@ -2488,6 +2640,38 @@ function BestPicksPanel({
         }
       />
 
+      <div style={{ display: "flex", gap: 8, padding: "8px 0", flexWrap: "wrap" }}>
+        {([
+          { id: "gamepicks", label: "🏆 Game Picks" },
+          { id: "playerprops", label: "🏀 Player Props" },
+          { id: "esports", label: "🎮 Esports Matches" },
+          { id: "esportsplayers", label: "👤 Esports Players" },
+        ] as const).map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setSection(s.id)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 20,
+              border: `1px solid ${section === s.id ? C.accent : C.border}`,
+              background: section === s.id ? "rgba(99,102,241,0.15)" : "transparent",
+              color: section === s.id ? "#a5b4fc" : C.textMuted,
+              fontSize: 12,
+              fontWeight: section === s.id ? 700 : 400,
+              cursor: "pointer",
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {section === "playerprops" && <PlayerStatsPanel />}
+      {section === "esports" && <EsportsPanel />}
+      {section === "esportsplayers" && <EsportsPlayersPanel />}
+
+      {section === "gamepicks" && (
+      <>
       {error && <ErrorBox>{error}</ErrorBox>}
       {flash && (
         <div style={{ background: "rgba(34,197,94,0.1)", border: `1px solid ${C.green}`, color: C.green, borderRadius: 8, padding: "8px 12px", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
@@ -2626,6 +2810,8 @@ function BestPicksPanel({
             </>
           )}
         </>
+      )}
+      </>
       )}
     </>
   );

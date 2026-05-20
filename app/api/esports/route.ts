@@ -34,6 +34,16 @@ type NormalizedTeam = {
   image?: string;
 };
 
+type NormalizedPlayer = {
+  id: number;
+  name: string;
+  fullName?: string;
+  role?: string;
+  nationality?: string;
+  image?: string;
+  team?: string;
+};
+
 function normalizeMatches(json: any): NormalizedMatch[] {
   if (!Array.isArray(json)) return [];
   return json.map((m: any) => ({
@@ -60,6 +70,19 @@ function normalizeTeams(json: any): NormalizedTeam[] {
     acronym: t.acronym ?? undefined,
     location: t.location ?? undefined,
     image: t.image_url ?? undefined,
+  }));
+}
+
+function normalizePlayers(json: any): NormalizedPlayer[] {
+  if (!Array.isArray(json)) return [];
+  return json.map((p: any) => ({
+    id: p.id,
+    name: p.name ?? "Unknown",
+    fullName: [p.first_name, p.last_name].filter(Boolean).join(" ") || undefined,
+    role: p.role ?? undefined,
+    nationality: p.nationality ?? undefined,
+    image: p.image_url ?? undefined,
+    team: p.current_team?.name ?? undefined,
   }));
 }
 
@@ -92,6 +115,10 @@ export async function GET(req: NextRequest) {
   } else if (type === "teams") {
     upstream = new URL(`https://api.pandascore.co/${slug}/teams`);
     upstream.searchParams.set("per_page", "10");
+  } else if (type === "players") {
+    upstream = new URL(`https://api.pandascore.co/${slug}/players`);
+    upstream.searchParams.set("per_page", "20");
+    upstream.searchParams.set("sort", "-modified_at");
   } else {
     return NextResponse.json({ error: "Unsupported type" }, { status: 400 });
   }
@@ -113,10 +140,12 @@ export async function GET(req: NextRequest) {
         { status: r.status },
       );
     }
-    // /matches/running and /matches/upcoming return the same shape — both
-    // need normalizeMatches. Only /teams uses normalizeTeams.
+    // Dispatch to the right normalizer per type. /matches/running and
+    // /matches/upcoming share normalizeMatches.
     const data =
-      type === "teams" ? normalizeTeams(raw) : normalizeMatches(raw);
+      type === "teams" ? normalizeTeams(raw)
+      : type === "players" ? normalizePlayers(raw)
+      : normalizeMatches(raw);
     return NextResponse.json({ data });
   } catch (err) {
     return NextResponse.json(
