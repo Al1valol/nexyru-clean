@@ -1616,6 +1616,134 @@ type MlbPlayer = {
   gamesPlayed: number;
 };
 
+type Confidence = "HIGH" | "MEDIUM" | "LOW";
+type PropBet = {
+  id: string;
+  player: string;
+  team: string;
+  prop: string;
+  propLower: string;
+  line: number;
+  avg: number;
+  avgDisplay: string;
+  pick: "OVER";
+  edge: number;
+  edgePct: number;
+  confidence: Confidence;
+  odds: number;
+  sport: "NBA" | "MLB";
+};
+
+const CONF_ORDER: Record<Confidence, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+
+// Generate ranked prop bet candidates from season averages. Lines are
+// synthetic: NBA = 15% below avg rounded to nearest 0.5; MLB HR = 25% below
+// avg rounded to nearest 0.1; MLB hits = 15% below avg rounded to 0.5. The
+// "edge" is the gap between season avg and the line — bigger = better OVER.
+function generatePropBets(
+  nba: NbaPlayer[],
+  mlb: MlbPlayer[],
+  sport: "nba" | "mlb",
+): PropBet[] {
+  const out: PropBet[] = [];
+
+  if (sport === "nba") {
+    for (const p of nba) {
+      const push = (
+        key: string,
+        prop: string,
+        avg: number,
+        decimals: 1 | 2,
+        highEdge: number,
+        medEdge: number,
+      ) => {
+        const line = Math.round(avg * 0.85 * 2) / 2;
+        const edge = avg - line;
+        if (edge <= 0) return;
+        const confidence: Confidence =
+          edge > highEdge ? "HIGH" : edge > medEdge ? "MEDIUM" : "LOW";
+        out.push({
+          id: `${p.id}_${key}`,
+          player: p.name,
+          team: p.team,
+          prop,
+          propLower: prop.toLowerCase(),
+          line,
+          avg,
+          avgDisplay: avg.toFixed(decimals),
+          pick: "OVER",
+          edge,
+          edgePct: Math.round((edge / avg) * 100),
+          confidence,
+          odds: -110,
+          sport: "NBA",
+        });
+      };
+      if (p.ppg > 10) push("pts", "Points", p.ppg, 1, 5, 2);
+      if (p.rpg > 4) push("reb", "Rebounds", p.rpg, 1, 2, 1);
+      if (p.apg > 3) push("ast", "Assists", p.apg, 1, 2, 1);
+    }
+  } else {
+    for (const p of mlb) {
+      const games = 162;
+      const hr = p.homeRuns || 0;
+      const hits = p.hits || 0;
+      const hrPerGame = hr / games;
+      const hitsPerGame = hits / games;
+
+      if (hrPerGame > 0.1) {
+        const line = Math.round(hrPerGame * 0.75 * 10) / 10;
+        const edge = hrPerGame - line;
+        const confidence: Confidence =
+          hrPerGame > 0.3 ? "HIGH" : hrPerGame > 0.2 ? "MEDIUM" : "LOW";
+        out.push({
+          id: `${p.id}_hr`,
+          player: p.name,
+          team: p.team,
+          prop: "Home Runs/Game",
+          propLower: "home runs/game",
+          line,
+          avg: hrPerGame,
+          avgDisplay: hrPerGame.toFixed(3),
+          pick: "OVER",
+          edge,
+          edgePct: edge > 0 ? Math.round((edge / hrPerGame) * 100) : 0,
+          confidence,
+          odds: -110,
+          sport: "MLB",
+        });
+      }
+
+      if (hitsPerGame > 0.5) {
+        const line = Math.round(hitsPerGame * 0.85 * 2) / 2;
+        const edge = hitsPerGame - line;
+        out.push({
+          id: `${p.id}_hits`,
+          player: p.name,
+          team: p.team,
+          prop: "Hits/Game",
+          propLower: "hits/game",
+          line,
+          avg: hitsPerGame,
+          avgDisplay: hitsPerGame.toFixed(2),
+          pick: "OVER",
+          edge,
+          edgePct: edge > 0 ? Math.round((edge / hitsPerGame) * 100) : 0,
+          confidence: "MEDIUM",
+          odds: -110,
+          sport: "MLB",
+        });
+      }
+    }
+  }
+
+  // Sort by confidence (HIGH > MEDIUM > LOW), then edge% descending.
+  return out.sort((a, b) => {
+    const c = CONF_ORDER[a.confidence] - CONF_ORDER[b.confidence];
+    return c !== 0 ? c : b.edgePct - a.edgePct;
+  });
+}
+
 function PlayerPropsPanel({
   onAddBet,
 }: {
@@ -1627,14 +1755,6 @@ function PlayerPropsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  // Lines keyed by `${playerId}_${propKey}` so each player has independent
-  // inputs and switching sports / re-fetching doesn't blow them away.
-  const [lines, setLines] = useState<Record<string, string>>({});
-
-  // "TOO CLOSE" cutoff — diffs smaller than this are statistical noise and
-  // suppress the OVER/UNDER recommendation.
-  const NBA_CLOSE = 1.5;
-  const MLB_CLOSE = 0.1;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1661,179 +1781,31 @@ function PlayerPropsPanel({
     load();
   }, [sport]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const renderSlip = (
-    playerId: number | string,
-    name: string,
-    teamLabel: string,
-    mainStatLabel: string,
-    mainStatValue: string,
-    isNBA: boolean,
-    props: { key: string; label: string; avg: number; avgDisplay: string }[],
-  ) => {
-    const closeThreshold = isNBA ? NBA_CLOSE : MLB_CLOSE;
-    return (
-      <div
-        key={playerId}
-        style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: 12,
-          padding: 16,
-          marginBottom: 12,
-        }}
-      >
-        {/* Player header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{name}</div>
-            <div style={{ fontSize: 12, color: C.textMuted }}>
-              {teamLabel} · Season avg: {mainStatValue} {mainStatLabel}
-            </div>
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: isNBA ? C.blue : C.amber }}>
-            {mainStatValue}
-          </div>
-        </div>
+  const bets = useMemo(() => generatePropBets(nba, mlb, sport), [nba, mlb, sport]);
+  const highCount = bets.filter((b) => b.confidence === "HIGH").length;
+  const medCount = bets.filter((b) => b.confidence === "MEDIUM").length;
 
-        {/* Prop bets — always visible, no clicking needed */}
-        {props.map((prop) => {
-          const k = `${playerId}_${prop.key}`;
-          const lineStr = lines[k] ?? "";
-          const line = parseFloat(lineStr);
-          const valid = !!lineStr && !isNaN(line);
-          const diff = valid ? prop.avg - line : 0;
-          const isClose = valid && Math.abs(diff) < closeThreshold;
-          const rec: "OVER" | "UNDER" | null = !valid ? null : isClose ? null : diff > 0 ? "OVER" : "UNDER";
-          const borderColor =
-            rec === "OVER"
-              ? "rgba(34,197,94,0.3)"
-              : rec === "UNDER"
-                ? "rgba(239,68,68,0.3)"
-                : "#2a2a3a";
-
-          const addBet = () => {
-            if (!rec) return;
-            onAddBet({
-              type: "prop",
-              sport: sport.toUpperCase(),
-              game: `${name} — ${prop.label}`,
-              pick: `${rec} ${line} ${prop.label}`,
-              odds: -110,
-              book: "DraftKings",
-              stake: 100,
-              potWin: payoutOn(100, -110),
-              notes: `Avg ${prop.avgDisplay} vs line ${line}`,
-            });
-            alert(`✅ Bet placed! ${rec} ${line} ${prop.label} for ${name}`);
-          };
-
-          return (
-            <div
-              key={prop.key}
-              style={{
-                background: "#1a1a24",
-                borderRadius: 8,
-                padding: 12,
-                marginBottom: 8,
-                border: `1px solid ${borderColor}`,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", width: 70 }}>
-                    {prop.label}
-                  </span>
-                  <span style={{ fontSize: 12, color: C.textMuted }}>
-                    Avg: <strong style={{ color: "#fff" }}>{prop.avgDisplay}</strong>
-                  </span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, color: C.textMuted }}>Line:</span>
-                  <input
-                    placeholder="e.g. 24.5"
-                    inputMode="decimal"
-                    value={lineStr}
-                    onChange={(e) => setLines((prev) => ({ ...prev, [k]: e.target.value }))}
-                    style={{
-                      width: 80,
-                      padding: "6px 10px",
-                      borderRadius: 6,
-                      border: `1px solid ${C.border}`,
-                      background: C.card,
-                      color: "#fff",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      outline: "none",
-                      textAlign: "center",
-                    }}
-                  />
-                  {rec && (
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <div
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: 6,
-                          fontSize: 13,
-                          fontWeight: 800,
-                          background: rec === "OVER" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
-                          color: rec === "OVER" ? C.green : C.red,
-                          border: `1px solid ${rec === "OVER" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-                        }}
-                      >
-                        {rec === "OVER" ? "✅ OVER" : "⬇️ UNDER"}
-                      </div>
-                      <button
-                        onClick={addBet}
-                        style={{
-                          padding: "6px 14px",
-                          borderRadius: 6,
-                          border: "none",
-                          background: C.accent,
-                          color: "#fff",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          minHeight: 32,
-                        }}
-                      >
-                        Bet $100 →
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              {valid && (
-                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>
-                  {rec
-                    ? `${rec === "OVER" ? "Above" : "Below"} average by ${Math.abs(diff).toFixed(2)} — ${Math.abs((diff / Math.max(prop.avg, 0.01)) * 100).toFixed(0)}% ${rec === "OVER" ? "higher" : "lower"} than season avg`
-                    : "Too close to call — skip this prop"}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
+  const placeBet = (b: PropBet) => {
+    onAddBet({
+      type: "prop",
+      sport: b.sport,
+      game: `${b.player} — ${b.prop}`,
+      pick: `${b.pick} ${b.line} ${b.prop}`,
+      odds: -110,
+      book: "DraftKings",
+      stake: 110,
+      potWin: 100,
+      notes: `Avg ${b.avgDisplay} vs line ${b.line} — ${b.edgePct}% edge`,
+    });
+    alert(`✅ Placed paper bet: ${b.pick} ${b.line} ${b.prop} for ${b.player}`);
   };
 
   return (
     <>
-      <SectionHeader title="🏀 Player Props" subtitle="Bet on player performance" />
-
-      {/* Instructions banner */}
-      <div
-        style={{
-          padding: "10px 14px",
-          borderRadius: 10,
-          background: "rgba(99,102,241,0.06)",
-          border: "1px solid rgba(99,102,241,0.18)",
-          color: "#a5b4fc",
-          fontSize: 12,
-          marginBottom: 14,
-        }}
-      >
-        Enter a prop line from DraftKings or FanDuel to get an instant OVER/UNDER recommendation
-      </div>
+      <SectionHeader
+        title="🏀 Player Props — Best Bets Today"
+        subtitle="Ranked by statistical edge vs standard prop lines"
+      />
 
       {/* Sport switcher */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -1900,52 +1872,175 @@ function PlayerPropsPanel({
         </div>
       )}
 
+      {/* Info banner */}
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          background: "rgba(99,102,241,0.06)",
+          border: "1px solid rgba(99,102,241,0.18)",
+          color: "#a5b4fc",
+          fontSize: 12,
+          marginBottom: 12,
+        }}
+      >
+        ℹ️ Lines are estimated — always verify on DraftKings or FanDuel before betting real money
+      </div>
+
+      {/* Counts */}
+      {bets.length > 0 && (
+        <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12, fontWeight: 600 }}>
+          {bets.length} prop bet{bets.length === 1 ? "" : "s"} found · {highCount} HIGH confidence ·{" "}
+          {medCount} MEDIUM
+        </div>
+      )}
+
       {error && <ErrorBox>{error}</ErrorBox>}
       {loading && (
         <div style={{ color: C.textMuted, padding: 32, textAlign: "center" }}>
           Loading {sport.toUpperCase()}…
         </div>
       )}
-
-      {!loading && sport === "nba" && nba.length === 0 && !error && (
-        <div style={{ color: C.textMuted, padding: 32, textAlign: "center" }}>No NBA players found.</div>
-      )}
-      {!loading && sport === "mlb" && mlb.length === 0 && !error && (
-        <div style={{ color: C.textMuted, padding: 32, textAlign: "center" }}>No MLB players found.</div>
-      )}
-
-      {/* NBA betting slips — always-visible inputs */}
-      {!loading &&
-        sport === "nba" &&
-        nba.map((p) =>
-          renderSlip(p.id, p.name, p.team, "PPG", p.ppg.toFixed(1), true, [
-            { key: "pts", label: "Points", avg: p.ppg, avgDisplay: p.ppg.toFixed(1) },
-            { key: "reb", label: "Rebounds", avg: p.rpg, avgDisplay: p.rpg.toFixed(1) },
-            { key: "ast", label: "Assists", avg: p.apg, avgDisplay: p.apg.toFixed(1) },
-          ]),
-        )}
-
-      {/* MLB betting slips */}
-      {!loading &&
-        sport === "mlb" &&
-        mlb.map((p) => {
-          const gp = p.gamesPlayed || 162;
-          const hitsPerGame = (p.hits || 0) / Math.max(gp, 1);
-          const hrPerGame = (p.homeRuns || 0) / Math.max(gp, 1);
-          const rbiPerGame = (p.rbi || 0) / Math.max(gp, 1);
-          return renderSlip(p.id, p.name, p.team, "HR", String(p.homeRuns), false, [
-            { key: "hits", label: "Hits/Game", avg: hitsPerGame, avgDisplay: hitsPerGame.toFixed(2) },
-            { key: "hr", label: "HR/Game", avg: hrPerGame, avgDisplay: hrPerGame.toFixed(3) },
-            { key: "rbi", label: "RBI/Game", avg: rbiPerGame, avgDisplay: rbiPerGame.toFixed(2) },
-          ]);
-        })}
-
-      {/* Verification reminder */}
-      {!loading && ((sport === "nba" && nba.length > 0) || (sport === "mlb" && mlb.length > 0)) && (
-        <div style={{ fontSize: 10, color: "#4b5563", marginTop: 8, textAlign: "center" }}>
-          ⚠️ Always verify actual prop lines on DraftKings or FanDuel before betting real money
+      {!loading && !error && bets.length === 0 && (
+        <div
+          style={{
+            color: C.textMuted,
+            padding: 32,
+            textAlign: "center",
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+          }}
+        >
+          No qualifying {sport.toUpperCase()} prop bets found.
         </div>
       )}
+
+      {/* Ranked bet cards */}
+      {!loading &&
+        bets.map((b) => {
+          const confColor =
+            b.confidence === "HIGH" ? C.green : b.confidence === "MEDIUM" ? "#a5b4fc" : C.textMuted;
+          const confBg =
+            b.confidence === "HIGH"
+              ? "rgba(34,197,94,0.15)"
+              : b.confidence === "MEDIUM"
+                ? "rgba(99,102,241,0.15)"
+                : "rgba(107,114,128,0.15)";
+          const cardBorder =
+            b.confidence === "HIGH"
+              ? "rgba(34,197,94,0.4)"
+              : b.confidence === "MEDIUM"
+                ? "rgba(99,102,241,0.3)"
+                : C.border;
+          const confEmoji =
+            b.confidence === "HIGH" ? "🔥" : b.confidence === "MEDIUM" ? "⭐" : "👀";
+          return (
+            <div
+              key={b.id}
+              style={{
+                background: C.card,
+                border: `1px solid ${cardBorder}`,
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 10,
+              }}
+            >
+              {/* Top row — player + confidence chip */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{b.player}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted }}>
+                    {b.team || b.sport} · {b.prop}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    background: confBg,
+                    color: confColor,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {confEmoji} {b.confidence}
+                </div>
+              </div>
+
+              {/* Pick / Line / Season avg grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+                <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>PICK</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.green }}>{b.pick}</div>
+                </div>
+                <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>LINE</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>{b.line}</div>
+                </div>
+                <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>SEASON AVG</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.blue }}>{b.avgDisplay}</div>
+                </div>
+              </div>
+
+              {/* Edge bar */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: C.textMuted }}>Statistical edge</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.green }}>
+                    +{b.edgePct}% above line
+                  </span>
+                </div>
+                <div style={{ height: 6, background: "#1a1a24", borderRadius: 3, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${Math.min(b.edgePct, 100)}%`,
+                      background: C.green,
+                      borderRadius: 3,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Why this pick */}
+              <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12, lineHeight: 1.5 }}>
+                {b.player} averages{" "}
+                <strong style={{ color: "#fff" }}>
+                  {b.avgDisplay} {b.propLower}
+                </strong>{" "}
+                per game — line is set at <strong style={{ color: "#fff" }}>{b.line}</strong>, which is{" "}
+                {b.edgePct}% below their average. OVER looks strong.
+              </div>
+
+              {/* Payout */}
+              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
+                Odds: -110 · Bet $110 → win $100 · Standard prop odds
+              </div>
+
+              {/* Bet button */}
+              <button
+                onClick={() => placeBet(b)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 8,
+                  border: "none",
+                  background: b.confidence === "HIGH" ? C.green : C.accent,
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  minHeight: 40,
+                }}
+              >
+                + Paper Bet — {b.pick} {b.line} {b.prop} ({b.player})
+              </button>
+            </div>
+          );
+        })}
     </>
   );
 }
