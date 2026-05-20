@@ -34,13 +34,24 @@ type Briefing = {
   motivation: string;
 };
 
+// Static fallback shown when the model omits or malforms the goals array, so
+// the sidebar never reads "no goals" on an otherwise successful briefing.
+const FALLBACK_GOALS = [
+  "Check your open crypto positions",
+  "Review today's arb opportunities",
+  "Log any trades from yesterday",
+  "Check JARVIS hot alert section",
+  "Review your book health tracker",
+];
+
 function coerceBriefing(parsed: unknown): Briefing | null {
   if (!parsed || typeof parsed !== "object") return null;
   const p = parsed as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
-  const goals = Array.isArray(p.goals)
+  const rawGoals = Array.isArray(p.goals)
     ? (p.goals as unknown[]).map((g) => String(g)).filter(Boolean)
     : [];
+  const goals = rawGoals.length > 0 ? rawGoals : FALLBACK_GOALS;
   // Coerce hot_alert: Claude sometimes returns the string "null" or "None"
   // instead of the JSON literal. Treat those as absent.
   const rawAlert = p.hot_alert;
@@ -55,7 +66,9 @@ function coerceBriefing(parsed: unknown): Briefing | null {
   // briefing — otherwise return null and let the route surface an error.
   const text = [p.greeting, p.overnight, p.market_overview, p.opportunities, p.warnings, p.motivation]
     .filter((v) => typeof v === "string" && v.trim().length > 0).length;
-  if (text === 0 && goals.length === 0) return null;
+  // Check rawGoals (pre-fallback) — otherwise the static fallback would let
+  // an otherwise-empty response slip through as a valid briefing.
+  if (text === 0 && rawGoals.length === 0) return null;
   return {
     greeting: str(p.greeting),
     overnight: str(p.overnight),
@@ -156,10 +169,18 @@ ${hg ? `- HOT GEM RIGHT NOW: ${hg.name} (${hg.symbol}) up ${Number(hg.change1h ?
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return NextResponse.json(
-        { error: "Model returned non-JSON", raw },
-        { status: 502 },
-      );
+      // Fallback: model occasionally wraps the JSON in prose ("Here's your
+      // briefing: {...}"). Extract the first {...} block and try again.
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) {
+        try { parsed = JSON.parse(m[0]); } catch {}
+      }
+      if (parsed === undefined) {
+        return NextResponse.json(
+          { error: "Model returned non-JSON", raw },
+          { status: 502 },
+        );
+      }
     }
 
     const briefing = coerceBriefing(parsed);

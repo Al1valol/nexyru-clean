@@ -2574,17 +2574,21 @@ function ValueBetsPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
 
 type StatsSport = "nba" | "mlb" | "nfl";
 
-// Verdict for a given season average vs a user-entered prop line. Threshold
-// is a percentage of the average so a 0.5-point edge on 24 PPG isn't treated
-// the same as a 0.5-rebound edge on 5 RPG.
-function propVerdict(avg: number, lineStr: string): { text: string; color: string } | null {
+// Compare a season average to a user-entered prop line. Tiered confidence:
+// absolute delta + percentage edge both matter, so a 0.5-rebound edge on 5 RPG
+// isn't treated the same as a 0.5-point edge on 24 PPG.
+type PropVerdict = { rec: "OVER" | "UNDER" | "TOO CLOSE"; confidence: "HIGH" | "MEDIUM" | "LOW"; color: string };
+
+function propVerdict(avg: number, lineStr: string): PropVerdict | null {
   const line = parseFloat(lineStr);
-  if (!Number.isFinite(line) || line <= 0) return null;
-  const delta = avg - line;
-  const pct = Math.abs(delta) / Math.max(avg, 0.001);
-  if (pct < 0.05) return { text: `TOO CLOSE (avg ${avg.toFixed(1)} vs line ${line})`, color: C.amber };
-  if (delta > 0) return { text: `OVER looks good (avg ${avg.toFixed(1)} beats ${line} by ${delta.toFixed(1)})`, color: C.green };
-  return { text: `UNDER looks good (avg ${avg.toFixed(1)} is ${Math.abs(delta).toFixed(1)} below ${line})`, color: C.red };
+  if (!Number.isFinite(line) || line <= 0 || !avg) return null;
+  const diff = avg - line;
+  const diffPct = Math.abs((diff / avg) * 100);
+  if (diff > 2 && diffPct > 10) return { rec: "OVER", confidence: "HIGH", color: C.green };
+  if (diff > 0.5) return { rec: "OVER", confidence: "MEDIUM", color: "#86efac" };
+  if (diff < -2 && diffPct > 10) return { rec: "UNDER", confidence: "HIGH", color: C.red };
+  if (diff < -0.5) return { rec: "UNDER", confidence: "MEDIUM", color: "#fca5a5" };
+  return { rec: "TOO CLOSE", confidence: "LOW", color: C.textMuted };
 }
 
 function PlayerStatsPanel() {
@@ -2593,8 +2597,8 @@ function PlayerStatsPanel() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsSearch, setStatsSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [activeId, setActiveId] = useState<number | null>(null);
-  const [propLines, setPropLines] = useState<Record<string, string>>({});
+  const [selectedPlayer, setSelectedPlayer] = useState<any | null>(null);
+  const [propLines, setPropLines] = useState<{ pts: string; reb: string; ast: string }>({ pts: "", reb: "", ast: "" });
 
   // Single fetch — proxy returns the season leaderboard pre-flattened. Search
   // filters happen client-side so typing is instant; the search box doesn't
@@ -2633,10 +2637,13 @@ function PlayerStatsPanel() {
       // /v1/stats returns { stats: [{ splits: [{ player, team, stat: {...} }] }] }.
       // Each split is one player with the full stat object inline.
       const splits: any[] = j?.stats?.[0]?.splits ?? [];
-      const arr = splits.map((sp) => ({
+      // Rank = position in the AVG-sorted leaderboard (api already returns
+      // them sorted desc). One-based for display.
+      const arr = splits.map((sp, i) => ({
         id: sp.player?.id ?? Math.random(),
         name: sp.player?.fullName ?? "Unknown",
         team: sp.team?.name ?? "",
+        rank: i + 1,
         stats: {
           avg: sp.stat?.avg ?? "—",
           homeRuns: sp.stat?.homeRuns ?? "—",
@@ -2654,7 +2661,8 @@ function PlayerStatsPanel() {
   }, []);
 
   useEffect(() => {
-    setActiveId(null);
+    setSelectedPlayer(null);
+    setPropLines({ pts: "", reb: "", ast: "" });
     if (statsSport === "nba") loadNBA();
     else if (statsSport === "mlb") loadMLB();
     else setStatsPlayers([]);
@@ -2783,7 +2791,7 @@ function PlayerStatsPanel() {
       {!statsLoading && statsSport === "nba" && visiblePlayers.length > 0 && (
         <div style={{ display: "grid", gap: 12 }}>
           {visiblePlayers.map((p) => {
-            const isActive = activeId === p.id;
+            const isSelected = selectedPlayer?.id === p.id;
             const ppg = Number(p.ppg) || 0;
             const rpg = Number(p.rpg) || 0;
             const apg = Number(p.apg) || 0;
@@ -2795,13 +2803,20 @@ function PlayerStatsPanel() {
                 key={p.id}
                 style={{
                   background: C.card,
-                  border: `1px solid ${isActive ? C.accent : C.border}`,
+                  border: `1px solid ${isSelected ? C.accent : C.border}`,
                   borderRadius: 12,
                   padding: 16,
                   cursor: "pointer",
                   transition: "border-color 0.15s",
                 }}
-                onClick={() => setActiveId(isActive ? null : p.id)}
+                onClick={() => {
+                  if (isSelected) {
+                    setSelectedPlayer(null);
+                  } else {
+                    setSelectedPlayer(p);
+                    setPropLines({ pts: "", reb: "", ast: "" });
+                  }
+                }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
                   <div>
@@ -2842,58 +2857,100 @@ function PlayerStatsPanel() {
                     </div>
                   ))}
                 </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-                {isActive && (
-                  <div
+      {statsSport === "nba" && selectedPlayer && (
+        <div
+          style={{
+            marginTop: 16,
+            background: C.card,
+            border: `1px solid ${C.accent}`,
+            borderRadius: 12,
+            padding: 16,
+            boxShadow: "0 0 30px rgba(99,102,241,0.10)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>
+                🎯 Prop Bet Helper
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>
+                {selectedPlayer.name}
+                <span style={{ color: C.textMuted, fontWeight: 500, marginLeft: 8 }}>· {selectedPlayer.team}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setSelectedPlayer(null)}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 6,
+                border: `1px solid ${C.border}`,
+                background: "transparent",
+                color: C.textMuted,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          {(
+            [
+              { key: "pts" as const, label: "Points", avg: Number(selectedPlayer.ppg) || 0 },
+              { key: "reb" as const, label: "Rebounds", avg: Number(selectedPlayer.rpg) || 0 },
+              { key: "ast" as const, label: "Assists", avg: Number(selectedPlayer.apg) || 0 },
+            ]
+          ).map((row) => {
+            const lineVal = propLines[row.key];
+            const verdict = propVerdict(row.avg, lineVal);
+            return (
+              <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                <div style={{ width: 90, fontSize: 13, color: C.textDim }}>{row.label} line</div>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={lineVal}
+                  onChange={(e) => setPropLines((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                  placeholder={`avg ${row.avg.toFixed(1)}`}
+                  style={{
+                    width: 110,
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: `1px solid ${C.border}`,
+                    background: C.bg,
+                    color: "#fff",
+                    fontSize: 13,
+                    outline: "none",
+                  }}
+                />
+                <div style={{ fontSize: 12, color: C.textMuted, minWidth: 80 }}>
+                  Avg: <strong style={{ color: C.text }}>{row.avg.toFixed(1)}</strong>
+                </div>
+                {verdict ? (
+                  <span
                     style={{
-                      marginTop: 14,
-                      paddingTop: 14,
-                      borderTop: `1px solid ${C.border}`,
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      background: `${verdict.color}26`,
+                      color: verdict.color,
+                      border: `1px solid ${verdict.color}40`,
+                      letterSpacing: 0.4,
                     }}
-                    onClick={(e) => e.stopPropagation()}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.textDim, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      🎯 Prop Bet Helper
-                    </div>
-                    {(
-                      [
-                        { key: "pts", label: "Points", avg: ppg },
-                        { key: "reb", label: "Rebounds", avg: rpg },
-                        { key: "ast", label: "Assists", avg: apg },
-                      ] as const
-                    ).map((row) => {
-                      const stateKey = `${p.id}:${row.key}`;
-                      const lineVal = propLines[stateKey] ?? "";
-                      const verdict = propVerdict(row.avg, lineVal);
-                      return (
-                        <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                          <div style={{ width: 80, fontSize: 13, color: C.textDim }}>{row.label}</div>
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={lineVal}
-                            onChange={(e) =>
-                              setPropLines((prev) => ({ ...prev, [stateKey]: e.target.value }))
-                            }
-                            placeholder={`line (avg ${row.avg.toFixed(1)})`}
-                            style={{
-                              width: 110,
-                              padding: "6px 8px",
-                              borderRadius: 6,
-                              border: `1px solid ${C.border}`,
-                              background: C.bg,
-                              color: "#fff",
-                              fontSize: 13,
-                              outline: "none",
-                            }}
-                          />
-                          <div style={{ fontSize: 12, color: verdict?.color || C.textMuted, fontWeight: 600 }}>
-                            {verdict ? verdict.text : "Enter the prop line to compare"}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                    {verdict.rec} · {verdict.confidence}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11.5, color: C.textMuted, fontStyle: "italic" }}>
+                    Enter the prop line
+                  </span>
                 )}
               </div>
             );
@@ -2919,11 +2976,16 @@ function PlayerStatsPanel() {
                 padding: 16,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>{p.team}</div>
                 </div>
+                {p.rank != null && (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, background: C.card2, padding: "4px 10px", borderRadius: 6, whiteSpace: "nowrap" }}>
+                    AVG #{p.rank}
+                  </div>
+                )}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 {[
