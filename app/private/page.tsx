@@ -3049,6 +3049,49 @@ type BettingAngle = {
   tournamentInsight: string;
 };
 
+type EstimatedOdds = { odds1: number; odds2: number; prob1: number; prob2: number };
+
+// Crude implied-odds estimate from curated ranks. Honest disclaimer: this is
+// not a real market price — it's a ratio of two arbitrary leaderboard
+// positions, useful only as a rough indicator of who's favored. Treat unknown
+// rank (999 sentinel from getTeamRank) as the middle of the pack (50).
+function estimateOdds(r1: number, r2: number): EstimatedOdds {
+  if (r1 >= 999 && r2 >= 999) {
+    return { odds1: -110, odds2: -110, prob1: 50, prob2: 50 };
+  }
+  const rank1 = r1 >= 999 ? 50 : r1;
+  const rank2 = r2 >= 999 ? 50 : r2;
+  const total = rank1 + rank2;
+  const p1 = rank2 / total;
+  const p2 = rank1 / total;
+  const toAmerican = (p: number) =>
+    p >= 0.5
+      ? Math.round((-100 * p) / (1 - p))
+      : Math.round((100 * (1 - p)) / p);
+  return {
+    odds1: toAmerican(p1),
+    odds2: toAmerican(p2),
+    prob1: Math.round(p1 * 100),
+    prob2: Math.round(p2 * 100),
+  };
+}
+
+type EsportPrediction = {
+  winner: string;
+  confidence: "high" | "medium" | "low";
+  probability: number;
+  reasoning: string;
+  bet: string;
+  betReason: string;
+};
+
+const BETTING_SITES = [
+  { name: "Betway", url: "https://betway.com/esports", color: "#00a651" },
+  { name: "GG.bet", url: "https://gg.bet", color: "#ff6b00" },
+  { name: "Stake", url: "https://stake.com/esports", color: "#1c8aff" },
+  { name: "Pinnacle", url: "https://pinnacle.com/esports", color: "#e63946" },
+];
+
 function computeBettingAngle(match: EsportMatch, game: EsportGame): BettingAngle {
   const opp1 = match.opponents[0];
   const opp2 = match.opponents[1];
@@ -3111,6 +3154,8 @@ function EsportsPanel() {
   });
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [expandedAngleIds, setExpandedAngleIds] = useState<Set<number>>(new Set());
+  const [predictions, setPredictions] = useState<Record<number, EsportPrediction>>({});
+  const [predicting, setPredicting] = useState<Set<number>>(new Set());
 
   const toggleAngle = (id: number) => {
     setExpandedAngleIds((prev) => {
@@ -3119,6 +3164,40 @@ function EsportsPanel() {
       else next.add(id);
       return next;
     });
+  };
+
+  const predictMatch = async (m: EsportMatch, r1: number, r2: number) => {
+    if (predicting.has(m.id) || predictions[m.id]) return;
+    setPredicting((prev) => new Set(prev).add(m.id));
+    try {
+      const opp1 = m.opponents[0];
+      const opp2 = m.opponents[1];
+      const res = await fetch("/api/esports/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          team1: opp1?.name ?? "Team 1",
+          team2: opp2?.name ?? "Team 2",
+          team1Rank: r1,
+          team2Rank: r2,
+          tournament: m.tournament || m.league || "Unknown",
+          format: m.bo > 0 ? `Best of ${m.bo}` : "Unknown",
+          game,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPredictions((prev) => ({ ...prev, [m.id]: data as EsportPrediction }));
+      }
+    } catch {
+      // Surface failures via the absence of a prediction; button stays clickable.
+    } finally {
+      setPredicting((prev) => {
+        const next = new Set(prev);
+        next.delete(m.id);
+        return next;
+      });
+    }
   };
 
   useEffect(() => {
@@ -3315,6 +3394,113 @@ function EsportsPanel() {
                       Best of {m.bo}
                     </div>
                   )}
+
+                  {(() => {
+                    // Estimated odds derived from curated rank — not a real
+                    // market price. Surface as "ESTIMATED" so users don't
+                    // confuse it with a sportsbook quote.
+                    const r1 = getTeamRank(opp1?.name, opp1?.acronym, game);
+                    const r2 = getTeamRank(opp2?.name, opp2?.acronym, game);
+                    const eo = estimateOdds(r1, r2);
+                    return (
+                      <>
+                        <div style={{ marginTop: 12, fontSize: 10, color: C.textMuted, textAlign: "center", letterSpacing: 0.6, textTransform: "uppercase" }}>
+                          Estimated odds (from rankings)
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
+                          {[
+                            { name: opp1?.name ?? "TBD", odds: eo.odds1, prob: eo.prob1 },
+                            { name: opp2?.name ?? "TBD", odds: eo.odds2, prob: eo.prob2 },
+                          ].map((side, i) => (
+                            <div key={i} style={{ background: C.card2, borderRadius: 8, padding: 10, textAlign: "center" }}>
+                              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>{side.name}</div>
+                              <div style={{ fontSize: 20, fontWeight: 800, color: side.odds > 0 ? C.green : "#fff" }}>
+                                {side.odds > 0 ? "+" : ""}{side.odds}
+                              </div>
+                              <div style={{ fontSize: 11, color: C.textMuted }}>{side.prob}% to win</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ marginTop: 10 }}>
+                          {predictions[m.id] ? (
+                            (() => {
+                              const p = predictions[m.id];
+                              const confColor =
+                                p.confidence === "high" ? C.green
+                                : p.confidence === "medium" ? C.amber
+                                : C.textMuted;
+                              const isBet = p.bet.toUpperCase().startsWith("BET");
+                              return (
+                                <div style={{ background: C.card2, border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, fontSize: 12.5, lineHeight: 1.55 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                                    <span style={{ fontWeight: 700 }}>🏆 AI picks {p.winner}</span>
+                                    <span style={{ color: C.textMuted, fontWeight: 500 }}>({p.probability}%)</span>
+                                    <span style={{ marginLeft: "auto", padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: `${confColor}26`, color: confColor, border: `1px solid ${confColor}40`, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                                      {p.confidence}
+                                    </span>
+                                  </div>
+                                  {p.reasoning && (
+                                    <div style={{ color: C.textDim, marginBottom: 8 }}>{p.reasoning}</div>
+                                  )}
+                                  <div style={{ display: "inline-block", padding: "4px 12px", borderRadius: 6, fontSize: 11.5, fontWeight: 800, background: isBet ? `${C.green}26` : `${C.textMuted}26`, color: isBet ? C.green : C.textMuted, border: `1px solid ${isBet ? C.green : C.textMuted}40`, letterSpacing: 0.4 }}>
+                                    {p.bet}
+                                  </div>
+                                  {p.betReason && (
+                                    <div style={{ color: C.textMuted, marginTop: 6, fontSize: 11.5 }}>{p.betReason}</div>
+                                  )}
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <button
+                              onClick={() => predictMatch(m, r1, r2)}
+                              disabled={predicting.has(m.id)}
+                              style={{
+                                width: "100%",
+                                padding: "8px 12px",
+                                borderRadius: 8,
+                                border: `1px solid ${predicting.has(m.id) ? C.border : C.accent}`,
+                                background: predicting.has(m.id) ? C.card2 : `${C.accent}26`,
+                                color: predicting.has(m.id) ? C.textMuted : "#a5b4fc",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: predicting.has(m.id) ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {predicting.has(m.id) ? "Thinking…" : "✦ AI Predict"}
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                    {BETTING_SITES.map((site) => (
+                      <a
+                        key={site.name}
+                        href={site.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: `${site.color}15`,
+                          border: `1px solid ${site.color}40`,
+                          color: site.color,
+                          textDecoration: "none",
+                        }}
+                      >
+                        {site.name} →
+                      </a>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>
+                    ⚠️ Verify odds directly on site — our estimates are based on rankings only.
+                  </div>
 
                   <button
                     onClick={() => toggleAngle(m.id)}
