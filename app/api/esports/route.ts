@@ -113,8 +113,10 @@ export async function GET(req: NextRequest) {
         { status: r.status },
       );
     }
+    // /matches/running and /matches/upcoming return the same shape — both
+    // need normalizeMatches. Only /teams uses normalizeTeams.
     const data =
-      type === "matches" ? normalizeMatches(raw) : normalizeTeams(raw);
+      type === "teams" ? normalizeTeams(raw) : normalizeMatches(raw);
     return NextResponse.json({ data });
   } catch (err) {
     return NextResponse.json(
