@@ -58,6 +58,15 @@ function normalizeMatches(json: any): NormalizedMatch[] {
       name: o.opponent?.name ?? "TBD",
       image: o.opponent?.image_url ?? undefined,
       acronym: o.opponent?.acronym ?? undefined,
+      // PandaScore sometimes returns a ranking on the opponent (esp. for
+      // ranked CS/LoL teams). Pass it through when present so the client
+      // can do rank-based verdicts; null when PandaScore omits it.
+      ranking:
+        typeof o.opponent?.current_videogame?.ranking === "number"
+          ? o.opponent.current_videogame.ranking
+          : typeof o.opponent?.ranking === "number"
+            ? o.opponent.ranking
+            : null,
     })),
   }));
 }
