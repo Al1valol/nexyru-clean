@@ -293,14 +293,26 @@ export default function SportsPage() {
     setOddsLoading(true);
     setOddsError(null);
     try {
-      const r = await fetch("/api/odds?sport=all");
-      const body = await r.json();
-      if (!r.ok) {
-        setOddsError(body.error ?? `Error ${r.status}`);
-        setGames([]);
-        return;
+      const sports = [
+        "baseball_mlb",
+        "tennis_atp_french_open",
+        "tennis_wta_french_open",
+        "soccer_mls",
+      ];
+      const all: Game[] = [];
+      for (const sport of sports) {
+        try {
+          const r = await fetch(`/api/odds?sport=${sport}`);
+          if (!r.ok) continue;
+          const data = await r.json();
+          if (Array.isArray(data)) all.push(...(data as Game[]));
+          else if (Array.isArray(data?.games)) all.push(...(data.games as Game[]));
+        } catch {
+          continue;
+        }
       }
-      setGames((body.games as Game[]) ?? []);
+      setGames(all);
+      if (all.length === 0) setOddsError("No games returned from any sport — try refreshing.");
     } catch (e) {
       setOddsError(e instanceof Error ? e.message : "Network error");
       setGames([]);

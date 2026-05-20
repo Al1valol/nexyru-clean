@@ -18,7 +18,6 @@ import {
 } from "recharts";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import MobileDashboard from "./MobileDashboard";
-import CryptoDashboard from "./CryptoDashboard";
 import { getUserPlan, getLimit, trackDailyUsage, incrementUsage, useUserPlan, isAdminEmail, applyAdminPlanForEmail } from "@/lib/plan";
 import { CryptoTab, OddsTab } from "@/app/private/page";
 import PlayerStatsDashboard from './PlayerStatsDashboard'
@@ -8581,8 +8580,7 @@ function TradingDashboard({ session, onLogout }) {
           <div style={{ display:"flex", borderBottom:"1px solid #1e1e2a", background:"#080808", flexShrink:0 }}>
             {[
               { id:'trading', label:'📈 Trading' },
-              { id:'crypto',  label:'🪙 Crypto'  },
-              { id:'sports',  label:'🎰 Sports', href:'/sports' },
+              { id:'sports',  label:'🎰 Sports →', href:'/sports' },
             ].map(m => {
               const active = m.href ? false : appMode === m.id;
               const style = {
@@ -8616,6 +8614,26 @@ function TradingDashboard({ session, onLogout }) {
 
           {/* Right: account selector + Log Trade + avatar */}
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+            <a href="/crypto" className="hide-mobile" style={{
+              padding:"6px 10px", borderRadius:6,
+              border:"1px solid #2a2a3a",
+              background:"#1a1a24",
+              color:"#9ca3af", textDecoration:"none",
+              fontSize:11, fontWeight:700,
+              display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap",
+            }}>
+              🪙 Crypto ↗
+            </a>
+            <a href="/sports" className="hide-mobile" style={{
+              padding:"6px 10px", borderRadius:6,
+              border:"1px solid #2a2a3a",
+              background:"#1a1a24",
+              color:"#9ca3af", textDecoration:"none",
+              fontSize:11, fontWeight:700,
+              display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap",
+            }}>
+              🎰 Sports ↗
+            </a>
             <a href="/morning" style={{
               padding:"6px 12px", borderRadius:6,
               border:"1px solid rgba(0,212,255,0.3)",
@@ -8746,8 +8764,6 @@ function TradingDashboard({ session, onLogout }) {
           </div>
         </main>
         )}
-
-        {appMode === 'crypto' && isAdmin && <CryptoDashboard isAdmin={isAdmin} session={session} />}
 
         {appMode === 'odds' && isAdmin && (
           <div style={{ flex:1, padding:24, overflowY:"auto" }}>

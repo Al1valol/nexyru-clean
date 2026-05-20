@@ -114,14 +114,23 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Legacy single-sport mode.
-  const sportKey = sport ?? "upcoming";
-  if (!ALLOWED_SPORTS.has(sportKey)) {
-    return NextResponse.json({ error: "Unsupported sport" }, { status: 400 });
+  // Single-sport mode: returns a raw array of games (no envelope) so callers
+  // can spread results from multiple per-sport calls together.
+  if (sport && sport !== "upcoming") {
+    if (!ALLOWED_SPORTS.has(sport)) return NextResponse.json([]);
+    try {
+      const upstream = await fetchSport(sport, daysFrom);
+      if (!upstream.ok) return NextResponse.json([]);
+      const data = await upstream.json();
+      return NextResponse.json(Array.isArray(data) ? data : []);
+    } catch {
+      return NextResponse.json([]);
+    }
   }
 
+  // Default "upcoming" still uses the envelope shape used by older callers.
   try {
-    const upstream = await fetchSport(sportKey, daysFrom);
+    const upstream = await fetchSport("upcoming", daysFrom);
     if (!upstream.ok) {
       const text = await upstream.text();
       return NextResponse.json(
@@ -129,11 +138,9 @@ export async function GET(req: NextRequest) {
         { status: upstream.status },
       );
     }
-
     const remaining = upstream.headers.get("x-requests-remaining");
     const used = upstream.headers.get("x-requests-used");
     const data = await upstream.json();
-
     return NextResponse.json(
       { games: data, requestsRemaining: remaining, requestsUsed: used },
     );

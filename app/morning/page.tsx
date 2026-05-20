@@ -80,7 +80,9 @@ export default function MorningBriefing() {
     try {
       const res = await fetch('/api/odds?sport=baseball_mlb&daysFrom=2');
       const body = await res.json();
-      const games = Array.isArray(body?.games) ? body.games : [];
+      const games = Array.isArray(body)
+        ? body
+        : Array.isArray(body?.games) ? body.games : [];
       const arbs = games.filter((game) => {
         const teamOdds = {};
         game.bookmakers?.forEach((bk) => {
