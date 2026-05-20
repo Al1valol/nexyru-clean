@@ -2611,6 +2611,7 @@ function buildPicksByBook(games: OddsGame[] | null): Map<string, BookPick[]> {
 }
 
 type BookParlay = ParlayCalc & {
+  id: string;
   type: string;
   book: string;
   legs: BookPick[];
@@ -2633,17 +2634,30 @@ function buildBookSuggestions(picksByBook: Map<string, BookPick[]>): BookParlay[
       const calc = calcParlayMath(legs, 100);
       if (!calc) continue;
       const type = n === 2 ? "2-Leg Safe" : n === 3 ? "3-Leg Value" : "4-Leg Longshot";
-      suggestions.push({ type, book, legs, ...calc });
+      const id = `${book}_${type.replace(/\s/g, "_")}`;
+      suggestions.push({ id, type, book, legs, ...calc });
     }
   }
   return suggestions.sort((a, b) => b.ev - a.ev);
 }
+
+type LegAnalysis = { leg: BookPick; analysis: GameAnalysis };
+type ParlayVerdict = "STRONG BET" | "LEAN BET" | "RISKY" | "SKIP";
+type ParlayAnalysisResult = {
+  legAnalyses: LegAnalysis[];
+  verdict: ParlayVerdict;
+  anyAvoid: boolean;
+  highConfCount: number;
+  lowConfCount: number;
+};
 
 function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
   const [stake, setStake] = useState<string>("100");
   const [bookFilter, setBookFilter] = useState<string>("all");
   const [manualLegIds, setManualLegIds] = useState<Set<string>>(new Set());
   const [flash, setFlash] = useState<string | null>(null);
+  const [parlayAnalysis, setParlayAnalysis] = useState<Record<string, ParlayAnalysisResult>>({});
+  const [parlayAnalyzing, setParlayAnalyzing] = useState<Set<string>>(new Set());
 
   const picksByBook = useMemo(() => buildPicksByBook(games), [games]);
   // Filter each book's picks to only include games in the next week.
@@ -2736,6 +2750,76 @@ function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsPro
     } catch {}
     setFlash(`✓ Saved ${parlay.type} parlay at ${parlay.book} to paper bets`);
     setTimeout(() => setFlash(null), 2500);
+  };
+
+  // Analyze every leg of a parlay through /api/analyze-game in sequence, then
+  // roll up to a single STRONG BET / LEAN BET / RISKY / SKIP verdict. Each
+  // leg's API call uses web search (~$0.03-0.05) so a 4-leg parlay = ~$0.20.
+  const analyzeParlay = async (parlay: BookParlay) => {
+    if (parlayAnalyzing.has(parlay.id) || parlayAnalysis[parlay.id]) return;
+    setParlayAnalyzing((prev) => new Set(prev).add(parlay.id));
+    try {
+      const legAnalyses: LegAnalysis[] = [];
+      for (const leg of parlay.legs) {
+        const opponentName =
+          leg.team === leg.game.away_team ? leg.game.home_team : leg.game.away_team;
+        // Use the SAME book's opponent odds if available, so the analyst sees
+        // the actual line the user could place.
+        const opponentPick = picksByBook
+          .get(leg.book)
+          ?.find((x) => x.gameId === leg.gameId && x.team === opponentName);
+        try {
+          const res = await fetch("/api/analyze-game", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              team1: leg.team,
+              team2: opponentName,
+              sport: leg.game.sport_title || leg.game.sport_key,
+              odds1: leg.odds,
+              odds2: opponentPick?.odds ?? null,
+              gameTime: leg.game.commence_time,
+            }),
+          });
+          if (res.ok) {
+            const analysis = (await res.json()) as GameAnalysis;
+            legAnalyses.push({ leg, analysis });
+          }
+        } catch {
+          // Skip the leg; continue with the rest.
+        }
+        // 800ms gap protects against rate limits when a parlay has 3-4 legs.
+        await new Promise((r) => setTimeout(r, 800));
+      }
+
+      const allPick = legAnalyses.length > 0 && legAnalyses.every(
+        (la) => la.analysis.pick === la.leg.team && !la.analysis.avoid,
+      );
+      const anyAvoid = legAnalyses.some((la) => la.analysis.avoid);
+      const highConfCount = legAnalyses.filter((la) => la.analysis.confidence === "high").length;
+      const lowConfCount = legAnalyses.filter((la) => la.analysis.confidence === "low").length;
+      const verdict: ParlayVerdict = anyAvoid
+        ? "SKIP"
+        : allPick && highConfCount >= parlay.legs.length - 1
+        ? "STRONG BET"
+        : allPick
+        ? "LEAN BET"
+        : "RISKY";
+
+      setParlayAnalysis((prev) => ({
+        ...prev,
+        [parlay.id]: { legAnalyses, verdict, anyAvoid, highConfCount, lowConfCount },
+      }));
+    } catch (e) {
+      setFlash(`Parlay analysis failed: ${e instanceof Error ? e.message : "network error"}`);
+      setTimeout(() => setFlash(null), 4000);
+    } finally {
+      setParlayAnalyzing((prev) => {
+        const next = new Set(prev);
+        next.delete(parlay.id);
+        return next;
+      });
+    }
   };
 
   const renderParlayCard = (p: BookParlay) => {
@@ -2832,6 +2916,113 @@ function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsPro
         >
           + Add to Paper Bets
         </button>
+
+        <button
+          onClick={() => analyzeParlay(p)}
+          disabled={parlayAnalyzing.has(p.id) || !!parlayAnalysis[p.id]}
+          style={{
+            width: "100%",
+            marginTop: 8,
+            padding: "8px",
+            borderRadius: 8,
+            border: "1px solid rgba(99,102,241,0.4)",
+            background: parlayAnalyzing.has(p.id) || parlayAnalysis[p.id] ? C.card2 : "rgba(99,102,241,0.08)",
+            color: parlayAnalyzing.has(p.id) || parlayAnalysis[p.id] ? C.textMuted : "#a5b4fc",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: parlayAnalyzing.has(p.id) || parlayAnalysis[p.id] ? "default" : "pointer",
+          }}
+        >
+          {parlayAnalyzing.has(p.id)
+            ? "🔍 Analyzing all legs…"
+            : parlayAnalysis[p.id]
+            ? "✓ Analyzed"
+            : "✦ AI Analyze This Parlay"}
+        </button>
+
+        {parlayAnalysis[p.id] && (() => {
+          const pa = parlayAnalysis[p.id];
+          const verdictStyles: Record<ParlayVerdict, { bg: string; border: string; color: string; text: string }> = {
+            "STRONG BET": { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.3)", color: C.green, text: "✅ STRONG PARLAY — AI backs all legs" },
+            "LEAN BET": { bg: "rgba(99,102,241,0.1)", border: "rgba(99,102,241,0.3)", color: "#a5b4fc", text: "👍 DECENT PARLAY — Most legs look good" },
+            "RISKY": { bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)", color: C.amber, text: "⚠️ RISKY — Some legs are questionable" },
+            "SKIP": { bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)", color: C.red, text: "🚫 SKIP — AI found issues with this parlay" },
+          };
+          const vs = verdictStyles[pa.verdict];
+          return (
+            <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  marginBottom: 10,
+                  background: vs.bg,
+                  border: `1px solid ${vs.border}`,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 800, color: vs.color }}>{vs.text}</div>
+                <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                  {pa.highConfCount} high confidence · {pa.lowConfCount} low confidence · {pa.legAnalyses.length} legs analyzed
+                </div>
+              </div>
+
+              {pa.legAnalyses.map((la, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    marginBottom: 6,
+                    background: la.analysis.avoid
+                      ? "rgba(239,68,68,0.06)"
+                      : la.analysis.pick === la.leg.team
+                      ? "rgba(34,197,94,0.06)"
+                      : "rgba(245,158,11,0.06)",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#fff", marginBottom: 2 }}>
+                      {la.analysis.avoid ? "🚫" : la.analysis.pick === la.leg.team ? "✅" : "⚠️"} {la.leg.team}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.4 }}>
+                      {la.analysis.reasoning}
+                    </div>
+                    {la.analysis.injuries && la.analysis.injuries.toLowerCase() !== "none" && (
+                      <div style={{ fontSize: 10, color: C.red, marginTop: 3 }}>🏥 {la.analysis.injuries}</div>
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: "2px 6px",
+                      borderRadius: 3,
+                      marginLeft: 8,
+                      whiteSpace: "nowrap",
+                      background:
+                        la.analysis.confidence === "high"
+                          ? "rgba(34,197,94,0.15)"
+                          : la.analysis.confidence === "medium"
+                          ? "rgba(245,158,11,0.15)"
+                          : "rgba(107,114,128,0.15)",
+                      color:
+                        la.analysis.confidence === "high"
+                          ? C.green
+                          : la.analysis.confidence === "medium"
+                          ? C.amber
+                          : C.textMuted,
+                    }}
+                  >
+                    {la.analysis.confidence.toUpperCase()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     );
   };
