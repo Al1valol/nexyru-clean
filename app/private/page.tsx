@@ -2380,6 +2380,32 @@ function BestPicksPanel({
                   + Add {analysis.pick} to Paper Bets
                 </button>
               )}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 10,
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  background: "rgba(59,130,246,0.08)",
+                  border: "1px solid rgba(59,130,246,0.2)",
+                  fontSize: 11,
+                  color: "#93c5fd",
+                  flexWrap: "wrap",
+                }}
+              >
+                ⚠️ <strong>Always verify current injuries on</strong>
+                <a
+                  href="https://www.espn.com/injuries"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: "#60a5fa", textDecoration: "none", fontWeight: 700 }}
+                >
+                  ESPN →
+                </a>
+                before placing any real money.
+              </div>
             </div>
           );
         })()}
@@ -2419,6 +2445,42 @@ function BestPicksPanel({
           {flash}
         </div>
       )}
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 12px",
+          background: "rgba(59,130,246,0.06)",
+          border: "1px solid rgba(59,130,246,0.15)",
+          borderRadius: 8,
+          marginBottom: 12,
+          fontSize: 11,
+          color: "#93c5fd",
+          flexWrap: "wrap",
+        }}
+      >
+        ℹ️ AI analysis uses training data — always check{" "}
+        <a
+          href="https://www.espn.com/injuries"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: "#60a5fa", textDecoration: "none", fontWeight: 700 }}
+        >
+          ESPN injuries
+        </a>{" "}
+        and{" "}
+        <a
+          href="https://www.espn.com/espn/scoreboard"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: "#60a5fa", textDecoration: "none", fontWeight: 700 }}
+        >
+          recent form
+        </a>{" "}
+        before betting real money.
+      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10, flexWrap: "wrap" }}>
         <div style={{ fontSize: 12, color: C.textMuted }}>
@@ -3020,6 +3082,32 @@ function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsPro
                   </span>
                 </div>
               ))}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 4,
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  background: "rgba(59,130,246,0.08)",
+                  border: "1px solid rgba(59,130,246,0.2)",
+                  fontSize: 11,
+                  color: "#93c5fd",
+                  flexWrap: "wrap",
+                }}
+              >
+                ⚠️ <strong>Always verify current injuries on</strong>
+                <a
+                  href="https://www.espn.com/injuries"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: "#60a5fa", textDecoration: "none", fontWeight: 700 }}
+                >
+                  ESPN →
+                </a>
+                before placing any real money.
+              </div>
             </div>
           );
         })()}
