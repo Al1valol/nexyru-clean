@@ -8582,16 +8582,23 @@ function TradingDashboard({ session, onLogout }) {
             {[
               { id:'trading', label:'📈 Trading' },
               { id:'crypto',  label:'🪙 Crypto'  },
-              { id:'odds',    label:'🎰 Odds'    },
-            ].map(m => (
-              <button key={m.id} onClick={() => setAppMode(m.id)} style={{
+              { id:'sports',  label:'🎰 Sports', href:'/sports' },
+            ].map(m => {
+              const active = m.href ? false : appMode === m.id;
+              const style = {
                 padding:"10px 24px", border:"none", background:"transparent",
-                color: appMode===m.id ? "#ffffff" : "#6b7280",
-                fontSize:13, fontWeight: appMode===m.id ? 700 : 500,
-                borderBottom: appMode===m.id ? "2px solid #6366f1" : "2px solid transparent",
-                cursor:"pointer", letterSpacing:"0.02em", transition:"all 0.15s"
-              }}>{m.label}</button>
-            ))}
+                color: active ? "#ffffff" : "#6b7280",
+                fontSize:13, fontWeight: active ? 700 : 500,
+                borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
+                cursor:"pointer", letterSpacing:"0.02em", transition:"all 0.15s",
+                textDecoration:"none", display:"inline-block",
+              };
+              return m.href ? (
+                <a key={m.id} href={m.href} style={style}>{m.label}</a>
+              ) : (
+                <button key={m.id} onClick={() => setAppMode(m.id)} style={style}>{m.label}</button>
+              );
+            })}
           </div>
         )}
 
