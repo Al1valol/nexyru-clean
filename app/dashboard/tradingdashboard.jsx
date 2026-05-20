@@ -8575,65 +8575,51 @@ function TradingDashboard({ session, onLogout }) {
 
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
-        {/* ── TOP MODE SWITCHER (admin only) ── */}
-        {showAdminTabs && (
-          <div style={{ display:"flex", borderBottom:"1px solid #1e1e2a", background:"#080808", flexShrink:0 }}>
-            {[
-              { id:'trading', label:'📈 Trading' },
-              { id:'sports',  label:'🎰 Sports →', href:'/sports' },
-            ].map(m => {
-              const active = m.href ? false : appMode === m.id;
-              const style = {
-                padding:"10px 24px", border:"none", background:"transparent",
-                color: active ? "#ffffff" : "#6b7280",
-                fontSize:13, fontWeight: active ? 700 : 500,
-                borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
-                cursor:"pointer", letterSpacing:"0.02em", transition:"all 0.15s",
-                textDecoration:"none", display:"inline-block",
-              };
-              return m.href ? (
-                <a key={m.id} href={m.href} style={style}>{m.label}</a>
-              ) : (
-                <button key={m.id} onClick={() => setAppMode(m.id)} style={style}>{m.label}</button>
-              );
-            })}
-          </div>
-        )}
-
         {/* ── Top bar ── */}
         <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:40, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
-          {/* Breadcrumb */}
-          <div style={{ flex:1, display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
-            <span style={{ fontSize:13, fontWeight:700, color:"#ffffff", letterSpacing:"-0.01em", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-              {TAB_LABELS[tab] ?? "Dashboard"}
-            </span>
-            {isDemoMode(session.username) && (
-              <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"rgba(245,158,11,0.12)", border:"1px solid rgba(245,158,11,0.25)", color:"#f59e0b", whiteSpace:"nowrap" }} className="hide-mobile">DEMO MODE</span>
-            )}
-          </div>
+          {/* Left: Nexyru logo */}
+          <a href="/dashboard" style={{
+            fontSize:15, fontWeight:800, color:"#ffffff",
+            letterSpacing:"-0.01em", textDecoration:"none",
+            whiteSpace:"nowrap", flexShrink:0,
+          }}>
+            Nexyru
+          </a>
+
+          {/* Center: page nav */}
+          <nav style={{ flex:1, display:"flex", justifyContent:"center", alignItems:"center", gap:2, minWidth:0 }}>
+            {[
+              { id:'trading', label:'📈 Trading', href:'/dashboard' },
+              { id:'crypto',  label:'🪙 Crypto',  href:'/crypto' },
+              { id:'sports',  label:'🎰 Sports',  href:'/sports' },
+            ].map(n => {
+              const active = n.id === 'trading';
+              return (
+                <a
+                  key={n.id}
+                  href={n.href}
+                  className={active ? "nx-nav-active" : "nx-nav-inactive"}
+                  style={{
+                    padding:"6px 14px",
+                    color: active ? "#ffffff" : "#6b7280",
+                    fontSize:12, fontWeight: active ? 700 : 600,
+                    textDecoration:"none",
+                    borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
+                    whiteSpace:"nowrap",
+                    transition:"color 0.15s",
+                  }}
+                >
+                  {n.label}
+                </a>
+              );
+            })}
+          </nav>
 
           {/* Right: account selector + Log Trade + avatar */}
           <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-            <a href="/crypto" className="hide-mobile" style={{
-              padding:"6px 10px", borderRadius:6,
-              border:"1px solid #2a2a3a",
-              background:"#1a1a24",
-              color:"#9ca3af", textDecoration:"none",
-              fontSize:11, fontWeight:700,
-              display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap",
-            }}>
-              🪙 Crypto ↗
-            </a>
-            <a href="/sports" className="hide-mobile" style={{
-              padding:"6px 10px", borderRadius:6,
-              border:"1px solid #2a2a3a",
-              background:"#1a1a24",
-              color:"#9ca3af", textDecoration:"none",
-              fontSize:11, fontWeight:700,
-              display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap",
-            }}>
-              🎰 Sports ↗
-            </a>
+            {isDemoMode(session.username) && (
+              <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"rgba(245,158,11,0.12)", border:"1px solid rgba(245,158,11,0.25)", color:"#f59e0b", whiteSpace:"nowrap" }} className="hide-mobile">DEMO MODE</span>
+            )}
             <a href="/morning" style={{
               padding:"6px 12px", borderRadius:6,
               border:"1px solid rgba(0,212,255,0.3)",
@@ -8786,6 +8772,8 @@ function TradingDashboard({ session, onLogout }) {
         ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
         a { transition: opacity 0.15s; }
         a:hover { opacity: 0.85; }
+        .nx-nav-inactive:hover { color: #ffffff !important; opacity: 1; }
+        .nx-nav-active:hover { opacity: 1; }
         button { transition: opacity 0.15s, transform 0.1s; }
         button:active { transform: scale(0.97); }
         .hide-mobile { display: flex !important; }
