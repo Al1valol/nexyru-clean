@@ -1553,12 +1553,18 @@ function calcParlay(legs: ParlayLeg[], stake: number) {
   return { combinedDecimal, combinedAmerican, payout, profit };
 }
 
+// Shared raw-odds cache used by OddsTab and app/arb/page.tsx so navigating
+// between the two doesn't trigger a duplicate /api/odds fan-out.
+const ODDS_CACHE_KEY = "nexyru_odds_raw_cache_v1";
+const ODDS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 export function OddsTab() {
   const [oddsTab, setOddsTab] = useState<OddsTabKey>("best");
   const [games, setGames] = useState<OddsGame[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestsRemaining, setRequestsRemaining] = useState<string | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [parlayLegs, setParlayLegs] = useState<ParlayLeg[]>([]);
   const [parlayStake, setParlayStake] = useState<string>("100");
@@ -1577,9 +1583,25 @@ export function OddsTab() {
     [parlayLegs],
   );
 
-  // Single fetch shared across Best Odds / Arb Finder / Value Bets — Polymarket
-  // is a separate API. Proxy fans out to all listed sports in parallel.
-  const load = useCallback(async () => {
+  // Single fetch shared across Best Picks / Arb Finder / Parlays. Cache-aware:
+  // skips the network call when a fresh cached payload is in localStorage
+  // (also written by app/arb/page.tsx so the two surfaces share). Force-refresh
+  // bypasses cache.
+  const load = useCallback(async (force = false) => {
+    if (!force) {
+      try {
+        const cached = localStorage.getItem(ODDS_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.fetchedAt && Date.now() - parsed.fetchedAt < ODDS_CACHE_TTL) {
+            setGames((parsed.games as OddsGame[]) ?? []);
+            setRequestsRemaining(parsed.requestsRemaining ?? null);
+            setFetchedAt(parsed.fetchedAt);
+            return;
+          }
+        }
+      } catch {}
+    }
     setLoading(true);
     setError(null);
     try {
@@ -1590,8 +1612,18 @@ export function OddsTab() {
         setGames([]);
         return;
       }
-      setGames((body.games as OddsGame[]) ?? []);
-      setRequestsRemaining((body.requestsRemaining as string | null) ?? null);
+      const fetchedGames = (body.games as OddsGame[]) ?? [];
+      const remaining = (body.requestsRemaining as string | null) ?? null;
+      const ts = Date.now();
+      setGames(fetchedGames);
+      setRequestsRemaining(remaining);
+      setFetchedAt(ts);
+      try {
+        localStorage.setItem(
+          ODDS_CACHE_KEY,
+          JSON.stringify({ games: fetchedGames, requestsRemaining: remaining, fetchedAt: ts }),
+        );
+      } catch {}
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
       setGames([]);
@@ -1599,6 +1631,10 @@ export function OddsTab() {
       setLoading(false);
     }
   }, []);
+
+  // Force-refresh wrapper — used by the section Refresh buttons so they always
+  // bypass cache.
+  const refresh = useCallback(() => load(true), [load]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -1636,9 +1672,9 @@ export function OddsTab() {
         ))}
       </div>
 
-      {oddsTab === "best" && <BestPicksPanel games={games} loading={loading} error={error} requestsRemaining={requestsRemaining} nowMs={nowMs} onRefresh={load}/>}
-      {oddsTab === "arb" && <ArbFinderPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
-      {oddsTab === "parlays" && <ParlaysPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={load}/>}
+      {oddsTab === "best" && <BestPicksPanel games={games} loading={loading} error={error} requestsRemaining={requestsRemaining} nowMs={nowMs} onRefresh={refresh} fetchedAt={fetchedAt}/>}
+      {oddsTab === "arb" && <ArbFinderPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={refresh} fetchedAt={fetchedAt}/>}
+      {oddsTab === "parlays" && <ParlaysPanel games={games} loading={loading} error={error} nowMs={nowMs} onRefresh={refresh} fetchedAt={fetchedAt}/>}
     </section>
   );
 }
@@ -1649,7 +1685,20 @@ type SharedOddsProps = {
   error: string | null;
   nowMs: number;
   onRefresh: () => void;
+  fetchedAt: number | null;
 };
+
+// Format "Last updated X mins ago" — null fetchedAt → "Loading…".
+function lastUpdatedLabel(fetchedAt: number | null, nowMs: number): string {
+  if (!fetchedAt) return "Loading…";
+  const ageMs = nowMs - fetchedAt;
+  const mins = Math.floor(ageMs / 60_000);
+  if (mins < 1) return "Updated just now";
+  if (mins === 1) return "Updated 1 min ago";
+  if (mins < 60) return `Updated ${mins} mins ago`;
+  const hours = Math.floor(mins / 60);
+  return hours === 1 ? "Updated 1 hour ago" : `Updated ${hours} hours ago`;
+}
 
 function FanduelPanel({
   games, loading, error, requestsRemaining, nowMs, onRefresh,
@@ -2108,7 +2157,7 @@ type GameAnalysis = {
 };
 
 function BestPicksPanel({
-  games, loading, error, requestsRemaining, nowMs, onRefresh,
+  games, loading, error, requestsRemaining, nowMs, onRefresh, fetchedAt,
 }: SharedOddsProps & { requestsRemaining: string | null }) {
   const [sportFilter, setSportFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState("today");
@@ -2487,6 +2536,7 @@ function BestPicksPanel({
           <strong style={{ color: C.text }}>{filtered.length}</strong> picks analyzed ·
           <strong style={{ color: C.green, marginLeft: 6 }}>{strongCount}</strong> strong
           {requestsRemaining && <> · <strong style={{ color: C.text }}>{requestsRemaining}</strong> Odds API calls left this month</>}
+          <span style={{ marginLeft: 6 }}>· {lastUpdatedLabel(fetchedAt, nowMs)}</span>
         </div>
         <button
           onClick={analyzeTopPicks}
@@ -2713,7 +2763,7 @@ type ParlayAnalysisResult = {
   lowConfCount: number;
 };
 
-function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
+function ParlaysPanel({ games, loading, error, nowMs, onRefresh, fetchedAt }: SharedOddsProps) {
   const [stake, setStake] = useState<string>("100");
   const [bookFilter, setBookFilter] = useState<string>("all");
   const [manualLegIds, setManualLegIds] = useState<Set<string>>(new Set());
@@ -3181,6 +3231,7 @@ function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsPro
           style={{ width: 100, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card2, color: C.text, fontSize: 14, fontWeight: 700, outline: "none" }}
         />
         <span style={{ fontSize: 12, color: C.textMuted }}>used for every parlay calc below</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: C.textMuted }}>{lastUpdatedLabel(fetchedAt, nowMs)}</span>
       </div>
 
       {availableBooks.length > 1 && (
@@ -3320,7 +3371,7 @@ function ParlaysPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsPro
   );
 }
 
-function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsProps) {
+function ArbFinderPanel({ games, loading, error, nowMs, onRefresh, fetchedAt }: SharedOddsProps) {
   const [stake, setStake] = useState<string>("1000");
   const [tracked, setTracked] = useState<{ id: number }[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
@@ -3508,7 +3559,7 @@ function ArbFinderPanel({ games, loading, error, nowMs, onRefresh }: SharedOddsP
       </div>
 
       <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
-        <strong style={{ color: C.text }}>{decorated.length}</strong> {decorated.length === 1 ? "game" : "games"} loaded across <strong style={{ color: C.text }}>{new Set(decorated.map(d => d.g.sport_key)).size}</strong> {new Set(decorated.map(d => d.g.sport_key)).size === 1 ? "sport" : "sports"} · <strong style={{ color: arbCount > 0 ? C.green : C.text }}>{arbCount}</strong> {arbCount === 1 ? "arb" : "arbs"} found
+        <strong style={{ color: C.text }}>{decorated.length}</strong> {decorated.length === 1 ? "game" : "games"} loaded across <strong style={{ color: C.text }}>{new Set(decorated.map(d => d.g.sport_key)).size}</strong> {new Set(decorated.map(d => d.g.sport_key)).size === 1 ? "sport" : "sports"} · <strong style={{ color: arbCount > 0 ? C.green : C.text }}>{arbCount}</strong> {arbCount === 1 ? "arb" : "arbs"} found · {lastUpdatedLabel(fetchedAt, nowMs)}
       </div>
 
       {games === null ? (

@@ -30,18 +30,14 @@ const ALLOWED_SPORTS = new Set([
 
 // Default fan-out set used by ?sport=all. Each sport costs one upstream
 // credit, so keep this trimmed to leagues currently in season.
+// May 2026: MLB regular season, Roland-Garros, MLS regular season are
+// reliably playing. NBA finals / NHL finals may overlap briefly — re-add
+// basketball_nba and icehockey_nhl during their playoff windows if needed.
 const ACTIVE_SPORTS = [
   "baseball_mlb",
   "tennis_atp_french_open",
   "tennis_wta_french_open",
-  "soccer_uefa_champs_league",
-  "soccer_epl",
   "soccer_mls",
-  "mma_mixed_martial_arts",
-  "basketball_nba",
-  "icehockey_nhl",
-  "americanfootball_nfl",
-  "basketball_ncaab",
 ];
 
 function fetchSport(sport: string, daysFrom: string) {
@@ -53,9 +49,10 @@ function fetchSport(sport: string, daysFrom: string) {
   url.searchParams.set("daysFrom", daysFrom);
   return fetch(url.toString(), {
     headers: { Accept: "application/json" },
-    // Light cache to reduce upstream calls — odds drift continuously but
-    // 30s of staleness is fine for a personal dashboard.
-    next: { revalidate: 30 },
+    // Server-side cache aligned with the 30-min client cache. Multiple
+    // simultaneous requests share Next.js's response, and a quota-conscious
+    // 30 min of staleness matches the dashboard refresh cadence.
+    next: { revalidate: 1800 },
   });
 }
 

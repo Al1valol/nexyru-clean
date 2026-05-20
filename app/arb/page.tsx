@@ -4,6 +4,21 @@ import { useState, useEffect } from 'react';
 
 // Odds-API calls go through /api/odds so the API key stays server-side.
 
+// Shared with the OddsTab in app/private/page.tsx — switching between the two
+// surfaces within the 30-min TTL avoids a duplicate /api/odds fan-out.
+const ODDS_CACHE_KEY = 'nexyru_odds_raw_cache_v1';
+const ODDS_CACHE_TTL = 30 * 60 * 1000;
+
+function lastUpdatedLabel(fetchedAt) {
+  if (!fetchedAt) return 'Loading…';
+  const mins = Math.floor((Date.now() - fetchedAt) / 60000);
+  if (mins < 1) return 'Updated just now';
+  if (mins === 1) return 'Updated 1 min ago';
+  if (mins < 60) return `Updated ${mins} mins ago`;
+  const hours = Math.floor(mins / 60);
+  return hours === 1 ? 'Updated 1 hour ago' : `Updated ${hours} hours ago`;
+}
+
 export default function ArbPage() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,6 +27,7 @@ export default function ArbPage() {
   const [activeTab, setActiveTab] = useState('finder'); // finder | tracked | paper
   const [paperBets, setPaperBets] = useState([]);
   const [bankroll, setBankroll] = useState(1000);
+  const [fetchedAt, setFetchedAt] = useState(null);
   // Per-day per-book arb counts — used to warn when bookmaker exposure gets
   // high enough to risk an account limit.
   const [arbCounts, setArbCounts] = useState({ date: '', books: {} });
@@ -69,14 +85,10 @@ export default function ArbPage() {
     return o > 0 ? 100 / (o + 100) : Math.abs(o) / (Math.abs(o) + 100);
   };
 
-  const fetchGames = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/odds?sport=all');
-      const body = await res.json();
-      const raw = Array.isArray(body?.games) ? body.games : [];
-
-      const processed = raw.map((game) => {
+  // Pure transformer factored out so cached AND fresh payloads share the same
+  // processing path. raw = OddsGame[] from /api/odds.
+  const processRaw = (raw) => {
+    return raw.map((game) => {
         // Best odds per team across ALL bookmakers.
         const teamOdds = {};
         game.bookmakers?.forEach((bk) => {
@@ -110,8 +122,40 @@ export default function ArbPage() {
           impA, impB, total, isArb: isRealArb, sameBook,
         };
       }).filter(Boolean).sort((x, y) => (y.isArb ? 1 : 0) - (x.isArb ? 1 : 0));
+  };
 
-      setGames(processed);
+  const fetchGames = async (force = false) => {
+    // Cache check — same key as OddsTab, so navigating between /arb and the
+    // unified dashboard reuses the payload within 30 min.
+    if (!force) {
+      try {
+        const cached = localStorage.getItem(ODDS_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.fetchedAt && Date.now() - parsed.fetchedAt < ODDS_CACHE_TTL) {
+            setGames(processRaw(Array.isArray(parsed.games) ? parsed.games : []));
+            setFetchedAt(parsed.fetchedAt);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/odds?sport=all');
+      const body = await res.json();
+      const raw = Array.isArray(body?.games) ? body.games : [];
+      const ts = Date.now();
+      setGames(processRaw(raw));
+      setFetchedAt(ts);
+      try {
+        localStorage.setItem(ODDS_CACHE_KEY, JSON.stringify({
+          games: raw,
+          requestsRemaining: body?.requestsRemaining ?? null,
+          fetchedAt: ts,
+        }));
+      } catch {}
     } catch (e) {
       if (typeof console !== 'undefined') console.error(e);
     }
@@ -223,7 +267,10 @@ export default function ArbPage() {
           <span style={{ fontSize: 18, fontWeight: 800 }}>💰 Arb Finder</span>
           <span style={{ fontSize: 12, color: s.muted }}>Guaranteed profit on any outcome</span>
         </div>
-        <button onClick={fetchGames} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${s.border}`, background: 'transparent', color: '#fff', fontSize: 12, cursor: 'pointer' }}>🔄 Refresh</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 11, color: s.muted }}>{lastUpdatedLabel(fetchedAt)}</span>
+          <button onClick={() => fetchGames(true)} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${s.border}`, background: 'transparent', color: '#fff', fontSize: 12, cursor: 'pointer' }}>🔄 Refresh</button>
+        </div>
       </div>
 
       {/* Tabs */}
