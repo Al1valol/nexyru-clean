@@ -2685,6 +2685,7 @@ function PlayerStatsPanel() {
           homeRuns: sp.stat?.homeRuns ?? "—",
           rbi: sp.stat?.rbi ?? "—",
           ops: sp.stat?.ops ?? "—",
+          hits: sp.stat?.hits ?? "—",
         },
       }));
       setStatsPlayers(arr);
@@ -2855,7 +2856,7 @@ function PlayerStatsPanel() {
           <input
             value={statsSearch}
             onChange={(e) => setStatsSearch(e.target.value)}
-            placeholder="Search players (e.g. curry, jokic) — blank shows top 'james' results"
+            placeholder="Search players (e.g. curry, jokic) — blank shows the full 2025-26 leaderboard"
             style={{
               flex: 1,
               padding: "9px 12px",
@@ -3320,19 +3321,25 @@ function PlayerStatsPanel() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>{p.team}</div>
-                </div>
-                {p.rank != null && (
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, background: C.card2, padding: "4px 10px", borderRadius: 6, whiteSpace: "nowrap" }}>
-                    AVG #{p.rank}
+                  <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
+                    {p.team}
+                    {p.rank != null && <span style={{ color: C.textMuted }}> · AVG #{p.rank}</span>}
                   </div>
-                )}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
+                    {p.stats.homeRuns ?? "—"}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 }}>
+                    HR
+                  </div>
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 {[
                   { label: "AVG", value: p.stats.avg ?? "—" },
-                  { label: "HR", value: p.stats.homeRuns ?? "—" },
                   { label: "RBI", value: p.stats.rbi ?? "—" },
+                  { label: "H", value: p.stats.hits ?? "—" },
                   { label: "OPS", value: p.stats.ops ?? "—" },
                 ].map((s) => (
                   <div
