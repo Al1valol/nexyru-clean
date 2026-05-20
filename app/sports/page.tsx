@@ -311,21 +311,52 @@ export default function SportsPage() {
           continue;
         }
       }
-      setGames(all);
-      if (all.length === 0) setOddsError("No games returned from any sport — try refreshing.");
+      if (all.length === 0) {
+        setOddsError(
+          "Odds API credits used up for this month. Data will refresh when credits reset. Showing cached data if available.",
+        );
+        try {
+          const raw = localStorage.getItem("sports_odds_cache");
+          const cached = raw ? JSON.parse(raw) : null;
+          if (cached?.data && Array.isArray(cached.data)) {
+            setGames(cached.data as Game[]);
+          } else if (games === null) {
+            setGames([]);
+          }
+        } catch {
+          if (games === null) setGames([]);
+        }
+      } else {
+        setGames(all);
+        try {
+          localStorage.setItem(
+            "sports_odds_cache",
+            JSON.stringify({ data: all, timestamp: Date.now() }),
+          );
+        } catch {}
+      }
     } catch (e) {
       setOddsError(e instanceof Error ? e.message : "Network error");
-      setGames([]);
+      if (games === null) setGames([]);
     } finally {
       setOddsLoading(false);
     }
-  }, []);
+  }, [games]);
 
+  // Hydrate from cache immediately on mount, then always try a fresh fetch.
+  // Cached data shows instantly so the page feels responsive even when the
+  // Odds API is rate-limited.
   useEffect(() => {
-    if (["best", "arb", "parlays"].includes(section) && games === null) {
-      loadOdds();
-    }
-  }, [section, games, loadOdds]);
+    try {
+      const raw = localStorage.getItem("sports_odds_cache");
+      const cached = raw ? JSON.parse(raw) : null;
+      if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
+        setGames(cached.data as Game[]);
+      }
+    } catch {}
+    loadOdds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sidebarItems: { id: Section; icon: string; label: string }[] = [
     { id: "best", icon: "🎯", label: "Best Picks" },
@@ -351,7 +382,7 @@ export default function SportsPage() {
       {!isMobile && (
         <aside
           style={{
-            width: 56,
+            width: 180,
             background: "#0a0a0f",
             borderRight: `1px solid ${C.border}`,
             position: "sticky",
@@ -359,32 +390,35 @@ export default function SportsPage() {
             height: "100vh",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
-            paddingTop: 12,
-            gap: 6,
+            padding: "16px 0",
             flexShrink: 0,
           }}
         >
+          <div style={{ padding: "0 16px 14px", borderBottom: `1px solid ${C.border}`, marginBottom: 8 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>🎰 Sports</div>
+          </div>
           {sidebarItems.map((it) => (
             <button
               key={it.id}
               onClick={() => setSection(it.id)}
-              title={it.label}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                border: "none",
-                background: section === it.id ? "rgba(99,102,241,0.18)" : "transparent",
-                color: section === it.id ? "#a5b4fc" : C.textMuted,
-                fontSize: 20,
-                cursor: "pointer",
+                width: "100%",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
+                gap: 10,
+                padding: "10px 16px",
+                border: "none",
+                background: section === it.id ? "rgba(99,102,241,0.15)" : "transparent",
+                color: section === it.id ? "#a5b4fc" : C.textMuted,
+                fontSize: 13,
+                fontWeight: section === it.id ? 700 : 400,
+                cursor: "pointer",
+                textAlign: "left",
+                borderLeft: section === it.id ? `3px solid ${C.accent}` : "3px solid transparent",
               }}
             >
-              {it.icon}
+              <span style={{ fontSize: 16 }}>{it.icon}</span>
+              {it.label}
             </button>
           ))}
         </aside>
@@ -487,6 +521,7 @@ export default function SportsPage() {
               error={oddsError}
               onRefresh={loadOdds}
               nowMs={nowMs}
+              onSwitchSection={setSection}
               onAddBet={(b) => {
                 paper.add(b);
                 notify(`✓ ${b.pick} added to paper bets`);
@@ -679,6 +714,7 @@ function BestPicksPanel({
   onRefresh,
   nowMs,
   onAddBet,
+  onSwitchSection,
 }: {
   games: Game[] | null;
   loading: boolean;
@@ -686,6 +722,7 @@ function BestPicksPanel({
   onRefresh: () => void;
   nowMs: number;
   onAddBet: (b: Omit<PaperBet, "id" | "placedAt" | "status">) => void;
+  onSwitchSection: (s: Section) => void;
 }) {
   const [analysis, setAnalysis] = useState<Record<string, GameAnalysis>>({});
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
@@ -768,15 +805,66 @@ function BestPicksPanel({
         </div>
       )}
 
-      {error && <ErrorBox>{error}</ErrorBox>}
+      {error && filtered.length > 0 && <ErrorBox>{error}</ErrorBox>}
       {!error && loading && games === null && (
         <div style={{ color: C.textMuted, padding: 32, textAlign: "center", fontSize: 13 }}>
           Loading odds…
         </div>
       )}
       {!loading && games && filtered.length === 0 && (
-        <div style={{ color: C.textMuted, padding: 32, textAlign: "center", fontSize: 13 }}>
-          No upcoming games found.
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            padding: 32,
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+            Odds API Credits Used Up
+          </div>
+          <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>
+            Free tier resets monthly. 500 credits/month · Currently at limit.
+          </div>
+          <div style={{ fontSize: 13, color: C.textMuted }}>
+            Meanwhile use: Player Props (NBA/MLB stats) · Esports picks · Arb Finder (cached)
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
+            <button
+              onClick={() => onSwitchSection("props")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: C.accent,
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                minHeight: 36,
+              }}
+            >
+              🏀 Player Props →
+            </button>
+            <button
+              onClick={() => onSwitchSection("esports")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: `1px solid ${C.border}`,
+                background: "transparent",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                minHeight: 36,
+              }}
+            >
+              🎮 Esports →
+            </button>
+          </div>
         </div>
       )}
 
