@@ -2997,6 +2997,102 @@ type EsportTeam = {
   image?: string;
 };
 
+// PandaScore's free tier doesn't return team rankings on /matches/upcoming
+// or /teams. We approximate "favorite" via a hand-curated leaderboard per
+// game — lower index = higher rank. Update when the meta shifts (rosters,
+// recent results); a stale list will misclassify upsets as favorites.
+const TOP_TEAMS: Record<EsportGame, string[]> = {
+  csgo: [
+    "Vitality", "Spirit", "MOUZ", "NAVI", "G2", "FaZe", "Falcons", "Liquid",
+    "Astralis", "Heroic", "MIBR", "FURIA", "Complexity", "Cloud9", "BIG",
+    "NIP", "Pain", "Eternal Fire", "TYLOO", "B8",
+  ],
+  lol: [
+    "T1", "Gen.G", "Hanwha Life", "KT Rolster", "Bilibili Gaming",
+    "Top Esports", "JD Gaming", "Weibo Gaming", "G2 Esports", "Fnatic",
+    "MAD Lions", "FlyQuest", "Cloud9", "Team Liquid", "100 Thieves",
+  ],
+  valorant: [
+    "Sentinels", "Evil Geniuses", "100 Thieves", "NRG", "LOUD",
+    "FNATIC", "Karmine Corp", "Team Heretics", "Team Vitality",
+    "Team Liquid", "Paper Rex", "DRX", "T1", "Gen.G", "ZETA DIVISION",
+  ],
+  dota2: [
+    "Team Liquid", "Team Falcons", "BetBoom Team", "Team Spirit",
+    "Tundra Esports", "Aurora Gaming", "Xtreme Gaming", "Heroic",
+    "Nigma Galaxy", "OG",
+  ],
+};
+
+function getTeamRank(name: string | undefined, acronym: string | undefined, game: EsportGame): number {
+  if (!name) return 999;
+  const top = TOP_TEAMS[game];
+  const ln = name.toLowerCase().trim();
+  const la = acronym?.toLowerCase().trim();
+  for (let i = 0; i < top.length; i++) {
+    const t = top[i].toLowerCase();
+    if (ln === t || ln.includes(t) || t.includes(ln)) return i + 1;
+    if (la && (la === t || t.includes(la))) return i + 1;
+  }
+  return 999;
+}
+
+type BettingAngle = {
+  bothRanked: boolean;
+  oneRanked: boolean;
+  favoriteName: string;
+  underdogName: string;
+  favRank: number;
+  dogRank: number;
+  verdict: { pill: string; recText: string; color: string };
+  formatInsight: string;
+  tournamentInsight: string;
+};
+
+function computeBettingAngle(match: EsportMatch, game: EsportGame): BettingAngle {
+  const opp1 = match.opponents[0];
+  const opp2 = match.opponents[1];
+  const r1 = getTeamRank(opp1?.name, opp1?.acronym, game);
+  const r2 = getTeamRank(opp2?.name, opp2?.acronym, game);
+  const bothRanked = r1 < 999 && r2 < 999;
+  const oneRanked = (r1 < 999) !== (r2 < 999);
+  const favIdx = r1 <= r2 ? 0 : 1;
+  const favoriteName = match.opponents[favIdx]?.name ?? "TBD";
+  const underdogName = match.opponents[1 - favIdx]?.name ?? "TBD";
+  const favRank = Math.min(r1, r2);
+  const dogRank = Math.max(r1, r2);
+  // When only one team is ranked, treat as a clear edge (proxy rankDiff of 25)
+  // — they're playing an unknown opponent, which is usually a lower-tier team.
+  const rankDiff = bothRanked ? Math.abs(r1 - r2) : oneRanked ? 25 : 0;
+
+  let verdict: BettingAngle["verdict"];
+  if (!bothRanked && !oneRanked) {
+    verdict = { pill: "COIN FLIP", recText: "⚡ COIN FLIP — Both teams unranked, skip or look for value odds", color: C.textMuted };
+  } else if (rankDiff > 20) {
+    verdict = { pill: "BET FAVORITE", recText: "✅ BET FAVORITE — Large skill gap, favorite should win comfortably", color: C.green };
+  } else if (rankDiff > 10) {
+    verdict = { pill: "LEAN FAVORITE", recText: "⭐ LEAN FAVORITE — Moderate edge, worth betting at good odds", color: "#86efac" };
+  } else if (rankDiff > 5) {
+    verdict = { pill: "SKIP", recText: "👀 SLIGHT EDGE — Close match, only bet if odds are +150 or better on favorite", color: C.amber };
+  } else {
+    verdict = { pill: "COIN FLIP", recText: "⚡ COIN FLIP — Too close to call, skip or look for value odds", color: C.textMuted };
+  }
+
+  let formatInsight: string;
+  if (match.bo === 1) formatInsight = "⚠️ BO1 = high variance, upsets common — bet small";
+  else if (match.bo === 3) formatInsight = "✅ BO3 = more skill-based, favorites win more often";
+  else if (match.bo >= 5) formatInsight = "💎 BO5 = most reliable, favorites almost always win";
+  else formatInsight = "Format not reported";
+
+  const lg = (match.league || "").toLowerCase();
+  const isMajor = ["major", "championship", "premier"].some((w) => lg.includes(w));
+  const tournamentInsight = isMajor
+    ? "🏆 Major tournament — results more predictable"
+    : "📋 Minor event — expect more upsets";
+
+  return { bothRanked, oneRanked, favoriteName, underdogName, favRank, dogRank, verdict, formatInsight, tournamentInsight };
+}
+
 function EsportsPanel() {
   const [game, setGame] = useState<EsportGame>("csgo");
   const [matches, setMatches] = useState<EsportMatch[] | null>(null);
@@ -3014,6 +3110,16 @@ function EsportsPanel() {
     pick: "",
   });
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [expandedAngleIds, setExpandedAngleIds] = useState<Set<number>>(new Set());
+
+  const toggleAngle = (id: number) => {
+    setExpandedAngleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     try {
@@ -3158,6 +3264,8 @@ function EsportsPanel() {
               const opp1 = m.opponents[0];
               const opp2 = m.opponents[1];
               const showLive = m.isLive || cd.live;
+              const angle = computeBettingAngle(m, game);
+              const expanded = expandedAngleIds.has(m.id);
               return (
                 <div
                   key={m.id}
@@ -3175,6 +3283,21 @@ function EsportsPanel() {
                     <span style={{ color: showLive ? C.red : C.textDim, fontWeight: showLive ? 700 : 500 }}>
                       {showLive ? "🔴 LIVE" : cd.label || (m.begin_at ? new Date(m.begin_at).toLocaleString() : "—")}
                     </span>
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        padding: "3px 10px",
+                        borderRadius: 6,
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                        background: `${angle.verdict.color}26`,
+                        color: angle.verdict.color,
+                        border: `1px solid ${angle.verdict.color}40`,
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {angle.verdict.pill}
+                    </span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
                     <div style={{ textAlign: "right", fontSize: 14, fontWeight: 700 }}>
@@ -3190,6 +3313,62 @@ function EsportsPanel() {
                   {m.bo > 0 && (
                     <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted, textAlign: "center" }}>
                       Best of {m.bo}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => toggleAngle(m.id)}
+                    style={{
+                      marginTop: 10,
+                      width: "100%",
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      border: `1px solid ${C.border}`,
+                      background: "transparent",
+                      color: C.textDim,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {expanded ? "▲ Hide betting angle" : "▼ Show betting angle"}
+                  </button>
+
+                  {expanded && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 12,
+                        background: C.card2,
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 8,
+                        fontSize: 12.5,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {angle.bothRanked || angle.oneRanked ? (
+                        <div style={{ marginBottom: 8 }}>
+                          <div>
+                            🏆 <strong>Favorite:</strong> {angle.favoriteName}
+                            {angle.favRank < 999 && <span style={{ color: C.textMuted }}> (Ranked #{angle.favRank})</span>}
+                          </div>
+                          <div>
+                            🐕 <strong>Underdog:</strong> {angle.underdogName}
+                            {angle.dogRank < 999
+                              ? <span style={{ color: C.textMuted }}> (Ranked #{angle.dogRank})</span>
+                              : <span style={{ color: C.textMuted }}> (Unranked)</span>}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ marginBottom: 8, color: C.textMuted, fontStyle: "italic" }}>
+                          Neither team in the curated top-{TOP_TEAMS[game].length} list — no rank signal available.
+                        </div>
+                      )}
+                      <div style={{ color: angle.verdict.color, fontWeight: 700, marginBottom: 6 }}>
+                        {angle.verdict.recText}
+                      </div>
+                      <div style={{ color: C.textDim, marginBottom: 4 }}>{angle.formatInsight}</div>
+                      <div style={{ color: C.textDim }}>{angle.tournamentInsight}</div>
                     </div>
                   )}
                 </div>
