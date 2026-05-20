@@ -4151,13 +4151,15 @@ function propVerdict(avg: number, lineStr: string): PropVerdict | null {
   const line = parseFloat(lineStr);
   if (!Number.isFinite(line) || line <= 0 || !avg) return null;
   const diff = avg - line;
-  // Simple thresholds: |diff| < 1 → too close; otherwise pick the side that
-  // beats the line by at least 1.5 — anything in between is a "soft" lean
-  // that still flags OVER/UNDER but with less conviction in the UI.
-  if (Math.abs(diff) < 1) return { rec: "TOO CLOSE", confidence: "LOW", color: C.textMuted };
-  if (diff > 1.5) return { rec: "OVER", confidence: "HIGH", color: C.green };
+  // Proportional thresholds so the same logic works across scales — NBA PPG
+  // (~25), MLB per-game hits (~1.0), MLB per-game HR (~0.3). Absolute
+  // thresholds would call a 0.5-HR diff "too close" when it's actually a
+  // huge edge. 5% diff = too close; 15%+ = high confidence.
+  const ratio = Math.abs(diff) / avg;
+  if (ratio < 0.05) return { rec: "TOO CLOSE", confidence: "LOW", color: C.textMuted };
+  if (diff > 0 && ratio > 0.15) return { rec: "OVER", confidence: "HIGH", color: C.green };
   if (diff > 0) return { rec: "OVER", confidence: "MEDIUM", color: "#86efac" };
-  if (diff < -1.5) return { rec: "UNDER", confidence: "HIGH", color: C.red };
+  if (ratio > 0.15) return { rec: "UNDER", confidence: "HIGH", color: C.red };
   return { rec: "UNDER", confidence: "MEDIUM", color: "#fca5a5" };
 }
 
