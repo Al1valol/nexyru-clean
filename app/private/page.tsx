@@ -2096,12 +2096,25 @@ const TIME_FILTERS: { id: string; label: string; hours: number | null }[] = [
   { id: "all", label: "All", hours: null },
 ];
 
+type GameAnalysis = {
+  pick: string;
+  confidence: "high" | "medium" | "low";
+  reasoning: string;
+  injuries: string;
+  form: string;
+  edge: string;
+  warning: string | null;
+  avoid: boolean;
+};
+
 function BestPicksPanel({
   games, loading, error, requestsRemaining, nowMs, onRefresh,
 }: SharedOddsProps & { requestsRemaining: string | null }) {
   const [sportFilter, setSportFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState("today");
   const [flash, setFlash] = useState<string | null>(null);
+  const [gameAnalysis, setGameAnalysis] = useState<Record<string, GameAnalysis>>({});
+  const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
 
   const allPicks = useMemo(() => buildPicks(games), [games]);
 
@@ -2122,6 +2135,65 @@ function BestPicksPanel({
   const top3 = filtered.slice(0, 3);
   const rest = filtered.slice(3);
   const strongCount = filtered.filter((p) => p.score >= 75).length;
+
+  const analyzeGame = async (p: Pick) => {
+    const gameId = p.game.id;
+    if (analyzing.has(gameId) || gameAnalysis[gameId]) return;
+    setAnalyzing((prev) => new Set(prev).add(gameId));
+    try {
+      // Send BOTH sides of the game (regardless of which card was clicked) so
+      // the model has the full matchup context.
+      const away = allPicks.find((x) => x.game.id === gameId && x.team === p.game.away_team);
+      const home = allPicks.find((x) => x.game.id === gameId && x.team === p.game.home_team);
+      const res = await fetch("/api/analyze-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          team1: p.game.away_team,
+          team2: p.game.home_team,
+          sport: p.game.sport_title || p.game.sport_key,
+          odds1: away?.bestPrice ?? null,
+          odds2: home?.bestPrice ?? null,
+          gameTime: p.game.commence_time,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setGameAnalysis((prev) => ({ ...prev, [gameId]: data as GameAnalysis }));
+      } else {
+        setFlash(`Analysis failed: ${data.error ?? res.status}`);
+        setTimeout(() => setFlash(null), 4000);
+      }
+    } catch (e: any) {
+      setFlash(`Analysis failed: ${e?.message ?? "network error"}`);
+      setTimeout(() => setFlash(null), 4000);
+    } finally {
+      setAnalyzing((prev) => {
+        const next = new Set(prev);
+        next.delete(gameId);
+        return next;
+      });
+    }
+  };
+
+  // Sequential analyze with 1s spacing — protects against rate limits and
+  // keeps token usage predictable. Dedupes by game so two picks from the
+  // same matchup count once.
+  const analyzeTopPicks = async () => {
+    const seenGames = new Set<string>();
+    const targets: Pick[] = [];
+    for (const p of filtered) {
+      if (seenGames.has(p.game.id)) continue;
+      if (gameAnalysis[p.game.id]) continue;
+      seenGames.add(p.game.id);
+      targets.push(p);
+      if (targets.length === 5) break;
+    }
+    for (const p of targets) {
+      await analyzeGame(p);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  };
 
   const addPaperBet = (p: Pick) => {
     const odds = p.bestPrice;
@@ -2198,22 +2270,119 @@ function BestPicksPanel({
         <div style={{ fontSize: 11.5, color: badge.color, marginBottom: 10, fontWeight: 600 }}>
           {scoreReasoning(p.score)}
         </div>
-        <button
-          onClick={() => addPaperBet(p)}
-          style={{
-            width: "100%",
-            padding: "7px 10px",
-            borderRadius: 6,
-            border: `1px solid ${C.border}`,
-            background: C.card2,
-            color: C.text,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          + Paper Bet
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => addPaperBet(p)}
+            style={{
+              flex: 1,
+              padding: "7px 10px",
+              borderRadius: 6,
+              border: `1px solid ${C.border}`,
+              background: C.card2,
+              color: C.text,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            + Paper Bet
+          </button>
+          <button
+            onClick={() => analyzeGame(p)}
+            disabled={analyzing.has(p.game.id) || !!gameAnalysis[p.game.id]}
+            style={{
+              flex: 1,
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: "1px solid rgba(99,102,241,0.4)",
+              background: analyzing.has(p.game.id) || gameAnalysis[p.game.id] ? C.card2 : "rgba(99,102,241,0.08)",
+              color: analyzing.has(p.game.id) || gameAnalysis[p.game.id] ? C.textMuted : "#a5b4fc",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: analyzing.has(p.game.id) || gameAnalysis[p.game.id] ? "default" : "pointer",
+            }}
+          >
+            {analyzing.has(p.game.id) ? "🔍 Searching…" : gameAnalysis[p.game.id] ? "✓ Analyzed" : "✦ Deep Analysis"}
+          </button>
+        </div>
+
+        {gameAnalysis[p.game.id] && (() => {
+          const analysis = gameAnalysis[p.game.id];
+          const recommendedPick = !analysis.avoid && analysis.pick !== "SKIP"
+            ? allPicks.find((x) => x.game.id === p.game.id && x.team === analysis.pick)
+            : null;
+          const confColor =
+            analysis.confidence === "high" ? C.green
+            : analysis.confidence === "medium" ? C.amber
+            : C.textMuted;
+          return (
+            <div
+              style={{
+                marginTop: 10,
+                background: analysis.avoid ? "rgba(239,68,68,0.05)" : "rgba(99,102,241,0.05)",
+                border: `1px solid ${analysis.avoid ? "rgba(239,68,68,0.2)" : "rgba(99,102,241,0.2)"}`,
+                borderRadius: 10,
+                padding: 14,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: analysis.avoid ? C.red : "#a5b4fc" }}>
+                  {analysis.avoid ? "🚫 SKIP THIS GAME" : `✅ Pick: ${analysis.pick}`}
+                </div>
+                <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: `${confColor}26`, color: confColor, letterSpacing: 0.4 }}>
+                  {analysis.confidence.toUpperCase()} CONFIDENCE
+                </span>
+              </div>
+              <div style={{ fontSize: 12.5, color: "#d1d5db", lineHeight: 1.6, marginBottom: 10 }}>
+                {analysis.reasoning}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                {analysis.injuries && analysis.injuries.toLowerCase() !== "none" && (
+                  <div style={{ background: "rgba(239,68,68,0.08)", borderRadius: 6, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginBottom: 2 }}>🏥 INJURIES</div>
+                    <div style={{ fontSize: 11.5, color: "#fca5a5" }}>{analysis.injuries}</div>
+                  </div>
+                )}
+                {analysis.form && (
+                  <div style={{ background: "rgba(34,197,94,0.08)", borderRadius: 6, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: C.green, fontWeight: 700, marginBottom: 2 }}>📊 RECENT FORM</div>
+                    <div style={{ fontSize: 11.5, color: "#86efac" }}>{analysis.form}</div>
+                  </div>
+                )}
+                {analysis.edge && (
+                  <div style={{ background: "rgba(99,102,241,0.08)", borderRadius: 6, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: "#a5b4fc", fontWeight: 700, marginBottom: 2 }}>⚡ EDGE</div>
+                    <div style={{ fontSize: 11.5, color: "#c7d2fe" }}>{analysis.edge}</div>
+                  </div>
+                )}
+                {analysis.warning && (
+                  <div style={{ background: "rgba(245,158,11,0.08)", borderRadius: 6, padding: "8px 10px" }}>
+                    <div style={{ fontSize: 10, color: C.amber, fontWeight: 700, marginBottom: 2 }}>⚠️ WARNING</div>
+                    <div style={{ fontSize: 11.5, color: "#fde68a" }}>{analysis.warning}</div>
+                  </div>
+                )}
+              </div>
+              {recommendedPick && (
+                <button
+                  onClick={() => addPaperBet(recommendedPick)}
+                  style={{
+                    width: "100%",
+                    padding: "9px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: C.accent,
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  + Add {analysis.pick} to Paper Bets
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -2251,10 +2420,28 @@ function BestPicksPanel({
         </div>
       )}
 
-      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
-        <strong style={{ color: C.text }}>{filtered.length}</strong> picks analyzed ·
-        <strong style={{ color: C.green, marginLeft: 6 }}>{strongCount}</strong> strong
-        {requestsRemaining && <> · <strong style={{ color: C.text }}>{requestsRemaining}</strong> Odds API calls left this month</>}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, color: C.textMuted }}>
+          <strong style={{ color: C.text }}>{filtered.length}</strong> picks analyzed ·
+          <strong style={{ color: C.green, marginLeft: 6 }}>{strongCount}</strong> strong
+          {requestsRemaining && <> · <strong style={{ color: C.text }}>{requestsRemaining}</strong> Odds API calls left this month</>}
+        </div>
+        <button
+          onClick={analyzeTopPicks}
+          disabled={analyzing.size > 0 || filtered.length === 0}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 8,
+            border: "1px solid rgba(99,102,241,0.4)",
+            background: analyzing.size > 0 ? C.card2 : "rgba(99,102,241,0.08)",
+            color: analyzing.size > 0 ? C.textMuted : "#a5b4fc",
+            fontSize: 11.5,
+            fontWeight: 700,
+            cursor: analyzing.size > 0 || filtered.length === 0 ? "default" : "pointer",
+          }}
+        >
+          {analyzing.size > 0 ? `🔍 Analyzing… (${analyzing.size})` : "✦ Analyze All Top Picks"}
+        </button>
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
