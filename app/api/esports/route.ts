@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// PandaScore free tier (~1000 req/mo). Until PANDASCORE_TOKEN is set in Vercel
-// env, the route returns 503 and the panel falls back to its manual tracker.
-// Sign up at https://pandascore.co/users/sign_up for a free key.
-const PANDASCORE_TOKEN = process.env.PANDASCORE_TOKEN ?? "";
+// PandaScore free tier (~1000 req/mo). Prefer PANDASCORE_TOKEN env var; fall
+// back to a hardcoded constant so the route works without env configuration.
+// Rotate via Vercel env without touching code.
+const PANDASCORE_TOKEN =
+  process.env.PANDASCORE_TOKEN ??
+  "ihtscxHiWnvHYdS1lQkJwRyU6vv2vUO7GwYLvdfkH0mdcsRkpMc";
 
 const GAMES: Record<string, { slug: string }> = {
   csgo: { slug: "csgo" },
@@ -83,6 +85,10 @@ export async function GET(req: NextRequest) {
   if (type === "matches") {
     upstream = new URL(`https://api.pandascore.co/${slug}/matches/upcoming`);
     upstream.searchParams.set("per_page", "20");
+    upstream.searchParams.set("sort", "begin_at");
+  } else if (type === "live") {
+    upstream = new URL(`https://api.pandascore.co/${slug}/matches/running`);
+    upstream.searchParams.set("per_page", "10");
   } else if (type === "teams") {
     upstream = new URL(`https://api.pandascore.co/${slug}/teams`);
     upstream.searchParams.set("per_page", "10");
@@ -96,8 +102,9 @@ export async function GET(req: NextRequest) {
         Authorization: `Bearer ${PANDASCORE_TOKEN}`,
         Accept: "application/json",
       },
-      // Cache aggressively to protect the free-tier monthly quota.
-      next: { revalidate: 1800 },
+      // Live matches change state quickly (could end any minute); upcoming
+      // and teams are stable, so cache them aggressively to protect quota.
+      next: { revalidate: type === "live" ? 60 : 1800 },
     });
     const raw = await r.json().catch(() => null);
     if (!r.ok) {

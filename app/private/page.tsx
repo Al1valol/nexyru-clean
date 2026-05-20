@@ -2986,6 +2986,7 @@ type EsportMatch = {
   tournament: string;
   league: string;
   opponents: { id?: number; name: string; image?: string; acronym?: string }[];
+  isLive?: boolean;
 };
 
 type EsportTeam = {
@@ -3032,10 +3033,12 @@ function EsportsPanel() {
     setMatches(null);
     setTeams(null);
     try {
-      const [matchRes, teamRes] = await Promise.all([
+      const [liveRes, matchRes, teamRes] = await Promise.all([
+        fetch(`/api/esports?game=${g}&type=live`),
         fetch(`/api/esports?game=${g}&type=matches`),
         fetch(`/api/esports?game=${g}&type=teams`),
       ]);
+      const liveJson = await liveRes.json();
       const matchJson = await matchRes.json();
       const teamJson = await teamRes.json();
       if (!matchRes.ok) {
@@ -3044,7 +3047,12 @@ function EsportsPanel() {
         setTeams([]);
         return;
       }
-      setMatches(matchJson.data || []);
+      const liveMatches: EsportMatch[] = (liveRes.ok ? liveJson.data || [] : []).map(
+        (m: EsportMatch) => ({ ...m, isLive: true }),
+      );
+      const upcoming: EsportMatch[] = matchJson.data || [];
+      // Live matches first — they're more time-sensitive for betting decisions.
+      setMatches([...liveMatches, ...upcoming]);
       setTeams(teamRes.ok ? teamJson.data || [] : []);
     } catch (e: any) {
       setError(e?.message || "Failed to load");
@@ -3149,21 +3157,23 @@ function EsportsPanel() {
               const cd = m.begin_at ? countdownLabel(m.begin_at, nowMs) : { label: "", live: false };
               const opp1 = m.opponents[0];
               const opp2 = m.opponents[1];
+              const showLive = m.isLive || cd.live;
               return (
                 <div
                   key={m.id}
                   style={{
                     background: C.card,
-                    border: `1px solid ${C.border}`,
+                    border: `1px solid ${showLive ? "rgba(239,68,68,0.5)" : C.border}`,
                     borderRadius: 12,
                     padding: 14,
+                    boxShadow: showLive ? "0 0 20px rgba(239,68,68,0.08)" : "none",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 12, color: C.textMuted, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ color: gameMeta.color, fontWeight: 700 }}>{gameMeta.label}</span>
                     <span>{m.tournament || m.league || "—"}</span>
-                    <span style={{ color: cd.live ? C.red : C.textDim, fontWeight: cd.live ? 700 : 500 }}>
-                      {cd.live ? "🔴 LIVE" : cd.label || (m.begin_at ? new Date(m.begin_at).toLocaleString() : "—")}
+                    <span style={{ color: showLive ? C.red : C.textDim, fontWeight: showLive ? 700 : 500 }}>
+                      {showLive ? "🔴 LIVE" : cd.label || (m.begin_at ? new Date(m.begin_at).toLocaleString() : "—")}
                     </span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
