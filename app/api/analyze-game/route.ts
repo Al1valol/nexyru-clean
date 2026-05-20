@@ -46,7 +46,16 @@ type GameAnalysis = {
 
 function coerceAnalysis(parsed: unknown, team1: string, team2: string): GameAnalysis {
   if (!parsed || typeof parsed !== "object") {
-    return { pick: "SKIP", confidence: "low", reasoning: "Analysis unavailable.", injuries: "none", form: "", edge: "", warning: null, avoid: true };
+    return {
+      pick: "SKIP",
+      confidence: "low",
+      reasoning: "Analysis unavailable — please check ESPN for current team news",
+      injuries: "none",
+      form: "N/A",
+      edge: "N/A",
+      warning: null,
+      avoid: false,
+    };
   }
   const p = parsed as Record<string, unknown>;
   const str = (v: unknown, fallback = "") => (typeof v === "string" ? v.trim() : fallback);
@@ -122,31 +131,53 @@ Current odds: ${team1} at ${odds1}, ${team2} at ${odds2}`;
       messages: [{ role: "user", content: userContent }],
     });
 
-    // Web search responses include tool_use + tool_result blocks alongside the
-    // final text block. Grab only text blocks for parsing.
     const text = message.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("")
-      .replace(/```json|```/g, "")
       .trim();
 
-    let parsed: unknown;
+    // Three parsing strategies in order — never error to the client. With
+    // max_tokens=300, truncation is common, so strategy 3 (per-field regex)
+    // exists to salvage fields out of a truncated/unclosed JSON object.
+    let parsed: unknown = null;
+
+    // Strategy 1: strip code fences, parse whole text.
     try {
-      parsed = JSON.parse(text);
-    } catch {
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) {
-        try { parsed = JSON.parse(m[0]); } catch {}
-      }
-    }
-    if (parsed === undefined) {
-      return NextResponse.json(
-        { error: "Model returned non-JSON", raw: text.slice(0, 300) },
-        { status: 502 },
-      );
+      const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      parsed = JSON.parse(clean);
+    } catch {}
+
+    // Strategy 2: extract first {...} block and parse it.
+    if (!parsed) {
+      try {
+        const m = text.match(/\{[\s\S]*\}/);
+        if (m) parsed = JSON.parse(m[0]);
+      } catch {}
     }
 
+    // Strategy 3: per-field regex — works on truncated JSON without a closing
+    // brace. Only triggers if at minimum we can identify a pick.
+    if (!parsed) {
+      const pickMatch = text.match(/"pick"\s*:\s*"([^"]+)"/);
+      if (pickMatch) {
+        const grab = (key: string) => text.match(new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`))?.[1];
+        const avoidMatch = text.match(/"avoid"\s*:\s*(true|false)/);
+        parsed = {
+          pick: pickMatch[1],
+          confidence: grab("confidence") || "medium",
+          reasoning: grab("reasoning") || "Analysis based on team history",
+          injuries: grab("injuries") || "none",
+          form: grab("form") || "N/A",
+          edge: grab("edge") || "N/A",
+          warning: grab("warning") || null,
+          avoid: avoidMatch?.[1] === "true",
+        };
+      }
+    }
+
+    // Strategy 4 (the safe fallback) is inside coerceAnalysis: when parsed is
+    // null/non-object, it returns the "Analysis unavailable" GameAnalysis.
     return NextResponse.json(coerceAnalysis(parsed, team1, team2));
   } catch (err) {
     if (err instanceof Anthropic.APIError) {
