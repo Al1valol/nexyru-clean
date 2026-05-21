@@ -8576,7 +8576,7 @@ function TradingDashboard({ session, onLogout }) {
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
         {/* ── Top bar ── */}
-        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
+        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden", marginLeft:56 }}>
           {/* Left: Nexyru logo */}
           <a href="/dashboard" style={{
             fontSize:15, fontWeight:800, color:"#ffffff",
@@ -8600,7 +8600,7 @@ function TradingDashboard({ session, onLogout }) {
                   href={n.href}
                   className={active ? "nx-nav-active" : "nx-nav-inactive"}
                   style={{
-                    padding:"6px 14px",
+                    padding:"6px 12px",
                     color: active ? "#ffffff" : "#6b7280",
                     fontSize:12, fontWeight: active ? 700 : 600,
                     textDecoration:"none",
