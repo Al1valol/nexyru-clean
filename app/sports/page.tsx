@@ -713,6 +713,119 @@ function ErrorBox({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ──────────────────────── DEEP DIVE ────────────────────────
+function DeepDiveSection({
+  id,
+  show,
+  onRun,
+  deepDives,
+  deepDiving,
+}: {
+  id: string;
+  show: boolean;
+  onRun: () => void;
+  deepDives: Record<string, any>;
+  deepDiving: Record<string, boolean>;
+}) {
+  if (!show) return null;
+  const dd = deepDives[id];
+  const running = !!deepDiving[id];
+
+  if (!dd) {
+    return (
+      <button
+        onClick={onRun}
+        disabled={running}
+        style={{
+          width: "100%",
+          padding: 8,
+          borderRadius: 8,
+          marginTop: 8,
+          border: "1px solid rgba(99,102,241,0.4)",
+          background: "rgba(99,102,241,0.05)",
+          color: running ? "#4b5563" : "#a5b4fc",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: running ? "default" : "pointer",
+        }}
+      >
+        {running ? "🔍 Running deep dive (3 analyses)…" : "🔍 Deep Dive — Run Full Analysis"}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        background: "rgba(99,102,241,0.05)",
+        border: "1px solid rgba(99,102,241,0.3)",
+        borderRadius: 10,
+        padding: 14,
+        marginTop: 8,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#a5b4fc", marginBottom: 10 }}>
+        🔍 Deep Dive Results — {dd.agreement}
+      </div>
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: 8,
+          marginBottom: 10,
+          background: dd.confidence === "high" ? "rgba(34,197,94,0.1)" : "rgba(245,158,11,0.1)",
+          border: `1px solid ${dd.confidence === "high" ? "rgba(34,197,94,0.3)" : "rgba(245,158,11,0.3)"}`,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 800,
+            color: dd.confidence === "high" ? "#22c55e" : "#f59e0b",
+          }}
+        >
+          Final Pick: {dd.pick}
+        </div>
+        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+          Confidence: {dd.confidence?.toUpperCase()} · {dd.agreement}
+        </div>
+      </div>
+      {dd.analyses?.map((a: any, i: number) => (
+        <div
+          key={i}
+          style={{
+            padding: "8px 10px",
+            borderRadius: 6,
+            marginBottom: 6,
+            background: "#111",
+            border: "1px solid #1e1e2a",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3 }}>
+            Analysis {i + 1} —{" "}
+            {i === 0 ? "General" : i === 1 ? "Head to Head / Form" : "Schedule / Line Movement"}
+          </div>
+          <div style={{ fontSize: 12, color: "#d1d5db", marginBottom: 3 }}>{a.reasoning}</div>
+          {a.form && <div style={{ fontSize: 11, color: "#6b7280" }}>📊 {a.form}</div>}
+          {a.edge && <div style={{ fontSize: 11, color: "#6b7280" }}>⚡ {a.edge}</div>}
+          {a.warning && <div style={{ fontSize: 11, color: "#f59e0b" }}>⚠️ {a.warning}</div>}
+        </div>
+      ))}
+      <div style={{ fontSize: 10, color: "#4b5563", marginTop: 6 }}>
+        ⚠️ Always verify on{" "}
+        <a
+          href="https://www.espn.com/injuries"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: "#60a5fa" }}
+        >
+          ESPN
+        </a>{" "}
+        before betting real money
+      </div>
+    </div>
+  );
+}
+
 // ──────────────────────── BEST PICKS ────────────────────────
 function BestPicksPanel({
   games,
@@ -733,9 +846,83 @@ function BestPicksPanel({
 }) {
   const [analysis, setAnalysis] = useState<Record<string, GameAnalysis>>({});
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+  const [deepDives, setDeepDives] = useState<Record<string, any>>({});
+  const [deepDiving, setDeepDiving] = useState<Record<string, boolean>>({});
   const [sport, setSport] = useState<string>("all");
 
   const picks = useMemo(() => (games ? buildPicks(games) : []), [games]);
+
+  const deepDive = async (
+    id: string,
+    team1: string,
+    team2: string,
+    sportLabel: string,
+    odds1: any,
+    odds2: any,
+    context?: string,
+  ) => {
+    setDeepDiving((prev) => ({ ...prev, [id]: true }));
+    try {
+      const [analysis1, analysis2, analysis3] = await Promise.all([
+        fetch("/api/analyze-game", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ team1, team2, sport: sportLabel, odds1, odds2, gameTime: "Today", context }),
+        }).then((r) => r.json()),
+        fetch("/api/analyze-game", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            team1,
+            team2,
+            sport: sportLabel,
+            odds1,
+            odds2,
+            gameTime: "Today",
+            context:
+              (context || "") +
+              " Focus on: historical head to head record, home vs away performance, recent streak.",
+          }),
+        }).then((r) => r.json()),
+        fetch("/api/analyze-game", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            team1,
+            team2,
+            sport: sportLabel,
+            odds1,
+            odds2,
+            gameTime: "Today",
+            context:
+              (context || "") +
+              " Focus on: weather/venue factors, fatigue/schedule, line movement and sharp money indicators.",
+          }),
+        }).then((r) => r.json()),
+      ]);
+
+      const allPick = [analysis1.pick, analysis2.pick, analysis3.pick];
+      const majorityPick = allPick
+        .slice()
+        .sort(
+          (a, b) =>
+            allPick.filter((v) => v === a).length - allPick.filter((v) => v === b).length,
+        )
+        .pop();
+      const highConf = [analysis1, analysis2, analysis3].filter((a) => a.confidence === "high").length;
+
+      setDeepDives((prev) => ({
+        ...prev,
+        [id]: {
+          pick: majorityPick,
+          confidence: highConf >= 2 ? "high" : highConf >= 1 ? "medium" : "low",
+          analyses: [analysis1, analysis2, analysis3],
+          agreement: allPick.filter((p) => p === majorityPick).length + "/3 analyses agree",
+        },
+      }));
+    } catch (e) {}
+    setDeepDiving((prev) => ({ ...prev, [id]: false }));
+  };
 
   const sports = useMemo(() => {
     const set = new Set<string>();
@@ -1104,6 +1291,29 @@ function BestPicksPanel({
                   )}
                 </div>
               )}
+
+              <DeepDiveSection
+                id={p.game.id}
+                show={!!a}
+                onRun={() => {
+                  const awayPick = picks.find(
+                    (x) => x.game.id === p.game.id && x.team === p.game.away_team,
+                  );
+                  const homePick = picks.find(
+                    (x) => x.game.id === p.game.id && x.team === p.game.home_team,
+                  );
+                  deepDive(
+                    p.game.id,
+                    p.game.away_team,
+                    p.game.home_team,
+                    p.game.sport_title,
+                    awayPick?.bestPrice,
+                    homePick?.bestPrice,
+                  );
+                }}
+                deepDives={deepDives}
+                deepDiving={deepDiving}
+              />
             </div>
           );
         })}
@@ -1757,6 +1967,80 @@ function PlayerPropsPanel({
   const [search, setSearch] = useState("");
   const [analysis, setAnalysis] = useState<Record<string, GameAnalysis>>({});
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+  const [deepDives, setDeepDives] = useState<Record<string, any>>({});
+  const [deepDiving, setDeepDiving] = useState<Record<string, boolean>>({});
+
+  const deepDive = async (
+    id: string,
+    team1: string,
+    team2: string,
+    sportLabel: string,
+    odds1: any,
+    odds2: any,
+    context?: string,
+  ) => {
+    setDeepDiving((prev) => ({ ...prev, [id]: true }));
+    try {
+      const [analysis1, analysis2, analysis3] = await Promise.all([
+        fetch("/api/analyze-game", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ team1, team2, sport: sportLabel, odds1, odds2, gameTime: "Today", context }),
+        }).then((r) => r.json()),
+        fetch("/api/analyze-game", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            team1,
+            team2,
+            sport: sportLabel,
+            odds1,
+            odds2,
+            gameTime: "Today",
+            context:
+              (context || "") +
+              " Focus on: historical head to head record, home vs away performance, recent streak.",
+          }),
+        }).then((r) => r.json()),
+        fetch("/api/analyze-game", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            team1,
+            team2,
+            sport: sportLabel,
+            odds1,
+            odds2,
+            gameTime: "Today",
+            context:
+              (context || "") +
+              " Focus on: weather/venue factors, fatigue/schedule, line movement and sharp money indicators.",
+          }),
+        }).then((r) => r.json()),
+      ]);
+
+      const allPick = [analysis1.pick, analysis2.pick, analysis3.pick];
+      const majorityPick = allPick
+        .slice()
+        .sort(
+          (a, b) =>
+            allPick.filter((v) => v === a).length - allPick.filter((v) => v === b).length,
+        )
+        .pop();
+      const highConf = [analysis1, analysis2, analysis3].filter((a) => a.confidence === "high").length;
+
+      setDeepDives((prev) => ({
+        ...prev,
+        [id]: {
+          pick: majorityPick,
+          confidence: highConf >= 2 ? "high" : highConf >= 1 ? "medium" : "low",
+          analyses: [analysis1, analysis2, analysis3],
+          agreement: allPick.filter((p) => p === majorityPick).length + "/3 analyses agree",
+        },
+      }));
+    } catch (e) {}
+    setDeepDiving((prev) => ({ ...prev, [id]: false }));
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2169,6 +2453,24 @@ function PlayerPropsPanel({
                     )}
                   </div>
                 )}
+
+                <DeepDiveSection
+                  id={b.id}
+                  show={!!a}
+                  onRun={() =>
+                    deepDive(
+                      b.id,
+                      b.player,
+                      b.pick === "OVER" ? `OVER ${b.line}` : `UNDER ${b.line}`,
+                      b.sport,
+                      -110,
+                      -110,
+                      `Player prop bet: ${b.player} (${b.team}) — ${b.prop} ${b.pick} ${b.line}. Season average: ${b.avg}. Statistical edge: ${b.edgePct}% above the line.`,
+                    )
+                  }
+                  deepDives={deepDives}
+                  deepDiving={deepDiving}
+                />
               </div>
             );
           })}
