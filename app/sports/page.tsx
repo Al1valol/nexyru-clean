@@ -3836,6 +3836,43 @@ function EsportsPanel({
                   Verify odds on site before betting
                 </div>
               </div>
+
+              {/* Player Prop Sites */}
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #1e1e2a" }}>
+                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>
+                  🎯 Bet on Player Stats (Kills, Assists, Maps Won):
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[
+                    { name: "Betway Esports", url: "https://betway.com/en/sports/grp/esports", color: "#00a651" },
+                    { name: "GG.bet Props", url: "https://gg.bet/en/esports", color: "#ff6b00" },
+                    { name: "Pinnacle Esports", url: "https://www.pinnacle.com/en/esports/matchups", color: "#e63946" },
+                    { name: "Unikrn", url: "https://unikrn.com", color: "#7c3aed" },
+                  ].map((site) => (
+                    <a
+                      key={site.name}
+                      href={site.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: `${site.color}15`,
+                        border: `1px solid ${site.color}40`,
+                        color: site.color,
+                        textDecoration: "none",
+                      }}
+                    >
+                      {site.name} →
+                    </a>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: "#4b5563", marginTop: 6 }}>
+                  These sites offer player kill counts, map wins, and match props for {game.toUpperCase()}
+                </div>
+              </div>
             </div>
           );
         })}
