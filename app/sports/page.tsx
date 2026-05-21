@@ -1749,41 +1749,66 @@ function PlayerPropsPanel({
 }: {
   onAddBet: (b: Omit<PaperBet, "id" | "placedAt" | "status">) => void;
 }) {
-  const [sport, setSport] = useState<"nba" | "mlb">("nba");
+  const [sport, setSport] = useState<"all" | "nba" | "mlb">("all");
   const [nba, setNba] = useState<NbaPlayer[]>([]);
   const [mlb, setMlb] = useState<MlbPlayer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [analysis, setAnalysis] = useState<Record<string, GameAnalysis>>({});
+  const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const url = sport === "nba" ? `/api/players?sport=nba&search=${search}` : "/api/players?sport=mlb";
-      const r = await fetch(url);
-      const data = await r.json();
-      if (!r.ok) {
-        setError(data.error ?? `Error ${r.status}`);
-      } else if (sport === "nba") {
-        setNba(((data.data as NbaPlayer[]) ?? []).sort((a, b) => b.ppg - a.ppg));
-      } else {
-        setMlb(((data.players as MlbPlayer[]) ?? []).sort((a, b) => b.homeRuns - a.homeRuns));
+      const [nbaRes, mlbRes] = await Promise.all([
+        fetch(`/api/players?sport=nba&search=${search}`),
+        fetch("/api/players?sport=mlb"),
+      ]);
+      const nbaData = await nbaRes.json();
+      const mlbData = await mlbRes.json();
+      if (!nbaRes.ok && !mlbRes.ok) {
+        setError(nbaData.error ?? mlbData.error ?? "Failed to load players");
       }
+      setNba(((nbaData.data as NbaPlayer[]) ?? []).sort((a, b) => b.ppg - a.ppg));
+      setMlb(((mlbData.players as MlbPlayer[]) ?? []).sort((a, b) => b.homeRuns - a.homeRuns));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setLoading(false);
     }
-  }, [sport, search]);
+  }, [search]);
 
   useEffect(() => {
     load();
-  }, [sport]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const bets = useMemo(() => generatePropBets(nba, mlb, sport), [nba, mlb, sport]);
-  const highCount = bets.filter((b) => b.confidence === "HIGH").length;
-  const medCount = bets.filter((b) => b.confidence === "MEDIUM").length;
+  const scoredBets = useMemo(() => {
+    const nbaBets = generatePropBets(nba, [], "nba");
+    const mlbBets = generatePropBets([], mlb, "mlb");
+    const all = [...nbaBets, ...mlbBets];
+    return all
+      .map((b) => ({
+        ...b,
+        propScore: Math.min(
+          100,
+          Math.round(
+            b.edgePct * 3 +
+              (b.confidence === "HIGH" ? 20 : b.confidence === "MEDIUM" ? 10 : 0) +
+              (b.pick === "OVER" ? 5 : 0),
+          ),
+        ),
+      }))
+      .sort((a, b) => b.propScore - a.propScore);
+  }, [nba, mlb]);
+
+  const bets = useMemo(() => {
+    if (sport === "all") return scoredBets;
+    return scoredBets.filter((b) => b.sport.toLowerCase() === sport);
+  }, [scoredBets, sport]);
+
+  const strongCount = bets.filter((b) => b.edgePct > 20).length;
 
   const placeBet = (b: PropBet) => {
     onAddBet({
@@ -1800,32 +1825,60 @@ function PlayerPropsPanel({
     alert(`✅ Placed paper bet: ${b.pick} ${b.line} ${b.prop} for ${b.player}`);
   };
 
+  const analyzeProp = async (b: PropBet) => {
+    if (analyzing.has(b.id) || analysis[b.id]) return;
+    setAnalyzing((prev) => new Set(prev).add(b.id));
+    try {
+      const r = await fetch("/api/analyze-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          team1: b.player,
+          team2: "The Line",
+          sport: b.sport,
+          odds1: -110,
+          odds2: 100,
+          gameTime: "Today",
+        }),
+      });
+      const data = await r.json();
+      if (r.ok) setAnalysis((prev) => ({ ...prev, [b.id]: data as GameAnalysis }));
+    } finally {
+      setAnalyzing((prev) => {
+        const n = new Set(prev);
+        n.delete(b.id);
+        return n;
+      });
+    }
+  };
+
   return (
     <>
       <SectionHeader
         title="🏀 Player Props — Best Bets Today"
         subtitle="Ranked by statistical edge vs standard prop lines"
+        right={<RefreshButton loading={loading} onClick={load} />}
       />
 
-      {/* Sport switcher */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+      {/* Sport filter pills */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         {[
-          { id: "nba" as const, label: "🏀 NBA" },
-          { id: "mlb" as const, label: "⚾ MLB" },
+          { id: "all" as const, label: "All" },
+          { id: "nba" as const, label: "NBA" },
+          { id: "mlb" as const, label: "MLB" },
         ].map((s) => (
           <button
             key={s.id}
             onClick={() => setSport(s.id)}
             style={{
-              padding: "8px 16px",
-              borderRadius: 8,
+              padding: "5px 12px",
+              borderRadius: 999,
               border: `1px solid ${sport === s.id ? C.accent : C.border}`,
               background: sport === s.id ? "rgba(99,102,241,0.15)" : "transparent",
               color: sport === s.id ? "#a5b4fc" : C.textMuted,
-              fontSize: 13,
+              fontSize: 11.5,
               fontWeight: sport === s.id ? 700 : 500,
               cursor: "pointer",
-              minHeight: 40,
             }}
           >
             {s.label}
@@ -1834,7 +1887,7 @@ function PlayerPropsPanel({
       </div>
 
       {/* NBA search */}
-      {sport === "nba" && (
+      {(sport === "all" || sport === "nba") && (
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           <input
             value={search}
@@ -1887,18 +1940,17 @@ function PlayerPropsPanel({
         ℹ️ Lines are estimated — always verify on DraftKings or FanDuel before betting real money
       </div>
 
-      {/* Counts */}
+      {/* Count */}
       {bets.length > 0 && (
         <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12, fontWeight: 600 }}>
-          {bets.length} prop bet{bets.length === 1 ? "" : "s"} found · {highCount} HIGH confidence ·{" "}
-          {medCount} MEDIUM
+          {bets.length} prop bet{bets.length === 1 ? "" : "s"} · {strongCount} 🔥 Strong · sorted by edge
         </div>
       )}
 
       {error && <ErrorBox>{error}</ErrorBox>}
       {loading && (
         <div style={{ color: C.textMuted, padding: 32, textAlign: "center" }}>
-          Loading {sport.toUpperCase()}…
+          Loading players…
         </div>
       )}
       {!loading && !error && bets.length === 0 && (
@@ -1912,135 +1964,214 @@ function PlayerPropsPanel({
             borderRadius: 12,
           }}
         >
-          No qualifying {sport.toUpperCase()} prop bets found.
+          No qualifying prop bets found.
         </div>
       )}
 
-      {/* Ranked bet cards */}
-      {!loading &&
-        bets.map((b) => {
-          const confColor =
-            b.confidence === "HIGH" ? C.green : b.confidence === "MEDIUM" ? "#a5b4fc" : C.textMuted;
-          const confBg =
-            b.confidence === "HIGH"
-              ? "rgba(34,197,94,0.15)"
-              : b.confidence === "MEDIUM"
-                ? "rgba(99,102,241,0.15)"
-                : "rgba(107,114,128,0.15)";
-          const cardBorder =
-            b.confidence === "HIGH"
-              ? "rgba(34,197,94,0.4)"
-              : b.confidence === "MEDIUM"
-                ? "rgba(99,102,241,0.3)"
-                : C.border;
-          const confEmoji =
-            b.confidence === "HIGH" ? "🔥" : b.confidence === "MEDIUM" ? "⭐" : "👀";
-          return (
-            <div
-              key={b.id}
-              style={{
-                background: C.card,
-                border: `1px solid ${cardBorder}`,
-                borderRadius: 12,
-                padding: 16,
-                marginBottom: 10,
-              }}
-            >
-              {/* Top row — player + confidence chip */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{b.player}</div>
-                  <div style={{ fontSize: 12, color: C.textMuted }}>
-                    {b.team || b.sport} · {b.prop}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    background: confBg,
-                    color: confColor,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {confEmoji} {b.confidence}
-                </div>
-              </div>
-
-              {/* Pick / Line / Season avg grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>PICK</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.green }}>{b.pick}</div>
-                </div>
-                <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>LINE</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>{b.line}</div>
-                </div>
-                <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>SEASON AVG</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.blue }}>{b.avgDisplay}</div>
-                </div>
-              </div>
-
-              {/* Edge bar */}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, color: C.textMuted }}>Statistical edge</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.green }}>
-                    +{b.edgePct}% above line
-                  </span>
-                </div>
-                <div style={{ height: 6, background: "#1a1a24", borderRadius: 3, overflow: "hidden" }}>
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${Math.min(b.edgePct, 100)}%`,
-                      background: C.green,
-                      borderRadius: 3,
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Why this pick */}
-              <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12, lineHeight: 1.5 }}>
-                {b.player} averages{" "}
-                <strong style={{ color: "#fff" }}>
-                  {b.avgDisplay} {b.propLower}
-                </strong>{" "}
-                per game — line is set at <strong style={{ color: "#fff" }}>{b.line}</strong>, which is{" "}
-                {b.edgePct}% below their average. OVER looks strong.
-              </div>
-
-              {/* Payout */}
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 12 }}>
-                Odds: -110 · Bet $110 → win $100 · Standard prop odds
-              </div>
-
-              {/* Bet button */}
-              <button
-                onClick={() => placeBet(b)}
+      {/* Ranked bet cards — Best Picks layout */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+        {!loading &&
+          bets.map((b) => {
+            const a = analysis[b.id];
+            const badge =
+              b.edgePct > 20
+                ? { emoji: "🔥", label: "Strong", color: C.green }
+                : b.edgePct > 12
+                  ? { emoji: "⭐", label: "Good", color: "#a5b4fc" }
+                  : b.edgePct > 5
+                    ? { emoji: "👀", label: "Fair", color: C.amber }
+                    : { emoji: "·", label: "Low", color: C.textMuted };
+            const scoreColor =
+              b.propScore >= 75
+                ? C.green
+                : b.propScore >= 55
+                  ? C.blue
+                  : b.propScore >= 35
+                    ? C.amber
+                    : C.textMuted;
+            const pickColor = b.pick === "OVER" ? C.green : C.red;
+            return (
+              <div
+                key={b.id}
                 style={{
-                  width: "100%",
-                  padding: 10,
-                  borderRadius: 8,
-                  border: "none",
-                  background: b.confidence === "HIGH" ? C.green : C.accent,
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  minHeight: 40,
+                  background: C.card,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 12,
+                  padding: 14,
                 }}
               >
-                + Paper Bet — {b.pick} {b.line} {b.prop} ({b.player})
-              </button>
-            </div>
-          );
-        })}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{b.player}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                      {b.team || b.sport} · {b.prop}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div
+                      style={{
+                        fontSize: 22,
+                        fontWeight: 800,
+                        color: scoreColor,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {b.propScore}
+                    </div>
+                    <div style={{ fontSize: 9, color: C.textMuted }}>/ 100</div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "inline-block",
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    background: `${badge.color}26`,
+                    color: badge.color,
+                    border: `1px solid ${badge.color}40`,
+                    marginBottom: 8,
+                  }}
+                >
+                  {badge.emoji} {badge.label}
+                </div>
+
+                <div style={{ fontSize: 20, fontWeight: 800, color: pickColor }}>
+                  {b.pick} {b.line}
+                </div>
+                <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 4 }}>
+                  Season avg: <strong style={{ color: C.text }}>{b.avgDisplay}</strong>
+                </div>
+                <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 10 }}>
+                  Bet $110 → win $100
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => placeBet(b)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${C.border}`,
+                      background: C.card2,
+                      color: C.text,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      minHeight: 36,
+                    }}
+                  >
+                    + Paper Bet
+                  </button>
+                  <button
+                    onClick={() => analyzeProp(b)}
+                    disabled={analyzing.has(b.id) || !!a}
+                    style={{
+                      flex: 1,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(99,102,241,0.4)",
+                      background: analyzing.has(b.id) || a ? C.card2 : "rgba(99,102,241,0.08)",
+                      color: analyzing.has(b.id) || a ? C.textMuted : "#a5b4fc",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: analyzing.has(b.id) || a ? "default" : "pointer",
+                      minHeight: 36,
+                    }}
+                  >
+                    {analyzing.has(b.id) ? "🔍…" : a ? "✓ Analyzed" : "✦ AI Analyze"}
+                  </button>
+                </div>
+
+                {a && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      background: a.avoid ? "rgba(239,68,68,0.06)" : "rgba(99,102,241,0.06)",
+                      border: `1px solid ${a.avoid ? "rgba(239,68,68,0.2)" : "rgba(99,102,241,0.2)"}`,
+                      borderRadius: 10,
+                      padding: 12,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: a.avoid ? C.red : "#a5b4fc" }}>
+                        {a.avoid ? "🚫 SKIP" : `✅ Pick: ${a.pick}`}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "2px 7px",
+                          borderRadius: 4,
+                          background:
+                            a.confidence === "high"
+                              ? "rgba(34,197,94,0.18)"
+                              : a.confidence === "medium"
+                                ? "rgba(245,158,11,0.18)"
+                                : "rgba(107,114,128,0.18)",
+                          color:
+                            a.confidence === "high"
+                              ? C.green
+                              : a.confidence === "medium"
+                                ? C.amber
+                                : C.textMuted,
+                        }}
+                      >
+                        {a.confidence.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.6, marginBottom: 8 }}>
+                      {a.reasoning}
+                    </div>
+                    {a.injuries && a.injuries.toLowerCase() !== "none" && (
+                      <div style={{ fontSize: 11.5, color: "#fca5a5", marginBottom: 4 }}>
+                        🏥 <strong>Injuries:</strong> {a.injuries}
+                      </div>
+                    )}
+                    {a.form && (
+                      <div style={{ fontSize: 11.5, color: "#86efac", marginBottom: 4 }}>
+                        📊 <strong>Form:</strong> {a.form}
+                      </div>
+                    )}
+                    {a.edge && (
+                      <div style={{ fontSize: 11.5, color: "#c7d2fe", marginBottom: 4 }}>
+                        ⚡ <strong>Edge:</strong> {a.edge}
+                      </div>
+                    )}
+                    {a.warning && (
+                      <div style={{ fontSize: 11.5, color: "#fde68a", marginBottom: 4 }}>
+                        ⚠️ <strong>Warning:</strong> {a.warning}
+                      </div>
+                    )}
+                    {!a.avoid && a.pick !== "SKIP" && (
+                      <button
+                        onClick={() => placeBet(b)}
+                        style={{
+                          marginTop: 10,
+                          width: "100%",
+                          padding: 9,
+                          borderRadius: 8,
+                          border: "none",
+                          background: C.accent,
+                          color: "#fff",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          minHeight: 36,
+                        }}
+                      >
+                        + Paper Bet — {b.pick} {b.line} {b.prop}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+      </div>
     </>
   );
 }
