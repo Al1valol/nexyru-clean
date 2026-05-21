@@ -4,22 +4,34 @@ import { NextRequest, NextResponse } from 'next/server'
 const client = new Anthropic()
 
 export async function POST(req: NextRequest) {
-  const { team1, team2, sport, odds1, odds2, gameTime } = await req.json()
+  const { team1, team2, sport, odds1, odds2, gameTime, context } = await req.json()
+
+  const isPlayerProp = typeof team2 === 'string' && (team2.includes('OVER') || team2.includes('UNDER'))
+
+  const prompt = isPlayerProp
+    ? `You are a sports betting analyst. Analyze this player prop bet.
+
+Player: ${team1}
+Bet: ${team2} ${context || ''}
+Odds: -110
+
+Based on what you know about ${team1}'s performance and consistency, reply ONLY with JSON:
+{"pick":"${team2} or SKIP","confidence":"high or medium or low","reasoning":"one sentence about this player prop","injuries":"any known injury concerns or none","form":"recent performance assessment","edge":"why this prop has value or not","warning":"any red flag or null","avoid":false}`
+    : `You are a sports betting analyst. Analyze this matchup.
+
+${team1} vs ${team2}
+Sport: ${sport}
+Odds: ${team1} at ${odds1}, ${team2} at ${odds2}
+Time: ${gameTime}
+
+Reply ONLY with JSON:
+{"pick":"${team1} or ${team2} or SKIP","confidence":"high or medium or low","reasoning":"one sentence why","injuries":"any known concerns or none","form":"brief assessment","edge":"why this pick has value","warning":"red flag or null","avoid":false}`
 
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 250,
-      messages: [{
-        role: 'user',
-        content: `Sports betting analyst. Analyze this ${sport} matchup and give a pick.
-
-${team1} (${odds1}) vs ${team2} (${odds2})
-Time: ${gameTime}
-
-Reply with ONLY this JSON, no other text:
-{"pick":"${team1} or ${team2} or SKIP","confidence":"high or medium or low","reasoning":"one sentence why","injuries":"any known concerns or none","form":"brief team quality notes","edge":"why this pick has value","warning":"red flag or null","avoid":false}`
-      }]
+      messages: [{ role: 'user', content: prompt }]
     })
 
     const text = message.content.find((b: any) => b.type === 'text')?.text || '{}'

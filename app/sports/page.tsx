@@ -1834,11 +1834,12 @@ function PlayerPropsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           team1: b.player,
-          team2: "The Line",
+          team2: b.pick === "OVER" ? `OVER ${b.line}` : `UNDER ${b.line}`,
           sport: b.sport,
           odds1: -110,
-          odds2: 100,
+          odds2: -110,
           gameTime: "Today",
+          context: `Player prop bet: ${b.player} (${b.team}) — ${b.prop} ${b.pick} ${b.line}. Season average: ${b.avg}. Statistical edge: ${b.edgePct}% above the line.`,
         }),
       });
       const data = await r.json();
