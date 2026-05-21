@@ -4017,6 +4017,44 @@ function EsportsPanel({
 }
 
 // ──────────────────────── PAPER BETS ────────────────────────
+// Pick a sport-appropriate scoreboard/results site for the "check result" link.
+function getResultLink(bet: any) {
+  const sport = (bet.sport || "").toLowerCase();
+  const game = encodeURIComponent(bet.game || "");
+
+  if (sport.includes("cs") || sport.includes("csgo") || sport === "csgo") {
+    return { url: "https://www.hltv.org/results", label: "🔍 Check Result on HLTV →", color: "#f59e0b" };
+  }
+  if (sport.includes("lol") || sport.includes("league")) {
+    return { url: `https://lol.fandom.com/wiki/Special:Search?query=${game}`, label: "🔍 Check Result on LoL Wiki →", color: "#c89b3c" };
+  }
+  if (sport.includes("valorant")) {
+    return { url: "https://www.vlr.gg/matches/results", label: "🔍 Check Result on VLR.gg →", color: "#ff4655" };
+  }
+  if (sport.includes("dota")) {
+    return { url: "https://www.dotabuff.com/esports/matches", label: "🔍 Check Result on Dotabuff →", color: "#c23c2a" };
+  }
+  if (sport.includes("nba") || sport.includes("basketball")) {
+    return { url: "https://www.espn.com/nba/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+  }
+  if (sport.includes("mlb") || sport.includes("baseball")) {
+    return { url: "https://www.espn.com/mlb/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+  }
+  if (sport.includes("nfl") || sport.includes("football")) {
+    return { url: "https://www.espn.com/nfl/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+  }
+  if (sport.includes("soccer") || sport.includes("mls") || sport.includes("epl")) {
+    return { url: "https://www.espn.com/soccer/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+  }
+  if (sport.includes("tennis")) {
+    return { url: "https://www.flashscore.com/tennis", label: "🔍 Check Result on Flashscore →", color: "#22c55e" };
+  }
+  if (sport.includes("prop")) {
+    return { url: `https://www.espn.com/search/results?q=${game}`, label: "🔍 Check Stat on ESPN →", color: "#60a5fa" };
+  }
+  return { url: `https://www.google.com/search?q=${game}+result+score`, label: "🔍 Search Result on Google →", color: "#6b7280" };
+}
+
 function PaperBetsPanel({
   bets,
   bankroll,
@@ -4504,27 +4542,30 @@ function PaperBetsPanel({
               </div>
             </div>
 
-            {bet.status === "pending" && (
-              <a
-                href={`https://www.espn.com/search/results?q=${encodeURIComponent(bet.game)}`}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: "block",
-                  textAlign: "center",
-                  padding: "6px",
-                  borderRadius: 6,
-                  border: "1px solid rgba(59,130,246,0.3)",
-                  background: "rgba(59,130,246,0.05)",
-                  color: "#60a5fa",
-                  fontSize: 11,
-                  textDecoration: "none",
-                  marginBottom: 8,
-                }}
-              >
-                🔍 Check Result on ESPN →
-              </a>
-            )}
+            {bet.status === "pending" && (() => {
+              const resultLink = getResultLink(bet);
+              return (
+                <a
+                  href={resultLink.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: "block",
+                    textAlign: "center",
+                    padding: "6px",
+                    borderRadius: 6,
+                    border: `1px solid ${resultLink.color}40`,
+                    background: `${resultLink.color}08`,
+                    color: resultLink.color,
+                    fontSize: 11,
+                    textDecoration: "none",
+                    marginBottom: 8,
+                  }}
+                >
+                  {resultLink.label}
+                </a>
+              );
+            })()}
 
             {bet.status === "pending" && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
