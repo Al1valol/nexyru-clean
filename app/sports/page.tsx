@@ -1387,6 +1387,109 @@ function findArbs(games: Game[]): Arb[] {
   return arbs;
 }
 
+// Find prop arbs and middles from raw OddsAPI per-game bookmaker data.
+function findPropArbs(games: any[]) {
+  const arbs: any[] = [];
+  const middles: any[] = [];
+
+  games.forEach((game) => {
+    game.bookmakers?.forEach((bk: any) => {
+      bk.markets?.forEach((market: any) => {
+        const playerOdds: Record<string, any[]> = {};
+
+        market.outcomes?.forEach((outcome: any) => {
+          const key = `${outcome.description}_${market.key}`;
+          if (!playerOdds[key]) playerOdds[key] = [];
+          playerOdds[key].push({ ...outcome, book: bk.title, marketKey: market.key });
+        });
+
+        Object.entries(playerOdds).forEach(([key, outcomes]) => {
+          const overs = outcomes.filter((o) => o.name === "Over");
+          const unders = outcomes.filter((o) => o.name === "Under");
+          if (overs.length === 0 || unders.length === 0) return;
+
+          const bestOver = overs.reduce((b, c) => (c.price > b.price ? c : b));
+          const bestUnder = unders.reduce((b, c) => (c.price > b.price ? c : b));
+          if (bestOver.book === bestUnder.book) return;
+
+          const implOver =
+            bestOver.price > 0
+              ? 100 / (bestOver.price + 100)
+              : Math.abs(bestOver.price) / (Math.abs(bestOver.price) + 100);
+          const implUnder =
+            bestUnder.price > 0
+              ? 100 / (bestUnder.price + 100)
+              : Math.abs(bestUnder.price) / (Math.abs(bestUnder.price) + 100);
+          const total = implOver + implUnder;
+
+          const player = outcomes[0]?.description || "Unknown";
+          const marketLabel = market.key
+            .replace("batter_", "")
+            .replace("pitcher_", "")
+            .replace("player_", "")
+            .replace(/_/g, " ");
+
+          if (total < 1) {
+            const stake = 1000;
+            const betOver = (stake * implOver) / total;
+            const betUnder = (stake * implUnder) / total;
+            const returnOver =
+              betOver *
+                (bestOver.price > 0 ? bestOver.price / 100 : 100 / Math.abs(bestOver.price)) +
+              betOver;
+            const returnUnder =
+              betUnder *
+                (bestUnder.price > 0 ? bestUnder.price / 100 : 100 / Math.abs(bestUnder.price)) +
+              betUnder;
+            const profit = Math.min(returnOver, returnUnder) - stake;
+            const roi = (profit / stake) * 100;
+
+            if (roi > 0 && roi < 8) {
+              arbs.push({
+                id: key + "_arb",
+                player,
+                marketLabel,
+                game: `${game.home_team} vs ${game.away_team}`,
+                sport: game.sport_key,
+                bestOver,
+                bestUnder,
+                implOver,
+                implUnder,
+                profit,
+                roi,
+                stake,
+                betOver,
+                betUnder,
+                type: "arb",
+              });
+            }
+          } else if (total < 1.08) {
+            const lineOver = bestOver.point;
+            const lineUnder = bestUnder.point;
+            if (lineOver && lineUnder && lineUnder > lineOver) {
+              middles.push({
+                id: key + "_middle",
+                player,
+                marketLabel,
+                game: `${game.home_team} vs ${game.away_team}`,
+                sport: game.sport_key,
+                bestOver,
+                bestUnder,
+                lineOver,
+                lineUnder,
+                middleRange: `${lineOver} - ${lineUnder}`,
+                type: "middle",
+              });
+            }
+          }
+        });
+      });
+    });
+  });
+
+  return { arbs, middles };
+}
+
 function ArbFinderPanel({
   games,
   loading,
@@ -1402,9 +1505,29 @@ function ArbFinderPanel({
 }) {
   const arbs = useMemo(() => (games ? findArbs(games) : []), [games]);
   const [tracked, setTracked] = useState<Arb[]>([]);
+  const [arbMode, setArbMode] = useState<"game" | "prop">("game");
+  const [propArbGames, setPropArbGames] = useState<any[]>([]);
+  const [propArbLoading, setPropArbLoading] = useState(false);
+  const [propArbSport, setPropArbSport] = useState("baseball_mlb");
+  const [showMiddles, setShowMiddles] = useState(false);
+
   useEffect(() => {
     setTracked(readLS<Arb[]>(ARBS_TRACKED_KEY, []));
   }, []);
+
+  const fetchPropArbs = useCallback(async (sport: string) => {
+    setPropArbLoading(true);
+    try {
+      const res = await fetch(`/api/player-props?sport=${sport}`);
+      const data = await res.json();
+      setPropArbGames(data.games || []);
+    } catch (e) {}
+    setPropArbLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (arbMode === "prop") fetchPropArbs(propArbSport);
+  }, [arbMode, propArbSport, fetchPropArbs]);
 
   const trackArb = (a: Arb) => {
     const next = [a, ...tracked];
@@ -1413,6 +1536,17 @@ function ArbFinderPanel({
     onNotify("✓ Arb tracked");
   };
 
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    padding: "6px 14px",
+    borderRadius: 999,
+    border: `1px solid ${active ? C.accent : C.border}`,
+    background: active ? "rgba(99,102,241,0.15)" : "transparent",
+    color: active ? "#a5b4fc" : C.textMuted,
+    fontSize: 12,
+    fontWeight: active ? 700 : 500,
+    cursor: "pointer",
+  });
+
   return (
     <>
       <SectionHeader
@@ -1420,6 +1554,292 @@ function ArbFinderPanel({
         subtitle="Risk-free profit by hedging both sides across books. ROI capped at 8% (anything higher is usually stale)."
         right={<RefreshButton loading={loading} onClick={onRefresh} />}
       />
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <button onClick={() => setArbMode("game")} style={pillStyle(arbMode === "game")}>
+          💰 Game Arbs
+        </button>
+        <button onClick={() => setArbMode("prop")} style={pillStyle(arbMode === "prop")}>
+          🏀 Prop Arbs
+        </button>
+      </div>
+
+      {arbMode === "prop" && (
+        <>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {[
+              { id: "baseball_mlb", label: "⚾ MLB" },
+              { id: "basketball_nba", label: "🏀 NBA" },
+            ].map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setPropArbSport(s.id)}
+                style={pillStyle(propArbSport === s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {propArbLoading ? (
+            <div style={{ color: C.textMuted, textAlign: "center", padding: 32 }}>
+              Scanning prop lines across 8 bookmakers…
+            </div>
+          ) : (
+            (() => {
+              const { arbs: propArbs, middles } = findPropArbs(propArbGames);
+              return (
+                <div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    <button onClick={() => setShowMiddles(false)} style={pillStyle(!showMiddles)}>
+                      💰 True Arbs ({propArbs.length})
+                    </button>
+                    <button onClick={() => setShowMiddles(true)} style={pillStyle(showMiddles)}>
+                      🎯 Middles ({middles.length})
+                    </button>
+                  </div>
+
+                  {!showMiddles && propArbs.length === 0 && (
+                    <div
+                      style={{
+                        background: "#111",
+                        border: "1px solid #1e1e2a",
+                        borderRadius: 12,
+                        padding: 32,
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 24, marginBottom: 8 }}>📡</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4 }}>
+                        No prop arbs right now
+                      </div>
+                      <div style={{ fontSize: 13, color: "#6b7280" }}>
+                        Markets are efficient — check back when games start. Arbs appear 1-2 hours
+                        before game time.
+                      </div>
+                    </div>
+                  )}
+
+                  {showMiddles && middles.length === 0 && (
+                    <div
+                      style={{
+                        background: "#111",
+                        border: "1px solid #1e1e2a",
+                        borderRadius: 12,
+                        padding: 32,
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 13, color: "#6b7280" }}>No middles found right now</div>
+                    </div>
+                  )}
+
+                  {!showMiddles &&
+                    propArbs.map((arb) => (
+                      <div
+                        key={arb.id}
+                        style={{
+                          background: "#111",
+                          border: "1px solid rgba(34,197,94,0.4)",
+                          borderRadius: 12,
+                          padding: 16,
+                          marginBottom: 12,
+                          boxShadow: "0 0 20px rgba(34,197,94,0.05)",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{arb.player}</div>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>
+                              {arb.game} · {arb.marketLabel}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 6,
+                              background: "rgba(34,197,94,0.15)",
+                              color: "#22c55e",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            ✓ PROP ARB
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                          <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10 }}>
+                            <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 2 }}>
+                              OVER at {arb.bestOver.book}
+                            </div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: "#22c55e" }}>
+                              {arb.bestOver.price > 0 ? "+" : ""}
+                              {arb.bestOver.price}
+                            </div>
+                            {arb.bestOver.point != null && (
+                              <div style={{ fontSize: 12, color: "#9ca3af" }}>Line: {arb.bestOver.point}</div>
+                            )}
+                            <div style={{ fontSize: 12, color: "#22c55e", marginTop: 4 }}>
+                              Bet ${arb.betOver.toFixed(2)}
+                            </div>
+                          </div>
+                          <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10 }}>
+                            <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 2 }}>
+                              UNDER at {arb.bestUnder.book}
+                            </div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: "#22c55e" }}>
+                              {arb.bestUnder.price > 0 ? "+" : ""}
+                              {arb.bestUnder.price}
+                            </div>
+                            {arb.bestUnder.point != null && (
+                              <div style={{ fontSize: 12, color: "#9ca3af" }}>Line: {arb.bestUnder.point}</div>
+                            )}
+                            <div style={{ fontSize: 12, color: "#22c55e", marginTop: 4 }}>
+                              Bet ${arb.betUnder.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            background: "rgba(34,197,94,0.08)",
+                            border: "1px solid rgba(34,197,94,0.2)",
+                            borderRadius: 8,
+                            padding: 12,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <div style={{ fontSize: 16, fontWeight: 800, color: "#22c55e" }}>
+                            💰 +${arb.profit.toFixed(2)} guaranteed · {arb.roi.toFixed(2)}% ROI
+                          </div>
+                          <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>
+                            On $1,000 total stake · Different bookmakers
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const bet = {
+                              id: Date.now(),
+                              type: "prop_arb",
+                              sport: arb.sport,
+                              game: arb.player + " — " + arb.marketLabel,
+                              pick: `OVER at ${arb.bestOver.book} + UNDER at ${arb.bestUnder.book}`,
+                              odds: 0,
+                              book: "Multiple",
+                              stake: 1000,
+                              potWin: arb.profit,
+                              status: "pending",
+                              placedAt: new Date().toISOString(),
+                              notes: `Prop arb: $${arb.betOver.toFixed(2)} OVER at ${arb.bestOver.book} + $${arb.betUnder.toFixed(2)} UNDER at ${arb.bestUnder.book}`,
+                            };
+                            const ex = JSON.parse(localStorage.getItem("sports_paper_bets") || "[]");
+                            localStorage.setItem("sports_paper_bets", JSON.stringify([bet, ...ex]));
+                            onNotify("✅ Prop arb tracked!");
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: 10,
+                            borderRadius: 8,
+                            border: "none",
+                            background: "#22c55e",
+                            color: "#fff",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          + Track This Prop Arb
+                        </button>
+                      </div>
+                    ))}
+
+                  {showMiddles &&
+                    middles.map((mid) => (
+                      <div
+                        key={mid.id}
+                        style={{
+                          background: "#111",
+                          border: "1px solid rgba(99,102,241,0.4)",
+                          borderRadius: 12,
+                          padding: 16,
+                          marginBottom: 12,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{mid.player}</div>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>
+                              {mid.game} · {mid.marketLabel}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 6,
+                              background: "rgba(99,102,241,0.15)",
+                              color: "#a5b4fc",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            🎯 MIDDLE
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            background: "rgba(99,102,241,0.05)",
+                            border: "1px solid rgba(99,102,241,0.2)",
+                            borderRadius: 8,
+                            padding: 12,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#a5b4fc", marginBottom: 4 }}>
+                            Middle range: {mid.middleRange}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                            Bet OVER {mid.lineOver} at {mid.bestOver.book} + UNDER {mid.lineUnder} at{" "}
+                            {mid.bestUnder.book}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#a5b4fc", marginTop: 4 }}>
+                            If {mid.player} scores between {mid.lineOver} and {mid.lineUnder} — BOTH bets win! 🎉
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                            <div style={{ fontSize: 10, color: "#6b7280" }}>OVER {mid.lineOver}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700 }}>{mid.bestOver.book}</div>
+                            <div style={{ fontSize: 14, color: "#22c55e" }}>
+                              {mid.bestOver.price > 0 ? "+" : ""}
+                              {mid.bestOver.price}
+                            </div>
+                          </div>
+                          <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, textAlign: "center" }}>
+                            <div style={{ fontSize: 10, color: "#6b7280" }}>UNDER {mid.lineUnder}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700 }}>{mid.bestUnder.book}</div>
+                            <div style={{ fontSize: 14, color: "#22c55e" }}>
+                              {mid.bestUnder.price > 0 ? "+" : ""}
+                              {mid.bestUnder.price}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              );
+            })()
+          )}
+        </>
+      )}
+
+      {arbMode === "game" && (
+        <>
       {error && <ErrorBox>{error}</ErrorBox>}
       {!error && loading && games === null && (
         <div style={{ color: C.textMuted, padding: 32, textAlign: "center" }}>Loading odds…</div>
@@ -1550,6 +1970,8 @@ function ArbFinderPanel({
               Clear tracked
             </button>
           </div>
+        </>
+      )}
         </>
       )}
     </>
