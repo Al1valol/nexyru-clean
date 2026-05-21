@@ -8576,7 +8576,7 @@ function TradingDashboard({ session, onLogout }) {
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
         {/* ── Top bar ── */}
-        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:40, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
+        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden" }}>
           {/* Left: Nexyru logo */}
           <a href="/dashboard" style={{
             fontSize:15, fontWeight:800, color:"#ffffff",
@@ -8587,7 +8587,7 @@ function TradingDashboard({ session, onLogout }) {
           </a>
 
           {/* Center: page nav */}
-          <nav style={{ flex:1, display:"flex", justifyContent:"center", alignItems:"center", gap:2, minWidth:0 }}>
+          <nav style={{ flex:1, display:"flex", justifyContent:"center", alignItems:"center", gap:8, minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>
             {[
               { id:'trading', label:'📈 Trading', href:'/dashboard' },
               { id:'crypto',  label:'🪙 Crypto',  href:'/crypto' },
@@ -8606,6 +8606,8 @@ function TradingDashboard({ session, onLogout }) {
                     textDecoration:"none",
                     borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
                     whiteSpace:"nowrap",
+                    minWidth:"fit-content",
+                    flexShrink:0,
                     transition:"color 0.15s",
                   }}
                 >
@@ -8684,7 +8686,7 @@ function TradingDashboard({ session, onLogout }) {
 
         {/* ── Page content ── */}
         {appMode === 'trading' && (
-        <main style={{ flex:1, padding:"24px", paddingBottom: isMobile ? 70 : 0, background:"#0a0a0f" }}>
+        <main style={{ flex:1, padding:"24px", paddingTop:16, paddingBottom: isMobile ? 70 : 0, background:"#0a0a0f" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
             <DemoBanner username={session.username} onClear={() => {
               setDemoMode(session.username, false);
@@ -8752,7 +8754,7 @@ function TradingDashboard({ session, onLogout }) {
         )}
 
         {appMode === 'odds' && isAdmin && (
-          <div style={{ flex:1, padding:24, overflowY:"auto" }}>
+          <div style={{ flex:1, padding:24, paddingTop:16, overflowY:"auto" }}>
             <OddsTab />
           </div>
         )}
