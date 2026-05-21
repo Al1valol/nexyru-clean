@@ -559,6 +559,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [copiedId, setCopiedId] = React.useState(null);
   const [snipeAnalysis, setSnipeAnalysis] = React.useState<Record<string,any>>({});
   const [snipeAnalyzing, setSnipeAnalyzing] = React.useState<Record<string,boolean>>({});
+  const [tab, setTab] = React.useState<'sniper'|'fomo'>('sniper');
 
   const formatNum = (n: number) => {
     if (n >= 1000000) return (n/1000000).toFixed(1)+'M';
@@ -737,17 +738,118 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
   });
 
-  if (gemsLoading && gems.length === 0) {
-    return (
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
-        <div style={{ width:24, height:24, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
-        Loading fresh launches from DexScreener…
-      </div>
-    );
-  }
+  const sniperLoading = gemsLoading && gems.length === 0;
 
   return (
     <div>
+      <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'1px solid #1e1e2a' }}>
+        {[
+          ['sniper', '🎯 Sniper'],
+          ['fomo', '⚡ Trade on FOMO'],
+        ].map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id as 'sniper'|'fomo')} style={{
+            padding:'10px 16px', border:'none', background:'transparent',
+            color: tab === id ? '#fff' : '#6b7280',
+            fontSize:13, fontWeight:700, cursor:'pointer',
+            borderBottom: tab === id ? '2px solid #6366f1' : '2px solid transparent',
+            marginBottom:-1,
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'fomo' && (
+        <div style={{padding:20}}>
+          <div style={{fontSize:20, fontWeight:800, color:'#fff', marginBottom:8}}>⚡ Trade on FOMO</div>
+          <div style={{fontSize:13, color:'#6b7280', marginBottom:20}}>
+            FOMO is a social trading app with 120,000+ users. Trade meme coins instantly and share your picks to build a following.
+          </div>
+
+          <div style={{background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.3)', borderRadius:12, padding:20, marginBottom:16}}>
+            <div style={{fontSize:15, fontWeight:700, color:'#a5b4fc', marginBottom:8}}>💰 FOMO Referral Program</div>
+            <div style={{fontSize:13, color:'#d1d5db', marginBottom:12, lineHeight:1.6}}>
+              Share your referral link and earn a percentage of trading fees from everyone who signs up through you — forever.
+            </div>
+            <a href="https://fomo.family" target="_blank" rel="noreferrer" style={{
+              display:'block', padding:'12px', borderRadius:8, border:'none',
+              background:'#6366f1', color:'#fff', fontSize:14, fontWeight:700,
+              textDecoration:'none', textAlign:'center', marginBottom:8
+            }}>
+              Join FOMO & Get Your Referral Link →
+            </a>
+            <div style={{fontSize:11, color:'#6b7280', textAlign:'center'}}>
+              Sign up → Profile → Share → Earn % of every trade your referrals make
+            </div>
+          </div>
+
+          <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:20, marginBottom:16}}>
+            <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:12}}>🎯 How to use Coin Sniper + FOMO</div>
+            {[
+              {step:'1', text:'Find a PRIME SNIPE coin here in Coin Sniper'},
+              {step:'2', text:'Check the AI analysis — if it says BUY with high confidence'},
+              {step:'3', text:'Open FOMO app and search the coin name or contract address'},
+              {step:'4', text:'Buy a small position ($50-200) quickly before it pumps'},
+              {step:'5', text:'Share your pick on Twitter/X with your FOMO referral link'},
+              {step:'6', text:'When followers join FOMO through your link you earn their fees forever'},
+            ].map(s => (
+              <div key={s.step} style={{display:'flex', gap:12, marginBottom:10, alignItems:'flex-start'}}>
+                <div style={{width:24, height:24, borderRadius:'50%', background:'rgba(99,102,241,0.2)', color:'#a5b4fc', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                  {s.step}
+                </div>
+                <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.5}}>{s.text}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{fontSize:13, fontWeight:700, color:'#6b7280', marginBottom:10, textTransform:'uppercase', letterSpacing:'0.05em'}}>Quick Links</div>
+          {[
+            {name:'🚀 FOMO App (fomo.family)', url:'https://fomo.family', desc:'Main trading platform — cross chain'},
+            {name:'💎 FOMO.gg', url:'https://fomo.gg', desc:'Meme coin launchpad on Solana'},
+            {name:'📱 iOS App', url:'https://apps.apple.com/app/fomo-crypto-trading/id6743432783', desc:'Download on iPhone'},
+            {name:'🤖 Android App', url:'https://play.google.com/store/apps/details?id=com.fomo.trading', desc:'Download on Android'},
+          ].map(link => (
+            <a key={link.url} href={link.url} target="_blank" rel="noreferrer" style={{
+              display:'flex', justifyContent:'space-between', alignItems:'center',
+              padding:'12px 14px', borderRadius:8, border:'1px solid #1e1e2a',
+              background:'transparent', textDecoration:'none', marginBottom:8
+            }}>
+              <div>
+                <div style={{fontSize:13, fontWeight:600, color:'#fff'}}>{link.name}</div>
+                <div style={{fontSize:11, color:'#6b7280'}}>{link.desc}</div>
+              </div>
+              <span style={{color:'#6b7280', fontSize:14}}>→</span>
+            </a>
+          ))}
+
+          <div style={{marginTop:16, padding:14, background:'#111', border:'1px solid #1e1e2a', borderRadius:12}}>
+            <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}>🎯 Current Top Snipes to Trade on FOMO</div>
+            <div style={{fontSize:12, color:'#6b7280', marginBottom:10}}>Based on Coin Sniper scores right now:</div>
+            {gems.filter(g => g.snipeWindow?.id === 'prime' || g.snipeWindow?.id === 'early').slice(0,3).map((coin, i) => (
+              <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #1e1e2a'}}>
+                <div>
+                  <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{coin.name} ({coin.symbol})</div>
+                  <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.score}/100 · {coin.snipeWindow?.label}</div>
+                </div>
+                <a href={`https://fomo.family/search?q=${coin.symbol}`} target="_blank" rel="noreferrer"
+                  style={{padding:'6px 12px', borderRadius:6, border:'none', background:'#6366f1', color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none'}}>
+                  Trade →
+                </a>
+              </div>
+            ))}
+            {gems.filter(g => g.snipeWindow?.id === 'prime' || g.snipeWindow?.id === 'early').length === 0 && (
+              <div style={{fontSize:12, color:'#6b7280'}}>No prime snipes right now — check back soon</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === 'sniper' && sniperLoading && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:14, padding:48, color:'#9ca3af', fontSize:13 }}>
+          <div style={{ width:24, height:24, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+          Loading fresh launches from DexScreener…
+        </div>
+      )}
+
+      {tab === 'sniper' && !sniperLoading && <>
       <div style={{ padding:'10px 14px', borderRadius:10, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', color:'#fcd34d', fontSize:12, marginBottom:12 }}>
         ⚠️ New coins are extremely high risk. Most will go to zero. Only invest what you can afford to lose completely.
       </div>
@@ -1085,6 +1187,15 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
                     }}
                   >Buy →</button>
+                  <a href={`https://fomo.family/search?q=${coin.symbol || coin.name}`} target="_blank" rel="noreferrer"
+                    style={{
+                      display:'inline-block', padding:'7px 12px', borderRadius:8,
+                      border:'1px solid rgba(99,102,241,0.4)',
+                      background:'rgba(99,102,241,0.08)',
+                      color:'#a5b4fc', fontSize:12, fontWeight:700, textDecoration:'none'
+                    }}>
+                    ⚡ FOMO
+                  </a>
                   <a href={linkUrl} target="_blank" rel="noreferrer" style={{
                     padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
                     color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
@@ -1138,6 +1249,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           })}
         </div>
       )}
+      </>}
     </div>
   );
 }
