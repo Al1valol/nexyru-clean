@@ -769,7 +769,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             <div style={{fontSize:13, color:'#d1d5db', marginBottom:12, lineHeight:1.6}}>
               Share your referral link and earn a percentage of trading fees from everyone who signs up through you — forever.
             </div>
-            <a href="https://fomo.family" target="_blank" rel="noreferrer" style={{
+            <a href="https://fomo.family/r/al1valol" target="_blank" rel="noreferrer" style={{
               display:'block', padding:'12px', borderRadius:8, border:'none',
               background:'#6366f1', color:'#fff', fontSize:14, fontWeight:700,
               textDecoration:'none', textAlign:'center', marginBottom:8
@@ -778,6 +778,22 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             </a>
             <div style={{fontSize:11, color:'#6b7280', textAlign:'center'}}>
               Sign up → Profile → Share → Earn % of every trade your referrals make
+            </div>
+          </div>
+
+          <div style={{background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:8, padding:12, marginTop:8, marginBottom:16}}>
+            <div style={{fontSize:12, fontWeight:700, color:'#22c55e', marginBottom:4}}>💰 Your Referral Link</div>
+            <div style={{fontSize:11, color:'#86efac', marginBottom:8, wordBreak:'break-all', fontFamily:'monospace'}}>
+              https://fomo.family/r/al1valol
+            </div>
+            <button onClick={() => {
+              navigator.clipboard.writeText('https://fomo.family/r/al1valol');
+              alert('Copied to clipboard!');
+            }} style={{padding:'5px 12px', borderRadius:6, border:'none', background:'rgba(34,197,94,0.2)', color:'#22c55e', fontSize:11, fontWeight:700, cursor:'pointer'}}>
+              📋 Copy Link
+            </button>
+            <div style={{fontSize:10, color:'#6b7280', marginTop:6}}>
+              Share this link on Twitter/X when you post picks — earn % of every trade your referrals make forever
             </div>
           </div>
 
@@ -802,10 +818,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
           <div style={{fontSize:13, fontWeight:700, color:'#6b7280', marginBottom:10, textTransform:'uppercase', letterSpacing:'0.05em'}}>Quick Links</div>
           {[
-            {name:'🚀 FOMO App (fomo.family)', url:'https://fomo.family', desc:'Main trading platform — cross chain'},
+            {name:'🚀 FOMO App (fomo.family)', url:'https://fomo.family/r/al1valol', desc:'Main trading platform — cross chain'},
             {name:'💎 FOMO.gg', url:'https://fomo.gg', desc:'Meme coin launchpad on Solana'},
-            {name:'📱 iOS App', url:'https://apps.apple.com/app/fomo-crypto-trading/id6743432783', desc:'Download on iPhone'},
-            {name:'🤖 Android App', url:'https://play.google.com/store/apps/details?id=com.fomo.trading', desc:'Download on Android'},
+            {name:'📱 iOS App', url:'https://fomo.family/r/al1valol', desc:'Download on iPhone'},
+            {name:'🤖 Android App', url:'https://fomo.family/r/al1valol', desc:'Download on Android'},
           ].map(link => (
             <a key={link.url} href={link.url} target="_blank" rel="noreferrer" style={{
               display:'flex', justifyContent:'space-between', alignItems:'center',
@@ -829,7 +845,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{coin.name} ({coin.symbol})</div>
                   <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.score}/100 · {coin.snipeWindow?.label}</div>
                 </div>
-                <a href={`https://fomo.family/search?q=${coin.symbol}`} target="_blank" rel="noreferrer"
+                <a href="https://fomo.family/r/al1valol" target="_blank" rel="noreferrer"
                   style={{padding:'6px 12px', borderRadius:6, border:'none', background:'#6366f1', color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none'}}>
                   Trade →
                 </a>
@@ -1159,6 +1175,21 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   );
                 })()}
 
+                {(() => {
+                  const tweetText = `🎯 Coin Sniper Alert!\n\n${coin.name} (${coin.symbol}) on ${coin.chain}\n⚡ ${coin.snipeWindow?.label}\n📊 Score: ${coin.score}/100\n\nTrade on FOMO 👇\nhttps://fomo.family/r/al1valol\n\n#memecoin #crypto #coinsniper`;
+                  return (
+                    <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`}
+                      target="_blank" rel="noreferrer"
+                      style={{
+                        display:'block', padding:'7px', borderRadius:8, textAlign:'center',
+                        border:'1px solid rgba(29,161,242,0.4)', background:'rgba(29,161,242,0.08)',
+                        color:'#1da1f2', fontSize:12, fontWeight:700, textDecoration:'none', marginBottom:6
+                      }}>
+                      🐦 Share Pick on X/Twitter
+                    </a>
+                  );
+                })()}
+
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                   <button
                     onClick={logIt}
@@ -1187,7 +1218,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
                     }}
                   >Buy →</button>
-                  <a href={`https://fomo.family/search?q=${coin.symbol || coin.name}`} target="_blank" rel="noreferrer"
+                  <a href="https://fomo.family/r/al1valol" target="_blank" rel="noreferrer"
                     style={{
                       display:'inline-block', padding:'7px 12px', borderRadius:8,
                       border:'1px solid rgba(99,102,241,0.4)',
