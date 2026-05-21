@@ -438,11 +438,118 @@ function formatPumpAge(ageHours) {
   return Math.floor(ageHours / 24) + 'd old';
 }
 
+// Penalize coins that already pumped — reward early entry signals.
+function scoreGem(coin: any): number {
+  let score = 0;
+  const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
+  const priceChange24h = parseFloat(coin.priceChange?.h24 || 0);
+  const volume24h = parseFloat(coin.volume?.h24 || 0);
+  const liquidity = parseFloat(coin.liquidity?.usd || 0);
+  const marketCap = parseFloat(coin.marketCap || coin.fdv || 0);
+  const ageHours = coin.pairCreatedAt
+    ? (Date.now() - new Date(coin.pairCreatedAt).getTime()) / 3600000
+    : 999;
+  const buys = coin.txns?.h24?.buys || 0;
+  const sells = coin.txns?.h24?.sells || 0;
+  const txns = buys + sells;
+  const buyRatio = txns > 0 ? buys / txns : 0;
+
+  // AGE — sweet spot 1-2h
+  if (ageHours < 0.5) score += 10;
+  else if (ageHours < 2) score += 30;
+  else if (ageHours < 6) score += 25;
+  else if (ageHours < 24) score += 15;
+  else if (ageHours < 48) score += 5;
+
+  // PUMP PENALTY
+  if (priceChange1h > 500) score -= 30;
+  else if (priceChange1h > 200) score -= 20;
+  else if (priceChange1h > 100) score -= 10;
+  else if (priceChange1h > 50) score -= 5;
+  else if (priceChange1h > 10) score += 15;
+  else if (priceChange1h >= 0) score += 10;
+
+  if (priceChange24h > 1000) score -= 20;
+  else if (priceChange24h > 500) score -= 10;
+
+  // LIQUIDITY
+  if (liquidity > 5000 && liquidity < 100000) score += 20;
+  else if (liquidity > 1000 && liquidity < 500000) score += 12;
+  else if (liquidity < 1000) score += 0;
+  else score += 5;
+
+  // VOLUME
+  if (volume24h > 50000) score += 20;
+  else if (volume24h > 10000) score += 15;
+  else if (volume24h > 1000) score += 8;
+  else score += 2;
+
+  // BUY PRESSURE
+  if (buyRatio > 0.7) score += 15;
+  else if (buyRatio > 0.6) score += 10;
+  else if (buyRatio > 0.5) score += 5;
+
+  // MARKET CAP — lower = more room
+  if (marketCap > 0 && marketCap < 50000) score += 15;
+  else if (marketCap < 200000) score += 12;
+  else if (marketCap < 1000000) score += 8;
+  else if (marketCap < 5000000) score += 4;
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function getSignals(coin: any) {
+  const signals: { text: string; color: string }[] = [];
+  const age = coin.pairCreatedAt
+    ? (Date.now() - new Date(coin.pairCreatedAt).getTime()) / 3600000
+    : 999;
+  const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
+  const buys = coin.txns?.h24?.buys || 0;
+  const sells = coin.txns?.h24?.sells || 0;
+  const buyRatio = buys / Math.max(buys + sells, 1);
+  const liquidity = parseFloat(coin.liquidity?.usd || 0);
+
+  if (age < 2) signals.push({ text: '🆕 Under 2h old', color: '#22c55e' });
+  else if (age < 6) signals.push({ text: '⏰ Under 6h old', color: '#86efac' });
+
+  if (priceChange1h > 500) signals.push({ text: '⚠️ Already pumped 1h', color: '#ef4444' });
+  else if (priceChange1h > 100) signals.push({ text: '⚡ Big 1h move', color: '#f59e0b' });
+  else if (priceChange1h > 10) signals.push({ text: '📈 Early momentum', color: '#22c55e' });
+  else if (priceChange1h >= 0) signals.push({ text: '😴 Flat — untouched', color: '#60a5fa' });
+
+  if (buyRatio > 0.7) signals.push({ text: '🔥 Strong buy pressure', color: '#22c55e' });
+  else if (buyRatio > 0.6) signals.push({ text: '👍 More buyers than sellers', color: '#86efac' });
+  else signals.push({ text: '⚠️ Selling pressure', color: '#ef4444' });
+
+  if (liquidity < 5000) signals.push({ text: '⚠️ Low liquidity — rug risk', color: '#ef4444' });
+  else if (liquidity < 50000) signals.push({ text: '💧 Healthy liquidity', color: '#22c55e' });
+
+  return signals;
+}
+
+function getSnipeWindow(coin: any) {
+  const age = coin.pairCreatedAt
+    ? (Date.now() - new Date(coin.pairCreatedAt).getTime()) / 3600000
+    : 999;
+  const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
+
+  if (age < 1 && priceChange1h < 50)
+    return { id: 'prime', label: '🎯 PRIME SNIPE', color: '#22c55e', desc: 'Under 1h old, not yet pumped' };
+  if (age < 3 && priceChange1h < 100)
+    return { id: 'early', label: '⚡ EARLY', color: '#86efac', desc: 'Still very early' };
+  if (age < 6 && priceChange1h < 200)
+    return { id: 'watch', label: '👀 WATCH', color: '#fbbf24', desc: 'Getting late but possible' };
+  if (priceChange1h > 500)
+    return { id: 'toolate', label: '🚨 TOO LATE', color: '#ef4444', desc: 'Already pumped hard' };
+  return { id: 'cold', label: '❄️ COLD', color: '#6b7280', desc: 'Likely missed' };
+}
+
 function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [gems, setGems] = React.useState([]);
   const [gemsLoading, setGemsLoading] = React.useState(true);
   const [gemsLastUpdated, setGemsLastUpdated] = React.useState(null);
   const [secondsAgo, setSecondsAgo] = React.useState(0);
+  const [snipeFilter, setSnipeFilter] = React.useState('prime'); // 'prime' | 'early' | 'watch' | 'toolate' | 'all'
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '1' | '6' | '24' | '48'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'age' | 'mcap' | 'change' | 'volume'
@@ -470,33 +577,23 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       const pairsData = await pairsRes.json();
       const pairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : [];
 
-      // Step 4: score each pair
+      // Step 4: score each pair with the sniper-focused scoring
       const scored = pairs.map(p => {
         const ageHours = p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 9999;
         const vol = parseFloat(p.volume?.h24 || 0);
         const liq = parseFloat(p.liquidity?.usd || 0);
         const change1h = parseFloat(p.priceChange?.h1 || 0);
         const change24h = parseFloat(p.priceChange?.h24 || 0);
+        const buys = p.txns?.h24?.buys || 0;
+        const sells = p.txns?.h24?.sells || 0;
+        const buyRatio = buys + sells > 0 ? buys / (buys + sells) : 0;
 
-        let score = 0;
-        if (ageHours < 6) score += 30;
-        else if (ageHours < 24) score += 25;
-        else if (ageHours < 48) score += 15;
-        else score += 5;
-        if (vol > 500_000) score += 25;
-        else if (vol > 100_000) score += 20;
-        else if (vol > 10_000) score += 15;
-        else if (vol > 1_000) score += 8;
-        if (change1h > 50) score += 25;
-        else if (change1h > 20) score += 20;
-        else if (change1h > 5) score += 10;
-        else if (change1h > 0) score += 5;
-        if (liq > 100_000) score += 20;
-        else if (liq > 10_000) score += 12;
-        else if (liq > 1_000) score += 5;
+        const score = scoreGem(p);
+        const signals = getSignals(p);
+        const snipeWindow = getSnipeWindow(p);
 
         return {
-          gemScore: Math.min(100, score),
+          gemScore: score,
           ageHours,
           name: p.baseToken?.name || 'Unknown',
           symbol: p.baseToken?.symbol || '???',
@@ -506,6 +603,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           change24h,
           volume24h: vol,
           liquidity: liq,
+          buys,
+          sells,
+          buyRatio,
+          signals,
+          snipeWindow,
           chainId: p.chainId,
           pairAddress: p.pairAddress,
           url: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
@@ -551,6 +653,9 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
   const visible = React.useMemo(() => {
     let arr = gems;
+    if (snipeFilter !== 'all') {
+      arr = arr.filter(c => c.snipeWindow?.id === snipeFilter);
+    }
     if (ageFilter !== 'all') {
       const max = parseFloat(ageFilter);
       arr = arr.filter(c => c.ageHours < max);
@@ -561,13 +666,21 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       arr = arr.filter(c => verificationBucket(getVerificationStatus({ ...c, source: 'dexscreener' }).status) === riskFilter);
     }
     arr = [...arr];
-    if (sortBy === 'score')        arr.sort((a, b) => b.gemScore - a.gemScore);
+    if (sortBy === 'score') {
+      // Primary: score desc. Always push >500% 1h pumpers to the bottom regardless of score.
+      arr.sort((a, b) => {
+        const aPumped = (a.change1h || 0) > 500 ? 1 : 0;
+        const bPumped = (b.change1h || 0) > 500 ? 1 : 0;
+        if (aPumped !== bPumped) return aPumped - bPumped;
+        return b.gemScore - a.gemScore;
+      });
+    }
     else if (sortBy === 'mcap')    arr.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
     else if (sortBy === 'change')  arr.sort((a, b) => (b.change24h || 0) - (a.change24h || 0));
     else if (sortBy === 'volume')  arr.sort((a, b) => (b.volume24h || 0) - (a.volume24h || 0));
     else                           arr.sort((a, b) => (a.ageHours || 0) - (b.ageHours || 0));
     return arr;
-  }, [gems, ageFilter, scoreFilter, sortBy, riskFilter]);
+  }, [gems, snipeFilter, ageFilter, scoreFilter, sortBy, riskFilter]);
 
   const launchedInLastHour = gems.filter(c => c.ageHours < 1).length;
 
@@ -632,6 +745,18 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       </div>
 
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Window</span>
+          {[
+            ['prime',   '🎯 Prime Snipes', '#22c55e'],
+            ['early',   '⚡ Early',         '#86efac'],
+            ['watch',   '👀 Watch',         '#fbbf24'],
+            ['toolate', '🚨 Too Late',      '#ef4444'],
+            ['all',     'All',              '#6366f1'],
+          ].map(([id, label, accent]) => (
+            <button key={id} onClick={() => setSnipeFilter(id)} style={pillStyle(snipeFilter === id, accent)}>{label}</button>
+          ))}
+        </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Age</span>
           {[['all','All'],['1','<1h'],['6','<6h'],['24','<24h'],['48','<48h']].map(([id, label]) => (
@@ -705,7 +830,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 priceAtSignal: buyEntryPrice,
                 change24h: change,
                 loggedAt: new Date().toISOString(),
-                notes: `From New Gems (DexScreener) — ${linkUrl}`,
+                notes: `From Coin Sniper (DexScreener) — ${linkUrl}`,
                 didTake: false, exitPrice: null, exitedAt: null,
                 targetGain: null, stopLoss: null,
                 targetHitNotified: false, stopHitNotified: false,
@@ -741,10 +866,29 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       </div>
                     </div>
                   </div>
-                  <span style={{ fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:6, background:badge.bg, color:badge.color, letterSpacing:'0.02em', whiteSpace:'nowrap' }}>{badge.label}</span>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
+                    <span style={{ fontSize:18, fontWeight:800, color: score >= 70 ? '#22c55e' : score >= 50 ? '#fbbf24' : '#6b7280', lineHeight:1 }}>{score}</span>
+                    {coin.snipeWindow && (
+                      <span style={{ fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:5, background: coin.snipeWindow.color + '22', color: coin.snipeWindow.color, whiteSpace:'nowrap' }}>{coin.snipeWindow.label}</span>
+                    )}
+                  </div>
                 </div>
 
                 <VerificationBanner v={verification}/>
+
+                {change1h > 500 && (
+                  <div style={{ padding:'10px 12px', borderRadius:10, background:'rgba(239,68,68,0.10)', border:'1px solid rgba(239,68,68,0.35)', color:'#fca5a5', fontSize:11.5, lineHeight:1.5 }}>
+                    ⚠️ <strong>Up +{change1h.toFixed(0)}% in the last hour.</strong> Most coins that pump this fast dump just as fast. The easy money is already made — snipers who got in early already sold to you.
+                  </div>
+                )}
+
+                {coin.signals && coin.signals.length > 0 && (
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                    {coin.signals.map((sig, i) => (
+                      <span key={i} style={{ fontSize:10, fontWeight:700, padding:'3px 7px', borderRadius:5, background: sig.color + '18', color: sig.color, border: '1px solid ' + sig.color + '40' }}>{sig.text}</span>
+                    ))}
+                  </div>
+                )}
 
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8 }}>
                   <div>
@@ -761,21 +905,36 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   </div>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>1h</div>
-                    <div style={{ fontSize:13, color: change1h >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2, transition:'color 0.3s ease' }}>{change1h >= 0 ? '+' : ''}{change1h.toFixed(2)}%</div>
+                    <div style={{ fontSize:13, color: change1h < 0 ? '#ef4444' : change1h < 100 ? '#22c55e' : change1h < 500 ? '#fbbf24' : '#ef4444', fontWeight:700, marginTop:2, transition:'color 0.3s ease' }}>{change1h >= 0 ? '+' : ''}{change1h.toFixed(2)}%</div>
                   </div>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>24h</div>
                     <div style={{ fontSize:13, color: change >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2, transition:'color 0.3s ease' }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
                   </div>
                   <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Vol 24h</div>
-                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpMcap(vol)}</div>
+                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Liquidity</div>
+                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpMcap(liq)}</div>
                   </div>
                 </div>
 
+                {/* Buy/sell ratio bar */}
+                {(coin.buys + coin.sells) > 0 && (
+                  <div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', marginBottom:3 }}>
+                      <span>🟢 {coin.buys} buys</span>
+                      <span style={{ color:'#9ca3af', fontWeight:700 }}>{Math.round(coin.buyRatio * 100)}% buy</span>
+                      <span>🔴 {coin.sells} sells</span>
+                    </div>
+                    <div style={{ display:'flex', height:5, borderRadius:3, overflow:'hidden', background:'#1a1a24' }}>
+                      <div style={{ width: `${coin.buyRatio * 100}%`, background:'#22c55e' }}/>
+                      <div style={{ width: `${(1 - coin.buyRatio) * 100}%`, background:'#ef4444' }}/>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ fontSize:11, color:'#6b7280' }}>
-                  <span style={{ color:'#9ca3af', fontWeight:700 }}>Score {score}</span>
-                  <span style={{ marginLeft:8 }}>· {badge.desc}</span>
+                  <span style={{ color:'#9ca3af', fontWeight:700 }}>Vol 24h: {formatPumpMcap(vol)}</span>
+                  {coin.snipeWindow && <span style={{ marginLeft:8 }}>· {coin.snipeWindow.desc}</span>}
                 </div>
 
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
@@ -3640,7 +3799,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
 
   const cryptoSectionLabel = {
     hotnow:   "What's trending across the market right now (auto-refresh 3m)",
-    gems:     'Brand-new launches scored for blow-up potential (auto-refresh 2m)',
+    gems:     'Find meme coins BEFORE they pump — early signals only',
     uptrends: 'Top 100 coins on a confirmed uptrend across 1h / 24h / 7d',
     accounts: 'Paper & real account portfolios',
     mystats:  'Aggregate stats across all your accounts',
@@ -3769,7 +3928,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
       <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
         {[
           {id:'hotnow',   label:'Hot Now', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 2s2 3 2 6c0 1.5-1 3-2 3s-2-1.5-2-3c0-1 0-2 1-4z"/><path d="M19 14c0 4-3 7-7 7s-7-3-7-7c0-2 1-4 3-5 0 3 2 4 4 4-1-3 1-6 3-7 2 3 4 5 4 8z"/></svg>},
-          {id:'gems',     label:'New Gems', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3L8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>},
+          {id:'gems',     label:'🎯 Coin Sniper', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3L8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>},
           {id:'uptrends', label:'Uptrends', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
           {id:'accounts', label:'Accounts', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>},
           {id:'mystats',  label:'My Stats', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>},
