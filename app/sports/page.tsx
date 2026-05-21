@@ -56,6 +56,9 @@ type Pick = {
   impliedProb: number;
   edge: number;
   score: number;
+  opponentName?: string;
+  opponentOdds?: number;
+  opponentBook?: string;
 };
 
 type PaperBet = {
@@ -142,6 +145,9 @@ function buildPicks(games: Game[]): Pick[] {
       const edgeBonus = Math.min(35, edge * 250);
       const score = Math.max(0, Math.min(100, Math.round(probScore + edgeBonus)));
 
+      const opponentName = Object.keys(sides).find((k) => k !== team);
+      const opponentSide = opponentName ? sides[opponentName] : undefined;
+
       picks.push({
         game: g,
         team,
@@ -152,6 +158,9 @@ function buildPicks(games: Game[]): Pick[] {
         impliedProb,
         edge,
         score,
+        opponentName,
+        opponentOdds: opponentSide?.best.price,
+        opponentBook: opponentSide?.best.book,
       });
     }
   }
@@ -957,12 +966,12 @@ function BestPicksPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          team1: p.game.away_team,
-          team2: p.game.home_team,
+          team1: p.team,
+          team2: p.opponentName || "Opponent",
           sport: p.game.sport_title,
-          odds1: picks.find((x) => x.game.id === id && x.team === p.game.away_team)?.bestPrice,
-          odds2: picks.find((x) => x.game.id === id && x.team === p.game.home_team)?.bestPrice,
-          gameTime: p.game.commence_time,
+          odds1: p.bestPrice,
+          odds2: p.opponentOdds ?? -110,
+          gameTime: "Today",
         }),
       });
       const data = await r.json();
@@ -1303,22 +1312,16 @@ function BestPicksPanel({
               <DeepDiveSection
                 id={p.game.id}
                 show={!!a}
-                onRun={() => {
-                  const awayPick = picks.find(
-                    (x) => x.game.id === p.game.id && x.team === p.game.away_team,
-                  );
-                  const homePick = picks.find(
-                    (x) => x.game.id === p.game.id && x.team === p.game.home_team,
-                  );
+                onRun={() =>
                   deepDive(
                     p.game.id,
-                    p.game.away_team,
-                    p.game.home_team,
+                    p.team,
+                    p.opponentName || "Opponent",
                     p.game.sport_title,
-                    awayPick?.bestPrice,
-                    homePick?.bestPrice,
-                  );
-                }}
+                    p.bestPrice,
+                    p.opponentOdds ?? -110,
+                  )
+                }
                 deepDives={deepDives}
                 deepDiving={deepDiving}
               />
