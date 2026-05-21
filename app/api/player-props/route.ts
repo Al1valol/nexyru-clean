@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 
 // The Odds API key — env wins, hardcoded fallback matches the existing /api/odds.
 const ODDS_KEY =
-  process.env.ODDS_API_KEY ?? "4d2ef024779232aa1d00e6089e6156c8";
+  process.env.ODDS_API_KEY ?? "YOUR_NEW_KEY";
 
 // Player-prop markets require the PER-EVENT endpoint
 // (/sports/{sport}/events/{event_id}/odds), not the bulk /odds path — that one
