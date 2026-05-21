@@ -581,6 +581,74 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [tab, setTab] = React.useState<'sniper'|'fomo'>('sniper');
   const [rugData, setRugData] = React.useState<Record<string, any>>({});
   const [rugLoading, setRugLoading] = React.useState<Record<string, boolean>>({});
+  const [alertsEnabled, setAlertsEnabled] = React.useState(false);
+  const [knownPrimes, setKnownPrimes] = React.useState<Set<string>>(new Set());
+  const [whaleWallet, setWhaleWallet] = React.useState('');
+  const [savedWhales, setSavedWhales] = React.useState<{address:string;label:string}[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem('sniper_whales') || '[]'); } catch { return []; }
+  });
+
+  const enableAlerts = async () => {
+    if (typeof Notification === 'undefined') {
+      alert('Notifications not supported in this browser.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      setAlertsEnabled(true);
+      localStorage.setItem('sniper_alerts', 'true');
+      alert('✅ Alerts enabled! You will be notified when new Prime Snipe coins appear.');
+    }
+  };
+
+  const getTradeLinks = (coin: any) => {
+    const address = coin.baseToken?.address || coin.pairAddress || '';
+    const chain = (coin.chainId || coin.chain || '').toLowerCase();
+    const links: {label:string;url:string;color:string}[] = [];
+
+    if (chain === 'solana' || chain === 'sol') {
+      if (address) {
+        links.push({ label: '⚡ Buy on Jupiter', url: `https://jup.ag/swap/SOL-${address}`, color: '#22c55e' });
+        links.push({ label: '🎯 Trade on FOMO',  url: `https://fomo.family/token/${address}?ref=al1valol`, color: '#6366f1' });
+      }
+    } else if (chain === 'base') {
+      if (address) links.push({ label: '🦄 Buy on Uniswap', url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, color: '#ff007a' });
+    } else if (chain === 'ethereum' || chain === 'eth') {
+      if (address) links.push({ label: '🦄 Buy on Uniswap', url: `https://app.uniswap.org/swap?outputCurrency=${address}`, color: '#ff007a' });
+    } else if (chain === 'bsc') {
+      if (address) links.push({ label: '🥞 Buy on PancakeSwap', url: `https://pancakeswap.finance/swap?outputCurrency=${address}`, color: '#f59e0b' });
+    }
+
+    links.push({
+      label: '📊 DexScreener',
+      url: coin.url || `https://dexscreener.com/${chain}/${address}`,
+      color: '#6b7280',
+    });
+    return links;
+  };
+
+  const SparkLine = ({ coin }: { coin: any }) => {
+    const m5 = parseFloat(coin.priceChange?.m5 || 0);
+    const h1 = parseFloat(coin.priceChange?.h1 || 0);
+    const points = [0, m5 / 2, m5, (m5 + h1) / 2, h1];
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+    const isUp = h1 > 0;
+    return (
+      <svg width="80" height="24" style={{ display: 'block' }}>
+        <polyline
+          points={points.map((v, i) => `${i * 20},${22 - ((v - min) / range) * 20}`).join(' ')}
+          fill="none"
+          stroke={isUp ? '#22c55e' : '#ef4444'}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  };
 
   const checkRug = async (coin: any) => {
     const address = coin.baseToken?.address;
@@ -781,6 +849,34 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     return () => clearInterval(tick);
   }, [gemsLastUpdated]);
 
+  // Restore alerts toggle from localStorage on mount
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('sniper_alerts') === 'true' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      setAlertsEnabled(true);
+    }
+  }, []);
+
+  // Fire browser notifications when new Prime Snipes appear
+  React.useEffect(() => {
+    if (!alertsEnabled) return;
+    const currentPrimes = new Set(
+      gems.filter(g => g.snipeWindow?.id === 'prime').map(g => g.baseToken?.address || g.pairAddress)
+    );
+    currentPrimes.forEach(addr => {
+      if (!knownPrimes.has(addr) && knownPrimes.size > 0) {
+        const coin = gems.find(g => (g.baseToken?.address || g.pairAddress) === addr);
+        try {
+          new Notification('🎯 New Prime Snipe!', {
+            body: `${coin?.baseToken?.name || 'New coin'} just appeared — score ${coin?.score}/100`,
+            icon: '/favicon.ico',
+          });
+        } catch {}
+      }
+    });
+    setKnownPrimes(currentPrimes);
+  }, [gems]);
+
   const loggedKeys = React.useMemo(
     () => new Set(signals.map(s => s.coinId)),
     [signals]
@@ -979,6 +1075,15 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           <span style={{ color:'#4b5563' }}>· source: dexscreener · auto-refreshes every 60s</span>
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <button onClick={alertsEnabled ? ()=>{} : enableAlerts} style={{
+            padding:'7px 14px', borderRadius:8,
+            border:`1px solid ${alertsEnabled?'rgba(34,197,94,0.4)':'#2a2a3a'}`,
+            background:alertsEnabled?'rgba(34,197,94,0.1)':'transparent',
+            color:alertsEnabled?'#22c55e':'#6b7280',
+            fontSize:12, fontWeight:700, cursor:'pointer'
+          }}>
+            {alertsEnabled ? '🔔 Alerts ON' : '🔕 Enable Alerts'}
+          </button>
           <button onClick={async () => {
             const primes = gems.filter(g => g.snipeWindow?.id === 'prime').slice(0,3);
             for (const coin of primes) {
@@ -1177,10 +1282,33 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 </div>
 
                 {(() => {
-                  const hasSocials = (coin.info?.socials?.length || 0) > 0 || (coin.info?.websites?.length || 0) > 0;
-                  return hasSocials
-                    ? <span style={{fontSize:10, color:'#22c55e'}}>✅ Has socials</span>
-                    : <span style={{fontSize:10, color:'#ef4444'}}>⚠️ No socials — higher rug risk</span>;
+                  const hasTwitter = coin.info?.socials?.some((s:any) => s.type === 'twitter');
+                  const hasTelegram = coin.info?.socials?.some((s:any) => s.type === 'telegram');
+                  const hasWebsite = (coin.info?.websites || []).length > 0;
+                  const socialScore = (hasTwitter?1:0) + (hasTelegram?1:0) + (hasWebsite?1:0);
+                  const rugRiskLabel = socialScore === 0 ? '🚨 No socials — likely rug'
+                    : socialScore === 1 ? '⚠️ Minimal socials — high risk'
+                    : '✅ Has community presence';
+                  const rugRiskColor = socialScore === 0 ? '#ef4444' : socialScore === 1 ? '#f59e0b' : '#22c55e';
+                  return (
+                    <>
+                      <div style={{display:'flex', gap:4, flexWrap:'wrap', marginBottom:6}}>
+                        {hasTwitter
+                          ? <a href={coin.info.socials.find((s:any)=>s.type==='twitter')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(29,161,242,0.15)', color:'#1da1f2', textDecoration:'none'}}>🐦 Twitter</a>
+                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>❌ No Twitter</span>
+                        }
+                        {hasTelegram
+                          ? <a href={coin.info.socials.find((s:any)=>s.type==='telegram')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(33,150,243,0.15)', color:'#2196f3', textDecoration:'none'}}>💬 Telegram</a>
+                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>❌ No Telegram</span>
+                        }
+                        {hasWebsite
+                          ? <a href={coin.info?.websites?.[0]?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(34,197,94,0.1)', color:'#22c55e', textDecoration:'none'}}>🌐 Website</a>
+                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>❌ No Website</span>
+                        }
+                      </div>
+                      <div style={{fontSize:10, color:rugRiskColor, marginBottom:4}}>{rugRiskLabel}</div>
+                    </>
+                  );
                 })()}
 
                 {(() => {
@@ -1262,7 +1390,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   </div>
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Price</div>
-                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{priceStr}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
+                      <div style={{ fontSize:13, color:'#fff', fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{priceStr}</div>
+                      <SparkLine coin={coin}/>
+                    </div>
                   </div>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Mkt cap</div>
@@ -1385,109 +1516,78 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
                     }}
                   >Buy →</button>
-                  <a href="https://fomo.family/r/al1valol" target="_blank" rel="noreferrer"
-                    style={{
-                      display:'inline-block', padding:'7px 12px', borderRadius:8,
-                      border:'1px solid rgba(99,102,241,0.4)',
-                      background:'rgba(99,102,241,0.08)',
-                      color:'#a5b4fc', fontSize:12, fontWeight:700, textDecoration:'none'
-                    }}>
-                    ⚡ FOMO
-                  </a>
-                  <a href={linkUrl} target="_blank" rel="noreferrer" style={{
-                    padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
-                    color:'#9ca3af', fontSize:12, fontWeight:700, textDecoration:'none',
-                    whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
-                  }}>DexScreener ↗</a>
                 </div>
 
-                {(() => {
-                  const jupLink = getJupiterLink(coin);
-                  const uniLink = getUniswapLink(coin);
-                  const ca = getContractAddress(coin);
-                  return (
-                    <>
-                      {jupLink && (
-                        <a href={jupLink} target="_blank" rel="noreferrer" style={{
-                          display:'block', padding:'8px', borderRadius:8, border:'none',
-                          background:'#22c55e', color:'#fff', fontSize:12, fontWeight:700,
-                          textDecoration:'none', textAlign:'center', marginBottom:6
-                        }}>⚡ Buy on Jupiter (Solana)</a>
-                      )}
-                      {uniLink && (
-                        <a href={uniLink} target="_blank" rel="noreferrer" style={{
-                          display:'block', padding:'8px', borderRadius:8, border:'none',
-                          background:'#ff007a', color:'#fff', fontSize:12, fontWeight:700,
-                          textDecoration:'none', textAlign:'center', marginBottom:6
-                        }}>🦄 Buy on Uniswap</a>
-                      )}
-                      <a href="https://fomo.family/r/al1valol" target="_blank" rel="noreferrer" style={{
-                        display:'block', padding:'8px', borderRadius:8,
-                        border:'1px solid rgba(99,102,241,0.4)', background:'rgba(99,102,241,0.08)',
-                        color:'#a5b4fc', fontSize:12, fontWeight:700, textDecoration:'none', textAlign:'center', marginBottom:6
-                      }}>⚡ Open FOMO App</a>
-                      {ca && (
-                        <button onClick={() => {
-                          navigator.clipboard.writeText(ca || '');
-                          alert('Contract address copied! Paste it in FOMO or any DEX to find this coin.');
-                        }} style={{
-                          width:'100%', padding:'6px', borderRadius:8,
-                          border:'1px solid #2a2a3a', background:'transparent',
-                          color:'#6b7280', fontSize:11, cursor:'pointer'
-                        }}>
-                          📋 Copy Contract Address
-                        </button>
-                      )}
-                    </>
-                  );
-                })()}
+                {getTradeLinks(coin).map(link => (
+                  <a key={link.label} href={link.url} target="_blank" rel="noreferrer" style={{
+                    display:'block', padding:'8px', borderRadius:8, textAlign:'center',
+                    background:`${link.color}22`, border:`1px solid ${link.color}44`,
+                    color:link.color, fontSize:12, fontWeight:700, textDecoration:'none', marginBottom:6
+                  }}>{link.label}</a>
+                ))}
 
-                {(() => {
-                  const buyInfo = getBuyUrl(coin);
-                  const copyKey = coin.pairAddress || coin.coinId || trackedCoinId;
-                  const isCopied = copiedId === copyKey;
-                  return (
-                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                      <a
-                        href={buyInfo.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          display:'flex', alignItems:'center', justifyContent:'center', gap:6,
-                          padding:'10px 16px', borderRadius:8,
-                          background: buyInfo.color, color:'#fff',
-                          fontSize:13, fontWeight:700, textDecoration:'none',
-                          flex:1, textAlign:'center',
-                        }}
-                      >
-                        {buyInfo.icon} {buyInfo.label}
-                      </a>
-                      <button
-                        onClick={() => {
-                          const rawId = coin.coinId || coin.pairAddress || '';
-                          const cleanAddress = rawId.includes(':') ? rawId.split(':').pop() : rawId;
-                          if (!cleanAddress) return;
-                          try { navigator.clipboard.writeText(cleanAddress); } catch {}
-                          setCopiedId(copyKey);
-                          setTimeout(() => setCopiedId(prev => (prev === copyKey ? null : prev)), 2000);
-                        }}
-                        style={{
-                          padding:'10px 12px', borderRadius:8,
-                          border:'1px solid #2a2a3a', background:'#1a1a24',
-                          color: isCopied ? '#22c55e' : '#9ca3af',
-                          fontSize:12, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap',
-                        }}
-                      >
-                        {isCopied ? '✓ Copied' : '📋 Contract'}
-                      </button>
-                    </div>
-                  );
-                })()}
+                <button onClick={() => {
+                  const addr = coin.baseToken?.address || coin.pairAddress;
+                  if (addr) {
+                    navigator.clipboard.writeText(addr);
+                    alert(`✅ Contract address copied!\n${addr}\n\nPaste this in any DEX or FOMO to find the coin.`);
+                  }
+                }} style={{
+                  width:'100%', padding:'6px', borderRadius:8,
+                  border:'1px solid #2a2a3a', background:'transparent',
+                  color:'#6b7280', fontSize:11, cursor:'pointer', marginBottom:6
+                }}>
+                  📋 Copy Contract Address
+                </button>
               </div>
             );
           })}
         </div>
       )}
+
+      <div style={{marginTop:20, background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:16}}>
+        <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}>🐋 Whale Wallet Tracker</div>
+        <div style={{fontSize:12, color:'#6b7280', marginBottom:10}}>
+          Paste a known whale wallet address to see what they're buying on DexScreener
+        </div>
+        <div style={{display:'flex', gap:8, marginBottom:10}}>
+          <input
+            value={whaleWallet} onChange={e=>setWhaleWallet(e.target.value)}
+            placeholder="Paste wallet address (0x... or Solana address)"
+            style={{flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:12, outline:'none'}}
+          />
+          <button onClick={() => {
+            if (whaleWallet) {
+              window.open(`https://dexscreener.com/solana?q=${whaleWallet}`, '_blank');
+            }
+          }} style={{padding:'8px 14px', borderRadius:8, border:'none', background:'#6366f1', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer'}}>
+            Track →
+          </button>
+        </div>
+        <div style={{fontSize:10, color:'#4b5563'}}>
+          Opens DexScreener wallet view — see recent buys and positions
+        </div>
+
+        <div style={{marginTop:8}}>
+          {savedWhales.map(w => (
+            <div key={w.address} style={{display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid #1e1e2a', fontSize:11}}>
+              <span style={{color:'#9ca3af'}}>{w.label || w.address.substring(0,8)+'...'}</span>
+              <a href={`https://dexscreener.com/solana?q=${w.address}`} target="_blank" rel="noreferrer" style={{color:'#6366f1', textDecoration:'none'}}>View →</a>
+            </div>
+          ))}
+          {whaleWallet && (
+            <button onClick={() => {
+              const label = prompt('Label for this wallet (e.g. "Top Solana Whale")');
+              const updated = [...savedWhales, {address: whaleWallet, label: label || whaleWallet.substring(0,8)}];
+              setSavedWhales(updated);
+              localStorage.setItem('sniper_whales', JSON.stringify(updated));
+              setWhaleWallet('');
+            }} style={{marginTop:6, padding:'5px 10px', borderRadius:6, border:'1px solid #2a2a3a', background:'transparent', color:'#6b7280', fontSize:11, cursor:'pointer'}}>
+              + Save This Wallet
+            </button>
+          )}
+        </div>
+      </div>
       </>}
     </div>
   );
