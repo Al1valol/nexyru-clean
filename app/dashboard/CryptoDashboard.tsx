@@ -70,8 +70,8 @@ function getVerificationStatus(coin) {
     return { status: 'unverified', label: '⚠ Unverified', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', reason: 'Low market cap rank', warnings: [] };
   }
 
-  const liq  = parseFloat(coin.liquidity  || 0);
-  const vol  = parseFloat(coin.volume24h  || 0);
+  const liq  = parseFloat(coin.liquidity?.usd ?? coin.liquidity ?? 0);
+  const vol  = parseFloat(coin.volume?.h24 ?? coin.volume24h ?? 0);
   const age  = coin.ageHours ?? 9999;
   const mcap = parseFloat(coin.marketCap  || 0);
 
@@ -439,20 +439,31 @@ function formatPumpAge(ageHours) {
 }
 
 // Penalize coins that already pumped — reward early entry signals.
-function scoreGem(coin: any): number {
+function scoreGem(pair: any): number {
   let score = 0;
-  const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
-  const priceChange24h = parseFloat(coin.priceChange?.h24 || 0);
-  const volume24h = parseFloat(coin.volume?.h24 || 0);
-  const liquidity = parseFloat(coin.liquidity?.usd || 0);
-  const marketCap = parseFloat(coin.marketCap || coin.fdv || 0);
-  const ageHours = coin.pairCreatedAt
-    ? (Date.now() - new Date(coin.pairCreatedAt).getTime()) / 3600000
-    : 999;
-  const buys = coin.txns?.h24?.buys || 0;
-  const sells = coin.txns?.h24?.sells || 0;
-  const txns = buys + sells;
-  const buyRatio = txns > 0 ? buys / txns : 0;
+  const h1 = parseFloat(pair.priceChange?.h1 || 0);
+  const h24 = parseFloat(pair.priceChange?.h24 || 0);
+  const vol24 = parseFloat(pair.volume?.h24 || 0);
+  const liq = parseFloat(pair.liquidity?.usd || 0);
+  const mc = parseFloat(pair.marketCap || pair.fdv || 0);
+  const buys = pair.txns?.h1?.buys || 0;
+  const sells = pair.txns?.h1?.sells || 0;
+  const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5;
+
+  const createdAt = pair.pairCreatedAt;
+  const ageMs = createdAt
+    ? (typeof createdAt === 'number'
+      ? Date.now() - createdAt
+      : Date.now() - new Date(createdAt).getTime())
+    : 999 * 3600000;
+  const ageHours = ageMs / 3600000;
+
+  // Aliases preserved for existing code below
+  const priceChange1h = h1;
+  const priceChange24h = h24;
+  const volume24h = vol24;
+  const liquidity = liq;
+  const marketCap = mc;
 
   // AGE (30pts) — sweet spot 1-6 hours
   if (ageHours < 0.5) score += 10;
@@ -502,12 +513,16 @@ function scoreGem(coin: any): number {
 
 function getSignals(coin: any) {
   const signals: { text: string; color: string }[] = [];
-  const age = coin.pairCreatedAt
-    ? (Date.now() - new Date(coin.pairCreatedAt).getTime()) / 3600000
-    : 999;
+  const createdAt = coin.pairCreatedAt;
+  const ageMs = createdAt
+    ? (typeof createdAt === 'number'
+      ? Date.now() - createdAt
+      : Date.now() - new Date(createdAt).getTime())
+    : 999 * 3600000;
+  const age = ageMs / 3600000;
   const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
-  const buys = coin.txns?.h24?.buys || 0;
-  const sells = coin.txns?.h24?.sells || 0;
+  const buys = coin.txns?.h1?.buys || 0;
+  const sells = coin.txns?.h1?.sells || 0;
   const buyRatio = buys / Math.max(buys + sells, 1);
   const liquidity = parseFloat(coin.liquidity?.usd || 0);
 
@@ -530,9 +545,13 @@ function getSignals(coin: any) {
 }
 
 function getSnipeWindow(coin: any) {
-  const age = coin.pairCreatedAt
-    ? (Date.now() - new Date(coin.pairCreatedAt).getTime()) / 3600000
-    : 999;
+  const createdAt = coin.pairCreatedAt;
+  const ageMs = createdAt
+    ? (typeof createdAt === 'number'
+      ? Date.now() - createdAt
+      : Date.now() - new Date(createdAt).getTime())
+    : 999 * 3600000;
+  const age = ageMs / 3600000;
   const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
 
   if (priceChange1h > 500)
@@ -599,6 +618,17 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     return null;
   };
 
+  const getRiskLevel = (coin: any) => {
+    const liq = parseFloat(coin.liquidity?.usd || 0);
+    const mc = parseFloat(coin.marketCap || 0);
+    const h1 = parseFloat(coin.priceChange?.h1 || 0);
+    if (liq < 1000) return { label: '🚨 Extreme Risk', color: '#ef4444', desc: 'Very low liquidity — rug risk' };
+    if (liq < 5000) return { label: '⚠️ High Risk', color: '#f97316', desc: 'Low liquidity' };
+    if (h1 > 500) return { label: '⚠️ High Risk', color: '#f97316', desc: 'Already pumped hard' };
+    if (liq > 20000 && mc < 500000) return { label: '✅ Low Risk', color: '#22c55e', desc: 'Good liquidity for size' };
+    return { label: '⚡ Medium Risk', color: '#f59e0b', desc: 'Normal meme coin risk' };
+  };
+
   const analyzeSnipe = async (coin: any) => {
     const id = coin.coinId || coin.pairAddress;
     setSnipeAnalyzing(prev => ({...prev, [id]: true}));
@@ -658,37 +688,42 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
       // Step 4: score each pair with the sniper-focused scoring
       const scored = pairs.map(p => {
-        const ageHours = p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : 9999;
+        const createdAt = p.pairCreatedAt;
+        const ageMs = createdAt
+          ? (typeof createdAt === 'number'
+            ? Date.now() - createdAt
+            : Date.now() - new Date(createdAt).getTime())
+          : 999 * 3600000;
+        const ageHours = ageMs / 3600000;
+
         const vol = parseFloat(p.volume?.h24 || 0);
-        const liq = parseFloat(p.liquidity?.usd || 0);
         const change1h = parseFloat(p.priceChange?.h1 || 0);
         const change24h = parseFloat(p.priceChange?.h24 || 0);
-        const buys = p.txns?.h24?.buys || 0;
-        const sells = p.txns?.h24?.sells || 0;
-        const buyRatio = buys + sells > 0 ? buys / (buys + sells) : 0;
+        const buys = p.txns?.h1?.buys || 0;
+        const sells = p.txns?.h1?.sells || 0;
+        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5;
 
         const score = scoreGem(p);
         const signals = getSignals(p);
         const snipeWindow = getSnipeWindow(p);
 
         return {
+          ...p,
           gemScore: score,
+          score,
           ageHours,
           name: p.baseToken?.name || 'Unknown',
           symbol: p.baseToken?.symbol || '???',
+          chain: p.chainId,
           price: p.priceUsd,
-          marketCap: parseFloat(p.fdv || 0),
           change1h,
           change24h,
           volume24h: vol,
-          liquidity: liq,
           buys,
           sells,
           buyRatio,
           signals,
           snipeWindow,
-          chainId: p.chainId,
-          pairAddress: p.pairAddress,
           url: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
           coinId: p.baseToken?.address || p.pairAddress,
           image: p.info?.imageUrl || null,
@@ -1015,7 +1050,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const change1h = Number(coin.change1h) || 0;
             const mcap = Number(coin.marketCap) || 0;
             const vol = Number(coin.volume24h) || 0;
-            const liq = Number(coin.liquidity) || 0;
+            const liq = parseFloat(coin.liquidity?.usd) || 0;
             const ageHours = coin.ageHours;
             const ageLabel = ageHours < 1 ? `${Math.round(ageHours * 60)}m old` : `${ageHours.toFixed(1)}h old`;
             const ageColor = ageHours < 2 ? '#22c55e' : ageHours < 6 ? '#fbbf24' : '#6b7280';
@@ -1121,7 +1156,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 </div>
 
                 {(() => {
-                  const hasSocials = (coin.links || []).length > 0 || coin.profile?.links?.length > 0;
+                  const hasSocials = (coin.info?.socials?.length || 0) > 0 || (coin.info?.websites?.length || 0) > 0;
                   return hasSocials
                     ? <span style={{fontSize:10, color:'#22c55e'}}>✅ Has socials</span>
                     : <span style={{fontSize:10, color:'#ef4444'}}>⚠️ No socials — higher rug risk</span>;
@@ -1155,13 +1190,16 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 </div>
 
                 {/* Buy pressure bar */}
-                {(coin.buys + coin.sells) > 0 && (() => {
-                  const buyPct = Math.round(coin.buyRatio * 100);
+                {(() => {
+                  const h1Buys = coin.txns?.h1?.buys || 0;
+                  const h1Sells = coin.txns?.h1?.sells || 0;
+                  if ((h1Buys + h1Sells) === 0) return null;
+                  const buyPct = Math.round((h1Buys / (h1Buys + h1Sells)) * 100);
                   const pressureColor = buyPct > 60 ? '#22c55e' : buyPct < 40 ? '#ef4444' : '#f59e0b';
                   return (
                     <div style={{ marginBottom:8 }}>
                       <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', marginBottom:2 }}>
-                        <span>Buy pressure</span>
+                        <span>Buy pressure (1h)</span>
                         <span style={{ color: pressureColor }}>{buyPct}% buys · {100 - buyPct}% sells</span>
                       </div>
                       <div style={{ height:4, background:'#1a1a24', borderRadius:2, overflow:'hidden' }}>
