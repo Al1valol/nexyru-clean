@@ -557,6 +557,53 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'age' | 'mcap' | 'change' | 'volume'
   const [riskFilter, setRiskFilter] = React.useState('all');   // 'all' | 'low' | 'caution' | 'high'
   const [copiedId, setCopiedId] = React.useState(null);
+  const [snipeAnalysis, setSnipeAnalysis] = React.useState<Record<string,any>>({});
+  const [snipeAnalyzing, setSnipeAnalyzing] = React.useState<Record<string,boolean>>({});
+
+  const formatNum = (n: number) => {
+    if (n >= 1000000) return (n/1000000).toFixed(1)+'M';
+    if (n >= 1000) return (n/1000).toFixed(1)+'k';
+    return n.toFixed(0);
+  };
+
+  const analyzeSnipe = async (coin: any) => {
+    const id = coin.coinId || coin.pairAddress;
+    setSnipeAnalyzing(prev => ({...prev, [id]: true}));
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 150,
+          messages: [{
+            role: 'user',
+            content: `You are a meme coin sniper analyst. Analyze this coin quickly.
+
+Name: ${coin.name} (${coin.symbol})
+Chain: ${coin.chain}
+Age: ${coin.ageHours?.toFixed(1)}h old
+Price change 1h: ${coin.priceChange?.h1}%
+Price change 24h: ${coin.priceChange?.h24}%
+Market cap: $${coin.marketCap}
+Liquidity: $${coin.liquidity?.usd}
+Volume 24h: $${coin.volume?.h24}
+Buy ratio: ${Math.round((coin.buyRatio||0.5)*100)}% buys
+Score: ${coin.score}/100
+
+Reply with ONLY JSON:
+{"verdict":"BUY/SKIP/WATCH","confidence":"high/medium/low","reason":"one sentence max 15 words","risk":"low/medium/high/extreme"}`
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || '{}';
+      const clean = text.replace(/```json|```/g,'').trim();
+      const result = JSON.parse(clean);
+      setSnipeAnalysis(prev => ({...prev, [id]: result}));
+    } catch(e) {}
+    setSnipeAnalyzing(prev => ({...prev, [id]: false}));
+  };
 
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
@@ -724,26 +771,41 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           </span>
           <span style={{ color:'#4b5563' }}>· source: dexscreener · auto-refreshes every 60s</span>
         </div>
-        <button
-          onClick={() => fetchGems()}
-          disabled={gemsLoading}
-          style={{
-            padding:'6px 14px', borderRadius:8, border:'1px solid #2a2a3a',
-            background:'#1a1a24',
-            color: gemsLoading ? '#6b7280' : '#fff',
-            fontSize:12, fontWeight:700, cursor: gemsLoading ? 'not-allowed' : 'pointer',
-            display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
-          }}
-        >
-          {gemsLoading ? (
-            <>
-              <div style={{ width:12, height:12, border:'2px solid #2a2a3a', borderTopColor:'#a5b4fc', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
-              Refreshing…
-            </>
-          ) : (
-            <>🔄 Refresh</>
-          )}
-        </button>
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <button onClick={async () => {
+            const primes = gems.filter(g => g.snipeWindow?.id === 'prime').slice(0,3);
+            for (const coin of primes) {
+              await analyzeSnipe(coin);
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }} style={{
+            padding:'8px 16px', borderRadius:8, border:'1px solid rgba(99,102,241,0.4)',
+            background:'rgba(99,102,241,0.08)', color:'#a5b4fc',
+            fontSize:12, fontWeight:700, cursor:'pointer'
+          }}>
+            ✦ Analyze All Prime Snipes
+          </button>
+          <button
+            onClick={() => fetchGems()}
+            disabled={gemsLoading}
+            style={{
+              padding:'6px 14px', borderRadius:8, border:'1px solid #2a2a3a',
+              background:'#1a1a24',
+              color: gemsLoading ? '#6b7280' : '#fff',
+              fontSize:12, fontWeight:700, cursor: gemsLoading ? 'not-allowed' : 'pointer',
+              display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap',
+            }}
+          >
+            {gemsLoading ? (
+              <>
+                <div style={{ width:12, height:12, border:'2px solid #2a2a3a', borderTopColor:'#a5b4fc', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
+                Refreshing…
+              </>
+            ) : (
+              <>🔄 Refresh</>
+            )}
+          </button>
+        </div>
       </div>
 
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
@@ -893,6 +955,27 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   </div>
                 )}
 
+                <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:4, marginBottom:8}}>
+                  {[
+                    {label:'AGE', value: coin.ageHours < 1 ? Math.round(coin.ageHours*60)+'m' : coin.ageHours?.toFixed(1)+'h', color: coin.ageHours < 2 ? '#22c55e' : coin.ageHours < 6 ? '#f59e0b' : '#6b7280'},
+                    {label:'1H', value: (coin.priceChange?.h1 > 0 ? '+' : '') + parseFloat(coin.priceChange?.h1 || 0).toFixed(0)+'%', color: parseFloat(coin.priceChange?.h1||0) > 100 ? '#ef4444' : parseFloat(coin.priceChange?.h1||0) > 0 ? '#22c55e' : '#6b7280'},
+                    {label:'LIQ', value: '$'+formatNum(parseFloat(coin.liquidity?.usd||0)), color: parseFloat(coin.liquidity?.usd||0) > 5000 ? '#22c55e' : '#ef4444'},
+                    {label:'MCAP', value: '$'+formatNum(parseFloat(coin.marketCap||0)), color: parseFloat(coin.marketCap||0) < 100000 ? '#22c55e' : '#6b7280'},
+                  ].map(s => (
+                    <div key={s.label} style={{background:'#1a1a24', borderRadius:4, padding:'4px 6px', textAlign:'center'}}>
+                      <div style={{fontSize:9, color:'#4b5563', marginBottom:1}}>{s.label}</div>
+                      <div style={{fontSize:11, fontWeight:700, color:s.color}}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {(() => {
+                  const hasSocials = (coin.links || []).length > 0 || coin.profile?.links?.length > 0;
+                  return hasSocials
+                    ? <span style={{fontSize:10, color:'#22c55e'}}>✅ Has socials</span>
+                    : <span style={{fontSize:10, color:'#ef4444'}}>⚠️ No socials — higher rug risk</span>;
+                })()}
+
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8 }}>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Age</div>
@@ -941,6 +1024,41 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   <span style={{ color:'#9ca3af', fontWeight:700 }}>Vol 24h: {formatPumpMcap(vol)}</span>
                   {coin.snipeWindow && <span style={{ marginLeft:8 }}>· {coin.snipeWindow.desc}</span>}
                 </div>
+
+                {(() => {
+                  const analysis = snipeAnalysis[coin.coinId || coin.pairAddress];
+                  const analyzingKey = coin.coinId || coin.pairAddress;
+                  return (
+                    <>
+                      {analysis && (
+                        <div style={{
+                          padding:'8px 10px', borderRadius:6, marginBottom:8,
+                          background: analysis.verdict==='BUY'?'rgba(34,197,94,0.1)':analysis.verdict==='SKIP'?'rgba(239,68,68,0.1)':'rgba(245,158,11,0.1)',
+                          border: `1px solid ${analysis.verdict==='BUY'?'rgba(34,197,94,0.3)':analysis.verdict==='SKIP'?'rgba(239,68,68,0.3)':'rgba(245,158,11,0.3)'}`
+                        }}>
+                          <div style={{display:'flex', justifyContent:'space-between', marginBottom:3}}>
+                            <span style={{fontSize:13, fontWeight:800, color: analysis.verdict==='BUY'?'#22c55e':analysis.verdict==='SKIP'?'#ef4444':'#f59e0b'}}>
+                              {analysis.verdict==='BUY'?'✅ BUY':analysis.verdict==='SKIP'?'🚫 SKIP':'👀 WATCH'}
+                            </span>
+                            <span style={{fontSize:10, color:'#6b7280'}}>{analysis.confidence} confidence · {analysis.risk} risk</span>
+                          </div>
+                          <div style={{fontSize:11, color:'#d1d5db'}}>{analysis.reason}</div>
+                        </div>
+                      )}
+                      {!analysis && (
+                        <button onClick={() => analyzeSnipe(coin)} disabled={snipeAnalyzing[analyzingKey]}
+                          style={{
+                            padding:'5px 10px', borderRadius:6, fontSize:11, fontWeight:700,
+                            border:'1px solid rgba(99,102,241,0.4)', background:'rgba(99,102,241,0.08)',
+                            color: snipeAnalyzing[analyzingKey]?'#4b5563':'#a5b4fc',
+                            cursor:'pointer', marginBottom:8, width:'100%'
+                          }}>
+                          {snipeAnalyzing[analyzingKey] ? '🤔 Analyzing...' : '✦ AI Snipe Analysis'}
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
 
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                   <button
