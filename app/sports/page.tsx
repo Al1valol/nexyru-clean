@@ -578,6 +578,7 @@ export default function SportsPage() {
                 setBankroll((prev) => Math.max(0, prev - b.stake));
                 notify(`✓ ${b.pick}`);
               }}
+              onSwitchSection={setSection}
             />
           )}
           {section === "esports" && (
@@ -2389,8 +2390,10 @@ function generatePropBets(
 
 function PlayerPropsPanel({
   onAddBet,
+  onSwitchSection,
 }: {
   onAddBet: (b: Omit<PaperBet, "id" | "placedAt" | "status">) => void;
+  onSwitchSection: (s: Section) => void;
 }) {
   const [sport, setSport] = useState<"all" | "nba" | "mlb">("all");
   const [nba, setNba] = useState<NbaPlayer[]>([]);
@@ -2673,6 +2676,195 @@ function PlayerPropsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [realPropLines, nba, mlb],
   );
+
+  const PropMarketCountdown = () => {
+    const [timeInfo, setTimeInfo] = useState("");
+    const [nextWindow, setNextWindow] = useState("");
+
+    useEffect(() => {
+      const update = () => {
+        const estHour = parseInt(
+          new Date().toLocaleString("en-US", {
+            hour: "numeric",
+            hour12: false,
+            timeZone: "America/New_York",
+          }),
+        );
+        if (estHour >= 15 && estHour < 22) {
+          setTimeInfo("Props should be open — markets may be between games");
+          setNextWindow("");
+        } else if (estHour < 15) {
+          const hoursUntil = 15 - estHour;
+          setTimeInfo(`Prop markets open in about ${hoursUntil} hour${hoursUntil === 1 ? "" : "s"}`);
+          setNextWindow("Markets typically open 3-4 PM EST when books post afternoon/evening lines");
+        } else {
+          setTimeInfo("Today's props have closed — games are underway or finished");
+          setNextWindow("Check back tomorrow afternoon around 3 PM EST");
+        }
+      };
+      update();
+      const interval = setInterval(update, 60000);
+      return () => clearInterval(interval);
+    }, []);
+
+    const slots = [
+      { time: "12 PM - 2 PM", status: "📋 Some afternoon game props open", active: false },
+      { time: "3 PM - 5 PM", status: "📈 Main prop lines start posting", active: true },
+      { time: "5 PM - 7 PM", status: "🔥 Most props available — best time to check", active: true },
+      { time: "7 PM - 10 PM", status: "⚡ Games starting — props close at first pitch", active: true },
+      { time: "After 10 PM", status: "❌ Props closed for the day", active: false },
+    ];
+
+    return (
+      <div
+        style={{
+          background: "#111",
+          border: "1px solid #1e1e2a",
+          borderRadius: 12,
+          padding: 32,
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 36, marginBottom: 12 }}>⏱️</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+          No Real Prop Lines Right Now
+        </div>
+        <div style={{ fontSize: 14, color: "#a5b4fc", marginBottom: 8, fontWeight: 600 }}>
+          {timeInfo}
+        </div>
+        {nextWindow && (
+          <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>{nextWindow}</div>
+        )}
+
+        <div
+          style={{
+            background: "#1a1a24",
+            borderRadius: 10,
+            padding: 16,
+            marginBottom: 20,
+            textAlign: "left",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#6b7280",
+              marginBottom: 10,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            When Prop Lines Are Available (EST)
+          </div>
+          {slots.map((slot, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 0",
+                borderBottom: i < slots.length - 1 ? "1px solid #2a2a3a" : "none",
+              }}
+            >
+              <span style={{ fontSize: 12, color: "#9ca3af", width: 130 }}>{slot.time}</span>
+              <span style={{ fontSize: 12, color: slot.active ? "#22c55e" : "#4b5563" }}>
+                {slot.status}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            background: "rgba(99,102,241,0.05)",
+            border: "1px solid rgba(99,102,241,0.2)",
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 16,
+            textAlign: "left",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#a5b4fc", marginBottom: 6 }}>
+            💡 Pro Tips
+          </div>
+          <div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.6 }}>
+            • Prop lines post closest to game time — check 2-3 hours before first pitch
+            <br />• Lines move fast — arbs disappear in minutes once books notice
+            <br />• MLB games typically start 7-10 PM EST on weekdays
+            <br />• NBA/NFL props available in their respective seasons
+          </div>
+        </div>
+
+        <button
+          onClick={() => fetchRealProps()}
+          style={{
+            padding: "10px 24px",
+            borderRadius: 8,
+            border: "none",
+            background: "#6366f1",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          🔄 Check Again Now
+        </button>
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #1e1e2a" }}>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+            Meanwhile — these always work:
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button
+              onClick={() => setPropsMode("avg")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "1px solid #1e1e2a",
+                background: "transparent",
+                color: "#a5b4fc",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              📊 Season Average Picks →
+            </button>
+            <button
+              onClick={() => onSwitchSection("esports")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "1px solid #1e1e2a",
+                background: "transparent",
+                color: "#a5b4fc",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              🎮 Esports Picks →
+            </button>
+            <button
+              onClick={() => onSwitchSection("best")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "1px solid #1e1e2a",
+                background: "transparent",
+                color: "#a5b4fc",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              🎯 Best Game Picks →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -3063,20 +3255,7 @@ function PlayerPropsPanel({
             </div>
           )}
 
-          {!realPropsLoading && scoredRealProps.length === 0 && (
-            <div
-              style={{
-                color: C.textMuted,
-                padding: 32,
-                textAlign: "center",
-                background: C.card,
-                border: `1px solid ${C.border}`,
-                borderRadius: 12,
-              }}
-            >
-              No real prop lines available right now. Markets open closer to game time.
-            </div>
-          )}
+          {!realPropsLoading && scoredRealProps.length === 0 && <PropMarketCountdown />}
 
           {!realPropsLoading && scoredRealProps.length > 0 && (
             <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12, fontWeight: 600 }}>
