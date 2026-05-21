@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 // the-odds-api key. Prefer ODDS_API_KEY env var; fall back to a hardcoded
 // constant so the route still works without env configuration. Either way
 // the key stays on the server and is never shipped in the client bundle.
-const ODDS_KEY = process.env.ODDS_API_KEY ?? "YOUR_NEW_KEY";
+const ODDS_KEY = process.env.ODDS_API_KEY ?? "21dc56ed56eb5bf7ddfbb44ba8de79c3";
 
 const ALLOWED_SPORTS = new Set([
   "upcoming",
