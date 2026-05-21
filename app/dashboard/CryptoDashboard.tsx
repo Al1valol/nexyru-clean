@@ -570,38 +570,35 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     const id = coin.coinId || coin.pairAddress;
     setSnipeAnalyzing(prev => ({...prev, [id]: true}));
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/analyze-game', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 150,
-          messages: [{
-            role: 'user',
-            content: `You are a meme coin sniper analyst. Analyze this coin quickly.
-
-Name: ${coin.name} (${coin.symbol})
-Chain: ${coin.chain}
-Age: ${coin.ageHours?.toFixed(1)}h old
-Price change 1h: ${coin.priceChange?.h1}%
-Price change 24h: ${coin.priceChange?.h24}%
-Market cap: $${coin.marketCap}
-Liquidity: $${coin.liquidity?.usd}
-Volume 24h: $${coin.volume?.h24}
-Buy ratio: ${Math.round((coin.buyRatio||0.5)*100)}% buys
-Score: ${coin.score}/100
-
-Reply with ONLY JSON:
-{"verdict":"BUY/SKIP/WATCH","confidence":"high/medium/low","reason":"one sentence max 15 words","risk":"low/medium/high/extreme"}`
-          }]
+          team1: coin.name || coin.symbol,
+          team2: 'SKIP',
+          sport: 'CRYPTO',
+          odds1: 0,
+          odds2: 0,
+          gameTime: 'Now',
+          context: `Meme coin snipe analysis. Coin: ${coin.name} (${coin.symbol}) on ${coin.chain}. Age: ${coin.ageHours?.toFixed(1)}h. Price change 1h: ${coin.priceChange?.h1}%, 24h: ${coin.priceChange?.h24}%. Market cap: $${coin.marketCap}. Liquidity: $${coin.liquidity?.usd}. Volume 24h: $${coin.volume?.h24}. Buy ratio: ${Math.round((coin.buyRatio||0.5)*100)}%. Score: ${coin.score}/100. Should I snipe this meme coin right now? Reply with pick as BUY, SKIP, or WATCH.`
         })
       });
       const data = await res.json();
-      const text = data.content?.[0]?.text || '{}';
-      const clean = text.replace(/```json|```/g,'').trim();
-      const result = JSON.parse(clean);
-      setSnipeAnalysis(prev => ({...prev, [id]: result}));
-    } catch(e) {}
+
+      const verdict = data.pick === coin.name || data.pick?.includes('BUY') ? 'BUY'
+        : data.avoid ? 'SKIP'
+        : data.pick === 'SKIP' ? 'SKIP'
+        : 'WATCH';
+
+      setSnipeAnalysis(prev => ({...prev, [id]: {
+        verdict,
+        confidence: data.confidence || 'medium',
+        reason: data.reasoning || 'Analysis complete',
+        risk: data.warning ? 'high' : 'medium'
+      }}));
+    } catch(e) {
+      console.error('Snipe analyze error:', e);
+    }
     setSnipeAnalyzing(prev => ({...prev, [id]: false}));
   };
 

@@ -13,7 +13,19 @@ export async function POST(req: NextRequest) {
     weekday:'long', year:'numeric', month:'long', day:'numeric'
   })
 
-  const prompt = isPlayerProp
+  const prompt = sport === 'CRYPTO'
+    ? `You are a meme coin sniper. Analyze this opportunity quickly.
+
+${context}
+
+Based on the data, should someone buy this coin RIGHT NOW?
+- BUY = good early entry, signals look positive
+- WATCH = interesting but wait for confirmation
+- SKIP = too late, too risky, or red flags
+
+Reply ONLY with JSON: {"pick":"BUY or WATCH or SKIP","confidence":"high or medium or low","reasoning":"max 15 words why","injuries":"none","form":"N/A","edge":"N/A","warning":null,"avoid":false}`
+
+    : isPlayerProp
     ? `Sports betting analyst. Today is ${today}. Analyze this prop:
 ${context || `${team1} — ${team2}`}
 You may not have perfect data but give your best assessment based on the player's known career.
