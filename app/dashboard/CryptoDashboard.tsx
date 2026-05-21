@@ -454,46 +454,48 @@ function scoreGem(coin: any): number {
   const txns = buys + sells;
   const buyRatio = txns > 0 ? buys / txns : 0;
 
-  // AGE — sweet spot 1-2h
+  // AGE (30pts) — sweet spot 1-6 hours
   if (ageHours < 0.5) score += 10;
   else if (ageHours < 2) score += 30;
   else if (ageHours < 6) score += 25;
-  else if (ageHours < 24) score += 15;
-  else if (ageHours < 48) score += 5;
+  else if (ageHours < 24) score += 12;
+  else if (ageHours < 48) score += 4;
+  else score += 0;
 
-  // PUMP PENALTY
-  if (priceChange1h > 500) score -= 30;
-  else if (priceChange1h > 200) score -= 20;
-  else if (priceChange1h > 100) score -= 10;
+  // PUMP PENALTY — already pumped = too late
+  if (priceChange1h > 500) score -= 35;
+  else if (priceChange1h > 200) score -= 25;
+  else if (priceChange1h > 100) score -= 15;
   else if (priceChange1h > 50) score -= 5;
-  else if (priceChange1h > 10) score += 15;
+  else if (priceChange1h > 10 && priceChange1h < 50) score += 15;
   else if (priceChange1h >= 0) score += 10;
 
   if (priceChange24h > 1000) score -= 20;
   else if (priceChange24h > 500) score -= 10;
 
-  // LIQUIDITY
+  // LIQUIDITY (20pts)
   if (liquidity > 5000 && liquidity < 100000) score += 20;
   else if (liquidity > 1000 && liquidity < 500000) score += 12;
-  else if (liquidity < 1000) score += 0;
+  else if (liquidity < 1000) score -= 10;
   else score += 5;
 
-  // VOLUME
-  if (volume24h > 50000) score += 20;
-  else if (volume24h > 10000) score += 15;
-  else if (volume24h > 1000) score += 8;
-  else score += 2;
+  // VOLUME (15pts)
+  if (volume24h > 50000) score += 15;
+  else if (volume24h > 10000) score += 10;
+  else if (volume24h > 1000) score += 5;
 
-  // BUY PRESSURE
+  // BUY PRESSURE (15pts)
   if (buyRatio > 0.7) score += 15;
   else if (buyRatio > 0.6) score += 10;
   else if (buyRatio > 0.5) score += 5;
+  else score -= 5;
 
-  // MARKET CAP — lower = more room
-  if (marketCap > 0 && marketCap < 50000) score += 15;
-  else if (marketCap < 200000) score += 12;
+  // MARKET CAP (20pts) — lower = more room
+  if (marketCap > 0 && marketCap < 50000) score += 20;
+  else if (marketCap < 200000) score += 14;
   else if (marketCap < 1000000) score += 8;
-  else if (marketCap < 5000000) score += 4;
+  else if (marketCap < 5000000) score += 3;
+  else score += 0;
 
   return Math.max(0, Math.min(100, score));
 }
@@ -533,15 +535,15 @@ function getSnipeWindow(coin: any) {
     : 999;
   const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
 
+  if (priceChange1h > 500)
+    return { id: 'toolate', label: '🚨 TOO LATE', color: '#ef4444', desc: 'Already pumped hard — missed it' };
   if (age < 1 && priceChange1h < 50)
     return { id: 'prime', label: '🎯 PRIME SNIPE', color: '#22c55e', desc: 'Under 1h old, not yet pumped' };
   if (age < 3 && priceChange1h < 100)
-    return { id: 'early', label: '⚡ EARLY', color: '#86efac', desc: 'Still very early' };
+    return { id: 'early', label: '⚡ EARLY', color: '#86efac', desc: 'Still very early entry' };
   if (age < 6 && priceChange1h < 200)
     return { id: 'watch', label: '👀 WATCH', color: '#fbbf24', desc: 'Getting late but possible' };
-  if (priceChange1h > 500)
-    return { id: 'toolate', label: '🚨 TOO LATE', color: '#ef4444', desc: 'Already pumped hard' };
-  return { id: 'cold', label: '❄️ COLD', color: '#6b7280', desc: 'Likely missed' };
+  return { id: 'cold', label: '❄️ COLD', color: '#6b7280', desc: 'Likely missed this one' };
 }
 
 function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
@@ -549,7 +551,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [gemsLoading, setGemsLoading] = React.useState(true);
   const [gemsLastUpdated, setGemsLastUpdated] = React.useState(null);
   const [secondsAgo, setSecondsAgo] = React.useState(0);
-  const [snipeFilter, setSnipeFilter] = React.useState('prime'); // 'prime' | 'early' | 'watch' | 'toolate' | 'all'
+  const [snipeFilter, setSnipeFilter] = React.useState('all'); // 'prime' | 'early' | 'watch' | 'toolate' | 'all'
   const [ageFilter, setAgeFilter] = React.useState('all');     // 'all' | '1' | '6' | '24' | '48'
   const [scoreFilter, setScoreFilter] = React.useState('all'); // 'all' | 'hot' | 'gems'
   const [sortBy, setSortBy] = React.useState('score');         // 'score' | 'age' | 'mcap' | 'change' | 'volume'
@@ -802,7 +804,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const vol = Number(coin.volume24h) || 0;
             const liq = Number(coin.liquidity) || 0;
             const ageHours = coin.ageHours;
-            const ageLabel = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
+            const ageLabel = ageHours < 1 ? `${Math.round(ageHours * 60)}m old` : `${ageHours.toFixed(1)}h old`;
+            const ageColor = ageHours < 2 ? '#22c55e' : ageHours < 6 ? '#fbbf24' : '#6b7280';
             const rawPrice = parseFloat(coin.price);
             const priceStr = Number.isFinite(rawPrice) && rawPrice > 0
               ? (rawPrice < 0.0001 ? '$' + rawPrice.toExponential(2)
@@ -877,8 +880,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 <VerificationBanner v={verification}/>
 
                 {change1h > 500 && (
-                  <div style={{ padding:'10px 12px', borderRadius:10, background:'rgba(239,68,68,0.10)', border:'1px solid rgba(239,68,68,0.35)', color:'#fca5a5', fontSize:11.5, lineHeight:1.5 }}>
-                    ⚠️ <strong>Up +{change1h.toFixed(0)}% in the last hour.</strong> Most coins that pump this fast dump just as fast. The easy money is already made — snipers who got in early already sold to you.
+                  <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:6, padding:'8px 10px', marginBottom:8, fontSize:11, color:'#fca5a5' }}>
+                    ⚠️ Up {change1h.toFixed(0)}% in 1h — the easy money is gone. Early buyers are selling TO YOU.
                   </div>
                 )}
 
@@ -893,7 +896,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8 }}>
                   <div>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Age</div>
-                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{ageLabel}</div>
+                    <div style={{ fontSize:13, color: ageColor, fontWeight:700, marginTop:2 }}>{ageLabel}</div>
                   </div>
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Price</div>
@@ -917,20 +920,22 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   </div>
                 </div>
 
-                {/* Buy/sell ratio bar */}
-                {(coin.buys + coin.sells) > 0 && (
-                  <div>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', marginBottom:3 }}>
-                      <span>🟢 {coin.buys} buys</span>
-                      <span style={{ color:'#9ca3af', fontWeight:700 }}>{Math.round(coin.buyRatio * 100)}% buy</span>
-                      <span>🔴 {coin.sells} sells</span>
+                {/* Buy pressure bar */}
+                {(coin.buys + coin.sells) > 0 && (() => {
+                  const buyPct = Math.round(coin.buyRatio * 100);
+                  const pressureColor = buyPct > 60 ? '#22c55e' : buyPct < 40 ? '#ef4444' : '#f59e0b';
+                  return (
+                    <div style={{ marginBottom:8 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', marginBottom:2 }}>
+                        <span>Buy pressure</span>
+                        <span style={{ color: pressureColor }}>{buyPct}% buys · {100 - buyPct}% sells</span>
+                      </div>
+                      <div style={{ height:4, background:'#1a1a24', borderRadius:2, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${buyPct}%`, background: pressureColor, borderRadius:2 }}/>
+                      </div>
                     </div>
-                    <div style={{ display:'flex', height:5, borderRadius:3, overflow:'hidden', background:'#1a1a24' }}>
-                      <div style={{ width: `${coin.buyRatio * 100}%`, background:'#22c55e' }}/>
-                      <div style={{ width: `${(1 - coin.buyRatio) * 100}%`, background:'#ef4444' }}/>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 <div style={{ fontSize:11, color:'#6b7280' }}>
                   <span style={{ color:'#9ca3af', fontWeight:700 }}>Vol 24h: {formatPumpMcap(vol)}</span>
