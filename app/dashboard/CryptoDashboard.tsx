@@ -567,6 +567,38 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     return n.toFixed(0);
   };
 
+  const getContractAddress = (coin: any) => {
+    if (coin.coinId?.includes(':')) return coin.coinId.split(':').pop();
+    if (coin.pairAddress) return coin.pairAddress;
+    return null;
+  };
+
+  const getFomoLink = (coin: any) => {
+    const address = getContractAddress(coin);
+    const chain = (coin.chain || '').toLowerCase();
+    if (!address) return 'https://fomo.family/r/al1valol';
+    if (chain === 'solana' || chain === 'sol') return `https://fomo.family/r/al1valol`;
+    if (chain === 'base') return `https://fomo.family/r/al1valol`;
+    return `https://dexscreener.com/${chain}/${address}`;
+  };
+
+  const getJupiterLink = (coin: any) => {
+    const address = getContractAddress(coin);
+    const chain = (coin.chain || '').toLowerCase();
+    if (chain === 'solana' || chain === 'sol') {
+      return address ? `https://jup.ag/swap/SOL-${address}` : null;
+    }
+    return null;
+  };
+
+  const getUniswapLink = (coin: any) => {
+    const address = getContractAddress(coin);
+    const chain = (coin.chain || '').toLowerCase();
+    if (chain === 'base') return address ? `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}` : null;
+    if (chain === 'ethereum' || chain === 'eth') return address ? `https://app.uniswap.org/swap?outputCurrency=${address}` : null;
+    return null;
+  };
+
   const analyzeSnipe = async (coin: any) => {
     const id = coin.coinId || coin.pairAddress;
     setSnipeAnalyzing(prev => ({...prev, [id]: true}));
@@ -845,10 +877,14 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{coin.name} ({coin.symbol})</div>
                   <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.score}/100 · {coin.snipeWindow?.label}</div>
                 </div>
-                <a href="https://fomo.family/r/al1valol" target="_blank" rel="noreferrer"
-                  style={{padding:'6px 12px', borderRadius:6, border:'none', background:'#6366f1', color:'#fff', fontSize:11, fontWeight:700, textDecoration:'none'}}>
-                  Trade →
-                </a>
+                {getContractAddress(coin) && (
+                  <button onClick={() => {
+                    navigator.clipboard.writeText(getContractAddress(coin) || '');
+                    alert(`Contract copied: ${getContractAddress(coin)}\n\nPaste this in FOMO or Jupiter to find ${coin.name}`);
+                  }} style={{padding:'6px 12px', borderRadius:6, border:'none', background:'#6366f1', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer'}}>
+                    📋 Copy CA
+                  </button>
+                )}
               </div>
             ))}
             {gems.filter(g => g.snipeWindow?.id === 'prime' || g.snipeWindow?.id === 'early').length === 0 && (
@@ -1176,7 +1212,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 })()}
 
                 {(() => {
-                  const tweetText = `🎯 Coin Sniper Alert!\n\n${coin.name} (${coin.symbol}) on ${coin.chain}\n⚡ ${coin.snipeWindow?.label}\n📊 Score: ${coin.score}/100\n\nTrade on FOMO 👇\nhttps://fomo.family/r/al1valol\n\n#memecoin #crypto #coinsniper`;
+                  const tweetText = `🎯 Coin Sniper Alert!\n\n${coin.name} (${coin.symbol}) on ${coin.chain}\n${coin.snipeWindow?.label} · Score: ${coin.score}/100\n\nCA: ${getContractAddress(coin) || 'see dexscreener'}\n\nTrade: https://fomo.family/r/al1valol\n\n#memecoin #crypto`;
                   return (
                     <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`}
                       target="_blank" rel="noreferrer"
@@ -1233,6 +1269,47 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     whiteSpace:'nowrap', display:'inline-flex', alignItems:'center',
                   }}>DexScreener ↗</a>
                 </div>
+
+                {(() => {
+                  const jupLink = getJupiterLink(coin);
+                  const uniLink = getUniswapLink(coin);
+                  const ca = getContractAddress(coin);
+                  return (
+                    <>
+                      {jupLink && (
+                        <a href={jupLink} target="_blank" rel="noreferrer" style={{
+                          display:'block', padding:'8px', borderRadius:8, border:'none',
+                          background:'#22c55e', color:'#fff', fontSize:12, fontWeight:700,
+                          textDecoration:'none', textAlign:'center', marginBottom:6
+                        }}>⚡ Buy on Jupiter (Solana)</a>
+                      )}
+                      {uniLink && (
+                        <a href={uniLink} target="_blank" rel="noreferrer" style={{
+                          display:'block', padding:'8px', borderRadius:8, border:'none',
+                          background:'#ff007a', color:'#fff', fontSize:12, fontWeight:700,
+                          textDecoration:'none', textAlign:'center', marginBottom:6
+                        }}>🦄 Buy on Uniswap</a>
+                      )}
+                      <a href="https://fomo.family/r/al1valol" target="_blank" rel="noreferrer" style={{
+                        display:'block', padding:'8px', borderRadius:8,
+                        border:'1px solid rgba(99,102,241,0.4)', background:'rgba(99,102,241,0.08)',
+                        color:'#a5b4fc', fontSize:12, fontWeight:700, textDecoration:'none', textAlign:'center', marginBottom:6
+                      }}>⚡ Open FOMO App</a>
+                      {ca && (
+                        <button onClick={() => {
+                          navigator.clipboard.writeText(ca || '');
+                          alert('Contract address copied! Paste it in FOMO or any DEX to find this coin.');
+                        }} style={{
+                          width:'100%', padding:'6px', borderRadius:8,
+                          border:'1px solid #2a2a3a', background:'transparent',
+                          color:'#6b7280', fontSize:11, cursor:'pointer'
+                        }}>
+                          📋 Copy Contract Address
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {(() => {
                   const buyInfo = getBuyUrl(coin);
