@@ -579,6 +579,27 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [snipeAnalysis, setSnipeAnalysis] = React.useState<Record<string,any>>({});
   const [snipeAnalyzing, setSnipeAnalyzing] = React.useState<Record<string,boolean>>({});
   const [tab, setTab] = React.useState<'sniper'|'fomo'>('sniper');
+  const [rugData, setRugData] = React.useState<Record<string, any>>({});
+  const [rugLoading, setRugLoading] = React.useState<Record<string, boolean>>({});
+
+  const checkRug = async (coin: any) => {
+    const address = coin.baseToken?.address;
+    if (!address || rugData[address]) return;
+
+    const chain = (coin.chainId || coin.chain || '').toLowerCase();
+    if (chain !== 'solana' && chain !== 'sol') {
+      setRugData(prev => ({...prev, [address]: { error: 'Only available for Solana tokens' }}));
+      return;
+    }
+
+    setRugLoading(prev => ({...prev, [address]: true}));
+    try {
+      const res = await fetch(`/api/rugcheck?address=${address}`);
+      const data = await res.json();
+      setRugData(prev => ({...prev, [address]: data}));
+    } catch(e) {}
+    setRugLoading(prev => ({...prev, [address]: false}));
+  };
 
   const formatNum = (n: number) => {
     if (n >= 1000000) return (n/1000000).toFixed(1)+'M';
@@ -1160,6 +1181,78 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   return hasSocials
                     ? <span style={{fontSize:10, color:'#22c55e'}}>✅ Has socials</span>
                     : <span style={{fontSize:10, color:'#ef4444'}}>⚠️ No socials — higher rug risk</span>;
+                })()}
+
+                {(() => {
+                  const address = coin.baseToken?.address;
+                  const rug = address ? rugData[address] : null;
+                  const rugLoading2 = address ? rugLoading[address] : false;
+                  const isSolana = coin.chainId === 'solana' || coin.chain === 'solana';
+                  return (
+                    <>
+                      {!rug && !rugLoading2 && isSolana && (
+                        <button onClick={() => checkRug(coin)} style={{
+                          width:'100%', padding:'6px', borderRadius:8, marginBottom:6,
+                          border:'1px solid rgba(239,68,68,0.3)', background:'rgba(239,68,68,0.05)',
+                          color:'#fca5a5', fontSize:11, fontWeight:700, cursor:'pointer'
+                        }}>
+                          🔍 Check Holders & Rug Risk
+                        </button>
+                      )}
+
+                      {rugLoading2 && (
+                        <div style={{fontSize:11, color:'#6b7280', textAlign:'center', marginBottom:6}}>Checking blockchain data...</div>
+                      )}
+
+                      {rug && !rug.error && (
+                        <div style={{
+                          background: rug.rugRisk==='EXTREME'?'rgba(239,68,68,0.1)':rug.rugRisk==='HIGH'?'rgba(249,115,22,0.1)':rug.rugRisk==='MEDIUM'?'rgba(245,158,11,0.1)':'rgba(34,197,94,0.1)',
+                          border: `1px solid ${rug.rugRisk==='EXTREME'?'rgba(239,68,68,0.4)':rug.rugRisk==='HIGH'?'rgba(249,115,22,0.4)':rug.rugRisk==='MEDIUM'?'rgba(245,158,11,0.4)':'rgba(34,197,94,0.4)'}`,
+                          borderRadius:8, padding:10, marginBottom:8
+                        }}>
+                          <div style={{display:'flex', justifyContent:'space-between', marginBottom:6}}>
+                            <span style={{fontSize:12, fontWeight:800, color:
+                              rug.rugRisk==='EXTREME'?'#ef4444':rug.rugRisk==='HIGH'?'#f97316':rug.rugRisk==='MEDIUM'?'#f59e0b':'#22c55e'
+                            }}>
+                              {rug.rugRisk==='EXTREME'?'🚨':rug.rugRisk==='HIGH'?'⚠️':rug.rugRisk==='MEDIUM'?'⚡':'✅'} {rug.rugRisk} RUG RISK
+                            </span>
+                            <span style={{fontSize:10, color:'#6b7280'}}>RugCheck score: {rug.score}</span>
+                          </div>
+
+                          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:6}}>
+                            <div style={{background:'rgba(0,0,0,0.2)', borderRadius:4, padding:'5px 8px', textAlign:'center'}}>
+                              <div style={{fontSize:9, color:'#6b7280', marginBottom:1}}>TOP HOLDER</div>
+                              <div style={{fontSize:14, fontWeight:800, color: parseFloat(rug.top1Pct) > 20 ? '#ef4444' : '#22c55e'}}>
+                                {rug.top1Pct}%
+                              </div>
+                            </div>
+                            <div style={{background:'rgba(0,0,0,0.2)', borderRadius:4, padding:'5px 8px', textAlign:'center'}}>
+                              <div style={{fontSize:9, color:'#6b7280', marginBottom:1}}>TOP 10 HOLD</div>
+                              <div style={{fontSize:14, fontWeight:800, color: parseFloat(rug.top10Pct) > 60 ? '#ef4444' : '#22c55e'}}>
+                                {rug.top10Pct}%
+                              </div>
+                            </div>
+                          </div>
+
+                          {rug.insiderCount > 0 && (
+                            <div style={{fontSize:11, color:'#ef4444', marginBottom:4}}>
+                              ⚠️ {rug.insiderCount} insider wallet{rug.insiderCount > 1 ? 's' : ''} detected
+                            </div>
+                          )}
+
+                          {rug.rugReasons?.length > 0 && (
+                            <div style={{fontSize:10, color:'#9ca3af'}}>
+                              {rug.rugReasons.slice(0,2).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {rug?.error && (
+                        <div style={{fontSize:10, color:'#6b7280', marginBottom:6}}>{rug.error}</div>
+                      )}
+                    </>
+                  );
                 })()}
 
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8 }}>
