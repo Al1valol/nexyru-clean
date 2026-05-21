@@ -8576,91 +8576,30 @@ function TradingDashboard({ session, onLogout }) {
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
         {/* ── Top bar ── */}
-        <header style={{ height:48, background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", padding:"0 16px", gap:10, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden", marginLeft:56 }}>
-          {/* Left: Nexyru logo */}
-          <a href="/dashboard" style={{
-            fontSize:15, fontWeight:800, color:"#ffffff",
-            letterSpacing:"-0.01em", textDecoration:"none",
-            whiteSpace:"nowrap", flexShrink:0,
-          }}>
-            Nexyru
-          </a>
+        <header style={{ background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", gap:12, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden", marginLeft:56 }}>
+          {/* Left: page title */}
+          <div style={{ fontSize:14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>
+            Dashboard
+          </div>
 
-          {/* Center: page nav */}
-          <nav style={{ flex:1, display:"flex", justifyContent:"center", alignItems:"center", gap:8, minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>
-            {[
-              { id:'trading', label:'📈 Trading', href:'/dashboard' },
-              { id:'crypto',  label:'🪙 Crypto',  href:'/crypto' },
-              { id:'sports',  label:'🎰 Sports',  href:'/sports' },
-            ].map(n => {
-              const active = n.id === 'trading';
-              return (
-                <a
-                  key={n.id}
-                  href={n.href}
-                  className={active ? "nx-nav-active" : "nx-nav-inactive"}
-                  style={{
-                    padding:"6px 12px",
-                    color: active ? "#ffffff" : "#6b7280",
-                    fontSize:12, fontWeight: active ? 700 : 600,
-                    textDecoration:"none",
-                    borderBottom: active ? "2px solid #6366f1" : "2px solid transparent",
-                    whiteSpace:"nowrap",
-                    minWidth:"fit-content",
-                    flexShrink:0,
-                    transition:"color 0.15s",
-                  }}
-                >
-                  {n.label}
-                </a>
-              );
-            })}
-          </nav>
+          {/* Center: nav links */}
+          <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+            <a href="/dashboard" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#fff", background:"rgba(255,255,255,0.1)", textDecoration:"none", whiteSpace:"nowrap" }}>📈 Trading</a>
+            <a href="/crypto" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🪙 Crypto</a>
+            <a href="/sports" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🎰 Sports</a>
+          </div>
 
-          {/* Right: account selector + Log Trade + avatar */}
-          <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-            {isDemoMode(session.username) && (
-              <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"rgba(245,158,11,0.12)", border:"1px solid rgba(245,158,11,0.25)", color:"#f59e0b", whiteSpace:"nowrap" }} className="hide-mobile">DEMO MODE</span>
-            )}
+          {/* Right: essential controls */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
             <a href="/morning" style={{
               padding:"6px 12px", borderRadius:6,
               border:"1px solid rgba(0,212,255,0.3)",
               background:"rgba(0,212,255,0.05)",
               color:"#00d4ff", textDecoration:"none",
-              fontSize:11, fontWeight:700,
-              display:"inline-flex", alignItems:"center", gap:6, whiteSpace:"nowrap",
+              fontSize:11, fontWeight:700, whiteSpace:"nowrap",
             }}>
               ⬡ Daily Briefing
             </a>
-            {supabaseUserId && <SyncIndicator status={syncStatus} />}
-            {supabaseUserId && (
-              <button
-                onClick={() => runFullSync()}
-                disabled={syncStatus === "syncing"}
-                title="Force upload every local trade to the cloud, then pull the merged result back"
-                className="hide-mobile"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "4px 9px",
-                  borderRadius: 8,
-                  border: "1px solid #2a2a3a",
-                  background: "#1a1a24",
-                  color: syncStatus === "syncing" ? "#6b7280" : "#9ca3af",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  cursor: syncStatus === "syncing" ? "not-allowed" : "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <RefreshCw
-                  size={10}
-                  style={{ animation: syncStatus === "syncing" ? "nx-spin 0.7s linear infinite" : "none" }}
-                />
-                Sync Now
-              </button>
-            )}
             <AccountSwitcher
               accounts={paperAccts.accounts}
               activeAccount={paperAccts.activeAccount}
@@ -8674,13 +8613,6 @@ function TradingDashboard({ session, onLogout }) {
                 <Plus size={13}/><span>Log Trade</span>
               </button>
             )}
-            <div style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px", borderRadius:8, border:"1px solid #2a2a3a", background:"#1a1a24" }}>
-              <a href={`/trader/@${session.username}`} style={{ display:"flex", alignItems:"center", gap:5, textDecoration:"none" }}>
-                <div style={{ width:22, height:22, borderRadius:"50%", background:"var(--accent)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:"#fff" }}>{session.displayName[0].toUpperCase()}</div>
-                <span style={{ fontSize:11, color:"#9ca3af", fontWeight:600 }} className="hide-mobile">{session.displayName}</span>
-              </a>
-              <button onClick={onLogout} title="Sign out" style={{ background:"none", border:"none", color:"#6b7280", cursor:"pointer", display:"flex", padding:2 }} className="hide-mobile"><LogOut size={12}/></button>
-            </div>
           </div>
         </header>
 
