@@ -1681,15 +1681,49 @@ function closePositionInAccount(store, accountId, positionId, exitPrice, exitNot
     if (!pos || pos.status !== 'open') return acc;
     const proceeds = pos.amount * exitPrice;
     const pnl = (exitPrice - pos.entryPrice) * pos.amount;
+    const totalRealized = (pos.realizedPnl || 0) + pnl;
     const nowIso = new Date().toISOString();
     return {
       ...acc,
       balance: (acc.balance || 0) + proceeds,
       positions: acc.positions.map(p => p.id === positionId
-        ? { ...p, status: 'closed', exitPrice, exitDate: nowIso, exitNotes: exitNotes || '', realizedPnl: pnl, currentPrice: exitPrice }
+        ? { ...p, status: 'closed', exitPrice, exitDate: nowIso, exitNotes: exitNotes || '', realizedPnl: totalRealized, currentPrice: exitPrice }
         : p),
       history: [
         { id: makeShortId('h'), type: 'sell', positionId, coinId: pos.coinId, symbol: pos.symbol, name: pos.name, amount: pos.amount, price: exitPrice, usd: proceeds, pnl, date: nowIso, exitNotes: exitNotes || '' },
+        ...(acc.history || []),
+      ],
+    };
+  });
+}
+
+// Close a fraction of an open position. Cost basis (entryPrice) stays the same
+// for the remaining coins; proceeds go back to the account balance.
+function partialClosePositionInAccount(store, accountId, positionId, exitPrice, percent, exitNotes = '') {
+  if (!(exitPrice > 0) || !(percent > 0) || !(percent < 100)) return store;
+  return updateAccountInStore(store, accountId, acc => {
+    const pos = (acc.positions || []).find(p => p.id === positionId);
+    if (!pos || pos.status !== 'open') return acc;
+    const closeCoins = pos.amount * (percent / 100);
+    const keepCoins = pos.amount - closeCoins;
+    const proceeds = closeCoins * exitPrice;
+    const pnl = (exitPrice - pos.entryPrice) * closeCoins;
+    const nowIso = new Date().toISOString();
+    const noteAddition = `Partial close ${percent}% at $${exitPrice} (P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})${exitNotes ? ' — ' + exitNotes : ''}`;
+    return {
+      ...acc,
+      balance: (acc.balance || 0) + proceeds,
+      positions: acc.positions.map(p => p.id === positionId
+        ? {
+            ...p,
+            amount: keepCoins,
+            partialCloseCount: (p.partialCloseCount || 0) + 1,
+            realizedPnl: (p.realizedPnl || 0) + pnl,
+            exitNotes: (p.exitNotes ? p.exitNotes + ' | ' : '') + noteAddition,
+          }
+        : p),
+      history: [
+        { id: makeShortId('h'), type: 'partial_sell', positionId, coinId: pos.coinId, symbol: pos.symbol, name: pos.name, amount: closeCoins, price: exitPrice, usd: proceeds, pnl, date: nowIso, exitNotes: exitNotes || '', partialPercent: percent },
         ...(acc.history || []),
       ],
     };
@@ -3160,6 +3194,8 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
   const [closeFor, setCloseFor] = React.useState(null); // position object
   const [closePrice, setClosePrice] = React.useState('');
   const [closeNotes, setCloseNotes] = React.useState('');
+  const [exitMode, setExitMode] = React.useState('full'); // 'full' | 'partial'
+  const [partialPercent, setPartialPercent] = React.useState(50);
   const [chartModal, setChartModal] = React.useState(null);
   const [livePrices, setLivePrices] = React.useState({});
   const [alertEdits, setAlertEdits] = React.useState({}); // positionId -> { target, stop }
@@ -3232,11 +3268,20 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
     if (!closeFor) return;
     const exit = parseFloat(closePrice) || 0;
     if (!(exit > 0)) return;
-    const pnl = (exit - closeFor.entryPrice) * closeFor.amount;
-    onUpdate(prev => closePositionInAccount(prev, activeAccount.id, closeFor.id, exit, closeNotes.trim()));
     const sym = (closeFor.symbol || closeFor.name || '').toUpperCase();
-    try { toast(`Closed ${sym} — P&L ${pnl >= 0 ? '+' : '−'}${fmtUsd(Math.abs(pnl))}`, pnl >= 0 ? 'success' : 'error'); } catch {}
+    if (exitMode === 'partial') {
+      const pct = Math.min(95, Math.max(5, partialPercent));
+      const closeCoins = closeFor.amount * (pct / 100);
+      const pnl = (exit - closeFor.entryPrice) * closeCoins;
+      onUpdate(prev => partialClosePositionInAccount(prev, activeAccount.id, closeFor.id, exit, pct, closeNotes.trim()));
+      try { toast(`Closed ${pct}% of ${sym} — P&L ${pnl >= 0 ? '+' : '−'}${fmtUsd(Math.abs(pnl))}`, pnl >= 0 ? 'success' : 'error'); } catch {}
+    } else {
+      const pnl = (exit - closeFor.entryPrice) * closeFor.amount;
+      onUpdate(prev => closePositionInAccount(prev, activeAccount.id, closeFor.id, exit, closeNotes.trim()));
+      try { toast(`Closed ${sym} — P&L ${pnl >= 0 ? '+' : '−'}${fmtUsd(Math.abs(pnl))}`, pnl >= 0 ? 'success' : 'error'); } catch {}
+    }
     setCloseFor(null); setClosePrice(''); setCloseNotes('');
+    setExitMode('full'); setPartialPercent(50);
   };
 
   const saveAlerts = (positionId) => {
@@ -3448,6 +3493,9 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                         <div>
                           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                             <span style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{p.name}</span>
+                            {p.partialCloseCount > 0 && (
+                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(245,158,11,0.15)", color:"#f59e0b" }} title={`${p.partialCloseCount} partial close${p.partialCloseCount === 1 ? '' : 's'}`}>Partial</span>
+                            )}
                             {p.alertTarget != null && p.alertTarget > 0 && (
                               <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(34,197,94,0.15)", color:"#22c55e" }}>🎯 +{p.alertTarget}%</span>
                             )}
@@ -3661,18 +3709,108 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                 </div>
               </div>
 
+              {/* Mode toggle */}
+              <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+                {[
+                  { id:'full', label:'Close All' },
+                  { id:'partial', label:'Partial Close' },
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setExitMode(m.id)}
+                    style={{
+                      flex:1, padding:"8px", borderRadius:8,
+                      border:`1px solid ${exitMode === m.id ? '#6366f1' : '#1e1e2a'}`,
+                      background: exitMode === m.id ? 'rgba(99,102,241,0.15)' : 'transparent',
+                      color: exitMode === m.id ? '#a5b4fc' : '#9ca3af',
+                      fontSize:12, fontWeight:700, cursor:'pointer',
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {exitMode === 'partial' && (() => {
+                const positionUSD = closeFor.entryPrice * closeFor.amount;
+                const partialUSD = positionUSD * partialPercent / 100;
+                const setPercent = (pct) => setPartialPercent(Math.min(95, Math.max(5, pct)));
+                return (
+                  <div style={{ marginBottom:14 }}>
+                    <label style={{ fontSize:12, color:'#6b7280', display:'block', marginBottom:8 }}>
+                      How much do you want to close?
+                    </label>
+
+                    <div style={{ marginBottom:8 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                        <span style={{ fontSize:12, color:'#6b7280' }}>Percentage</span>
+                        <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{partialPercent}%</span>
+                      </div>
+                      <input
+                        type="range" min={5} max={95} step={5} value={partialPercent}
+                        onChange={e => setPercent(parseInt(e.target.value))}
+                        style={{ width:'100%', accentColor:'#6366f1' }}
+                      />
+                      <div style={{ display:'flex', justifyContent:'space-between', marginTop:2 }}>
+                        <span style={{ fontSize:10, color:'#6b7280' }}>5%</span>
+                        <span style={{ fontSize:10, color:'#6b7280' }}>95%</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                      {[25, 50, 75].map(pct => (
+                        <button key={pct} onClick={() => setPercent(pct)} style={{
+                          flex:1, padding:'6px', borderRadius:6,
+                          border:`1px solid ${partialPercent === pct ? '#6366f1' : '#1e1e2a'}`,
+                          background: partialPercent === pct ? 'rgba(99,102,241,0.15)' : 'transparent',
+                          color: partialPercent === pct ? '#a5b4fc' : '#6b7280',
+                          fontSize:12, fontWeight:700, cursor:'pointer',
+                        }}>{pct}%</button>
+                      ))}
+                    </div>
+
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:12, color:'#6b7280' }}>Or enter amount: $</span>
+                      <input
+                        type="number" value={partialUSD.toFixed(2)}
+                        onChange={e => {
+                          const usd = parseFloat(e.target.value) || 0;
+                          if (positionUSD > 0) setPercent(Math.round((usd / positionUSD) * 100));
+                        }}
+                        style={{ width:100, padding:'6px 8px', borderRadius:6, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none' }}
+                      />
+                    </div>
+
+                    <div style={{ background:'#1a1a24', borderRadius:8, padding:12, marginTop:10 }}>
+                      <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>Summary:</div>
+                      <div style={{ fontSize:13, color:'#fff', marginBottom:2 }}>
+                        Closing: <strong style={{ color:'#ef4444' }}>${(positionUSD * partialPercent / 100).toFixed(2)}</strong> ({partialPercent}% of position)
+                      </div>
+                      <div style={{ fontSize:13, color:'#fff' }}>
+                        Keeping: <strong style={{ color:'#22c55e' }}>${(positionUSD * (100 - partialPercent) / 100).toFixed(2)}</strong> ({100 - partialPercent}% remains open)
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Exit price (USD)</label>
               <input
                 type="number" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.00"
                 style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
               />
 
-              {pnl != null && (
-                <div style={{ padding:"12px 14px", background: pnl >= 0 ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border:`1px solid ${pnl >= 0 ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`, borderRadius:8, marginBottom:14, fontSize:13, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <span style={{ color:"#9ca3af", fontWeight:600 }}>Estimated P&L</span>
-                  <span style={{ color: pnl >= 0 ? "#22c55e" : "#ef4444", fontWeight:800, fontSize:15 }}>{(pnl >= 0 ? '+' : '−')}{fmtUsd(Math.abs(pnl))} ({(pnlPct >= 0 ? '+' : '')}{pnlPct.toFixed(2)}%)</span>
-                </div>
-              )}
+              {pnl != null && (() => {
+                const shownPnl = exitMode === 'partial' ? pnl * (partialPercent / 100) : pnl;
+                return (
+                  <div style={{ padding:"12px 14px", background: shownPnl >= 0 ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border:`1px solid ${shownPnl >= 0 ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`, borderRadius:8, marginBottom:14, fontSize:13, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ color:"#9ca3af", fontWeight:600 }}>
+                      Estimated P&L{exitMode === 'partial' ? ` (on ${partialPercent}%)` : ''}
+                    </span>
+                    <span style={{ color: shownPnl >= 0 ? "#22c55e" : "#ef4444", fontWeight:800, fontSize:15 }}>{(shownPnl >= 0 ? '+' : '−')}{fmtUsd(Math.abs(shownPnl))} ({(pnlPct >= 0 ? '+' : '')}{pnlPct.toFixed(2)}%)</span>
+                  </div>
+                );
+              })()}
 
               <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Exit notes (optional)</label>
               <textarea
@@ -3684,7 +3822,9 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
 
               <div style={{ display:"flex", gap:8 }}>
                 <button onClick={() => setCloseFor(null)} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
-                <button onClick={submitClose} disabled={!(exit > 0)} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: exit > 0 ? "#ef4444" : "#2a2a3a", color:"#fff", fontSize:13, fontWeight:700, cursor: exit > 0 ? "pointer" : "not-allowed" }}>Confirm Exit →</button>
+                <button onClick={submitClose} disabled={!(exit > 0)} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: exit > 0 ? "#ef4444" : "#2a2a3a", color:"#fff", fontSize:13, fontWeight:700, cursor: exit > 0 ? "pointer" : "not-allowed" }}>
+                  {exitMode === 'partial' ? `Close ${partialPercent}% of Position` : 'Close Entire Position'} →
+                </button>
               </div>
             </div>
           </div>
