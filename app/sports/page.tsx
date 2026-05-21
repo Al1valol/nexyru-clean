@@ -155,8 +155,16 @@ function buildPicks(games: Game[]): Pick[] {
       });
     }
   }
-  picks.sort((a, b) => b.score - a.score);
-  return picks;
+  // Dedupe: keep only the higher-scoring side of each game so we never show
+  // both teams of the same matchup as separate picks.
+  const bestPickPerGame: Record<string, Pick> = {};
+  for (const pick of picks) {
+    const gameId = pick.game.id;
+    if (!bestPickPerGame[gameId] || pick.score > bestPickPerGame[gameId].score) {
+      bestPickPerGame[gameId] = pick;
+    }
+  }
+  return Object.values(bestPickPerGame).sort((a, b) => b.score - a.score);
 }
 
 function scoreBadge(score: number) {

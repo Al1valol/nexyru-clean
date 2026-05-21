@@ -14,25 +14,22 @@ export async function POST(req: NextRequest) {
   })
 
   const prompt = isPlayerProp
-    ? `You are a sharp sports betting analyst. Today is ${today}.
-
-Analyze this player prop bet:
+    ? `Sports betting analyst. Today is ${today}. Analyze this prop:
 ${context || `${team1} — ${team2}`}
+You may not have perfect data but give your best assessment based on the player's known career.
+Reply ONLY with JSON: {"pick":"OVER or UNDER or SKIP","confidence":"high or medium or low","reasoning":"one sentence","injuries":"none","form":"brief note","edge":"brief note","warning":null,"avoid":false}`
 
-This is a real bet available right now. Give your honest assessment.
-Reply ONLY with this exact JSON, no other text:
-{"pick":"OVER or UNDER or SKIP","confidence":"high or medium or low","reasoning":"one sentence about whether this prop has value based on the player's known ability","injuries":"any known concerns or none","form":"brief assessment of this player","edge":"why this prop is worth taking or not","warning":"any concern or null","avoid":false}`
+    : `Sports betting analyst. Today is ${today}.
+Game: ${team1} vs ${team2} (${sport})
+Odds: ${team1} ${odds1 > 0 ? '+' : ''}${odds1}, ${team2} ${odds2 > 0 ? '+' : ''}${odds2}
 
-    : `You are a sharp sports betting analyst. Today is ${today}.
+Pick ONE team or SKIP. Base it on:
+- Odds value (which side has better value)
+- Team quality if you know these teams
+- Implied probability vs real probability
 
-Analyze this real game happening now or very soon:
-${team1} vs ${team2}
-Sport: ${sport}
-Current odds: ${team1} at ${odds1}, ${team2} at ${odds2}
-
-This game is happening today or this week in 2026. Give a real analysis based on what you know about these teams.
-Reply ONLY with this exact JSON, no other text:
-{"pick":"${team1} or ${team2} or SKIP","confidence":"high or medium or low","reasoning":"one sentence about which team has the edge","injuries":"any known player concerns or none","form":"brief recent form for both teams","edge":"what gives the pick value","warning":"any red flag or null","avoid":false}`
+Do NOT refuse because of missing data. Make a best guess pick.
+Reply ONLY with JSON: {"pick":"${team1} or ${team2} or SKIP","confidence":"high or medium or low","reasoning":"one sentence","injuries":"none","form":"brief note","edge":"brief note","warning":null,"avoid":false}`
 
   try {
     const message = await client.messages.create({
