@@ -3943,7 +3943,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         ))}
       </aside>
 
-      <div style={{ flex:1, padding:24, overflowY:"auto" }}>
+      <div style={{ flex:1, padding:24, overflowY:"auto", marginLeft:80 }}>
         <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:20, gap:16, flexWrap:"wrap" }}>
           <div>
             <div style={{ fontSize:22, fontWeight:800, color:"#fff", letterSpacing:"-0.01em" }}>Crypto</div>
