@@ -1697,17 +1697,25 @@ function closePositionInAccount(store, accountId, positionId, exitPrice, exitNot
   });
 }
 
-// Close a fraction of an open position. Cost basis (entryPrice) stays the same
-// for the remaining coins; proceeds go back to the account balance.
+// Close a fraction of an open position. Cost basis (entryPrice per coin) stays
+// the same for the remaining coins; amountUSD is scaled down proportionally so
+// stored cost-basis stays correct, and proceeds go back to the account balance.
 function partialClosePositionInAccount(store, accountId, positionId, exitPrice, percent, exitNotes = '') {
   if (!(exitPrice > 0) || !(percent > 0) || !(percent < 100)) return store;
   return updateAccountInStore(store, accountId, acc => {
     const pos = (acc.positions || []).find(p => p.id === positionId);
     if (!pos || pos.status !== 'open') return acc;
-    const closeCoins = pos.amount * (percent / 100);
-    const keepCoins = pos.amount - closeCoins;
+    const totalCoins = pos.amount;
+    const closeCoins = totalCoins * (percent / 100);
+    const keepCoins = totalCoins - closeCoins;
     const proceeds = closeCoins * exitPrice;
+    // P&L on the closed slice only.
     const pnl = (exitPrice - pos.entryPrice) * closeCoins;
+    // Scale stored cost basis proportionally to coins remaining. Fall back to
+    // entryPrice * totalCoins if amountUSD isn't on the position (older buys).
+    const originalAmountUSD = pos.amountUSD != null ? pos.amountUSD : pos.entryPrice * totalCoins;
+    const originalCostPerCoin = totalCoins > 0 ? originalAmountUSD / totalCoins : 0;
+    const remainingCostBasis = originalCostPerCoin * keepCoins;
     const nowIso = new Date().toISOString();
     const noteAddition = `Partial close ${percent}% at $${exitPrice} (P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})${exitNotes ? ' — ' + exitNotes : ''}`;
     return {
@@ -1717,6 +1725,7 @@ function partialClosePositionInAccount(store, accountId, positionId, exitPrice, 
         ? {
             ...p,
             amount: keepCoins,
+            amountUSD: remainingCostBasis,
             partialCloseCount: (p.partialCloseCount || 0) + 1,
             realizedPnl: (p.realizedPnl || 0) + pnl,
             exitNotes: (p.exitNotes ? p.exitNotes + ' | ' : '') + noteAddition,
