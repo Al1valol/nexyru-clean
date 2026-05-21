@@ -28,7 +28,7 @@ const PARLAYS_KEY = "sports_saved_parlays";
 const BOOK_LOG_KEY = "sports_book_log";
 
 // ──────────────────────── types ────────────────────────
-type Section = "best" | "arb" | "parlays" | "props" | "esports" | "bets" | "books";
+type Section = "best" | "arb" | "parlays" | "props" | "bets" | "books";
 
 type Outcome = { name: string; price: number };
 type Bookmaker = {
@@ -63,7 +63,7 @@ type Pick = {
 
 type PaperBet = {
   id: number;
-  type: "best-pick" | "arb" | "parlay" | "prop" | "esports";
+  type: "best-pick" | "arb" | "parlay" | "prop";
   sport: string;
   game: string;
   pick: string;
@@ -419,7 +419,6 @@ export default function SportsPage() {
     { id: "arb", icon: "💰", label: "Arb Finder" },
     { id: "parlays", icon: "🎰", label: "Parlays" },
     { id: "props", icon: "🏀", label: "Player Props" },
-    { id: "esports", icon: "🎮", label: "Esports" },
     { id: "bets", icon: "📋", label: "Paper Bets" },
     { id: "books", icon: "📚", label: "Book Health" },
   ];
@@ -604,9 +603,6 @@ export default function SportsPage() {
               onAddBet={openBetModal}
               onSwitchSection={setSection}
             />
-          )}
-          {section === "esports" && (
-            <EsportsPanel nowMs={nowMs} onAddBet={openBetModal} />
           )}
           {section === "bets" && (
             <PaperBetsPanel
@@ -1176,7 +1172,7 @@ function BestPicksPanel({
             Free tier resets monthly. 500 credits/month · Currently at limit.
           </div>
           <div style={{ fontSize: 13, color: C.textMuted }}>
-            Meanwhile use: Player Props (NBA/MLB stats) · Esports picks · Arb Finder (cached)
+            Meanwhile use: Player Props (NBA/MLB stats) · Arb Finder (cached)
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
             <button
@@ -1194,22 +1190,6 @@ function BestPicksPanel({
               }}
             >
               🏀 Player Props →
-            </button>
-            <button
-              onClick={() => onSwitchSection("esports")}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: `1px solid ${C.border}`,
-                background: "transparent",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-                minHeight: 36,
-              }}
-            >
-              🎮 Esports →
             </button>
           </div>
         </div>
@@ -2968,20 +2948,6 @@ function PlayerPropsPanel({
               📊 Season Average Picks →
             </button>
             <button
-              onClick={() => onSwitchSection("esports")}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: "1px solid #1e1e2a",
-                background: "transparent",
-                color: "#a5b4fc",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              🎮 Esports Picks →
-            </button>
-            <button
               onClick={() => onSwitchSection("best")}
               style={{
                 padding: "8px 16px",
@@ -3549,472 +3515,6 @@ function PlayerPropsPanel({
   );
 }
 
-// ──────────────────────── ESPORTS ────────────────────────
-type EsportMatch = {
-  id: number;
-  begin_at: string | null;
-  status: string;
-  bo: number;
-  tournament: string;
-  league: string;
-  isLive?: boolean;
-  opponents: {
-    id?: number;
-    name: string;
-    image?: string;
-    acronym?: string;
-    ranking?: number | null;
-  }[];
-};
-
-// /api/analyze-game returns this shape; "pick" is a team name or "SKIP".
-type EsportPrediction = {
-  pick: string;
-  confidence: "high" | "medium" | "low";
-  reasoning: string;
-  injuries?: string;
-  form?: string;
-  edge?: string;
-  warning?: string | null;
-  avoid?: boolean;
-};
-
-type EsportGame = "csgo" | "lol" | "valorant" | "dota2";
-
-const ESPORT_LABELS: Record<EsportGame, string> = {
-  csgo: "🔫 CS2",
-  lol: "⚔️ LoL",
-  valorant: "🎯 Valorant",
-  dota2: "🌿 Dota 2",
-};
-
-// Convert two PandaScore rankings into estimated American odds + win probs.
-// Lower rank number = better team. Unknown ranks fall back to 50 (mid-tier).
-function estimateOdds(r1?: number | null, r2?: number | null) {
-  const rank1 = !r1 || r1 >= 999 ? 50 : r1;
-  const rank2 = !r2 || r2 >= 999 ? 50 : r2;
-  const total = rank1 + rank2;
-  const prob1 = rank2 / total;
-  const prob2 = rank1 / total;
-  const toAmerican = (p: number) =>
-    p >= 0.5 ? Math.round((-100 * p) / (1 - p)) : Math.round((100 * (1 - p)) / p);
-  return {
-    odds1: toAmerican(prob1),
-    odds2: toAmerican(prob2),
-    prob1: Math.round(prob1 * 100),
-    prob2: Math.round(prob2 * 100),
-  };
-}
-
-function EsportsPanel({
-  nowMs,
-  onAddBet,
-}: {
-  nowMs: number;
-  onAddBet: (b: Omit<PaperBet, "id" | "placedAt" | "status">) => void;
-}) {
-  const [game, setGame] = useState<EsportGame>("csgo");
-  const [matches, setMatches] = useState<EsportMatch[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [predictions, setPredictions] = useState<Record<number, EsportPrediction>>({});
-  const [predicting, setPredicting] = useState<Set<number>>(new Set());
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Pull live + upcoming in parallel — live matches need an isLive flag so
-      // the UI can show 🔴 LIVE and a red border.
-      const [matchRes, liveRes] = await Promise.all([
-        fetch(`/api/esports?game=${game}&type=matches`),
-        fetch(`/api/esports?game=${game}&type=live`),
-      ]);
-      const matchBody = await matchRes.json().catch(() => null);
-      const liveBody = await liveRes.json().catch(() => null);
-      const live: EsportMatch[] = Array.isArray(liveBody?.data) ? liveBody.data : [];
-      const upcoming: EsportMatch[] = Array.isArray(matchBody?.data) ? matchBody.data : [];
-      const all: EsportMatch[] = [
-        ...live.map((m) => ({ ...m, isLive: true })),
-        ...upcoming,
-      ];
-      setMatches(all);
-      if (all.length === 0 && (matchBody?.error || liveBody?.error)) {
-        setError(matchBody?.error ?? liveBody?.error ?? "Failed to load matches");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error");
-      setMatches([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [game]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const predict = async (m: EsportMatch) => {
-    if (predicting.has(m.id) || predictions[m.id]) return;
-    if (m.opponents.length < 2) return;
-    setPredicting((prev) => new Set(prev).add(m.id));
-    try {
-      const t1 = m.opponents[0].name;
-      const t2 = m.opponents[1].name;
-      const odds = estimateOdds(m.opponents[0].ranking, m.opponents[1].ranking);
-      const r = await fetch("/api/analyze-game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          team1: t1,
-          team2: t2,
-          sport: game.toUpperCase(),
-          odds1: odds.odds1,
-          odds2: odds.odds2,
-          gameTime: m.begin_at,
-        }),
-      });
-      const data = await r.json();
-      if (r.ok) setPredictions((prev) => ({ ...prev, [m.id]: data as EsportPrediction }));
-    } finally {
-      setPredicting((prev) => {
-        const n = new Set(prev);
-        n.delete(m.id);
-        return n;
-      });
-    }
-  };
-
-  // Rank-based verdict — if both teams have a ranking, use the gap to decide.
-  // Without ranking data (which PandaScore only sometimes returns), default
-  // to acronym presence as a weak tier proxy.
-  const verdict = (m: EsportMatch): { label: string; color: string } => {
-    if (m.opponents.length < 2) return { label: "TBD", color: C.textMuted };
-    const r1 = m.opponents[0].ranking;
-    const r2 = m.opponents[1].ranking;
-    const hasRanks = r1 != null && r2 != null && r1 < 999 && r2 < 999;
-    if (hasRanks) {
-      const diff = Math.abs(r1! - r2!);
-      if (diff > 20) return { label: "BET FAVORITE", color: C.green };
-      if (diff > 10) return { label: "LEAN FAVORITE", color: "#86efac" };
-      if (diff > 5) return { label: "SLIGHT EDGE", color: C.amber };
-      return { label: "COIN FLIP", color: C.textMuted };
-    }
-    const aTier = m.opponents[0].acronym ? 1 : 0;
-    const bTier = m.opponents[1].acronym ? 1 : 0;
-    if (aTier === bTier) return { label: "COIN FLIP", color: C.textMuted };
-    return { label: "SLIGHT EDGE", color: C.amber };
-  };
-
-  const sites = [
-    { name: "Betway", url: "https://betway.com/esports", color: "#00a651" },
-    { name: "GG.bet", url: "https://gg.bet", color: "#ff6b00" },
-    { name: "Pinnacle", url: "https://pinnacle.com/esports", color: "#e63946" },
-  ];
-
-  return (
-    <>
-      <SectionHeader
-        title="🎮 Esports"
-        subtitle="Live and upcoming pro matches. Estimated odds and AI predictions."
-        right={<RefreshButton loading={loading} onClick={load} />}
-      />
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        {(["csgo", "lol", "valorant", "dota2"] as const).map((g) => (
-          <button
-            key={g}
-            onClick={() => {
-              setGame(g);
-              setMatches([]);
-              setPredictions({});
-            }}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              border: `1px solid ${game === g ? C.accent : C.border}`,
-              background: game === g ? "rgba(99,102,241,0.15)" : "transparent",
-              color: game === g ? "#a5b4fc" : C.textMuted,
-              fontSize: 12,
-              fontWeight: game === g ? 700 : 400,
-              cursor: "pointer",
-              minHeight: 40,
-            }}
-          >
-            {ESPORT_LABELS[g]}
-          </button>
-        ))}
-      </div>
-
-      {error && <ErrorBox>{error}</ErrorBox>}
-      {loading && !error && (
-        <div style={{ color: C.textMuted, padding: 32, textAlign: "center" }}>Loading matches…</div>
-      )}
-      {!loading && matches.length === 0 && !error && (
-        <div
-          style={{
-            color: C.textMuted,
-            padding: 32,
-            textAlign: "center",
-            background: C.card,
-            borderRadius: 12,
-          }}
-        >
-          No upcoming {ESPORT_LABELS[game].replace(/^[^A-Za-z]+/, "").trim()} matches found.
-        </div>
-      )}
-
-      <div style={{ display: "grid", gap: 12 }}>
-        {matches.map((m) => {
-          const v = verdict(m);
-          const t1 = m.opponents[0]?.name ?? "TBD";
-          const t2 = m.opponents[1]?.name ?? "TBD";
-          const r1 = m.opponents[0]?.ranking ?? null;
-          const r2 = m.opponents[1]?.ranking ?? null;
-          const odds = estimateOdds(r1, r2);
-          const cd = m.begin_at ? countdown(m.begin_at, nowMs) : { label: "TBD", live: false };
-          const isLive = m.isLive || cd.live;
-          const timeLabel = isLive ? "🔴 LIVE" : cd.label;
-          const pred = predictions[m.id];
-
-          const aiPick = pred && !pred.avoid && pred.pick !== "SKIP" ? pred.pick : null;
-          const aiOdds = aiPick === t1 ? odds.odds1 : aiPick === t2 ? odds.odds2 : -110;
-
-          const addAiBet = () => {
-            if (!aiPick) return;
-            onAddBet({
-              type: "esports",
-              sport: ESPORT_LABELS[game].replace(/^[^A-Za-z]+/, "").trim(),
-              game: `${t1} vs ${t2}`,
-              pick: `${aiPick} to win`,
-              odds: aiOdds,
-              book: "Betway",
-              stake: 100,
-              potWin: payoutOn(100, aiOdds),
-              notes: pred?.reasoning ?? "",
-            });
-            alert(`✅ Bet on ${aiPick} added to paper bets!`);
-          };
-
-          return (
-            <div
-              key={m.id}
-              style={{
-                background: C.card,
-                border: `1px solid ${isLive ? "rgba(239,68,68,0.3)" : C.border}`,
-                borderRadius: 12,
-                padding: 16,
-              }}
-            >
-              {/* Header row */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
-                <div style={{ fontSize: 11, color: C.textMuted, minWidth: 0 }}>
-                  {m.tournament || m.league || "—"} · BO{m.bo || "?"}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: isLive ? C.red : C.textMuted, fontWeight: isLive ? 700 : 400 }}>
-                    {timeLabel}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "3px 8px",
-                      borderRadius: 4,
-                      background: `${v.color}18`,
-                      color: v.color,
-                    }}
-                  >
-                    {v.label}
-                  </span>
-                </div>
-              </div>
-
-              {/* Two-column teams + estimated odds */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                {[
-                  { name: t1, odds: odds.odds1, prob: odds.prob1, rank: r1 },
-                  { name: t2, odds: odds.odds2, prob: odds.prob2, rank: r2 },
-                ].map((team, i) => (
-                  <div
-                    key={i}
-                    style={{ background: "#1a1a24", borderRadius: 8, padding: 12, textAlign: "center" }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 4 }}>
-                      {team.name}
-                    </div>
-                    {team.rank && team.rank < 999 ? (
-                      <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 4 }}>Rank #{team.rank}</div>
-                    ) : null}
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontWeight: 800,
-                        color: team.odds > 0 ? C.green : "#fff",
-                      }}
-                    >
-                      {team.odds > 0 ? "+" : ""}
-                      {team.odds}
-                    </div>
-                    <div style={{ fontSize: 11, color: C.textMuted }}>{team.prob}% to win</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* AI Prediction result */}
-              {pred && (
-                <div
-                  style={{
-                    background: "rgba(99,102,241,0.05)",
-                    border: "1px solid rgba(99,102,241,0.2)",
-                    borderRadius: 8,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#a5b4fc" }}>
-                      🏆 AI picks {pred.pick}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "2px 6px",
-                        borderRadius: 4,
-                        background:
-                          pred.confidence === "high"
-                            ? "rgba(34,197,94,0.15)"
-                            : pred.confidence === "medium"
-                              ? "rgba(245,158,11,0.15)"
-                              : "rgba(107,114,128,0.15)",
-                        color:
-                          pred.confidence === "high"
-                            ? C.green
-                            : pred.confidence === "medium"
-                              ? C.amber
-                              : C.textMuted,
-                      }}
-                    >
-                      {pred.confidence?.toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "#d1d5db", lineHeight: 1.5 }}>
-                    {pred.reasoning}
-                  </div>
-                  {aiPick && (
-                    <button
-                      onClick={addAiBet}
-                      style={{
-                        marginTop: 8,
-                        padding: "7px 14px",
-                        borderRadius: 6,
-                        border: "none",
-                        background: C.accent,
-                        color: "#fff",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        minHeight: 36,
-                      }}
-                    >
-                      + Paper Bet on {aiPick}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* AI predict button */}
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => predict(m)}
-                  disabled={predicting.has(m.id) || !!pred || m.opponents.length < 2}
-                  style={{
-                    flex: 1,
-                    padding: 8,
-                    borderRadius: 8,
-                    border: "1px solid rgba(99,102,241,0.4)",
-                    background: "rgba(99,102,241,0.08)",
-                    color: pred ? "#4b5563" : "#a5b4fc",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: pred ? "default" : "pointer",
-                    minHeight: 36,
-                  }}
-                >
-                  {predicting.has(m.id) ? "🔍 Predicting…" : pred ? "✓ Predicted" : "✦ AI Predict"}
-                </button>
-              </div>
-
-              {/* Betting sites */}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
-                {sites.map((s) => (
-                  <a
-                    key={s.name}
-                    href={s.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      background: `${s.color}15`,
-                      border: `1px solid ${s.color}40`,
-                      color: s.color,
-                      textDecoration: "none",
-                    }}
-                  >
-                    {s.name} →
-                  </a>
-                ))}
-                <div style={{ fontSize: 10, color: "#4b5563", alignSelf: "center" }}>
-                  Verify odds on site before betting
-                </div>
-              </div>
-
-              {/* Player Prop Sites */}
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #1e1e2a" }}>
-                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>
-                  🎯 Bet on Player Stats (Kills, Assists, Maps Won):
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {[
-                    { name: "Betway Esports", url: "https://betway.com/en/sports/grp/esports", color: "#00a651" },
-                    { name: "GG.bet Props", url: "https://gg.bet/en/esports", color: "#ff6b00" },
-                    { name: "Pinnacle Esports", url: "https://www.pinnacle.com/en/esports/matchups", color: "#e63946" },
-                    { name: "Unikrn", url: "https://unikrn.com", color: "#7c3aed" },
-                  ].map((site) => (
-                    <a
-                      key={site.name}
-                      href={site.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        padding: "5px 10px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        background: `${site.color}15`,
-                        border: `1px solid ${site.color}40`,
-                        color: site.color,
-                        textDecoration: "none",
-                      }}
-                    >
-                      {site.name} →
-                    </a>
-                  ))}
-                </div>
-                <div style={{ fontSize: 10, color: "#4b5563", marginTop: 6 }}>
-                  These sites offer player kill counts, map wins, and match props for {game.toUpperCase()}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </>
-  );
-}
 
 // ──────────────────────── PAPER BETS ────────────────────────
 // Pick a sport-appropriate scoreboard/results site for the "check result" link.
