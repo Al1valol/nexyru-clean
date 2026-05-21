@@ -293,11 +293,46 @@ export default function SportsPage() {
   const paper = usePaperBets();
   const isMobile = useIsMobile();
   const [flash, setFlash] = useState<string | null>(null);
+  const [defaultStake, setDefaultStake] = useState<number>(100);
+  const [betModal, setBetModal] = useState<Omit<PaperBet, "id" | "placedAt" | "status" | "stake" | "potWin"> | null>(null);
+  const [betStakeInput, setBetStakeInput] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ds = parseFloat(localStorage.getItem("sports_default_stake") || "");
+    if (!isNaN(ds)) setDefaultStake(ds);
+  }, []);
+
+  const persistDefaultStake = (n: number) => {
+    setDefaultStake(n);
+    if (typeof window !== "undefined") localStorage.setItem("sports_default_stake", String(n));
+  };
 
   const notify = useCallback((msg: string) => {
     setFlash(msg);
     setTimeout(() => setFlash(null), 2500);
   }, []);
+
+  const openBetModal = useCallback(
+    (b: Omit<PaperBet, "id" | "placedAt" | "status">) => {
+      const { stake, potWin, ...rest } = b;
+      setBetModal(rest);
+      setBetStakeInput(String(stake || defaultStake));
+    },
+    [defaultStake],
+  );
+
+  const confirmBet = () => {
+    if (!betModal) return;
+    const stake = parseFloat(betStakeInput) || defaultStake;
+    const potWin =
+      stake * (betModal.odds > 0 ? betModal.odds / 100 : 100 / Math.abs(betModal.odds));
+    paper.add({ ...betModal, stake, potWin });
+    setBankroll((prev) => Math.max(0, prev - stake));
+    setBetModal(null);
+    setSection("bets");
+    notify(`✓ ${betModal.pick}`);
+  };
 
   // Shared odds load
   const [games, setGames] = useState<Game[] | null>(null);
@@ -543,11 +578,7 @@ export default function SportsPage() {
               onRefresh={loadOdds}
               nowMs={nowMs}
               onSwitchSection={setSection}
-              onAddBet={(b) => {
-                paper.add(b);
-                setBankroll((prev) => Math.max(0, prev - b.stake));
-                notify(`✓ ${b.pick} added to paper bets`);
-              }}
+              onAddBet={openBetModal}
             />
           )}
           {section === "arb" && (
@@ -565,32 +596,17 @@ export default function SportsPage() {
               loading={oddsLoading}
               error={oddsError}
               onRefresh={loadOdds}
-              onAddBet={(b) => {
-                paper.add(b);
-                setBankroll((prev) => Math.max(0, prev - b.stake));
-                notify("✓ Parlay added to paper bets");
-              }}
+              onAddBet={openBetModal}
             />
           )}
           {section === "props" && (
             <PlayerPropsPanel
-              onAddBet={(b) => {
-                paper.add(b);
-                setBankroll((prev) => Math.max(0, prev - b.stake));
-                notify(`✓ ${b.pick}`);
-              }}
+              onAddBet={openBetModal}
               onSwitchSection={setSection}
             />
           )}
           {section === "esports" && (
-            <EsportsPanel
-              nowMs={nowMs}
-              onAddBet={(b) => {
-                paper.add(b);
-                setBankroll((prev) => Math.max(0, prev - b.stake));
-                notify("✓ Esports bet logged");
-              }}
-            />
+            <EsportsPanel nowMs={nowMs} onAddBet={openBetModal} />
           )}
           {section === "bets" && (
             <PaperBetsPanel
@@ -600,6 +616,8 @@ export default function SportsPage() {
               update={paper.update}
               remove={paper.remove}
               onNotify={notify}
+              defaultStake={defaultStake}
+              setDefaultStake={persistDefaultStake}
             />
           )}
           {section === "books" && (
@@ -648,6 +666,122 @@ export default function SportsPage() {
             </button>
           ))}
         </nav>
+      )}
+
+      {/* Bet stake modal */}
+      {betModal && (
+        <>
+          <div
+            onClick={() => setBetModal(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000 }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%,-50%)",
+              zIndex: 2001,
+              background: "#111",
+              border: "1px solid #1e1e2a",
+              borderRadius: 16,
+              padding: 24,
+              width: 360,
+              maxWidth: "90vw",
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Place Paper Bet</div>
+            <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>{betModal.pick}</div>
+
+            <div style={{ background: "#1a1a24", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 2 }}>Game</div>
+              <div style={{ fontSize: 13, color: "#fff" }}>{betModal.game}</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, marginBottom: 2 }}>Odds</div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: betModal.odds > 0 ? "#22c55e" : "#fff",
+                }}
+              >
+                {betModal.odds > 0 ? "+" : ""}
+                {betModal.odds}
+              </div>
+            </div>
+
+            <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>
+              Stake ($)
+            </label>
+            <input
+              value={betStakeInput}
+              onChange={(e) => setBetStakeInput(e.target.value)}
+              type="number"
+              placeholder="Enter stake amount"
+              onKeyDown={(e) => e.key === "Enter" && confirmBet()}
+              style={{
+                width: "100%",
+                padding: "12px",
+                borderRadius: 8,
+                border: "1px solid #1e1e2a",
+                background: "#1a1a24",
+                color: "#fff",
+                fontSize: 16,
+                fontWeight: 700,
+                outline: "none",
+                boxSizing: "border-box",
+                marginBottom: 8,
+              }}
+              autoFocus
+            />
+
+            {betStakeInput && parseFloat(betStakeInput) > 0 && (
+              <div style={{ fontSize: 13, color: "#22c55e", marginBottom: 16, fontWeight: 600 }}>
+                If wins: +$
+                {(
+                  parseFloat(betStakeInput) *
+                  (betModal.odds > 0
+                    ? betModal.odds / 100
+                    : 100 / Math.abs(betModal.odds))
+                ).toFixed(2)}{" "}
+                profit
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setBetModal(null)}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  borderRadius: 8,
+                  border: "1px solid #1e1e2a",
+                  background: "transparent",
+                  color: "#fff",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmBet}
+                style={{
+                  flex: 2,
+                  padding: "10px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "#6366f1",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Place Bet →
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -3890,6 +4024,8 @@ function PaperBetsPanel({
   update,
   remove,
   onNotify,
+  defaultStake,
+  setDefaultStake,
 }: {
   bets: PaperBet[];
   bankroll: number;
@@ -3897,9 +4033,10 @@ function PaperBetsPanel({
   update: (id: number, patch: Partial<PaperBet>) => void;
   remove: (id: number) => void;
   onNotify: (m: string) => void;
+  defaultStake: number;
+  setDefaultStake: (n: number) => void;
 }) {
   const [startingBankroll, setStartingBankrollState] = useState<number>(1000);
-  const [defaultStake, setDefaultStakeState] = useState<number>(100);
   const [showSetup, setShowSetup] = useState(false);
   const [betFilter, setBetFilter] = useState<"all" | "pending" | "won" | "lost">("all");
   const [setupBankroll, setSetupBankroll] = useState("");
@@ -3908,19 +4045,13 @@ function PaperBetsPanel({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sb = parseFloat(localStorage.getItem("sports_starting_bankroll") || "");
-    const ds = parseFloat(localStorage.getItem("sports_default_stake") || "");
     if (!isNaN(sb)) setStartingBankrollState(sb);
-    if (!isNaN(ds)) setDefaultStakeState(ds);
   }, []);
 
   const persistStartingBankroll = (n: number) => {
     setStartingBankrollState(n);
     if (typeof window !== "undefined")
       localStorage.setItem("sports_starting_bankroll", String(n));
-  };
-  const persistDefaultStake = (n: number) => {
-    setDefaultStakeState(n);
-    if (typeof window !== "undefined") localStorage.setItem("sports_default_stake", String(n));
   };
 
   const settleBet = (id: number, result: "won" | "lost" | "void" | "push") => {
@@ -4081,7 +4212,7 @@ function PaperBetsPanel({
                   const ns = parseFloat(setupStake) || defaultStake;
                   persistStartingBankroll(nb);
                   setBankroll(nb);
-                  persistDefaultStake(ns);
+                  setDefaultStake(ns);
                   setShowSetup(false);
                   setSetupBankroll("");
                   setSetupStake("");
@@ -4372,6 +4503,28 @@ function PaperBetsPanel({
                 </div>
               </div>
             </div>
+
+            {bet.status === "pending" && (
+              <a
+                href={`https://www.espn.com/search/results?q=${encodeURIComponent(bet.game)}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: "block",
+                  textAlign: "center",
+                  padding: "6px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(59,130,246,0.3)",
+                  background: "rgba(59,130,246,0.05)",
+                  color: "#60a5fa",
+                  fontSize: 11,
+                  textDecoration: "none",
+                  marginBottom: 8,
+                }}
+              >
+                🔍 Check Result on ESPN →
+              </a>
+            )}
 
             {bet.status === "pending" && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
