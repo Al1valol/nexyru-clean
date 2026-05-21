@@ -2402,6 +2402,9 @@ function PlayerPropsPanel({
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const [deepDives, setDeepDives] = useState<Record<string, any>>({});
   const [deepDiving, setDeepDiving] = useState<Record<string, boolean>>({});
+  const [propsMode, setPropsMode] = useState<"avg" | "real">("avg");
+  const [realPropLines, setRealPropLines] = useState<any[]>([]);
+  const [realPropsLoading, setRealPropsLoading] = useState(false);
 
   const deepDive = async (
     id: string,
@@ -2570,6 +2573,107 @@ function PlayerPropsPanel({
     }
   };
 
+  const fetchRealProps = useCallback(async () => {
+    setRealPropsLoading(true);
+    try {
+      const apiSport = sport === "nba" ? "basketball_nba" : "baseball_mlb";
+      const res = await fetch(`/api/player-props?sport=${apiSport}`);
+      const data = await res.json();
+      const props: any[] = [];
+      (data.games || []).forEach((game: any) => {
+        game.bookmakers?.forEach((bk: any) => {
+          bk.markets?.forEach((market: any) => {
+            const playerGroups: Record<string, any[]> = {};
+            market.outcomes?.forEach((outcome: any) => {
+              const key = `${outcome.description}_${market.key}`;
+              if (!playerGroups[key]) playerGroups[key] = [];
+              playerGroups[key].push({ ...outcome, book: bk.title });
+            });
+            Object.entries(playerGroups).forEach(([key, outcomes]) => {
+              const over = outcomes.find((o) => o.name === "Over");
+              const under = outcomes.find((o) => o.name === "Under");
+              if (!over && !under) return;
+              const player = outcomes[0]?.description || "";
+              const line = over?.point ?? under?.point;
+              const marketLabel = market.key
+                .replace("batter_", "")
+                .replace("pitcher_", "")
+                .replace("player_", "")
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (l: string) => l.toUpperCase());
+              props.push({
+                id: key + "_" + bk.key,
+                player,
+                line,
+                marketLabel,
+                game: `${game.home_team} vs ${game.away_team}`,
+                sport: game.sport_key,
+                overOdds: over?.price,
+                underOdds: under?.price,
+                overBook: over?.book || bk.title,
+                underBook: under?.book || bk.title,
+                gameTime: game.commence_time,
+              });
+            });
+          });
+        });
+      });
+      setRealPropLines(props);
+    } catch (e) {}
+    setRealPropsLoading(false);
+  }, [sport]);
+
+  useEffect(() => {
+    if (propsMode === "real") fetchRealProps();
+  }, [propsMode, sport, fetchRealProps]);
+
+  // Score a real-line prop 0-100 against our season-avg player data.
+  const scoreRealProp = (prop: any) => {
+    const isNba = prop.sport?.includes("basketball");
+    const players: any[] = isNba ? nba : mlb;
+    const playerName = (prop.player || "").toLowerCase();
+    const player = players.find((p: any) => {
+      const name = (p.name || "").toLowerCase();
+      const lastName = name.split(" ").slice(-1)[0] || "";
+      return name.includes(playerName) || (lastName && playerName.includes(lastName));
+    });
+    if (!player) return { score: 50, pick: null as null | "OVER" | "UNDER", avg: null as number | null, edgePct: 0 };
+
+    const label = prop.marketLabel || "";
+    const avg = isNba
+      ? label.includes("Point")
+        ? player.ppg
+        : label.includes("Rebound")
+          ? player.rpg
+          : label.includes("Assist")
+            ? player.apg
+            : null
+      : label.includes("Hit")
+        ? (player.hits || 0) / 162
+        : label.includes("Home")
+          ? (player.homeRuns || 0) / 162
+          : label.toLowerCase().includes("rbi")
+            ? (player.rbi || 0) / 162
+            : null;
+
+    if (!avg || prop.line == null)
+      return { score: 50, pick: null as null | "OVER" | "UNDER", avg, edgePct: 0 };
+    const diff = avg - prop.line;
+    const edgePct = Math.abs((diff / avg) * 100);
+    const pick: "OVER" | "UNDER" = diff > 0 ? "OVER" : "UNDER";
+    const score = Math.min(100, Math.round(50 + edgePct * 2));
+    return { score, pick, avg, diff, edgePct };
+  };
+
+  const scoredRealProps = useMemo(
+    () =>
+      realPropLines
+        .map((p) => ({ ...p, ...scoreRealProp(p) }))
+        .sort((a, b) => b.score - a.score),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [realPropLines, nba, mlb],
+  );
+
   return (
     <>
       <SectionHeader
@@ -2577,6 +2681,31 @@ function PlayerPropsPanel({
         subtitle="Ranked by statistical edge vs standard prop lines"
         right={<RefreshButton loading={loading} onClick={load} />}
       />
+
+      {/* Mode toggle */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        {[
+          { id: "avg" as const, label: "📊 Season Average Picks" },
+          { id: "real" as const, label: "🎯 Real Lines" },
+        ].map((m) => (
+          <button
+            key={m.id}
+            onClick={() => setPropsMode(m.id)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 999,
+              border: `1px solid ${propsMode === m.id ? C.accent : C.border}`,
+              background: propsMode === m.id ? "rgba(99,102,241,0.15)" : "transparent",
+              color: propsMode === m.id ? "#a5b4fc" : C.textMuted,
+              fontSize: 12,
+              fontWeight: propsMode === m.id ? 700 : 500,
+              cursor: "pointer",
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
 
       {/* Sport filter pills */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
@@ -2604,6 +2733,7 @@ function PlayerPropsPanel({
         ))}
       </div>
 
+      {propsMode === "avg" && (<>
       {/* NBA search */}
       {(sport === "all" || sport === "nba") && (
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -2908,6 +3038,199 @@ function PlayerPropsPanel({
             );
           })}
       </div>
+      </>)}
+
+      {propsMode === "real" && (
+        <>
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "rgba(34,197,94,0.06)",
+              border: "1px solid rgba(34,197,94,0.18)",
+              color: "#86efac",
+              fontSize: 12,
+              marginBottom: 12,
+            }}
+          >
+            🎯 Real prop lines pulled live from US sportsbooks. Compared against season averages
+            where available.
+          </div>
+
+          {realPropsLoading && (
+            <div style={{ color: C.textMuted, padding: 32, textAlign: "center" }}>
+              Loading real prop lines…
+            </div>
+          )}
+
+          {!realPropsLoading && scoredRealProps.length === 0 && (
+            <div
+              style={{
+                color: C.textMuted,
+                padding: 32,
+                textAlign: "center",
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+              }}
+            >
+              No real prop lines available right now. Markets open closer to game time.
+            </div>
+          )}
+
+          {!realPropsLoading && scoredRealProps.length > 0 && (
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12, fontWeight: 600 }}>
+              {scoredRealProps.length} real prop line{scoredRealProps.length === 1 ? "" : "s"} found
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {scoredRealProps.map((p) => {
+              const scoreColor =
+                p.score >= 75
+                  ? C.green
+                  : p.score >= 55
+                    ? C.blue
+                    : p.score >= 35
+                      ? C.amber
+                      : C.textMuted;
+              const pickColor = p.pick === "OVER" ? C.green : p.pick === "UNDER" ? C.red : C.textMuted;
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 12,
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{p.player}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                        {p.game} · {p.marketLabel}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>
+                        {p.score}
+                      </div>
+                      <div style={{ fontSize: 9, color: C.textMuted }}>/ 100</div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10, marginBottom: 10, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>LINE</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "#fff" }}>{p.line ?? "—"}</div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                    <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>
+                        OVER · {p.overBook || "—"}
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: C.green }}>
+                        {p.overOdds != null ? `${p.overOdds > 0 ? "+" : ""}${p.overOdds}` : "—"}
+                      </div>
+                    </div>
+                    <div style={{ background: "#1a1a24", borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2 }}>
+                        UNDER · {p.underBook || "—"}
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: C.red }}>
+                        {p.underOdds != null ? `${p.underOdds > 0 ? "+" : ""}${p.underOdds}` : "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {p.avg != null && p.pick && (
+                    <div style={{ fontSize: 11.5, color: C.textMuted, marginBottom: 8 }}>
+                      Season avg: <strong style={{ color: C.text }}>{p.avg.toFixed(2)}</strong> · Recommendation:{" "}
+                      <strong style={{ color: pickColor }}>{p.pick}</strong>
+                      {p.edgePct ? <> · {p.edgePct.toFixed(0)}% edge</> : null}
+                    </div>
+                  )}
+                  {p.avg == null && (
+                    <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 8 }}>
+                      No season-average data for this player.
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() =>
+                        onAddBet({
+                          type: "prop",
+                          sport: p.sport?.includes("basketball") ? "NBA" : "MLB",
+                          game: `${p.player} — ${p.marketLabel}`,
+                          pick: `OVER ${p.line} ${p.marketLabel}`,
+                          odds: p.overOdds ?? -110,
+                          book: p.overBook || "Book",
+                          stake: 100,
+                          potWin: payoutOn(100, p.overOdds ?? -110),
+                          notes: `Real line ${p.line} at ${p.overBook}`,
+                        })
+                      }
+                      disabled={p.overOdds == null}
+                      style={{
+                        flex: 1,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${C.border}`,
+                        background: p.overOdds == null ? C.card2 : "rgba(34,197,94,0.08)",
+                        color: p.overOdds == null ? C.textMuted : C.green,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: p.overOdds == null ? "default" : "pointer",
+                        minHeight: 36,
+                      }}
+                    >
+                      + Paper Bet OVER
+                    </button>
+                    <button
+                      onClick={() =>
+                        onAddBet({
+                          type: "prop",
+                          sport: p.sport?.includes("basketball") ? "NBA" : "MLB",
+                          game: `${p.player} — ${p.marketLabel}`,
+                          pick: `UNDER ${p.line} ${p.marketLabel}`,
+                          odds: p.underOdds ?? -110,
+                          book: p.underBook || "Book",
+                          stake: 100,
+                          potWin: payoutOn(100, p.underOdds ?? -110),
+                          notes: `Real line ${p.line} at ${p.underBook}`,
+                        })
+                      }
+                      disabled={p.underOdds == null}
+                      style={{
+                        flex: 1,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${C.border}`,
+                        background: p.underOdds == null ? C.card2 : "rgba(239,68,68,0.08)",
+                        color: p.underOdds == null ? C.textMuted : C.red,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: p.underOdds == null ? "default" : "pointer",
+                        minHeight: 36,
+                      }}
+                    >
+                      + Paper Bet UNDER
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </>
   );
 }
