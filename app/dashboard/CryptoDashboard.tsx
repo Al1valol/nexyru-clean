@@ -4671,6 +4671,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             {label:'📈 Trading', href:'/dashboard', active: false},
             {label:'🪙 Crypto', href:'/crypto', active: true},
             {label:'🎰 Sports', href:'/sports', active: false},
+            {label:'📊 Options', href:'/options', active: false},
             {label:'⬡ JARVIS', href:'/morning', active: false},
           ].map(link => (
             <a key={link.href} href={link.href} style={{

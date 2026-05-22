@@ -8446,6 +8446,7 @@ function TradingDashboard({ session, onLogout }) {
               {label:'📈 Trading', href:'/dashboard', active: true},
               {label:'🪙 Crypto', href:'/crypto', active: false},
               {label:'🎰 Sports', href:'/sports', active: false},
+              {label:'📊 Options', href:'/options', active: false},
               {label:'⬡ JARVIS', href:'/morning', active: false},
             ].map(link => (
               <a key={link.href} href={link.href} style={{
@@ -8612,6 +8613,7 @@ function TradingDashboard({ session, onLogout }) {
               <a href="/dashboard" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#fff", background:"rgba(255,255,255,0.1)", textDecoration:"none", whiteSpace:"nowrap" }}>📈 Trading</a>
               <a href="/crypto" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🪙 Crypto</a>
               <a href="/sports" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🎰 Sports</a>
+              <a href="/options" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>📊 Options</a>
             </div>
           )}
 

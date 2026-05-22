@@ -507,6 +507,7 @@ export default function SportsPage() {
               {label:'📈 Trading', href:'/dashboard', active: false},
               {label:'🪙 Crypto', href:'/crypto', active: false},
               {label:'🎰 Sports', href:'/sports', active: true},
+              {label:'📊 Options', href:'/options', active: false},
               {label:'⬡ JARVIS', href:'/morning', active: false},
             ].map(link => (
               <a key={link.href} href={link.href} style={{
@@ -575,6 +576,23 @@ export default function SportsPage() {
               }}
             >
               ← Dashboard
+            </a>
+          )}
+          {!isMobile && (
+            <a
+              href="/options"
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                color: C.textDim,
+                fontSize: 12,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              📊 Options
             </a>
           )}
           <a
