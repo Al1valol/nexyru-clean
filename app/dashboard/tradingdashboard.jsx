@@ -8622,7 +8622,7 @@ function TradingDashboard({ session, onLogout }) {
 
         {/* ── Page content ── */}
         {appMode === 'trading' && (
-        <main style={{ flex:1, padding:"24px", paddingTop:16, paddingBottom: isMobile ? 70 : 0, background:"#0a0a0f" }}>
+        <main style={{ flex:1, padding:"24px", paddingTop:16, paddingBottom: isMobile ? 80 : 0, background:"#0a0a0f" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
             <DemoBanner username={session.username} onClear={() => {
               setDemoMode(session.username, false);
@@ -8741,11 +8741,11 @@ function TradingDashboard({ session, onLogout }) {
       )}
 
       {isMobile && (
-        <nav style={{
+        <div style={{
           position:'fixed', bottom:0, left:0, right:0, zIndex:200,
           background:'#0a0a0f', borderTop:'1px solid #1e1e2a',
-          display:'flex', height:60,
-          paddingBottom:'env(safe-area-inset-bottom)'
+          display:'flex', paddingBottom:'env(safe-area-inset-bottom)',
+          height:70
         }}>
           {[
             { icon:'📊', label:'Dashboard', mode:'dashboard' },
@@ -8758,17 +8758,21 @@ function TradingDashboard({ session, onLogout }) {
             const onClick = item.mode ? () => setTab(item.mode) : () => { window.location.href = item.href; };
             return (
               <button key={item.label} onClick={onClick} style={{
-                flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                border:'none', background:'transparent', gap:2, cursor:'pointer',
-                color: active ? '#a5b4fc' : '#4b5563',
-                minHeight:44,
+                flex:1, display:'flex', flexDirection:'column',
+                alignItems:'center', justifyContent:'center',
+                border:'none', background:'transparent',
+                gap:3, cursor:'pointer', padding:'8px 4px',
+                borderTop: active ? '2px solid #6366f1' : '2px solid transparent',
               }}>
-                <span style={{fontSize:18}}>{item.icon}</span>
-                <span style={{fontSize:9, fontWeight: active ? 700 : 400}}>{item.label}</span>
+                <span style={{fontSize:22}}>{item.icon}</span>
+                <span style={{
+                  fontSize:10, fontWeight: active ? 700 : 400,
+                  color: active ? '#a5b4fc' : '#4b5563'
+                }}>{item.label}</span>
               </button>
             );
           })}
-        </nav>
+        </div>
       )}
     </div>
   );

@@ -4679,7 +4679,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         ))}
       </aside>
 
-      <div style={{ flex:1, padding: isMobile ? 12 : 24, overflowY:"auto", marginLeft: isMobile ? 0 : 80, paddingBottom: isMobile ? 70 : 0 }}>
+      <div style={{ flex:1, padding: isMobile ? 12 : 24, overflowY:"auto", marginLeft: isMobile ? 0 : 80, paddingBottom: isMobile ? 80 : 0 }}>
         <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom: isMobile ? 12 : 20, gap: isMobile ? 8 : 16, flexWrap:"wrap" }}>
           <div>
             <div style={{ fontSize: isMobile ? 16 : 22, fontWeight:800, color:"#fff", letterSpacing:"-0.01em" }}>Crypto</div>
@@ -4709,24 +4709,28 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
       </div>
 
       {isMobile && (
-        <nav style={{
+        <div style={{
           position:'fixed', bottom:0, left:0, right:0, zIndex:200,
           background:'#0a0a0f', borderTop:'1px solid #1e1e2a',
-          display:'flex', height:60,
-          paddingBottom:'env(safe-area-inset-bottom)'
+          display:'flex', paddingBottom:'env(safe-area-inset-bottom)',
+          height:70
         }}>
           {cryptoMobileItems.map(item => (
             <button key={item.id} onClick={() => setCryptoSection(item.id)} style={{
-              flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-              border:'none', background:'transparent', gap:2, cursor:'pointer',
-              color: cryptoSection===item.id ? '#a5b4fc' : '#4b5563',
-              minHeight:44,
+              flex:1, display:'flex', flexDirection:'column',
+              alignItems:'center', justifyContent:'center',
+              border:'none', background:'transparent',
+              gap:3, cursor:'pointer', padding:'8px 4px',
+              borderTop: cryptoSection===item.id ? '2px solid #6366f1' : '2px solid transparent',
             }}>
-              <span style={{fontSize:18}}>{item.icon}</span>
-              <span style={{fontSize:9, fontWeight: cryptoSection===item.id ? 700 : 400}}>{item.label}</span>
+              <span style={{fontSize:22}}>{item.icon}</span>
+              <span style={{
+                fontSize:10, fontWeight: cryptoSection===item.id ? 700 : 400,
+                color: cryptoSection===item.id ? '#a5b4fc' : '#4b5563'
+              }}>{item.label}</span>
             </button>
           ))}
-        </nav>
+        </div>
       )}
     </>
   );

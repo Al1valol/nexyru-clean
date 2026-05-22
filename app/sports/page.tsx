@@ -480,7 +480,7 @@ export default function SportsPage() {
       )}
 
       {/* Main */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: isMobile ? 64 : 0 }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: isMobile ? 80 : 0 }}>
         {/* Top bar */}
         <header
           style={{
@@ -633,18 +633,18 @@ export default function SportsPage() {
 
       {/* Mobile bottom nav */}
       {isMobile && (
-        <nav
+        <div
           style={{
             position: "fixed",
             bottom: 0,
             left: 0,
             right: 0,
-            height: 60,
+            zIndex: 200,
             background: "#0a0a0f",
             borderTop: `1px solid ${C.border}`,
             display: "flex",
-            zIndex: 200,
             paddingBottom: "env(safe-area-inset-bottom)",
+            height: 70,
           }}
         >
           {mobileItems.map((it) => (
@@ -653,25 +653,31 @@ export default function SportsPage() {
               onClick={() => setSection(it.id)}
               style={{
                 flex: 1,
-                border: "none",
-                background: "transparent",
-                color: section === it.id ? "#a5b4fc" : C.textMuted,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 2,
-                fontSize: 10,
-                fontWeight: 600,
+                border: "none",
+                background: "transparent",
+                gap: 3,
                 cursor: "pointer",
-                minHeight: 44,
+                padding: "8px 4px",
+                borderTop: section === it.id ? "2px solid #6366f1" : "2px solid transparent",
               }}
             >
-              <span style={{ fontSize: 18 }}>{it.icon}</span>
-              {it.label}
+              <span style={{ fontSize: 22 }}>{it.icon}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: section === it.id ? 700 : 400,
+                  color: section === it.id ? "#a5b4fc" : "#4b5563",
+                }}
+              >
+                {it.label}
+              </span>
             </button>
           ))}
-        </nav>
+        </div>
       )}
 
       {/* Bet stake modal */}
