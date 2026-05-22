@@ -8610,10 +8610,20 @@ function TradingDashboard({ session, onLogout }) {
           {/* Center: nav links (desktop only) */}
           {!isMobile && (
             <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-              <a href="/dashboard" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#fff", background:"rgba(255,255,255,0.1)", textDecoration:"none", whiteSpace:"nowrap" }}>📈 Trading</a>
-              <a href="/crypto" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🪙 Crypto</a>
-              <a href="/sports" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🎰 Sports</a>
-              <a href="/options" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>📊 Options</a>
+              {[
+                { href:"/dashboard", label:"📈 Trading", active:true },
+                { href:"/crypto",    label:"🪙 Crypto",  active:false },
+                { href:"/sports",    label:"🎰 Sports",  active:false },
+                { href:"/options",   label:"📊 Options", active:false },
+              ].map(l => (
+                <a key={l.href} href={l.href} style={{
+                  padding:"6px 12px", fontSize:13,
+                  color: l.active ? "#fff" : "#6b7280",
+                  textDecoration:"none", whiteSpace:"nowrap",
+                  fontWeight: l.active ? 700 : 500,
+                  borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
+                }}>{l.label}</a>
+              ))}
             </div>
           )}
 

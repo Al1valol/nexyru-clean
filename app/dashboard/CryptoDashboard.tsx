@@ -4705,6 +4705,40 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         ))}
       </aside>
 
+      {!isMobile && (
+        <header style={{
+          background:"#0a0a0f", borderBottom:"1px solid #1e1e2a",
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"8px 12px", gap:12, position:"sticky", top:bannerOffset, zIndex:100,
+          marginLeft: 56,
+        }}>
+          <div style={{ fontSize:14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>🪙 Crypto</div>
+          <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+            {[
+              { href:"/dashboard", label:"📈 Trading", active:false },
+              { href:"/crypto",    label:"🪙 Crypto",  active:true  },
+              { href:"/sports",    label:"🎰 Sports",  active:false },
+              { href:"/options",   label:"📊 Options", active:false },
+            ].map(l => (
+              <a key={l.href} href={l.href} style={{
+                padding:"6px 12px", fontSize:13,
+                color: l.active ? "#fff" : "#6b7280",
+                textDecoration:"none", whiteSpace:"nowrap",
+                fontWeight: l.active ? 700 : 500,
+                borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
+              }}>{l.label}</a>
+            ))}
+          </div>
+          <a href="/morning" style={{
+            padding:"6px 12px", borderRadius:6,
+            border:"1px solid rgba(0,212,255,0.3)",
+            background:"rgba(0,212,255,0.05)",
+            color:"#00d4ff", textDecoration:"none",
+            fontSize:11, fontWeight:700, whiteSpace:"nowrap",
+          }}>⬡ Daily Briefing</a>
+        </header>
+      )}
+
       <div style={{ flex:1, padding: isMobile ? 12 : 24, overflowY:"auto", marginLeft: isMobile ? 0 : 80, paddingBottom: isMobile ? 80 : 0 }}>
         <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom: isMobile ? 12 : 20, gap: isMobile ? 8 : 16, flexWrap:"wrap" }}>
           <div>

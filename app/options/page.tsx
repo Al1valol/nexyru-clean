@@ -264,22 +264,33 @@ export default function OptionsPage() {
       {/* Top bar */}
       <div style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding: isMobile ? '10px 12px' : '12px 24px',
+        padding: isMobile ? '10px 12px' : '8px 12px',
         background:'#0a0a0f', borderBottom:`1px solid ${C.border}`,
-        position:'sticky', top:0, zIndex:100
+        position:'sticky', top:0, zIndex:100, gap:12
       }}>
-        <div style={{display:'flex', alignItems:'center', gap:12}}>
-          {!isMobile && (
-            <div style={{display:'flex', gap:16}}>
-              {[{label:'📈 Trading', href:'/dashboard'},{label:'🪙 Crypto', href:'/crypto'},{label:'🎰 Sports', href:'/sports'},{label:'📊 Options', href:'/options', active:true}].map(l => (
-                <a key={l.href} href={l.href} style={{fontSize:13, fontWeight: l.active?700:400, color: l.active?'#fff':C.muted, textDecoration:'none'}}>{l.label}</a>
-              ))}
-            </div>
-          )}
-          <div style={{fontSize: isMobile?15:18, fontWeight:800}}>📊 Options Flow</div>
-        </div>
+        <div style={{fontSize: isMobile?14:14, fontWeight:700, color:'#fff', whiteSpace:'nowrap'}}>📊 Options Flow</div>
+
+        {!isMobile && (
+          <div style={{display:'flex', gap:4, alignItems:'center'}}>
+            {[
+              { href:'/dashboard', label:'📈 Trading', active:false },
+              { href:'/crypto',    label:'🪙 Crypto',  active:false },
+              { href:'/sports',    label:'🎰 Sports',  active:false },
+              { href:'/options',   label:'📊 Options', active:true  },
+            ].map(l => (
+              <a key={l.href} href={l.href} style={{
+                padding:'6px 12px', fontSize:13,
+                color: l.active ? '#fff' : '#6b7280',
+                textDecoration:'none', whiteSpace:'nowrap',
+                fontWeight: l.active ? 700 : 500,
+                borderBottom: l.active ? '2px solid #6366f1' : '2px solid transparent',
+              }}>{l.label}</a>
+            ))}
+          </div>
+        )}
+
         <div style={{display:'flex', alignItems:'center', gap:8}}>
-          <div style={{fontSize:12, color: bankroll >= 10000 ? C.green : C.red, fontWeight:700}}>
+          <div style={{fontSize:12, color: bankroll >= 10000 ? C.green : C.red, fontWeight:700, whiteSpace:'nowrap'}}>
             ${bankroll.toLocaleString('en-US', {maximumFractionDigits:0})}
           </div>
           <button onClick={enableNotifications} style={{
@@ -290,7 +301,7 @@ export default function OptionsPage() {
           }}>
             {alertsEnabled ? '🔔 ON' : '🔕 Alerts'}
           </button>
-          <a href="/morning" style={{fontSize:11, color:'#a5b4fc', textDecoration:'none', padding:'6px 10px', borderRadius:6, border:`1px solid rgba(99,102,241,0.3)`}}>⬡ JARVIS</a>
+          <a href="/morning" style={{fontSize:11, color:'#a5b4fc', textDecoration:'none', padding:'6px 10px', borderRadius:6, border:`1px solid rgba(99,102,241,0.3)`, whiteSpace:'nowrap'}}>⬡ JARVIS</a>
         </div>
       </div>
 
