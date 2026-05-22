@@ -928,7 +928,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     <div>
       <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'1px solid #1e1e2a' }}>
         {[
-          ['sniper', '🎯 Sniper'],
+          ['sniper', '🎯 Coin Sniper'],
           ['fomo', '⚡ Trade on FOMO'],
         ].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id as 'sniper'|'fomo')} style={{
@@ -4651,7 +4651,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
 
   const cryptoMobileItems = [
     { id: 'hotnow',   icon: '🔥', label: 'Hot' },
-    { id: 'gems',     icon: '🎯', label: 'Sniper' },
+    { id: 'gems',     icon: '🎯', label: 'Coin Sniper' },
     { id: 'uptrends', icon: '📈', label: 'Trends' },
     { id: 'accounts', icon: '💼', label: 'Accounts' },
     { id: 'mystats',  icon: '📊', label: 'Stats' },

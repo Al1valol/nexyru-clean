@@ -3611,6 +3611,42 @@ function getResultLink(bet: any) {
   return { url: `https://www.google.com/search?q=${game}+result+score`, label: "🔍 Search Result on Google →", color: "#6b7280" };
 }
 
+const BankrollChart = ({ history }: { history: { value: number }[] }) => {
+  if (history.length < 2) return null;
+  const min = Math.min(...history.map((h) => h.value));
+  const max = Math.max(...history.map((h) => h.value));
+  const range = max - min || 100;
+  const w = 100;
+  const h = 50;
+  const points = history
+    .map((point, i) => {
+      const x = (i / (history.length - 1)) * w;
+      const y = h - ((point.value - min) / range) * (h - 4) - 2;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const isUp = history[history.length - 1].value >= history[0].value;
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: "100%", height: 60, display: "block" }}>
+      <polyline
+        points={points}
+        fill="none"
+        stroke={isUp ? "#22c55e" : "#ef4444"}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx={points.split(" ")[0].split(",")[0]}
+        cy={points.split(" ")[0].split(",")[1]}
+        r="2"
+        fill={isUp ? "#22c55e" : "#ef4444"}
+      />
+    </svg>
+  );
+};
+
 function PaperBetsPanel({
   bets,
   bankroll,
@@ -3940,36 +3976,20 @@ function PaperBetsPanel({
       </div>
 
       {/* Bankroll chart */}
-      {bankrollHistory.length > 1 && (() => {
-        const min = Math.min(...bankrollHistory.map((h) => h.value));
-        const max = Math.max(...bankrollHistory.map((h) => h.value));
-        const range = max - min || 1;
-        const isUp =
-          bankrollHistory[bankrollHistory.length - 1].value >= bankrollHistory[0].value;
-        const points = bankrollHistory
-          .map((h, i) => {
-            const x = (i / (bankrollHistory.length - 1)) * 100 + "%";
-            const y = (100 - ((h.value - min) / range) * 100) * 0.6 + 6;
-            return `${x} ${y}`;
-          })
-          .join(" ");
-        return (
-          <div
-            style={{
-              background: s.card,
-              border: "1px solid #1e1e2a",
-              borderRadius: 10,
-              padding: 14,
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ fontSize: 11, color: s.muted, marginBottom: 8 }}>BANKROLL OVER TIME</div>
-            <svg width="100%" height="60" style={{ overflow: "visible" }}>
-              <polyline points={points} fill="none" stroke={isUp ? s.green : s.red} strokeWidth="2" />
-            </svg>
-          </div>
-        );
-      })()}
+      {bankrollHistory.length > 1 && (
+        <div
+          style={{
+            background: s.card,
+            border: "1px solid #1e1e2a",
+            borderRadius: 10,
+            padding: 14,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ fontSize: 11, color: s.muted, marginBottom: 8 }}>BANKROLL OVER TIME</div>
+          <BankrollChart history={bankrollHistory} />
+        </div>
+      )}
 
       {/* Filter pills */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>

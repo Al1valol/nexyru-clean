@@ -355,17 +355,27 @@ export default function MorningBriefing() {
 
         {/* Left: Briefing sections */}
         <div>
-          <div style={{ marginBottom: 32, animation: 'jarvisFade 0.5s ease' }}>
-            <div style={{ fontSize: 13, color: s.muted, letterSpacing: '0.2em', marginBottom: 8 }}>
-              {getGreeting().toUpperCase()}, SIR
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', lineHeight: 1.2, marginBottom: 8 }}>
-              Your morning briefing is ready.
-            </div>
-            <div style={{ fontSize: 13, color: s.muted }}>
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </div>
-          </div>
+          {(() => {
+            const now = new Date()
+            const dateStr = now.toLocaleDateString('en-US', {
+              weekday:'long', year:'numeric', month:'long', day:'numeric'
+            })
+            const hour = now.getHours()
+            const greeting = hour < 12 ? 'GOOD MORNING' : hour < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING'
+            return (
+              <div style={{ marginBottom: 32, animation: 'jarvisFade 0.5s ease' }}>
+                <div style={{ fontSize: 13, color: s.muted, letterSpacing: '0.2em', marginBottom: 8 }}>
+                  {greeting}, SIR
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', lineHeight: 1.2, marginBottom: 8 }}>
+                  Your morning briefing is ready.
+                </div>
+                <div style={{ fontSize: 13, color: s.muted }}>
+                  {dateStr}
+                </div>
+              </div>
+            )
+          })()}
 
           {errorMsg && (
             <div style={{ background: 'rgba(255,68,68,0.08)', border: `1px solid ${s.red}55`, color: s.red, borderRadius: 10, padding: '12px 14px', fontSize: 13, marginBottom: 16 }}>
