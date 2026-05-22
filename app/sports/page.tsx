@@ -140,11 +140,27 @@ function buildPicks(games: Game[]): Pick[] {
       const worstImplied = americanToImplied(worst.price);
       const edge = worstImplied - impliedProb;
 
-      // Score: peak at 50% implied (true coin-flip with value), edge bonus from line shopping
-      const dist = Math.abs(impliedProb - 0.5);
-      const probScore = Math.max(0, 80 - dist * 160);
-      const edgeBonus = Math.min(35, edge * 250);
-      const score = Math.max(0, Math.min(100, Math.round(probScore + edgeBonus)));
+      let score = 0;
+
+      // 1. EDGE SCORE (50pts) - main factor, how much line shopping advantage
+      const edgeScore = Math.min(50, Math.round(edge * 400));
+      score += edgeScore;
+
+      // 2. ODDS VALUE (30pts) - underdogs and slight favorites have more value
+      // Sweet spot: +100 to -150 (40-60% implied)
+      if (impliedProb >= 0.40 && impliedProb <= 0.60) score += 30; // coin flip range
+      else if (impliedProb >= 0.30 && impliedProb <= 0.70) score += 18;
+      else if (impliedProb >= 0.20 && impliedProb <= 0.80) score += 8;
+      else score += 0; // extreme favorite/underdog = bad value
+
+      // 3. UNDERDOG BONUS (20pts) - underdogs have higher EV potential
+      if (best.price > 0) score += 20;           // underdog
+      else if (best.price > -130) score += 15;   // slight favorite
+      else if (best.price > -200) score += 8;    // moderate favorite
+      else if (best.price > -300) score += 3;    // heavy favorite
+      else score += 0;                            // -300+ = terrible value
+
+      score = Math.max(0, Math.min(100, score));
 
       const opponentName = Object.keys(sides).find((k) => k !== team);
       const opponentSide = opponentName ? sides[opponentName] : undefined;
