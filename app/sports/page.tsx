@@ -3579,6 +3579,7 @@ function PaperBetsPanel({
   const [betFilter, setBetFilter] = useState<"all" | "pending" | "won" | "lost">("all");
   const [setupBankroll, setSetupBankroll] = useState("");
   const [setupStake, setSetupStake] = useState("");
+  const [editingBet, setEditingBet] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -4130,6 +4131,174 @@ function PaperBetsPanel({
               </div>
             )}
 
+            {bet.status !== "pending" && editingBet !== bet.id && (
+              <button
+                onClick={() => setEditingBet(bet.id)}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  border: "1px solid #2a2a3a",
+                  background: "transparent",
+                  color: "#6b7280",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  marginTop: 6,
+                }}
+              >
+                ✏️ Edit Result
+              </button>
+            )}
+
+            {editingBet === bet.id && bet.status !== "pending" && (
+              <div style={{ marginTop: 8, padding: 10, background: "#1a1a24", borderRadius: 8, border: "1px solid #2a2a3a" }}>
+                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>Change result or delete this bet:</div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
+                  {(["won", "lost", "push", "void"] as const).map((result) => (
+                    <button
+                      key={result}
+                      onClick={() => {
+                        let newBankroll = bankroll;
+                        if (bet.status === "won") newBankroll -= bet.stake + (bet.profit || 0);
+                        else if (bet.status === "lost") newBankroll += bet.stake;
+                        else if (bet.status === "push" || bet.status === "void") newBankroll -= bet.stake;
+
+                        let profit = 0;
+                        if (result === "won") {
+                          profit = bet.potWin || bet.stake * (bet.odds > 0 ? bet.odds / 100 : 100 / Math.abs(bet.odds));
+                          newBankroll += bet.stake + profit;
+                        } else if (result === "lost") {
+                          profit = -bet.stake;
+                        } else if (result === "push" || result === "void") {
+                          newBankroll += bet.stake;
+                        }
+
+                        update(bet.id, { status: result, profit, settledAt: new Date().toISOString() });
+                        setBankroll(newBankroll);
+                        setEditingBet(null);
+                      }}
+                      style={{
+                        padding: "7px",
+                        borderRadius: 6,
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        background:
+                          result === "won"
+                            ? "rgba(34,197,94,0.2)"
+                            : result === "lost"
+                              ? "rgba(239,68,68,0.2)"
+                              : "rgba(107,114,128,0.2)",
+                        color:
+                          result === "won"
+                            ? "#22c55e"
+                            : result === "lost"
+                              ? "#ef4444"
+                              : "#9ca3af",
+                      }}
+                    >
+                      {result === "won" ? "✅ Won" : result === "lost" ? "❌ Lost" : result === "push" ? "🤝 Push" : "↩️ Void"}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => {
+                    let newBankroll = bankroll;
+                    if (bet.status === "won") newBankroll -= bet.stake + (bet.profit || 0);
+                    else if (bet.status === "lost") newBankroll += bet.stake;
+                    else if (bet.status === "push" || bet.status === "void") newBankroll -= bet.stake;
+
+                    update(bet.id, { status: "pending", profit: 0, settledAt: undefined });
+                    setBankroll(newBankroll);
+                    setEditingBet(null);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "6px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(245,158,11,0.3)",
+                    background: "rgba(245,158,11,0.08)",
+                    color: "#f59e0b",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    marginBottom: 8,
+                  }}
+                >
+                  ⏳ Set Back to Pending
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (!confirm("Delete this bet permanently?")) return;
+                    let newBankroll = bankroll;
+                    if (bet.status === "won") newBankroll -= bet.stake + (bet.profit || 0);
+                    else if (bet.status === "lost") newBankroll += bet.stake;
+                    else if (bet.status === "push" || bet.status === "void") newBankroll -= bet.stake;
+
+                    remove(bet.id);
+                    setBankroll(newBankroll);
+                    setEditingBet(null);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "6px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    background: "rgba(239,68,68,0.05)",
+                    color: "#ef4444",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  🗑️ Delete This Bet
+                </button>
+
+                <button
+                  onClick={() => setEditingBet(null)}
+                  style={{
+                    width: "100%",
+                    padding: "5px",
+                    borderRadius: 6,
+                    border: "1px solid #2a2a3a",
+                    background: "transparent",
+                    color: "#6b7280",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    marginTop: 6,
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {bet.status === "pending" && (
+              <button
+                onClick={() => {
+                  if (!confirm("Delete this pending bet and refund the stake?")) return;
+                  remove(bet.id);
+                  setBankroll(bankroll + bet.stake);
+                }}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(239,68,68,0.2)",
+                  background: "rgba(239,68,68,0.05)",
+                  color: "#ef4444",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  marginTop: 6,
+                  width: "100%",
+                }}
+              >
+                🗑️ Delete & Refund Stake
+              </button>
+            )}
+
             {bet.notes && (
               <div style={{ fontSize: 11, color: s.muted, marginTop: 8, fontStyle: "italic" }}>
                 {bet.notes}
@@ -4202,6 +4371,14 @@ function BookHealthPanel({
       ]);
     }
     onNotify(`✓ Logged ${kind} bet at ${book}`);
+  };
+
+  const decrement = (book: string, kind: "arb" | "normal") => {
+    const existing = log.find((e) => e.book === book);
+    if (!existing) return;
+    const field: "arbCount" | "normalCount" = kind === "arb" ? "arbCount" : "normalCount";
+    if (existing[field] <= 0) return;
+    persist(log.map((e) => (e.book === book ? { ...e, [field]: e[field] - 1 } : e)));
   };
 
   const setStatus = (book: string, status: BookEntry["status"]) => {
@@ -4333,9 +4510,6 @@ function BookHealthPanel({
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{e.book}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                    {e.arbCount} arbs · {e.normalCount} normal bets
-                  </div>
                 </div>
                 <div
                   style={{
@@ -4352,39 +4526,49 @@ function BookHealthPanel({
                   {risk.label}
                 </div>
               </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: C.amber, fontWeight: 700, minWidth: 36 }}>Arbs</span>
+                  <button
+                    onClick={() => decrement(e.book, "arb")}
+                    style={{
+                      width: 24, height: 24, borderRadius: 4, border: "1px solid #2a2a3a",
+                      background: "transparent", color: "#6b7280", fontSize: 14, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >−</button>
+                  <span style={{ fontSize: 14, fontWeight: 700, minWidth: 20, textAlign: "center" }}>{e.arbCount || 0}</span>
+                  <button
+                    onClick={() => adjust(e.book, "arb")}
+                    style={{
+                      width: 24, height: 24, borderRadius: 4, border: "1px solid #2a2a3a",
+                      background: "transparent", color: "#6b7280", fontSize: 14, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >+</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: C.green, fontWeight: 700, minWidth: 48 }}>Normal</span>
+                  <button
+                    onClick={() => decrement(e.book, "normal")}
+                    style={{
+                      width: 24, height: 24, borderRadius: 4, border: "1px solid #2a2a3a",
+                      background: "transparent", color: "#6b7280", fontSize: 14, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >−</button>
+                  <span style={{ fontSize: 14, fontWeight: 700, minWidth: 20, textAlign: "center" }}>{e.normalCount || 0}</span>
+                  <button
+                    onClick={() => adjust(e.book, "normal")}
+                    style={{
+                      width: 24, height: 24, borderRadius: 4, border: "1px solid #2a2a3a",
+                      background: "transparent", color: "#6b7280", fontSize: 14, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >+</button>
+                </div>
+              </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => adjust(e.book, "arb")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    border: "1px solid rgba(245,158,11,0.4)",
-                    background: "rgba(245,158,11,0.08)",
-                    color: C.amber,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    minHeight: 32,
-                  }}
-                >
-                  + Arb
-                </button>
-                <button
-                  onClick={() => adjust(e.book, "normal")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    border: "1px solid rgba(34,197,94,0.4)",
-                    background: "rgba(34,197,94,0.08)",
-                    color: C.green,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    minHeight: 32,
-                  }}
-                >
-                  + Normal
-                </button>
                 <button
                   onClick={() => setStatus(e.book, e.status === "limited" ? "healthy" : "limited")}
                   style={{
