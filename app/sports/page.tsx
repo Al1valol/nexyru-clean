@@ -218,7 +218,7 @@ function writeLS<T>(key: string, v: T) {
 function useIsMobile() {
   const [m, setM] = useState(false);
   useEffect(() => {
-    const onResize = () => setM(window.innerWidth < 760);
+    const onResize = () => setM(window.innerWidth < 768);
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -486,8 +486,8 @@ export default function SportsPage() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
-            padding: "12px 16px",
+            gap: isMobile ? 6 : 12,
+            padding: isMobile ? "8px 12px" : "12px 16px",
             borderBottom: `1px solid ${C.border}`,
             background: "#0a0a0f",
             position: "sticky",
@@ -496,47 +496,56 @@ export default function SportsPage() {
             flexWrap: "wrap",
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.01em" }}>
-            🎰 Sports Betting
+          <div style={{ fontSize: isMobile ? 13 : 16, fontWeight: 800, letterSpacing: "-0.01em" }}>
+            🎰 Sports{isMobile ? "" : " Betting"}
           </div>
-          <div
-            style={{
-              padding: "5px 12px",
-              borderRadius: 999,
-              border: `1px solid ${C.border}`,
-              background: C.card,
-              fontSize: 12,
-              fontWeight: 700,
-              color: bankroll >= 1000 ? C.green : bankroll > 0 ? C.amber : C.red,
-            }}
-          >
-            Bankroll: ${bankroll.toLocaleString()}
-          </div>
+          {!isMobile && (
+            <div
+              style={{
+                padding: "5px 12px",
+                borderRadius: 999,
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                fontSize: 12,
+                fontWeight: 700,
+                color: bankroll >= 1000 ? C.green : bankroll > 0 ? C.amber : C.red,
+              }}
+            >
+              Bankroll: ${bankroll.toLocaleString()}
+            </div>
+          )}
           <div style={{ flex: 1 }} />
-          <a
-            href="/dashboard"
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: `1px solid ${C.border}`,
-              background: C.card,
-              color: C.textDim,
-              fontSize: 12,
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
-            ← Dashboard
-          </a>
+          {isMobile && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: bankroll >= 1000 ? C.green : bankroll > 0 ? C.amber : C.red }}>
+              ${bankroll.toFixed(0)}
+            </span>
+          )}
+          {!isMobile && (
+            <a
+              href="/dashboard"
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                color: C.textDim,
+                fontSize: 12,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              ← Dashboard
+            </a>
+          )}
           <a
             href="/morning"
             style={{
-              padding: "6px 12px",
+              padding: isMobile ? "4px 8px" : "6px 12px",
               borderRadius: 8,
               border: "1px solid rgba(0,212,255,0.3)",
               background: "rgba(0,212,255,0.06)",
               color: "#00d4ff",
-              fontSize: 12,
+              fontSize: isMobile ? 11 : 12,
               fontWeight: 700,
               textDecoration: "none",
             }}
@@ -634,7 +643,8 @@ export default function SportsPage() {
             background: "#0a0a0f",
             borderTop: `1px solid ${C.border}`,
             display: "flex",
-            zIndex: 50,
+            zIndex: 200,
+            paddingBottom: "env(safe-area-inset-bottom)",
           }}
         >
           {mobileItems.map((it) => (

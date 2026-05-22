@@ -4641,6 +4641,22 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
     } catch {}
   }, []);
 
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  const cryptoMobileItems = [
+    { id: 'hotnow',   icon: '🔥', label: 'Hot' },
+    { id: 'gems',     icon: '🎯', label: 'Sniper' },
+    { id: 'uptrends', icon: '📈', label: 'Trends' },
+    { id: 'accounts', icon: '💼', label: 'Accounts' },
+    { id: 'mystats',  icon: '📊', label: 'Stats' },
+  ];
+
   return (
     <>
       {buyModalCoin && <CryptoBuyModal coin={buyModalCoin} livePrice={buyModalLivePrice} store={cryptoAccountStore} onClose={() => setBuyModalCoin(null)} onConfirm={handleConfirmBuy}/>}
@@ -4663,20 +4679,22 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         ))}
       </aside>
 
-      <div style={{ flex:1, padding:24, overflowY:"auto", marginLeft:80 }}>
-        <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:20, gap:16, flexWrap:"wrap" }}>
+      <div style={{ flex:1, padding: isMobile ? 12 : 24, overflowY:"auto", marginLeft: isMobile ? 0 : 80, paddingBottom: isMobile ? 70 : 0 }}>
+        <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom: isMobile ? 12 : 20, gap: isMobile ? 8 : 16, flexWrap:"wrap" }}>
           <div>
-            <div style={{ fontSize:22, fontWeight:800, color:"#fff", letterSpacing:"-0.01em" }}>Crypto</div>
-            <div style={{ fontSize:13, color:"#6b7280", marginTop:2 }}>{cryptoSectionLabel}</div>
+            <div style={{ fontSize: isMobile ? 16 : 22, fontWeight:800, color:"#fff", letterSpacing:"-0.01em" }}>Crypto</div>
+            {!isMobile && <div style={{ fontSize:13, color:"#6b7280", marginTop:2 }}>{cryptoSectionLabel}</div>}
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <span style={{ fontSize:11, color:"#6b7280" }}>
-              {cryptoLastUpdated ? 'Last updated ' + formatRelative(cryptoLastUpdated) : 'Loading…'}
-            </span>
+          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 6 : 12 }}>
+            {!isMobile && (
+              <span style={{ fontSize:11, color:"#6b7280" }}>
+                {cryptoLastUpdated ? 'Last updated ' + formatRelative(cryptoLastUpdated) : 'Loading…'}
+              </span>
+            )}
             <button
               onClick={() => setCryptoRefreshKey(k => k + 1)}
               style={{
-                padding:"6px 14px", borderRadius:8, border:"1px solid #2a2a3a",
+                padding: isMobile ? "5px 10px" : "6px 14px", borderRadius:8, border:"1px solid #2a2a3a",
                 background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700,
                 cursor:"pointer", letterSpacing:"0.02em",
               }}
@@ -4689,6 +4707,27 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         {cryptoSection === 'accounts'  && <ChartErrorBoundary resetKey={`accounts:${cryptoAccountStore?.activeAccountId ?? 'none'}`} fallback={<div style={{ padding:32, color:'#9ca3af', background:'#111', border:'1px solid #1e1e2a', borderRadius:12, fontSize:13, textAlign:'center' }}>Error loading accounts. Refresh the page or pick a different account.</div>}><CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} /></ChartErrorBoundary>}
         {cryptoSection === 'mystats'   && <ChartErrorBoundary resetKey="mystats"><CryptoMyStats   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} /></ChartErrorBoundary>}
       </div>
+
+      {isMobile && (
+        <nav style={{
+          position:'fixed', bottom:0, left:0, right:0, zIndex:200,
+          background:'#0a0a0f', borderTop:'1px solid #1e1e2a',
+          display:'flex', height:60,
+          paddingBottom:'env(safe-area-inset-bottom)'
+        }}>
+          {cryptoMobileItems.map(item => (
+            <button key={item.id} onClick={() => setCryptoSection(item.id)} style={{
+              flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+              border:'none', background:'transparent', gap:2, cursor:'pointer',
+              color: cryptoSection===item.id ? '#a5b4fc' : '#4b5563',
+              minHeight:44,
+            }}>
+              <span style={{fontSize:18}}>{item.icon}</span>
+              <span style={{fontSize:9, fontWeight: cryptoSection===item.id ? 700 : 400}}>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
     </>
   );
 }

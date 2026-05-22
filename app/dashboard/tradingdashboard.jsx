@@ -8576,30 +8576,34 @@ function TradingDashboard({ session, onLogout }) {
       {/* ── Main column (top bar + content) ── */}
       <div className="main-with-sidebar" style={{ minHeight:"100vh", display:"flex", flexDirection:"column" }}>
         {/* ── Top bar ── */}
-        <header style={{ background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", gap:12, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden", marginLeft:56 }}>
-          {/* Left: page title */}
-          <div style={{ fontSize:14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>
-            Dashboard
+        <header style={{ background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", justifyContent:"space-between", padding: isMobile ? "8px 12px" : "8px 12px", gap: isMobile ? 6 : 12, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden", marginLeft: isMobile ? 0 : 56 }}>
+          {/* Left: page title / logo */}
+          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>
+            {isMobile ? "📈 Nexyru" : "Dashboard"}
           </div>
 
-          {/* Center: nav links */}
-          <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-            <a href="/dashboard" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#fff", background:"rgba(255,255,255,0.1)", textDecoration:"none", whiteSpace:"nowrap" }}>📈 Trading</a>
-            <a href="/crypto" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🪙 Crypto</a>
-            <a href="/sports" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🎰 Sports</a>
-          </div>
+          {/* Center: nav links (desktop only) */}
+          {!isMobile && (
+            <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+              <a href="/dashboard" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#fff", background:"rgba(255,255,255,0.1)", textDecoration:"none", whiteSpace:"nowrap" }}>📈 Trading</a>
+              <a href="/crypto" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🪙 Crypto</a>
+              <a href="/sports" style={{ padding:"4px 8px", borderRadius:6, fontSize:12, color:"#6b7280", textDecoration:"none", whiteSpace:"nowrap" }}>🎰 Sports</a>
+            </div>
+          )}
 
           {/* Right: essential controls */}
           <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-            <a href="/morning" style={{
-              padding:"6px 12px", borderRadius:6,
-              border:"1px solid rgba(0,212,255,0.3)",
-              background:"rgba(0,212,255,0.05)",
-              color:"#00d4ff", textDecoration:"none",
-              fontSize:11, fontWeight:700, whiteSpace:"nowrap",
-            }}>
-              ⬡ Daily Briefing
-            </a>
+            {!isMobile && (
+              <a href="/morning" style={{
+                padding:"6px 12px", borderRadius:6,
+                border:"1px solid rgba(0,212,255,0.3)",
+                background:"rgba(0,212,255,0.05)",
+                color:"#00d4ff", textDecoration:"none",
+                fontSize:11, fontWeight:700, whiteSpace:"nowrap",
+              }}>
+                ⬡ Daily Briefing
+              </a>
+            )}
             <AccountSwitcher
               accounts={paperAccts.accounts}
               activeAccount={paperAccts.activeAccount}
@@ -8734,6 +8738,37 @@ function TradingDashboard({ session, onLogout }) {
             lineHeight:1
           }}
         >+</button>
+      )}
+
+      {isMobile && (
+        <nav style={{
+          position:'fixed', bottom:0, left:0, right:0, zIndex:200,
+          background:'#0a0a0f', borderTop:'1px solid #1e1e2a',
+          display:'flex', height:60,
+          paddingBottom:'env(safe-area-inset-bottom)'
+        }}>
+          {[
+            { icon:'📊', label:'Dashboard', mode:'dashboard' },
+            { icon:'📝', label:'Trades',    mode:'journal' },
+            { icon:'📈', label:'Insights',  mode:'insights' },
+            { icon:'🏆', label:'Goals',     href:'/challenge' },
+            { icon:'⚙️', label:'More',      href:'/settings' },
+          ].map(item => {
+            const active = item.mode && tab === item.mode;
+            const onClick = item.mode ? () => setTab(item.mode) : () => { window.location.href = item.href; };
+            return (
+              <button key={item.label} onClick={onClick} style={{
+                flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                border:'none', background:'transparent', gap:2, cursor:'pointer',
+                color: active ? '#a5b4fc' : '#4b5563',
+                minHeight:44,
+              }}>
+                <span style={{fontSize:18}}>{item.icon}</span>
+                <span style={{fontSize:9, fontWeight: active ? 700 : 400}}>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       )}
     </div>
   );
