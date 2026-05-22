@@ -481,6 +481,30 @@ export default function SportsPage() {
 
       {/* Main */}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: isMobile ? 80 : 0 }}>
+        {isMobile && (
+          <div style={{
+            display:'flex', background:'#0a0a0f',
+            borderBottom:'1px solid #1e1e2a',
+            padding:'0 4px'
+          }}>
+            {[
+              {label:'📈 Trading', href:'/dashboard', active: false},
+              {label:'🪙 Crypto', href:'/crypto', active: false},
+              {label:'🎰 Sports', href:'/sports', active: true},
+              {label:'⬡ JARVIS', href:'/morning', active: false},
+            ].map(link => (
+              <a key={link.href} href={link.href} style={{
+                flex:1, textAlign:'center', padding:'10px 4px',
+                fontSize:12, fontWeight: link.active ? 700 : 400,
+                color: link.active ? '#fff' : '#6b7280',
+                textDecoration:'none',
+                borderBottom: link.active ? '2px solid #6366f1' : '2px solid transparent'
+              }}>
+                {link.label}
+              </a>
+            ))}
+          </div>
+        )}
         {/* Top bar */}
         <header
           style={{

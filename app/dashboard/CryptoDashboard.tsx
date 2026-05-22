@@ -4661,6 +4661,31 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
     <>
       {buyModalCoin && <CryptoBuyModal coin={buyModalCoin} livePrice={buyModalLivePrice} store={cryptoAccountStore} onClose={() => setBuyModalCoin(null)} onConfirm={handleConfirmBuy}/>}
 
+      {isMobile && (
+        <div style={{
+          display:'flex', background:'#0a0a0f',
+          borderBottom:'1px solid #1e1e2a',
+          padding:'0 4px'
+        }}>
+          {[
+            {label:'📈 Trading', href:'/dashboard', active: false},
+            {label:'🪙 Crypto', href:'/crypto', active: true},
+            {label:'🎰 Sports', href:'/sports', active: false},
+            {label:'⬡ JARVIS', href:'/morning', active: false},
+          ].map(link => (
+            <a key={link.href} href={link.href} style={{
+              flex:1, textAlign:'center', padding:'10px 4px',
+              fontSize:12, fontWeight: link.active ? 700 : 400,
+              color: link.active ? '#fff' : '#6b7280',
+              textDecoration:'none',
+              borderBottom: link.active ? '2px solid #6366f1' : '2px solid transparent'
+            }}>
+              {link.label}
+            </a>
+          ))}
+        </div>
+      )}
+
       <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
         {[
           {id:'hotnow',   label:'Hot Now', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 2s2 3 2 6c0 1.5-1 3-2 3s-2-1.5-2-3c0-1 0-2 1-4z"/><path d="M19 14c0 4-3 7-7 7s-7-3-7-7c0-2 1-4 3-5 0 3 2 4 4 4-1-3 1-6 3-7 2 3 4 5 4 8z"/></svg>},
