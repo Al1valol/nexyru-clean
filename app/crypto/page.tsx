@@ -49,7 +49,6 @@ export default function CryptoPage() {
 
   return (
     <div style={{ background: "#0a0a0f", color: "#fff", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <TopNav active="crypto" />
       <div style={{ flex: 1 }}>
         <CryptoDashboard isAdmin={isAdmin} session={session} />
       </div>
@@ -57,11 +56,12 @@ export default function CryptoPage() {
   );
 }
 
-function TopNav({ active }: { active: "trading" | "crypto" | "sports" }) {
+function TopNav({ active }: { active: "trading" | "crypto" | "sports" | "options" }) {
   const links = [
     { id: "trading" as const, label: "📈 Trading", href: "/dashboard" },
     { id: "crypto" as const, label: "🪙 Crypto", href: "/crypto" },
     { id: "sports" as const, label: "🎰 Sports", href: "/sports" },
+    { id: "options" as const, label: "📊 Options", href: "/options" },
   ];
   return (
     <header
