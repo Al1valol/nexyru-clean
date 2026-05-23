@@ -8447,6 +8447,7 @@ function TradingDashboard({ session, onLogout }) {
               {label:'🪙 Crypto', href:'/crypto', active: false},
               {label:'🎰 Sports', href:'/sports', active: false},
               {label:'📊 Options', href:'/options', active: false},
+              {label:'🔮 Polymarket', href:'/polymarket', active: false},
               {label:'⬡ JARVIS', href:'/morning', active: false},
             ].map(link => (
               <a key={link.href} href={link.href} style={{
@@ -8611,10 +8612,11 @@ function TradingDashboard({ session, onLogout }) {
           {!isMobile && (
             <div style={{ display:"flex", gap:4, alignItems:"center" }}>
               {[
-                { href:"/dashboard", label:"📈 Trading", active:true },
-                { href:"/crypto",    label:"🪙 Crypto",  active:false },
-                { href:"/sports",    label:"🎰 Sports",  active:false },
-                { href:"/options",   label:"📊 Options", active:false },
+                { href:"/dashboard",  label:"📈 Trading",   active:true },
+                { href:"/crypto",     label:"🪙 Crypto",    active:false },
+                { href:"/sports",     label:"🎰 Sports",    active:false },
+                { href:"/options",    label:"📊 Options",   active:false },
+                { href:"/polymarket", label:"🔮 Polymarket", active:false },
               ].map(l => (
                 <a key={l.href} href={l.href} style={{
                   padding:"6px 12px", fontSize:13,

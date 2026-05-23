@@ -56,12 +56,13 @@ export default function CryptoPage() {
   );
 }
 
-function TopNav({ active }: { active: "trading" | "crypto" | "sports" | "options" }) {
+function TopNav({ active }: { active: "trading" | "crypto" | "sports" | "options" | "polymarket" }) {
   const links = [
     { id: "trading" as const, label: "📈 Trading", href: "/dashboard" },
     { id: "crypto" as const, label: "🪙 Crypto", href: "/crypto" },
     { id: "sports" as const, label: "🎰 Sports", href: "/sports" },
     { id: "options" as const, label: "📊 Options", href: "/options" },
+    { id: "polymarket" as const, label: "🔮 Polymarket", href: "/polymarket" },
   ];
   return (
     <header
