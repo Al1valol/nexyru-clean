@@ -545,7 +545,7 @@ function getSignals(coin: any) {
   const createdAt = coin.pairCreatedAt;
   const ageMs = createdAt
     ? (typeof createdAt === 'number'
-      ? Date.now() - createdAt
+      ? (createdAt < 2000000000 ? Date.now() - createdAt * 1000 : Date.now() - createdAt)
       : Date.now() - new Date(createdAt).getTime())
     : 999 * 3600000;
   const age = ageMs / 3600000;
@@ -577,7 +577,7 @@ function getSnipeWindow(coin: any) {
   const createdAt = coin.pairCreatedAt;
   const ageMs = createdAt
     ? (typeof createdAt === 'number'
-      ? Date.now() - createdAt
+      ? (createdAt < 2000000000 ? Date.now() - createdAt * 1000 : Date.now() - createdAt)
       : Date.now() - new Date(createdAt).getTime())
     : 999 * 3600000;
   const age = ageMs / 3600000;
@@ -806,11 +806,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
       // Step 4: score each pair with the sniper-focused scoring
       const scored = pairs.map(p => {
-        console.log('pairCreatedAt raw:', p.pairCreatedAt, 'type:', typeof p.pairCreatedAt, 'Date.now():', Date.now())
         const createdAt = p.pairCreatedAt;
         const ageMs = createdAt
           ? (typeof createdAt === 'number'
-            ? Date.now() - createdAt
+            ? (createdAt < 2000000000 ? Date.now() - createdAt * 1000 : Date.now() - createdAt)
             : Date.now() - new Date(createdAt).getTime())
           : 999 * 3600000;
         const ageHours = ageMs / 3600000;
