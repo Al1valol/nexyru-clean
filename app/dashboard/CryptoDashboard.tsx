@@ -840,24 +840,38 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true)
     try {
-      // Fetch 10 pages of newest Solana pools
-      const pages = await Promise.all(
-        [1,2,3,4,5,6,7,8,9,10].map(page =>
-          fetch(`https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=${page}&include=base_token`)
-            .then(r => r.json())
-            .catch(() => ({}))
-        )
-      )
+      // Fetch 10 pages of Solana + 3 pages of Base newest pools
+      const [solanaPages, basePages] = await Promise.all([
+        Promise.all(
+          [1,2,3,4,5,6,7,8,9,10].map(page =>
+            fetch(`https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=${page}&include=base_token`)
+              .then(r => r.json())
+              .catch(() => ({}))
+          )
+        ),
+        Promise.all(
+          [1,2,3].map(page =>
+            fetch(`https://api.geckoterminal.com/api/v2/networks/base/new_pools?page=${page}&include=base_token`)
+              .then(r => r.json())
+              .catch(() => ({}))
+          )
+        ),
+      ])
 
-      // Build a map of token address -> token info from included data
+      const allPages = [
+        ...solanaPages.map(p => ({ data: p, chain: 'solana' })),
+        ...basePages.map(p => ({ data: p, chain: 'base' })),
+      ]
+
+      // Build a map of `chain:tokenAddress` -> token info from included data
       const tokenMap: Record<string, any> = {}
-      pages.forEach(pageData => {
-        const included = pageData?.included || []
+      allPages.forEach(({ data, chain }) => {
+        const included = data?.included || []
         included.forEach((item: any) => {
           if (item.type === 'token') {
             const address = item.attributes?.address
             if (address) {
-              tokenMap[address] = {
+              tokenMap[`${chain}:${address}`] = {
                 address,
                 name: item.attributes?.name,
                 symbol: item.attributes?.symbol,
@@ -868,27 +882,30 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         })
       })
 
-      const allPools = pages.flatMap(d => d?.data || [])
+      const allPools = allPages.flatMap(({ data, chain }) =>
+        (data?.data || []).map((p: any) => ({ pool: p, chain }))
+      )
 
-      // Dedupe by pool address
+      // Dedupe by chain+pool address
       const seen = new Set<string>()
-      const unique = allPools.filter(pool => {
+      const unique = allPools.filter(({ pool, chain }) => {
         const addr = pool?.attributes?.address
-        if (!addr || seen.has(addr)) return false
-        seen.add(addr)
+        const key = `${chain}:${addr}`
+        if (!addr || seen.has(key)) return false
+        seen.add(key)
         return true
       })
 
       // Convert GeckoTerminal format to our coin format
-      const scored = unique.map(pool => {
+      const converted = unique.map(({ pool, chain }) => {
         const attr = pool.attributes
         const name = attr.name?.split(' / ')?.[0] || 'Unknown'
         const symbol = name
 
-        // Extract real token address from relationships
+        // Extract real token address from relationships (strip "<chain>_" prefix)
         const baseTokenId = pool.relationships?.base_token?.data?.id || ''
-        const tokenAddress = baseTokenId.replace('solana_', '')
-        const tokenInfo = tokenMap[tokenAddress] || {}
+        const tokenAddress = baseTokenId.replace(`${chain}_`, '')
+        const tokenInfo = tokenMap[`${chain}:${tokenAddress}`] || {}
 
         const m5 = parseFloat(attr.price_change_percentage?.m5 || 0)
         const m15 = parseFloat(attr.price_change_percentage?.m15 || 0)
@@ -910,39 +927,24 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         const ageMs = createdAt ? Date.now() - createdAt : 999 * 3600000
         const ageHours = Math.max(0, ageMs / 3600000)
 
-        // Score the gem
+        // Score the gem — reward freshness + quality
         let score = 0
 
-        // Age (25pts)
-        if (ageHours < 0.5) score += 25
-        else if (ageHours < 1) score += 20
-        else if (ageHours < 2) score += 15
-        else if (ageHours < 6) score += 10
-        else if (ageHours < 24) score += 5
+        // Age (30pts max)
+        if (ageHours <= 1) score += 30
+        else if (ageHours <= 2) score += 20
 
-        // 5m momentum (25pts) — key signal
-        if (m5 > 20) score += 25
-        else if (m5 > 10) score += 20
-        else if (m5 > 5) score += 15
-        else if (m5 > 0) score += 8
-        else if (m5 > -5) score += 3
+        // 5m positive movement (20pts)
+        if (m5 > 0) score += 20
 
-        // Buy pressure (20pts)
-        if (buyRatio > 0.7) score += 20
-        else if (buyRatio > 0.6) score += 14
-        else if (buyRatio > 0.5) score += 8
+        // Strong buy ratio (20pts)
+        if (buyRatio > 0.6) score += 20
 
-        // Liquidity (15pts)
-        if (liq > 50000) score += 15
-        else if (liq > 20000) score += 11
-        else if (liq > 5000) score += 7
-        else if (liq > 1000) score += 3
+        // Good liquidity $5k+ (15pts)
+        if (liq >= 5000) score += 15
 
-        // Volume (15pts)
-        if (vol1h > 100000) score += 15
-        else if (vol1h > 50000) score += 11
-        else if (vol1h > 10000) score += 7
-        else if (vol1h > 1000) score += 3
+        // Active volume (15pts)
+        if (vol1h > 1000 || vol24 > 10000) score += 15
 
         score = Math.min(100, score)
 
@@ -961,12 +963,12 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           coinId: tokenAddress,            // token CA for FOMO/Jupiter
           name: tokenInfo.name || name,
           symbol: tokenInfo.symbol || symbol,
-          chain: 'solana',
-          chainId: 'solana',
+          chain,
+          chainId: chain,
           price: attr.base_token_price_usd,
           priceUsd: attr.base_token_price_usd,
           image: tokenInfo.image || null,
-          url: `https://dexscreener.com/solana/${tokenAddress}`,
+          url: `https://dexscreener.com/${chain}/${tokenAddress}`,
 
           // Price changes — all timeframes
           priceChange: { m5, m15, m30, h1, h6, h24 },
@@ -1005,20 +1007,23 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             symbol: tokenInfo.symbol || symbol,
           },
         }
-      }).sort((a, b) => b.score - a.score)
+      })
 
-      // Simple filter: under 24 hours old, has some liquidity and volume
-      const filtered = scored.filter(coin => {
+      // Filter: under 2h old, decent liquidity/volume, still a meme cap
+      const filtered = converted.filter(coin => {
         const liq = parseFloat(coin.liquidity?.usd || 0)
         const vol24 = parseFloat(coin.volume?.h24 || 0)
+        const vol1h = parseFloat(coin.volume?.h1 || 0)
         const ageHours = coin.ageHours || 999
+        const mc = parseFloat(coin.marketCap || 0)
 
         return (
-          ageHours < 24 &&   // Under 24 hours old
-          liq > 500 &&       // Has some liquidity
-          vol24 > 500        // Has some volume
+          ageHours <= 2 &&                  // Under 2 hours old
+          liq > 1000 &&                     // Has liquidity
+          (vol1h > 500 || vol24 > 1000) &&  // Has some activity
+          mc < 100000000                    // Under $100M mcap (still a meme)
         )
-      }).sort((a, b) => a.ageHours - b.ageHours) // Sort by newest first
+      }).sort((a, b) => b.score - a.score).slice(0, 50)
 
       setGems(filtered)
     } catch(e) {
