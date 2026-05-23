@@ -37,9 +37,9 @@ function computeMomentumScore(coin, position) {
 }
 
 function scoreBadge(score) {
-  if (score >= 70) return { label: '🟢 Strong', bg: 'rgba(34,197,94,0.15)', color: '#22c55e' };
-  if (score >= 40) return { label: '🟡 Neutral', bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' };
-  return { label: '🔴 Weak', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' };
+  if (score >= 70) return { label: 'Strong', bg: 'rgba(34,197,94,0.15)', color: '#22c55e' };
+  if (score >= 40) return { label: 'Neutral', bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' };
+  return { label: 'Weak', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' };
 }
 
 // Routes through /api/price so CoinGecko / DexScreener calls don't get hit
@@ -84,9 +84,9 @@ function getVerificationStatus(coin) {
 
   if (!isDex) {
     const rank = coin?.market_cap_rank || coin?.marketCapRank || 999999;
-    if (rank <= 100) return { status: 'verified', label: '✓ Verified', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Top 100 by market cap', warnings: [] };
-    if (rank <= 500) return { status: 'verified', label: '✓ Verified', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Established coin', warnings: [] };
-    return { status: 'unverified', label: '⚠ Unverified', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', reason: 'Low market cap rank', warnings: [] };
+    if (rank <= 100) return { status: 'verified', label: 'Verified', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Top 100 by market cap', warnings: [] };
+    if (rank <= 500) return { status: 'verified', label: 'Verified', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Established coin', warnings: [] };
+    return { status: 'unverified', label: 'Unverified', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', reason: 'Low market cap rank', warnings: [] };
   }
 
   const liq  = parseFloat(coin.liquidity?.usd ?? coin.liquidity ?? 0);
@@ -104,12 +104,12 @@ function getVerificationStatus(coin) {
   if (liq < 5000 && age < 24) warnings.push('High rug pull risk');
 
   if (warnings.length === 0 && liq > 50000 && age > 48) {
-    return { status: 'verified', label: '✓ Low Risk', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Good liquidity and age', warnings: [] };
+    return { status: 'verified', label: 'Low Risk', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', reason: 'Good liquidity and age', warnings: [] };
   }
   if (warnings.length <= 1 && liq > 10000) {
-    return { status: 'caution', label: '⚠ Caution', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', reason: warnings[0] || 'New or low cap coin', warnings };
+    return { status: 'caution', label: 'Caution', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', reason: warnings[0] || 'New or low cap coin', warnings };
   }
-  return { status: 'danger', label: '🚨 High Risk', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', reason: 'Multiple risk factors', warnings };
+  return { status: 'danger', label: 'High Risk', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', reason: 'Multiple risk factors', warnings };
 }
 
 function VerificationBadge({ v }) {
@@ -137,7 +137,7 @@ function VerificationBanner({ v }) {
       background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
       borderRadius: 6, padding: '6px 10px', marginTop: 8, fontSize: 11, color: '#ef4444',
     }}>
-      ⚠️ {v.warnings.join(' · ')}
+       {v.warnings.join(' · ')}
     </div>
   );
 }
@@ -165,7 +165,7 @@ function getBuyUrl(coin) {
         url: `https://www.coingecko.com/en/coins/${coin?.id || coin?.coinId || ''}`,
         label: 'View on CoinGecko',
         color: '#6366f1',
-        icon: '📊',
+        icon: '',
         isPumpFun: false,
         pumpUrl: null,
       };
@@ -176,32 +176,32 @@ function getBuyUrl(coin) {
         url: `https://jup.ag/swap/SOL-${address}`,
         label: 'Buy on Jupiter',
         color: '#22c55e',
-        icon: '⚡',
+        icon: '',
         isPumpFun,
         pumpUrl: isPumpFun ? `https://pump.fun/${address}` : null,
       };
     }
     if (chainId === 'base') {
-      return { url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄', isPumpFun: false, pumpUrl: null };
+      return { url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '', isPumpFun: false, pumpUrl: null };
     }
     if (chainId === 'ethereum' || chainId === 'eth') {
-      return { url: `https://app.uniswap.org/swap?chain=mainnet&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄', isPumpFun: false, pumpUrl: null };
+      return { url: `https://app.uniswap.org/swap?chain=mainnet&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '', isPumpFun: false, pumpUrl: null };
     }
     if (chainId === 'bsc' || chainId === 'bnb') {
-      return { url: `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${address}`, label: 'Buy on PancakeSwap', color: '#f59e0b', icon: '🥞', isPumpFun: false, pumpUrl: null };
+      return { url: `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${address}`, label: 'Buy on PancakeSwap', color: '#f59e0b', icon: '', isPumpFun: false, pumpUrl: null };
     }
     if (chainId === 'arbitrum') {
-      return { url: `https://app.uniswap.org/swap?chain=arbitrum&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '🦄', isPumpFun: false, pumpUrl: null };
+      return { url: `https://app.uniswap.org/swap?chain=arbitrum&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#ff007a', icon: '', isPumpFun: false, pumpUrl: null };
     }
     if (chainId === 'polygon') {
-      return { url: `https://app.uniswap.org/swap?chain=polygon&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#8247e5', icon: '🦄', isPumpFun: false, pumpUrl: null };
+      return { url: `https://app.uniswap.org/swap?chain=polygon&outputCurrency=${address}`, label: 'Buy on Uniswap', color: '#8247e5', icon: '', isPumpFun: false, pumpUrl: null };
     }
     if (chainId === 'avalanche') {
-      return { url: `https://traderjoexyz.com/avalanche/trade?outputCurrency=${address}`, label: 'Buy on TraderJoe', color: '#e84142', icon: '🔴', isPumpFun: false, pumpUrl: null };
+      return { url: `https://traderjoexyz.com/avalanche/trade?outputCurrency=${address}`, label: 'Buy on TraderJoe', color: '#e84142', icon: '', isPumpFun: false, pumpUrl: null };
     }
-    return { url: coin?.url || `https://dexscreener.com/${chainId}/${address}`, label: 'View on DexScreener', color: '#6366f1', icon: '📊', isPumpFun: false, pumpUrl: null };
+    return { url: coin?.url || `https://dexscreener.com/${chainId}/${address}`, label: 'View on DexScreener', color: '#6366f1', icon: '', isPumpFun: false, pumpUrl: null };
   } catch {
-    return { url: '#', label: 'View Chart', color: '#6366f1', icon: '📊', isPumpFun: false, pumpUrl: null };
+    return { url: '#', label: 'View Chart', color: '#6366f1', icon: '', isPumpFun: false, pumpUrl: null };
   }
 }
 
@@ -286,7 +286,7 @@ function CryptoTrending({ refreshKey, onUpdated, signals = [], onLogSignal, onBu
                   fontSize:12, fontWeight:700, cursor: logged ? "default" : "pointer",
                   minWidth:90,
                 }}
-              >{logged ? "Logged ✓" : "Log Signal"}</button>
+              >{logged ? "Logged " : "Log Signal"}</button>
               <button
                 onClick={() => onBuy?.({
                   coinId: c.id,
@@ -373,7 +373,7 @@ function CryptoNewPairs({ refreshKey, onUpdated }) {
         const ch24 = parseFloat(p.priceChange?.h24 || 0);
         return (
           <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
-            <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{p.baseToken?.symbol}/{p.quoteToken?.symbol} {hot?"🔥":""}</div>
+            <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{p.baseToken?.symbol}/{p.quoteToken?.symbol} {hot?"":""}</div>
             <div><span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:chainColor(p.chainId)+"22",color:chainColor(p.chainId),fontWeight:700}}>{p.chainId?.toUpperCase()?.slice(0,4)}</span></div>
             <div style={{color:"#fff",fontSize:12}}>{formatPrice(parseFloat(p.priceUsd || 0))}</div>
             <div style={{color: ch1>=0 ? "#22c55e" : "#ef4444",fontSize:12}}>{ch1>=0?"+":""}{ch1.toFixed(1)}%</div>
@@ -388,10 +388,10 @@ function CryptoNewPairs({ refreshKey, onUpdated }) {
 }
 
 function gemBadge(score) {
-  if (score >= 71) return { label: '💎 GEM',  bg: 'rgba(99,102,241,0.20)', color: '#a5b4fc', desc: 'High momentum, good liquidity, very new — high risk/reward' };
-  if (score >= 51) return { label: '🟢 Hot',  bg: 'rgba(34,197,94,0.15)',  color: '#22c55e', desc: 'Good volume and momentum — worth watching' };
-  if (score >= 31) return { label: '🟡 Watch',bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', desc: 'Some activity but needs more confirmation' };
-  return                  { label: '🔴 Low',  bg: 'rgba(239,68,68,0.15)',  color: '#ef4444', desc: 'Low activity — proceed with extreme caution' };
+  if (score >= 71) return { label: 'GEM',  bg: 'rgba(99,102,241,0.20)', color: '#a5b4fc', desc: 'High momentum, good liquidity, very new — high risk/reward' };
+  if (score >= 51) return { label: 'Hot',  bg: 'rgba(34,197,94,0.15)',  color: '#22c55e', desc: 'Good volume and momentum — worth watching' };
+  if (score >= 31) return { label: 'Watch',bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', desc: 'Some activity but needs more confirmation' };
+  return                  { label: 'Low',  bg: 'rgba(239,68,68,0.15)',  color: '#ef4444', desc: 'Low activity — proceed with extreme caution' };
 }
 
 function gemScore(pair) {
@@ -565,17 +565,17 @@ function getSignals(coin: any) {
   if (age < 2) signals.push({ text: '🆕 Under 2h old', color: '#22c55e' });
   else if (age < 6) signals.push({ text: '⏰ Under 6h old', color: '#86efac' });
 
-  if (priceChange1h > 500) signals.push({ text: '⚠️ Already pumped 1h', color: '#ef4444' });
-  else if (priceChange1h > 100) signals.push({ text: '⚡ Big 1h move', color: '#f59e0b' });
-  else if (priceChange1h > 10) signals.push({ text: '📈 Early momentum', color: '#22c55e' });
-  else if (priceChange1h >= 0) signals.push({ text: '😴 Flat — untouched', color: '#60a5fa' });
+  if (priceChange1h > 500) signals.push({ text: ' Already pumped 1h', color: '#ef4444' });
+  else if (priceChange1h > 100) signals.push({ text: 'Big 1h move', color: '#f59e0b' });
+  else if (priceChange1h > 10) signals.push({ text: 'Early momentum', color: '#22c55e' });
+  else if (priceChange1h >= 0) signals.push({ text: 'Flat — untouched', color: '#60a5fa' });
 
-  if (buyRatio > 0.7) signals.push({ text: '🔥 Strong buy pressure', color: '#22c55e' });
-  else if (buyRatio > 0.6) signals.push({ text: '👍 More buyers than sellers', color: '#86efac' });
-  else signals.push({ text: '⚠️ Selling pressure', color: '#ef4444' });
+  if (buyRatio > 0.7) signals.push({ text: 'Strong buy pressure', color: '#22c55e' });
+  else if (buyRatio > 0.6) signals.push({ text: 'More buyers than sellers', color: '#86efac' });
+  else signals.push({ text: ' Selling pressure', color: '#ef4444' });
 
-  if (liquidity < 5000) signals.push({ text: '⚠️ Low liquidity — rug risk', color: '#ef4444' });
-  else if (liquidity < 50000) signals.push({ text: '💧 Healthy liquidity', color: '#22c55e' });
+  if (liquidity < 5000) signals.push({ text: ' Low liquidity — rug risk', color: '#ef4444' });
+  else if (liquidity < 50000) signals.push({ text: 'Healthy liquidity', color: '#22c55e' });
 
   return signals;
 }
@@ -591,14 +591,14 @@ function getSnipeWindow(coin: any) {
   const priceChange1h = parseFloat(coin.priceChange?.h1 || 0);
 
   if (priceChange1h > 500)
-    return { id: 'toolate', label: '🚨 TOO LATE', color: '#ef4444', desc: 'Already pumped hard — missed it' };
+    return { id: 'toolate', label: 'TOO LATE', color: '#ef4444', desc: 'Already pumped hard — missed it' };
   if (age < 1 && priceChange1h < 50)
-    return { id: 'prime', label: '🎯 PRIME SNIPE', color: '#22c55e', desc: 'Under 1h old, not yet pumped' };
+    return { id: 'prime', label: 'PRIME SNIPE', color: '#22c55e', desc: 'Under 1h old, not yet pumped' };
   if (age < 3 && priceChange1h < 100)
-    return { id: 'early', label: '⚡ EARLY', color: '#86efac', desc: 'Still very early entry' };
+    return { id: 'early', label: 'EARLY', color: '#86efac', desc: 'Still very early entry' };
   if (age < 6 && priceChange1h < 200)
-    return { id: 'watch', label: '👀 WATCH', color: '#fbbf24', desc: 'Getting late but possible' };
-  return { id: 'cold', label: '❄️ COLD', color: '#6b7280', desc: 'Likely missed this one' };
+    return { id: 'watch', label: 'WATCH', color: '#fbbf24', desc: 'Getting late but possible' };
+  return { id: 'cold', label: ' COLD', color: '#6b7280', desc: 'Likely missed this one' };
 }
 
 function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
@@ -638,7 +638,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     if (permission === 'granted') {
       setAlertsEnabled(true)
       localStorage.setItem('sniper_alerts', 'true')
-      new Notification('🎯 Coin Sniper Alerts ON', {
+      new Notification('Coin Sniper Alerts ON', {
         body: 'You will be notified when a new Prime Snipe appears',
         icon: '/favicon.ico'
       })
@@ -654,19 +654,19 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
     if (chain === 'solana' || chain === 'sol') {
       if (address) {
-        links.push({ label: '⚡ Buy on Jupiter', url: `https://jup.ag/swap/SOL-${address}`, color: '#22c55e' });
-        links.push({ label: '🎯 Trade on FOMO',  url: `https://fomo.family/token/${address}?ref=al1valol`, color: '#6366f1' });
+        links.push({ label: 'Buy on Jupiter', url: `https://jup.ag/swap/SOL-${address}`, color: '#22c55e' });
+        links.push({ label: 'Trade on FOMO',  url: `https://fomo.family/token/${address}?ref=al1valol`, color: '#6366f1' });
       }
     } else if (chain === 'base') {
-      if (address) links.push({ label: '🦄 Buy on Uniswap', url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, color: '#ff007a' });
+      if (address) links.push({ label: 'Buy on Uniswap', url: `https://app.uniswap.org/swap?chain=base&outputCurrency=${address}`, color: '#ff007a' });
     } else if (chain === 'ethereum' || chain === 'eth') {
-      if (address) links.push({ label: '🦄 Buy on Uniswap', url: `https://app.uniswap.org/swap?outputCurrency=${address}`, color: '#ff007a' });
+      if (address) links.push({ label: 'Buy on Uniswap', url: `https://app.uniswap.org/swap?outputCurrency=${address}`, color: '#ff007a' });
     } else if (chain === 'bsc') {
-      if (address) links.push({ label: '🥞 Buy on PancakeSwap', url: `https://pancakeswap.finance/swap?outputCurrency=${address}`, color: '#f59e0b' });
+      if (address) links.push({ label: 'Buy on PancakeSwap', url: `https://pancakeswap.finance/swap?outputCurrency=${address}`, color: '#f59e0b' });
     }
 
     links.push({
-      label: '📊 DexScreener',
+      label: 'DexScreener',
       url: coin.url || `https://dexscreener.com/${chain}/${address}`,
       color: '#6b7280',
     });
@@ -756,11 +756,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     const liq = parseFloat(coin.liquidity?.usd || 0);
     const mc = parseFloat(coin.marketCap || 0);
     const h1 = parseFloat(coin.priceChange?.h1 || 0);
-    if (liq < 1000) return { label: '🚨 Extreme Risk', color: '#ef4444', desc: 'Very low liquidity — rug risk' };
-    if (liq < 5000) return { label: '⚠️ High Risk', color: '#f97316', desc: 'Low liquidity' };
-    if (h1 > 500) return { label: '⚠️ High Risk', color: '#f97316', desc: 'Already pumped hard' };
-    if (liq > 20000 && mc < 500000) return { label: '✅ Low Risk', color: '#22c55e', desc: 'Good liquidity for size' };
-    return { label: '⚡ Medium Risk', color: '#f59e0b', desc: 'Normal meme coin risk' };
+    if (liq < 1000) return { label: 'Extreme Risk', color: '#ef4444', desc: 'Very low liquidity — rug risk' };
+    if (liq < 5000) return { label: ' High Risk', color: '#f97316', desc: 'Low liquidity' };
+    if (h1 > 500) return { label: ' High Risk', color: '#f97316', desc: 'Already pumped hard' };
+    if (liq > 20000 && mc < 500000) return { label: 'Low Risk', color: '#22c55e', desc: 'Good liquidity for size' };
+    return { label: 'Medium Risk', color: '#f59e0b', desc: 'Normal meme coin risk' };
   };
 
   const analyzeSnipe = async (coin: any) => {
@@ -942,7 +942,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       const chain = (coin.chainId || coin.chain || '').toUpperCase()
 
       try {
-        const notif = new Notification(`🎯 PRIME SNIPE: ${name}`, {
+        const notif = new Notification(`PRIME SNIPE: ${name}`, {
           body: `${symbol} on ${chain} · ${ageDisplay} · Score ${coin.score}/100 · Not yet pumped`,
           icon: coin.image || '/favicon.ico',
           tag: id, // prevents duplicate notifications
@@ -1023,8 +1023,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     <div>
       <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'1px solid #1e1e2a' }}>
         {[
-          ['sniper', '🎯 Coin Sniper'],
-          ['fomo', '⚡ Trade on FOMO'],
+          ['sniper', 'Coin Sniper'],
+          ['fomo', 'Trade on FOMO'],
         ].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id as 'sniper'|'fomo')} style={{
             padding:'10px 16px', border:'none', background:'transparent',
@@ -1038,13 +1038,13 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
       {tab === 'fomo' && (
         <div style={{padding:20}}>
-          <div style={{fontSize:20, fontWeight:800, color:'#fff', marginBottom:8}}>⚡ Trade on FOMO</div>
+          <div style={{fontSize:20, fontWeight:800, color:'#fff', marginBottom:8}}> Trade on FOMO</div>
           <div style={{fontSize:13, color:'#6b7280', marginBottom:20}}>
             FOMO is a social trading app with 120,000+ users. Trade meme coins instantly and share your picks to build a following.
           </div>
 
           <div style={{background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.3)', borderRadius:12, padding:20, marginBottom:16}}>
-            <div style={{fontSize:15, fontWeight:700, color:'#a5b4fc', marginBottom:8}}>💰 FOMO Referral Program</div>
+            <div style={{fontSize:15, fontWeight:700, color:'#a5b4fc', marginBottom:8}}> FOMO Referral Program</div>
             <div style={{fontSize:13, color:'#d1d5db', marginBottom:12, lineHeight:1.6}}>
               Share your referral link and earn a percentage of trading fees from everyone who signs up through you — forever.
             </div>
@@ -1061,15 +1061,15 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           </div>
 
           <div style={{background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:8, padding:12, marginTop:8, marginBottom:16}}>
-            <div style={{fontSize:12, fontWeight:700, color:'#22c55e', marginBottom:4}}>💰 Your Referral Link</div>
+            <div style={{fontSize:12, fontWeight:700, color:'#22c55e', marginBottom:4}}> Your Referral Link</div>
             <div style={{fontSize:11, color:'#86efac', marginBottom:8, wordBreak:'break-all', fontFamily:'monospace'}}>
               https://fomo.family/r/al1valol
             </div>
             <button onClick={() => {
               navigator.clipboard.writeText('https://fomo.family/r/al1valol');
               alert('Copied to clipboard!');
-            }} style={{padding:'5px 12px', borderRadius:6, border:'none', background:'rgba(34,197,94,0.2)', color:'#22c55e', fontSize:11, fontWeight:700, cursor:'pointer'}}>
-              📋 Copy Link
+            }} style={{display:'inline-flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, background:'rgba(34,197,94,0.15)', color:'#22c55e', fontSize:13, fontWeight:700, cursor:'pointer', border:'1px solid rgba(34,197,94,0.25)'}}>
+              <Copy size={12}/> Copy Link
             </button>
             <div style={{fontSize:10, color:'#6b7280', marginTop:6}}>
               Share this link on Twitter/X when you post picks — earn % of every trade your referrals make forever
@@ -1077,7 +1077,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           </div>
 
           <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:20, marginBottom:16}}>
-            <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:12}}>🎯 How to use Coin Sniper + FOMO</div>
+            <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:12}}> How to use Coin Sniper + FOMO</div>
             {[
               {step:'1', text:'Find a PRIME SNIPE coin here in Coin Sniper'},
               {step:'2', text:'Check the AI analysis — if it says BUY with high confidence'},
@@ -1097,10 +1097,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
           <div style={{fontSize:13, fontWeight:700, color:'#6b7280', marginBottom:10, textTransform:'uppercase', letterSpacing:'0.05em'}}>Quick Links</div>
           {[
-            {name:'🚀 FOMO App (fomo.family)', url:'https://fomo.family/r/al1valol', desc:'Main trading platform — cross chain'},
-            {name:'💎 FOMO.gg', url:'https://fomo.gg', desc:'Meme coin launchpad on Solana'},
-            {name:'📱 iOS App', url:'https://fomo.family/r/al1valol', desc:'Download on iPhone'},
-            {name:'🤖 Android App', url:'https://fomo.family/r/al1valol', desc:'Download on Android'},
+            {name:'FOMO App (fomo.family)', url:'https://fomo.family/r/al1valol', desc:'Main trading platform — cross chain'},
+            {name:'FOMO.gg', url:'https://fomo.gg', desc:'Meme coin launchpad on Solana'},
+            {name:'iOS App', url:'https://fomo.family/r/al1valol', desc:'Download on iPhone'},
+            {name:'Android App', url:'https://fomo.family/r/al1valol', desc:'Download on Android'},
           ].map(link => (
             <a key={link.url} href={link.url} target="_blank" rel="noreferrer" style={{
               display:'flex', justifyContent:'space-between', alignItems:'center',
@@ -1116,7 +1116,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           ))}
 
           <div style={{marginTop:16, padding:14, background:'#111', border:'1px solid #1e1e2a', borderRadius:12}}>
-            <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}>🎯 Current Top Snipes to Trade on FOMO</div>
+            <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}> Current Top Snipes to Trade on FOMO</div>
             <div style={{fontSize:12, color:'#6b7280', marginBottom:10}}>Based on Coin Sniper scores right now:</div>
             {gems.filter(g => g.snipeWindow?.id === 'prime' || g.snipeWindow?.id === 'early').slice(0,3).map((coin, i) => (
               <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #1e1e2a'}}>
@@ -1129,7 +1129,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     navigator.clipboard.writeText(getContractAddress(coin) || '');
                     alert(`Contract copied: ${getContractAddress(coin)}\n\nPaste this in FOMO or Jupiter to find ${coin.name}`);
                   }} style={{padding:'6px 12px', borderRadius:6, border:'none', background:'#6366f1', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer'}}>
-                    📋 Copy CA
+                     Copy CA
                   </button>
                 )}
               </div>
@@ -1150,7 +1150,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
       {tab === 'sniper' && !sniperLoading && <>
       <div style={{ padding:'10px 14px', borderRadius:10, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', color:'#fcd34d', fontSize:12, marginBottom:12 }}>
-        ⚠️ New coins are extremely high risk. Most will go to zero. Only invest what you can afford to lose completely.
+         New coins are extremely high risk. Most will go to zero. Only invest what you can afford to lose completely.
       </div>
 
       {launchedInLastHour > 0 && (
@@ -1177,7 +1177,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
               border:'1px solid rgba(34,197,94,0.3)',
               fontSize:12, fontWeight:700, color:'#22c55e'
             }}>
-              🎯 {primeCount} Prime Snipe{primeCount > 1 ? 's' : ''} right now
+               {primeCount} Prime Snipe{primeCount > 1 ? 's' : ''} right now
             </div>
           )}
           <button onClick={alertsEnabled ? () => {
@@ -1191,7 +1191,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             fontSize:12, fontWeight:700, cursor:'pointer',
             display:'flex', alignItems:'center', gap:6
           }}>
-            {alertsEnabled ? '🔔 Alerts ON' : '🔕 Enable Alerts'}
+            {alertsEnabled ? 'Alerts ON' : 'Enable Alerts'}
           </button>
           <button onClick={async () => {
             const primes = gems.filter(g => g.snipeWindow?.id === 'prime').slice(0,3);
@@ -1204,7 +1204,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             background:'rgba(99,102,241,0.08)', color:'#a5b4fc',
             fontSize:12, fontWeight:700, cursor:'pointer'
           }}>
-            ✦ Analyze All Prime Snipes
+             Analyze All Prime Snipes
           </button>
           <button
             onClick={() => fetchGems()}
@@ -1223,7 +1223,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 Refreshing…
               </>
             ) : (
-              <>🔄 Refresh</>
+              <> Refresh</>
             )}
           </button>
         </div>
@@ -1233,10 +1233,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Window</span>
           {[
-            ['prime',   '🎯 Prime Snipes', '#22c55e'],
-            ['early',   '⚡ Early',         '#86efac'],
-            ['watch',   '👀 Watch',         '#fbbf24'],
-            ['toolate', '🚨 Too Late',      '#ef4444'],
+            ['prime',   'Prime Snipes', '#22c55e'],
+            ['early',   'Early',         '#86efac'],
+            ['watch',   'Watch',         '#fbbf24'],
+            ['toolate', 'Too Late',      '#ef4444'],
             ['all',     'All',              '#6366f1'],
           ].map(([id, label, accent]) => (
             <button key={id} onClick={() => setSnipeFilter(id)} style={pillStyle(snipeFilter === id, accent)}>{label}</button>
@@ -1310,10 +1310,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
               : ageHoursNum < 2 ? 'rgba(251,191,36,0.3)'
               : ageHoursNum < 6 ? 'rgba(249,115,22,0.3)'
               : 'rgba(107,114,128,0.2)';
-            const ageEmoji = ageHoursNum < 0.5 ? '🚀'
-              : ageHoursNum < 1 ? '🔥'
-              : ageHoursNum < 2 ? '⚡'
-              : ageHoursNum < 6 ? '👀' : '❄️';
+            const ageEmoji = ageHoursNum < 0.5 ? ''
+              : ageHoursNum < 1 ? ''
+              : ageHoursNum < 2 ? ''
+              : ageHoursNum < 6 ? '' : '';
             const ageHint = ageHoursNum < 0.5 ? '— JUST LAUNCHED'
               : ageHoursNum < 1 ? '— VERY EARLY'
               : ageHoursNum < 2 ? '— STILL EARLY'
@@ -1366,7 +1366,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     display:'flex', alignItems:'center', gap:6,
                     animation:'pulse 2s infinite'
                   }}>
-                    <span style={{fontSize:14}}>🚀</span>
+                    <Zap size={14} style={{color:'#22c55e'}}/>
                     <span style={{fontSize:12, fontWeight:800, color:'#22c55e'}}>
                       JUST LAUNCHED — {Math.round(ageHoursNum*60)} MINUTES AGO
                     </span>
@@ -1422,7 +1422,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
                 {change1h > 500 && (
                   <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:6, padding:'8px 10px', marginBottom:8, fontSize:11, color:'#fca5a5' }}>
-                    ⚠️ Up {change1h.toFixed(0)}% in 1h — the easy money is gone. Early buyers are selling TO YOU.
+                     Up {change1h.toFixed(0)}% in 1h — the easy money is gone. Early buyers are selling TO YOU.
                   </div>
                 )}
 
@@ -1453,24 +1453,24 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   const hasTelegram = coin.info?.socials?.some((s:any) => s.type === 'telegram');
                   const hasWebsite = (coin.info?.websites || []).length > 0;
                   const socialScore = (hasTwitter?1:0) + (hasTelegram?1:0) + (hasWebsite?1:0);
-                  const rugRiskLabel = socialScore === 0 ? '🚨 No socials — likely rug'
-                    : socialScore === 1 ? '⚠️ Minimal socials — high risk'
-                    : '✅ Has community presence';
+                  const rugRiskLabel = socialScore === 0 ? 'No socials — likely rug'
+                    : socialScore === 1 ? ' Minimal socials — high risk'
+                    : 'Has community presence';
                   const rugRiskColor = socialScore === 0 ? '#ef4444' : socialScore === 1 ? '#f59e0b' : '#22c55e';
                   return (
                     <>
                       <div style={{display:'flex', gap:4, flexWrap:'wrap', marginBottom:6}}>
                         {hasTwitter
-                          ? <a href={coin.info.socials.find((s:any)=>s.type==='twitter')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(29,161,242,0.15)', color:'#1da1f2', textDecoration:'none'}}>🐦 Twitter</a>
-                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>❌ No Twitter</span>
+                          ? <a href={coin.info.socials.find((s:any)=>s.type==='twitter')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(29,161,242,0.15)', color:'#1da1f2', textDecoration:'none'}}> Twitter</a>
+                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}> No Twitter</span>
                         }
                         {hasTelegram
-                          ? <a href={coin.info.socials.find((s:any)=>s.type==='telegram')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(33,150,243,0.15)', color:'#2196f3', textDecoration:'none'}}>💬 Telegram</a>
-                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>❌ No Telegram</span>
+                          ? <a href={coin.info.socials.find((s:any)=>s.type==='telegram')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(33,150,243,0.15)', color:'#2196f3', textDecoration:'none'}}> Telegram</a>
+                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}> No Telegram</span>
                         }
                         {hasWebsite
-                          ? <a href={coin.info?.websites?.[0]?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(34,197,94,0.1)', color:'#22c55e', textDecoration:'none'}}>🌐 Website</a>
-                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>❌ No Website</span>
+                          ? <a href={coin.info?.websites?.[0]?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(34,197,94,0.1)', color:'#22c55e', textDecoration:'none'}}> Website</a>
+                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}> No Website</span>
                         }
                       </div>
                       <div style={{fontSize:10, color:rugRiskColor, marginBottom:4}}>{rugRiskLabel}</div>
@@ -1491,7 +1491,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                           border:'1px solid rgba(239,68,68,0.3)', background:'rgba(239,68,68,0.05)',
                           color:'#fca5a5', fontSize:11, fontWeight:700, cursor:'pointer'
                         }}>
-                          🔍 Check Holders & Rug Risk
+                           Check Holders & Rug Risk
                         </button>
                       )}
 
@@ -1509,7 +1509,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                             <span style={{fontSize:12, fontWeight:800, color:
                               rug.rugRisk==='EXTREME'?'#ef4444':rug.rugRisk==='HIGH'?'#f97316':rug.rugRisk==='MEDIUM'?'#f59e0b':'#22c55e'
                             }}>
-                              {rug.rugRisk==='EXTREME'?'🚨':rug.rugRisk==='HIGH'?'⚠️':rug.rugRisk==='MEDIUM'?'⚡':'✅'} {rug.rugRisk} RUG RISK
+                              {rug.rugRisk==='EXTREME'?'':rug.rugRisk==='HIGH'?'':rug.rugRisk==='MEDIUM'?'':''} {rug.rugRisk} RUG RISK
                             </span>
                             <span style={{fontSize:10, color:'#6b7280'}}>RugCheck score: {rug.score}</span>
                           </div>
@@ -1531,7 +1531,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
                           {rug.insiderCount > 0 && (
                             <div style={{fontSize:11, color:'#ef4444', marginBottom:4}}>
-                              ⚠️ {rug.insiderCount} insider wallet{rug.insiderCount > 1 ? 's' : ''} detected
+                               {rug.insiderCount} insider wallet{rug.insiderCount > 1 ? 's' : ''} detected
                             </div>
                           )}
 
@@ -1616,7 +1616,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                         color: snipeAnalyzing[coin.coinId||coin.pairAddress] ? '#4b5563' : '#a5b4fc',
                         fontSize:12, fontWeight:700, cursor:'pointer'
                       }}>
-                      {snipeAnalyzing[coin.coinId||coin.pairAddress] ? '🤔 Analyzing...' : '✦ AI Snipe Analysis'}
+                      {snipeAnalyzing[coin.coinId||coin.pairAddress] ? 'Analyzing...' : 'AI Snipe Analysis'}
                     </button>
                   ) : (
                     <div style={{
@@ -1625,7 +1625,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       border: `1px solid ${snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'rgba(34,197,94,0.3)' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`
                     }}>
                       <div style={{fontSize:13, fontWeight:800, color: snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? '#22c55e' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? '#ef4444' : '#f59e0b', marginBottom:2}}>
-                        {snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? '✅ BUY' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? '🚫 SKIP' : '👀 WATCH'}
+                        {snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'BUY' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'SKIP' : 'WATCH'}
                         <span style={{fontSize:10, fontWeight:400, color:'#6b7280', marginLeft:6}}>
                           {snipeAnalysis[coin.coinId||coin.pairAddress].confidence} confidence
                         </span>
@@ -1656,7 +1656,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
                       fontSize:11, fontWeight:700, cursor:'pointer'
                     }}>
-                      📝 Paper
+                       Paper
                     </button>
 
                     <button onClick={() => {
@@ -1666,7 +1666,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                         window.open('https://fomo.family/r/al1valol', '_blank')
                         const toast = document.createElement('div')
                         toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #6366f1;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;text-align:center'
-                        toast.innerHTML = '📋 CA copied! Paste in FOMO search'
+                        toast.innerHTML = 'CA copied! Paste in FOMO search'
                         document.body.appendChild(toast)
                         setTimeout(() => toast.remove(), 3000)
                       } else {
@@ -1677,7 +1677,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
                       fontSize:11, fontWeight:700, cursor:'pointer'
                     }}>
-                      🎯 FOMO
+                       FOMO
                     </button>
 
                     <button onClick={() => {
@@ -1686,7 +1686,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                         navigator.clipboard.writeText(address)
                         const toast = document.createElement('div')
                         toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #22c55e;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;text-align:center'
-                        toast.innerHTML = '✅ Contract address copied!'
+                        toast.innerHTML = 'Contract address copied!'
                         document.body.appendChild(toast)
                         setTimeout(() => toast.remove(), 3000)
                       }
@@ -1695,7 +1695,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       border:'1px solid #2a2a3a', background:'transparent',
                       color:'#6b7280', fontSize:11, fontWeight:700, cursor:'pointer'
                     }}>
-                      📋 CA
+                       CA
                     </button>
                   </div>
                 </div>
@@ -1706,7 +1706,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       )}
 
       <div style={{marginTop:20, background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:16}}>
-        <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}>🐋 Whale Wallet Tracker</div>
+        <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}> Whale Wallet Tracker</div>
         <div style={{fontSize:12, color:'#6b7280', marginBottom:10}}>
           Paste a known whale wallet address to see what they're buying on DexScreener
         </div>
@@ -2146,7 +2146,7 @@ function SignalCard({ signal, livePrice, livePriceChange24h, history, onUpdate, 
             background: signal.didTake ? "#22c55e" : "#6366f1", color:"#fff",
             fontSize:12, fontWeight:700, cursor:"pointer"
           }}
-        >{signal.didTake ? "Taken ✓" : "Mark as Taken"}</button>
+        >{signal.didTake ? "Taken " : "Mark as Taken"}</button>
       </div>
 
       {signal.didTake && (
@@ -2504,10 +2504,10 @@ function fmtHoldDuration(fromIso, toIso) {
 }
 
 function momentumBadge(change24h) {
-  if (change24h >= 20) return { label: '🔥 Surging', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
-  if (change24h >= 3)  return { label: '📈 Rising',  color: '#22c55e', bg: 'rgba(34,197,94,0.15)' };
-  if (change24h > -3)  return { label: '😐 Flat',    color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' };
-  return                       { label: '📉 Falling', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+  if (change24h >= 20) return { label: 'Surging', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' };
+  if (change24h >= 3)  return { label: 'Rising',  color: '#22c55e', bg: 'rgba(34,197,94,0.15)' };
+  if (change24h > -3)  return { label: 'Flat',    color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' };
+  return                       { label: 'Falling', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
 }
 
 function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
@@ -2676,7 +2676,7 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
                     fontSize:12, fontWeight:700, cursor: logged ? 'default' : 'pointer', minWidth:80,
                     border: logged ? 'none' : '1px solid #2a2a3a',
                   }}
-                >{logged ? 'Logged ✓' : 'Log Signal'}</button>
+                >{logged ? 'Logged ' : 'Log Signal'}</button>
                 <button
                   onClick={() => onBuy?.({ coinId: c.id, name: c.name, symbol: c.symbol, price: price || 0 })}
                   style={{
@@ -3522,7 +3522,7 @@ function PositionChartModal({ position, onClose }) {
                 {' on '}{fmtDateShort(hindsight.t)}
               </div>
               {nearPeak ? (
-                <div style={{ fontSize:13, color:"#22c55e", fontWeight:700 }}>You sold at near the perfect time! 🎯 (captured {(captureRatio * 100).toFixed(0)}% of the peak)</div>
+                <div style={{ fontSize:13, color:"#22c55e", fontWeight:700 }}>You sold at near the perfect time!  (captured {(captureRatio * 100).toFixed(0)}% of the peak)</div>
               ) : leftOnTable > 0 ? (
                 <div style={{ fontSize:13, color:"#f59e0b", fontWeight:700 }}>You left {fmtUsd(leftOnTable)} on the table by selling early.</div>
               ) : (
@@ -4237,10 +4237,10 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                               <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(245,158,11,0.15)", color:"#f59e0b" }} title={`${p.partialCloseCount} partial close${p.partialCloseCount === 1 ? '' : 's'}`}>Partial</span>
                             )}
                             {p.alertTarget != null && p.alertTarget > 0 && (
-                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(34,197,94,0.15)", color:"#22c55e" }}>🎯 +{p.alertTarget}%</span>
+                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(34,197,94,0.15)", color:"#22c55e" }}> +{p.alertTarget}%</span>
                             )}
                             {p.alertStop != null && p.alertStop > 0 && (
-                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(239,68,68,0.15)", color:"#ef4444" }}>🛑 -{p.alertStop}%</span>
+                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 6px", borderRadius:4, background:"rgba(239,68,68,0.15)", color:"#ef4444" }}> -{p.alertStop}%</span>
                             )}
                           </div>
                           <div style={{ fontSize:11, color:"#6b7280" }}>{p.symbol?.toUpperCase()} · {p.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</div>
@@ -4732,14 +4732,14 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         else if (vol > 10000) score += 6
         else if (vol > 5000) score += 3
 
-        const dipLabel = dip > 50 ? '🔴 Big dip (-' + dip.toFixed(0) + '%)'
-          : dip > 30 ? '🟡 Medium dip (-' + dip.toFixed(0) + '%)'
-          : '🟢 Small dip (-' + dip.toFixed(0) + '%)'
+        const dipLabel = dip > 50 ? 'Big dip (-' + dip.toFixed(0) + '%)'
+          : dip > 30 ? 'Medium dip (-' + dip.toFixed(0) + '%)'
+          : 'Small dip (-' + dip.toFixed(0) + '%)'
 
-        const recoveryLabel = h1 > 20 ? '🚀 Strong bounce +' + h1.toFixed(0) + '%'
-          : h1 > 10 ? '📈 Good bounce +' + h1.toFixed(0) + '%'
-          : h1 > 5 ? '↗️ Recovering +' + h1.toFixed(0) + '%'
-          : '🌱 Just turned green +' + h1.toFixed(1) + '%'
+        const recoveryLabel = h1 > 20 ? 'Strong bounce +' + h1.toFixed(0) + '%'
+          : h1 > 10 ? 'Good bounce +' + h1.toFixed(0) + '%'
+          : h1 > 5 ? '↗ Recovering +' + h1.toFixed(0) + '%'
+          : 'Just turned green +' + h1.toFixed(1) + '%'
 
         return {
           ...p,
@@ -4885,13 +4885,13 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
           let patch = sigPatches.get(s.id) || {};
           if (s.targetGain && !s.targetHitNotified && change >= s.targetGain) {
             if (Notification.permission === 'granted') {
-              try { new Notification(`🎯 ${s.name} hit +${s.targetGain}% target`, { body: `Consider taking profit. Current $${cur}` }); } catch {}
+              try { new Notification(`${s.name} hit +${s.targetGain}% target`, { body: `Consider taking profit. Current $${cur}` }); } catch {}
             }
             patch.targetHitNotified = true;
           }
           if (s.stopLoss && !s.stopHitNotified && change <= -s.stopLoss) {
             if (Notification.permission === 'granted') {
-              try { new Notification(`⚠️ ${s.name} hit −${s.stopLoss}% stop loss`, { body: `Consider cutting losses. Current $${cur}` }); } catch {}
+              try { new Notification(`${s.name} hit −${s.stopLoss}% stop loss`, { body: `Consider cutting losses. Current $${cur}` }); } catch {}
             }
             patch.stopHitNotified = true;
           }
@@ -4913,13 +4913,13 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
           let patch = posPatches.get(pos.id) || {};
           if (pos.alertTarget && !pos.targetHitNotified && change >= pos.alertTarget) {
             if (Notification.permission === 'granted') {
-              try { new Notification(`🎯 ${(pos.symbol || pos.name)} hit +${pos.alertTarget}% target`, { body: `Consider taking profit. Current $${cur}` }); } catch {}
+              try { new Notification(`${(pos.symbol || pos.name)} hit +${pos.alertTarget}% target`, { body: `Consider taking profit. Current $${cur}` }); } catch {}
             }
             patch.targetHitNotified = true;
           }
           if (pos.alertStop && !pos.stopHitNotified && change <= -pos.alertStop) {
             if (Notification.permission === 'granted') {
-              try { new Notification(`⚠️ ${(pos.symbol || pos.name)} hit −${pos.alertStop}% stop`, { body: `Consider cutting losses. Current $${cur}` }); } catch {}
+              try { new Notification(`${(pos.symbol || pos.name)} hit −${pos.alertStop}% stop`, { body: `Consider cutting losses. Current $${cur}` }); } catch {}
             }
             patch.stopHitNotified = true;
           }
@@ -5095,12 +5095,12 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
 
             {dipsLoading ? (
               <div style={{textAlign:'center', padding:48, color:'#6b7280'}}>
-                <div style={{fontSize:32, marginBottom:12}}>🔄</div>
+                <RefreshCw size={32} style={{marginBottom:12, opacity:0.5}}/>
                 <div style={{fontSize:16, fontWeight:700}}>Scanning for dips...</div>
               </div>
             ) : dips.length === 0 ? (
-              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:32, textAlign:'center'}}>
-                <div style={{fontSize:32, marginBottom:12}}>📈</div>
+              <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:12, padding:32, textAlign:'center'}}>
+                <TrendingUp size={32} style={{marginBottom:12, opacity:0.5, color:'#22c55e'}}/>
                 <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:8}}>Market Trending Up</div>
                 <div style={{fontSize:13, color:'#6b7280', marginBottom:16, lineHeight:1.6}}>
                   No good dip opportunities right now. Most coins are rising or stable —
@@ -5114,10 +5114,11 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                   <div>• Check back every few hours</div>
                 </div>
                 <button onClick={fetchDips} style={{
-                  padding:'10px 24px', borderRadius:8, border:'none',
-                  background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
+                  display:'inline-flex', alignItems:'center', gap:6,
+                  padding:'9px 18px', borderRadius:8, border:'none',
+                  background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', transition:'all 0.15s'
                 }}>
-                  🔄 Check Again
+                  <RefreshCw size={14}/> Check Again
                 </button>
               </div>
             ) : (
@@ -5186,7 +5187,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                           borderRadius:8, padding:10, marginBottom:10
                         }}>
                           <div style={{fontSize:13, fontWeight:800, color: ai.pick==='BUY'?'#22c55e':ai.pick==='WATCH'?'#f59e0b':'#ef4444', marginBottom:4}}>
-                            {ai.pick==='BUY'?'✅ Buy the dip':ai.pick==='WATCH'?'👀 Wait for confirmation':'🚫 Skip — still falling'}
+                            {ai.pick==='BUY'?'Buy the dip':ai.pick==='WATCH'?'Wait for confirmation':'Skip — still falling'}
                           </div>
                           <div style={{fontSize:12, color:'#d1d5db'}}>{ai.reasoning}</div>
                         </div>
@@ -5201,7 +5202,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                             color: isAnalyzing ? '#4b5563' : '#a5b4fc',
                             fontSize:11, fontWeight:700, cursor:'pointer'
                           }}>
-                            {isAnalyzing ? '🤔 Analyzing...' : '✦ AI Analysis'}
+                            {isAnalyzing ? 'Analyzing...' : 'AI Analysis'}
                           </button>
                         ) : (
                           <div/>
@@ -5223,7 +5224,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                           background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
                           fontSize:11, fontWeight:700, cursor:'pointer'
                         }}>
-                          📝 Paper
+                           Paper
                         </button>
 
                         <button onClick={() => {
@@ -5231,7 +5232,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                           window.open('https://fomo.family/r/al1valol', '_blank')
                           const toast = document.createElement('div')
                           toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #6366f1;color:#fff;padding:10px 16px;borderRadius:8px;fontSize:12px;zIndex:9999'
-                          toast.innerHTML = '📋 CA copied! Paste in FOMO'
+                          toast.innerHTML = 'CA copied! Paste in FOMO'
                           document.body.appendChild(toast)
                           setTimeout(() => toast.remove(), 3000)
                         }} style={{
@@ -5240,7 +5241,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                           background:'rgba(99,102,241,0.08)',
                           color:'#a5b4fc', fontSize:11, fontWeight:700, cursor:'pointer'
                         }}>
-                          🎯 FOMO
+                           FOMO
                         </button>
                       </div>
                     </div>

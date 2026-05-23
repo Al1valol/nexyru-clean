@@ -139,7 +139,7 @@ export default function OptionsPage() {
     highUrgency.forEach(alert => {
       const key = 'notified_' + alert.id
       if (!localStorage.getItem(key)) {
-        new Notification(`🚨 ${alert.ticker} ${alert.type} Alert!`, {
+        new Notification(`${alert.ticker} ${alert.type} Alert!`, {
           body: `$${(alert.premium/1000).toFixed(0)}k unusual ${alert.type} activity · Score ${alert.score}/100`,
           icon: '/favicon.ico'
         })

@@ -996,7 +996,7 @@ function DeepDiveSection({
           cursor: running ? "default" : "pointer",
         }}
       >
-        {running ? "🔍 Running deep dive (3 analyses)…" : "🔍 Deep Dive — Run Full Analysis"}
+        <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Search size={12}/> {running ? "Running deep dive (3 analyses)…" : "Deep Dive — Run Full Analysis"}</span>
       </button>
     );
   }
@@ -1012,7 +1012,7 @@ function DeepDiveSection({
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 800, color: "#a5b4fc", marginBottom: 10 }}>
-        🔍 Deep Dive Results — {dd.agreement}
+        <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Search size={14}/> Deep Dive Results — {dd.agreement}</span>
       </div>
       <div
         style={{
@@ -1052,13 +1052,13 @@ function DeepDiveSection({
             {i === 0 ? "General" : i === 1 ? "Head to Head / Form" : "Schedule / Line Movement"}
           </div>
           <div style={{ fontSize: 12, color: "#d1d5db", marginBottom: 3 }}>{a.reasoning}</div>
-          {a.form && <div style={{ fontSize: 11, color: "#6b7280" }}>📊 {a.form}</div>}
-          {a.edge && <div style={{ fontSize: 11, color: "#6b7280" }}>⚡ {a.edge}</div>}
-          {a.warning && <div style={{ fontSize: 11, color: "#f59e0b" }}>⚠️ {a.warning}</div>}
+          {a.form && <div style={{ display:"flex", alignItems:"center", gap:6, fontSize: 11, color: "#6b7280" }}><BarChart2 size={11}/> {a.form}</div>}
+          {a.edge && <div style={{ display:"flex", alignItems:"center", gap:6, fontSize: 11, color: "#6b7280" }}><Zap size={11}/> {a.edge}</div>}
+          {a.warning && <div style={{ display:"flex", alignItems:"center", gap:6, fontSize: 11, color: "#f59e0b" }}><AlertTriangle size={11}/> {a.warning}</div>}
         </div>
       ))}
-      <div style={{ fontSize: 10, color: "#4b5563", marginTop: 6 }}>
-        ⚠️ Always verify on{" "}
+      <div style={{ display:"flex", alignItems:"center", gap:4, fontSize: 10, color: "#4b5563", marginTop: 6 }}>
+        <AlertTriangle size={10}/> Always verify on{" "}
         <a
           href="https://www.espn.com/injuries"
           target="_blank"
@@ -1328,7 +1328,7 @@ function BestPicksPanel({
                   </div>
                   <div style={{ fontSize: 10.5, color: C.textMuted, marginTop: 2 }}>
                     {cd.live ? (
-                      <span style={{ color: C.red, fontWeight: 700 }}>🔴 LIVE</span>
+                      <span style={{ display:"inline-flex", alignItems:"center", gap:4, color: C.red, fontWeight: 700 }}><span style={{width:6, height:6, borderRadius:"50%", background:C.red, boxShadow:`0 0 8px ${C.red}`}}/> LIVE</span>
                     ) : (
                       `${p.game.sport_title} · ${cd.label}`
                     )}
@@ -1425,7 +1425,7 @@ function BestPicksPanel({
                     minHeight: 36,
                   }}
                 >
-                  {analyzing.has(p.game.id) ? "🔍…" : a ? "✓ Analyzed" : "✦ Analyze"}
+                  {analyzing.has(p.game.id) ? "Analyzing…" : a ? "Analyzed" : "Analyze"}
                 </button>
               </div>
 
@@ -1441,7 +1441,7 @@ function BestPicksPanel({
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
                     <div style={{ fontSize: 13, fontWeight: 800, color: a.avoid ? C.red : "#a5b4fc" }}>
-                      {a.avoid ? "🚫 SKIP" : `✅ Pick: ${a.pick}`}
+                      {a.avoid ? <span style={{display:"inline-flex", alignItems:"center", gap:4}}><XCircle size={12}/> SKIP</span> : <span style={{display:"inline-flex", alignItems:"center", gap:4}}><CheckCircle size={12}/> Pick: {a.pick}</span>}
                     </div>
                     <span
                       style={{
@@ -1471,26 +1471,26 @@ function BestPicksPanel({
                   </div>
                   {a.injuries && a.injuries.toLowerCase() !== "none" && (
                     <div style={{ fontSize: 11.5, color: "#fca5a5", marginBottom: 4 }}>
-                      🏥 <strong>Injuries:</strong> {a.injuries}
+                      <Shield size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Injuries:</strong> {a.injuries}
                     </div>
                   )}
                   {a.form && (
                     <div style={{ fontSize: 11.5, color: "#86efac", marginBottom: 4 }}>
-                      📊 <strong>Form:</strong> {a.form}
+                      <BarChart2 size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Form:</strong> {a.form}
                     </div>
                   )}
                   {a.edge && (
                     <div style={{ fontSize: 11.5, color: "#c7d2fe", marginBottom: 4 }}>
-                      ⚡ <strong>Edge:</strong> {a.edge}
+                      <Zap size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Edge:</strong> {a.edge}
                     </div>
                   )}
                   {a.warning && (
                     <div style={{ fontSize: 11.5, color: "#fde68a", marginBottom: 4 }}>
-                      ⚠️ <strong>Warning:</strong> {a.warning}
+                      <AlertTriangle size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Warning:</strong> {a.warning}
                     </div>
                   )}
                   <div style={{ fontSize: 10.5, color: "#93c5fd", marginTop: 8 }}>
-                    ⚠️ Verify injuries on{" "}
+                    <AlertTriangle size={11} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> Verify injuries on{" "}
                     <a
                       href="https://www.espn.com/injuries"
                       target="_blank"
@@ -1798,8 +1798,8 @@ function ArbFinderPanel({
         <>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             {[
-              { id: "baseball_mlb", label: "⚾ MLB" },
-              { id: "basketball_nba", label: "🏀 NBA" },
+              { id: "baseball_mlb", label: "MLB" },
+              { id: "basketball_nba", label: "NBA" },
             ].map((s) => (
               <button
                 key={s.id}
@@ -1967,7 +1967,7 @@ function ArbFinderPanel({
                             };
                             const ex = JSON.parse(localStorage.getItem("sports_paper_bets") || "[]");
                             localStorage.setItem("sports_paper_bets", JSON.stringify([bet, ...ex]));
-                            onNotify("✅ Prop arb tracked!");
+                            onNotify("Prop arb tracked!");
                           }}
                           style={{
                             width: "100%",
@@ -2037,7 +2037,7 @@ function ArbFinderPanel({
                             {mid.bestUnder.book}
                           </div>
                           <div style={{ fontSize: 12, color: "#a5b4fc", marginTop: 4 }}>
-                            If {mid.player} scores between {mid.lineOver} and {mid.lineUnder} — BOTH bets win! 🎉
+                            If {mid.player} scores between {mid.lineOver} and {mid.lineUnder} — BOTH bets win!
                           </div>
                         </div>
 
@@ -2313,7 +2313,8 @@ function ParlaysPanel({
   return (
     <>
       <SectionHeader
-        title="🎰 Parlays"
+        Icon={Award}
+        title="Parlays"
         subtitle="Auto-suggested 2-4 leg parlays grouped by bookmaker. EV shown honestly — most parlays are bad bets."
         right={<RefreshButton loading={loading} onClick={onRefresh} />}
       />
@@ -2405,8 +2406,8 @@ function ParlaysPanel({
               }}
             >
               {p.ev > 0
-                ? `✅ Expected value: +$${p.ev.toFixed(2)} per $100`
-                : `❌ Expected value: −$${Math.abs(p.ev).toFixed(2)} per $100 — house edge`}
+                ? <span style={{display:"inline-flex", alignItems:"center", gap:4}}><CheckCircle size={12}/> Expected value: +${p.ev.toFixed(2)} per $100</span>
+                : <span style={{display:"inline-flex", alignItems:"center", gap:4}}><XCircle size={12}/> Expected value: −${Math.abs(p.ev).toFixed(2)} per $100 — house edge</span>}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -2774,7 +2775,7 @@ function PlayerPropsPanel({
       potWin: 100,
       notes: `Avg ${b.avgDisplay} vs line ${b.line} — ${b.edgePct}% edge`,
     });
-    alert(`✅ Placed paper bet: ${b.pick} ${b.line} ${b.prop} for ${b.player}`);
+    alert(`Placed paper bet: ${b.pick} ${b.line} ${b.prop} for ${b.player}`);
   };
 
   const analyzeProp = async (b: PropBet) => {
@@ -2937,11 +2938,11 @@ function PlayerPropsPanel({
     }, []);
 
     const slots = [
-      { time: "12 PM - 2 PM", status: "📋 Some afternoon game props open", active: false },
-      { time: "3 PM - 5 PM", status: "📈 Main prop lines start posting", active: true },
-      { time: "5 PM - 7 PM", status: "🔥 Most props available — best time to check", active: true },
-      { time: "7 PM - 10 PM", status: "⚡ Games starting — props close at first pitch", active: true },
-      { time: "After 10 PM", status: "❌ Props closed for the day", active: false },
+      { time: "12 PM - 2 PM", status: "Some afternoon game props open", active: false },
+      { time: "3 PM - 5 PM", status: "Main prop lines start posting", active: true },
+      { time: "5 PM - 7 PM", status: "Most props available — best time to check", active: true },
+      { time: "7 PM - 10 PM", status: "Games starting — props close at first pitch", active: true },
+      { time: "After 10 PM", status: "Props closed for the day", active: false },
     ];
 
     return (
@@ -2954,7 +2955,7 @@ function PlayerPropsPanel({
           textAlign: "center",
         }}
       >
-        <div style={{ fontSize: 36, marginBottom: 12 }}>⏱️</div>
+        <Clock size={36} style={{ marginBottom: 12, opacity: 0.5, color: C.textMuted }}/>
         <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
           No Real Prop Lines Right Now
         </div>
@@ -3016,7 +3017,7 @@ function PlayerPropsPanel({
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 700, color: "#a5b4fc", marginBottom: 6 }}>
-            💡 Pro Tips
+            <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Zap size={14}/> Pro Tips</span>
           </div>
           <div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.6 }}>
             • Prop lines post closest to game time — check 2-3 hours before first pitch
@@ -3039,7 +3040,7 @@ function PlayerPropsPanel({
             cursor: "pointer",
           }}
         >
-          🔄 Check Again Now
+          <span style={{display:"inline-flex", alignItems:"center", gap:6}}><RefreshCw size={12}/> Check Again Now</span>
         </button>
 
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #1e1e2a" }}>
@@ -3347,7 +3348,7 @@ function PlayerPropsPanel({
                       minHeight: 36,
                     }}
                   >
-                    {analyzing.has(b.id) ? "🔍…" : a ? "✓ Analyzed" : "✦ AI Analyze"}
+                    {analyzing.has(b.id) ? "Analyzing…" : a ? "Analyzed" : "AI Analyze"}
                   </button>
                 </div>
 
@@ -3363,7 +3364,7 @@ function PlayerPropsPanel({
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
                       <div style={{ fontSize: 13, fontWeight: 800, color: a.avoid ? C.red : "#a5b4fc" }}>
-                        {a.avoid ? "🚫 SKIP" : `✅ Pick: ${a.pick}`}
+                        {a.avoid ? <span style={{display:"inline-flex", alignItems:"center", gap:4}}><XCircle size={12}/> SKIP</span> : <span style={{display:"inline-flex", alignItems:"center", gap:4}}><CheckCircle size={12}/> Pick: {a.pick}</span>}
                       </div>
                       <span
                         style={{
@@ -3393,22 +3394,22 @@ function PlayerPropsPanel({
                     </div>
                     {a.injuries && a.injuries.toLowerCase() !== "none" && (
                       <div style={{ fontSize: 11.5, color: "#fca5a5", marginBottom: 4 }}>
-                        🏥 <strong>Injuries:</strong> {a.injuries}
+                        <Shield size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Injuries:</strong> {a.injuries}
                       </div>
                     )}
                     {a.form && (
                       <div style={{ fontSize: 11.5, color: "#86efac", marginBottom: 4 }}>
-                        📊 <strong>Form:</strong> {a.form}
+                        <BarChart2 size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Form:</strong> {a.form}
                       </div>
                     )}
                     {a.edge && (
                       <div style={{ fontSize: 11.5, color: "#c7d2fe", marginBottom: 4 }}>
-                        ⚡ <strong>Edge:</strong> {a.edge}
+                        <Zap size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Edge:</strong> {a.edge}
                       </div>
                     )}
                     {a.warning && (
                       <div style={{ fontSize: 11.5, color: "#fde68a", marginBottom: 4 }}>
-                        ⚠️ <strong>Warning:</strong> {a.warning}
+                        <AlertTriangle size={12} style={{display:"inline", verticalAlign:"middle", marginRight:4}}/> <strong>Warning:</strong> {a.warning}
                       </div>
                     )}
                     {!a.avoid && a.pick !== "SKIP" && (
@@ -3470,7 +3471,7 @@ function PlayerPropsPanel({
               marginBottom: 12,
             }}
           >
-            🎯 Real prop lines pulled live from US sportsbooks. Compared against season averages
+            <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Target size={12}/> Real prop lines pulled live from US sportsbooks. Compared against season averages</span>
             where available.
           </div>
 
@@ -3647,36 +3648,36 @@ function getResultLink(bet: any) {
   const game = encodeURIComponent(bet.game || "");
 
   if (sport.includes("cs") || sport.includes("csgo") || sport === "csgo") {
-    return { url: "https://www.hltv.org/results", label: "🔍 Check Result on HLTV →", color: "#f59e0b" };
+    return { url: "https://www.hltv.org/results", label: "Check Result on HLTV →", color: "#f59e0b" };
   }
   if (sport.includes("lol") || sport.includes("league")) {
-    return { url: `https://lol.fandom.com/wiki/Special:Search?query=${game}`, label: "🔍 Check Result on LoL Wiki →", color: "#c89b3c" };
+    return { url: `https://lol.fandom.com/wiki/Special:Search?query=${game}`, label: "Check Result on LoL Wiki →", color: "#c89b3c" };
   }
   if (sport.includes("valorant")) {
-    return { url: "https://www.vlr.gg/matches/results", label: "🔍 Check Result on VLR.gg →", color: "#ff4655" };
+    return { url: "https://www.vlr.gg/matches/results", label: "Check Result on VLR.gg →", color: "#ff4655" };
   }
   if (sport.includes("dota")) {
-    return { url: "https://www.dotabuff.com/esports/matches", label: "🔍 Check Result on Dotabuff →", color: "#c23c2a" };
+    return { url: "https://www.dotabuff.com/esports/matches", label: "Check Result on Dotabuff →", color: "#c23c2a" };
   }
   if (sport.includes("nba") || sport.includes("basketball")) {
-    return { url: "https://www.espn.com/nba/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+    return { url: "https://www.espn.com/nba/scoreboard", label: "Check Result on ESPN →", color: "#60a5fa" };
   }
   if (sport.includes("mlb") || sport.includes("baseball")) {
-    return { url: "https://www.espn.com/mlb/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+    return { url: "https://www.espn.com/mlb/scoreboard", label: "Check Result on ESPN →", color: "#60a5fa" };
   }
   if (sport.includes("nfl") || sport.includes("football")) {
-    return { url: "https://www.espn.com/nfl/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+    return { url: "https://www.espn.com/nfl/scoreboard", label: "Check Result on ESPN →", color: "#60a5fa" };
   }
   if (sport.includes("soccer") || sport.includes("mls") || sport.includes("epl")) {
-    return { url: "https://www.espn.com/soccer/scoreboard", label: "🔍 Check Result on ESPN →", color: "#60a5fa" };
+    return { url: "https://www.espn.com/soccer/scoreboard", label: "Check Result on ESPN →", color: "#60a5fa" };
   }
   if (sport.includes("tennis")) {
-    return { url: "https://www.flashscore.com/tennis", label: "🔍 Check Result on Flashscore →", color: "#22c55e" };
+    return { url: "https://www.flashscore.com/tennis", label: "Check Result on Flashscore →", color: "#22c55e" };
   }
   if (sport.includes("prop")) {
-    return { url: `https://www.espn.com/search/results?q=${game}`, label: "🔍 Check Stat on ESPN →", color: "#60a5fa" };
+    return { url: `https://www.espn.com/search/results?q=${game}`, label: "Check Stat on ESPN →", color: "#60a5fa" };
   }
-  return { url: `https://www.google.com/search?q=${game}+result+score`, label: "🔍 Search Result on Google →", color: "#6b7280" };
+  return { url: `https://www.google.com/search?q=${game}+result+score`, label: "Search Result on Google →", color: "#6b7280" };
 }
 
 const BankrollChart = ({ history }: { history: { value: number }[] }) => {
@@ -3843,7 +3844,7 @@ function PaperBetsPanel({
               width: 360,
             }}
           >
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>⚙️ Paper Betting Setup</div>
+            <div style={{ display:"flex", alignItems:"center", gap:8, fontSize: 16, fontWeight: 700, marginBottom: 16 }}><Edit2 size={16}/> Paper Betting Setup</div>
 
             <label style={{ fontSize: 12, color: s.muted, display: "block", marginBottom: 4 }}>
               Starting Bankroll ($)
@@ -3955,7 +3956,7 @@ function PaperBetsPanel({
                   cursor: "pointer",
                 }}
               >
-                🗑️ Reset Everything
+                <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Trash2 size={12}/> Reset Everything</span>
               </button>
             </div>
           </div>
@@ -4412,7 +4413,7 @@ function PaperBetsPanel({
                     cursor: "pointer",
                   }}
                 >
-                  🗑️ Delete This Bet
+                  <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Trash2 size={12}/> Delete This Bet</span>
                 </button>
 
                 <button
@@ -4453,7 +4454,7 @@ function PaperBetsPanel({
                   width: "100%",
                 }}
               >
-                🗑️ Delete & Refund Stake
+                <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Trash2 size={12}/> Delete & Refund Stake</span>
               </button>
             )}
 

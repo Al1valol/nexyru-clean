@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import {
   TrendingUp, TrendingDown, Activity, RefreshCw, Bell, BellOff,
   Search, Filter, Star, StarOff, Copy, ExternalLink, ChevronDown,
-  ChevronUp, AlertTriangle, CheckCircle, XCircle, Clock, Zap,
+  ChevronUp, ChevronRight, AlertTriangle, CheckCircle, XCircle, Clock, Zap,
   Shield, Target, BarChart2, Wallet, ArrowUpRight, ArrowDownRight,
   Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen
 } from 'lucide-react'
@@ -79,7 +79,7 @@ export default function AirdropsPage() {
     {
       id: 'sonic',
       name: 'Sonic SVM',
-      logo: '🎮',
+      logo: 'SO',
       chain: 'Solana',
       chainColor: '#9945ff',
       category: 'Gaming/L2',
@@ -148,7 +148,7 @@ export default function AirdropsPage() {
     {
       id: 'kamino',
       name: 'Kamino Finance',
-      logo: '🏦',
+      logo: 'KM',
       chain: 'Solana',
       chainColor: '#9945ff',
       category: 'DeFi/Lending',
@@ -221,7 +221,7 @@ export default function AirdropsPage() {
     {
       id: 'drift',
       name: 'Drift Protocol',
-      logo: '📈',
+      logo: 'DR',
       chain: 'Solana',
       chainColor: '#9945ff',
       category: 'DeFi/Perps',
@@ -295,7 +295,7 @@ export default function AirdropsPage() {
     {
       id: 'marginfi',
       name: 'marginfi',
-      logo: '💰',
+      logo: 'MF',
       chain: 'Solana',
       chainColor: '#9945ff',
       category: 'DeFi/Lending',
@@ -364,7 +364,7 @@ export default function AirdropsPage() {
     {
       id: 'layerzero',
       name: 'LayerZero Season 2',
-      logo: '🌐',
+      logo: 'LZ',
       chain: 'Multi-chain',
       chainColor: '#00d4ff',
       category: 'Infrastructure',
@@ -436,7 +436,7 @@ export default function AirdropsPage() {
     {
       id: 'base-protocols',
       name: 'Base Ecosystem',
-      logo: '🔵',
+      logo: 'BA',
       chain: 'Base',
       chainColor: '#0052ff',
       category: 'Multi-protocol',
@@ -513,7 +513,7 @@ export default function AirdropsPage() {
     {
       id: 'monad',
       name: 'Monad',
-      logo: '🟣',
+      logo: 'MO',
       chain: 'Monad',
       chainColor: '#836ef9',
       category: 'Infrastructure',
@@ -583,7 +583,7 @@ export default function AirdropsPage() {
     {
       id: 'jupiter-lp',
       name: 'Jupiter Rewards',
-      logo: '🪐',
+      logo: 'JU',
       chain: 'Solana',
       chainColor: '#9945ff',
       category: 'DeFi/DEX',
@@ -867,7 +867,13 @@ export default function AirdropsPage() {
                     <div style={{padding:16, cursor:'pointer'}} onClick={() => setExpandedId(isExpanded ? null : airdrop.id)}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
                         <div style={{display:'flex', alignItems:'center', gap:10}}>
-                          <span style={{fontSize:28}}>{airdrop.logo}</span>
+                          <span style={{
+                            display:'inline-flex', alignItems:'center', justifyContent:'center',
+                            width:40, height:40, borderRadius:10,
+                            background:`${airdrop.chainColor}22`, color: airdrop.chainColor,
+                            fontSize:13, fontWeight:800, letterSpacing:'-0.02em',
+                            border:`1px solid ${airdrop.chainColor}40`
+                          }}>{airdrop.logo}</span>
                           <div>
                             <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
                               <span style={{fontSize:16, fontWeight:800}}>{airdrop.name}</span>
@@ -1005,7 +1011,13 @@ export default function AirdropsPage() {
                 return (
                   <div key={airdrop.id} style={{background:'#0f0f15', border:`1px solid ${!hasUncompleted?'rgba(34,197,94,0.3)':C.border}`, borderRadius:12, padding:16, marginBottom:12, boxShadow:'0 1px 3px rgba(0,0,0,0.3)', transition:'border-color 0.2s'}}>
                     <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
-                      <span style={{fontSize:22}}>{airdrop.logo}</span>
+                      <span style={{
+                        display:'inline-flex', alignItems:'center', justifyContent:'center',
+                        width:32, height:32, borderRadius:8,
+                        background:`${airdrop.chainColor}22`, color: airdrop.chainColor,
+                        fontSize:11, fontWeight:800, letterSpacing:'-0.02em',
+                        border:`1px solid ${airdrop.chainColor}40`
+                      }}>{airdrop.logo}</span>
                       <div>
                         <div style={{fontSize:14, fontWeight:700}}>{airdrop.name}</div>
                         <div style={{fontSize:11, color:C.muted}}>{airdrop.chain} · {airdrop.estimatedValue}</div>
