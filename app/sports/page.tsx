@@ -2321,21 +2321,39 @@ function ParlaysPanel({
     if (parlayAnalyzing[id] || parlayAnalysis[id]) return
     setParlayAnalyzing(prev => ({...prev, [id]: true}))
     try {
-      const legs = parlay.legs || parlay
-      const legsText = legs.map((leg: any) =>
-        `${leg.team || leg.pick} (${leg.odds > 0 ? '+' : ''}${leg.odds})`
-      ).join(', ')
+      const legsText = (parlay.legs || []).map((leg: any, i: number) =>
+        `Leg ${i+1}: ${leg.team || leg.pick} (${leg.sport || ''}) at odds ${leg.odds > 0 ? '+' : ''}${leg.odds}`
+      ).join('\n')
 
       const res = await fetch('/api/analyze-game', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          team1: 'WIN PARLAY',
-          team2: 'SKIP',
+          team1: 'BET PARLAY',
+          team2: 'SKIP PARLAY',
           sport: 'PARLAY',
-          odds1: 0, odds2: 0,
+          odds1: parlay.payout || 400,
+          odds2: -500,
           gameTime: 'Today',
-          context: `Parlay analysis. ${legs.length}-leg parlay at ${parlay.book || 'sportsbook'}. Win probability: ${parlay.winPct || parlay.probability}%. Payout: +${parlay.payout || parlay.odds}. Legs: ${legsText}. Is this a good parlay to bet? Are the legs correlated or independent? Is the payout worth the risk?`
+          context: `You are analyzing a sports parlay bet. Give honest advice.
+
+PARLAY DETAILS:
+- Book: ${parlay.book}
+- Legs: ${parlay.legs?.length || 0}
+- Win probability: ${parlay.winPct || parlay.probability}%
+- Payout if won: +${parlay.payout || parlay.odds} on $100 bet
+- Expected value: ${parlay.ev || '$0.00'}
+
+LEGS:
+${legsText}
+
+Should someone bet this parlay? Consider:
+1. Are the legs independent or correlated?
+2. Is the win probability reasonable?
+3. Is the payout worth the risk?
+4. Any red flags?
+
+Reply with pick as "BET PARLAY" if worth betting or "SKIP PARLAY" if not.`
         })
       })
       const data = await res.json()
@@ -2488,16 +2506,18 @@ function ParlaysPanel({
                 Paper Bet
               </button>
             </div>
-            {parlayAnalysis[parlayId] && (
+            {parlayAnalysis[parlayId] && (() => {
+              const verdict = parlayAnalysis[parlayId].pick?.includes('BET') ? 'bet' : 'skip'
+              return (
               <div style={{
                 marginTop:10, padding:12, borderRadius:8,
-                background: parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-                border: `1px solid ${parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`
+                background: verdict === 'bet' ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${verdict === 'bet' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`
               }}>
                 <div style={{fontSize:13, fontWeight:700, marginBottom:4,
-                  color: parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? '#22c55e' : '#ef4444'
+                  color: verdict === 'bet' ? '#22c55e' : '#ef4444'
                 }}>
-                  {parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? '✓ Worth a shot' : '✕ Skip this parlay'}
+                  {verdict === 'bet' ? '✓ Worth betting' : '✕ Skip this parlay'}
                   <span style={{fontSize:10, color:'#6b7280', fontWeight:400, marginLeft:8}}>
                     {parlayAnalysis[parlayId].confidence} confidence
                   </span>
@@ -2511,7 +2531,8 @@ function ParlaysPanel({
                   </div>
                 )}
               </div>
-            )}
+              )
+            })()}
           </div>
         )})}
       </div>
