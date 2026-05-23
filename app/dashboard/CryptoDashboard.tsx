@@ -840,10 +840,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true)
     try {
-      // Fetch 5 pages of trending Solana pools = 100 coins
+      // Fetch 10 pages of newest Solana pools
       const pages = await Promise.all(
-        [1,2,3,4,5].map(page =>
-          fetch(`https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=${page}`)
+        [1,2,3,4,5,6,7,8,9,10].map(page =>
+          fetch(`https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=${page}`)
             .then(r => r.json())
             .then(d => d?.data || [])
             .catch(() => [])
@@ -980,54 +980,20 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         }
       }).sort((a, b) => b.score - a.score)
 
-      // Filter out non-meme coins
+      // Simple filter: under 24 hours old, has some liquidity and volume
       const filtered = scored.filter(coin => {
-        const name = (coin.name || '').toLowerCase()
         const liq = parseFloat(coin.liquidity?.usd || 0)
-        const mc = parseFloat(coin.marketCap || 0)
         const vol24 = parseFloat(coin.volume?.h24 || 0)
-
-        // Remove big established coins
-        if (['sol', 'solana', 'usdc', 'usdt', 'eth', 'btc', 'bonk', 'wif', 'jup', 'ray'].includes(name.toLowerCase())) return false
-        if (mc > 50000000) return false  // Over $50M mcap = not a meme snipe
-        if (liq > 5000000) return false  // Over $5M liquidity = too established
-        if (vol24 > 50000000) return false // Over $50M daily volume = too big
-        if (liq < 1000) return false  // Under $1k liquidity = rug
-        if (vol24 < 1000) return false // No volume = dead
-
-        return true
-      })
-
-      // Fix snipe window to give more PRIME SNIPE results
-      const getSnipeWindow = (coin) => {
-        const h24 = parseFloat(coin.priceChange?.h24 || 0)
-        const h6 = parseFloat(coin.priceChange?.h6 || 0)
-        const h1 = parseFloat(coin.priceChange?.h1 || 0)
-        const m5 = parseFloat(coin.priceChange?.m5 || 0)
         const ageHours = coin.ageHours || 999
 
-        // Too late — already pumped massively
-        if (h24 > 1000 || (h6 > 500 && h1 > 100)) return {id:'toolate', label:'Too Late', color:'#ef4444'}
+        return (
+          ageHours < 24 &&   // Under 24 hours old
+          liq > 500 &&       // Has some liquidity
+          vol24 > 500        // Has some volume
+        )
+      }).sort((a, b) => a.ageHours - b.ageHours) // Sort by newest first
 
-        // Prime snipe — young coin, active, not yet pumped hard
-        if (ageHours < 6 && h24 < 300 && coin.buyRatio > 0.5) return {id:'prime', label:'Prime Snipe', color:'#22c55e'}
-
-        // Early — still good entry
-        if (ageHours < 24 && h24 < 500) return {id:'early', label:'Early', color:'#f59e0b'}
-
-        // Watch
-        if (ageHours < 48) return {id:'watch', label:'Watch', color:'#6b7280'}
-
-        return {id:'toolate', label:'Too Late', color:'#ef4444'}
-      }
-
-      // Apply snipe window after filtering
-      const final = filtered.map(coin => ({
-        ...coin,
-        snipeWindow: getSnipeWindow(coin)
-      })).sort((a, b) => b.score - a.score)
-
-      setGems(final)
+      setGems(filtered)
     } catch(e) {
       console.error('fetchGems error:', e)
     }
