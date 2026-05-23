@@ -1395,349 +1395,122 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             };
             const verification = getVerificationStatus({ ...coin, source: 'dexscreener' });
             return (
-              <div key={coin.pairAddress || coin.coinId} style={{ background:'#0d0d12', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#16161f'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
-                {ageHoursNum < 0.5 && (
-                  <div style={{
-                    background:'rgba(34,197,94,0.1)',
-                    border:'1px solid rgba(34,197,94,0.4)',
-                    borderRadius:8, padding:'6px 10px',
-                    display:'flex', alignItems:'center', gap:6,
-                    animation:'pulse 2s infinite'
-                  }}>
-                    <Zap size={14} style={{color:'#22c55e'}}/>
-                    <span style={{fontSize:12, fontWeight:800, color:'#22c55e'}}>
-                      JUST LAUNCHED — {Math.round(ageHoursNum*60)} MINUTES AGO
-                    </span>
-                  </div>
-                )}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-                    <div style={{ width:40, height:40, borderRadius:'50%', background:'#1a1a24', flexShrink:0, overflow:'hidden' }}>
-                      {coin.image && (
-                        <img
-                          src={coin.image}
-                          alt=""
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                          style={{ width:'100%', height:'100%', objectFit:'cover' }}
-                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                        />
+              <div key={coin.pairAddress || coin.coinId} style={{background:'#0f0f15', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#16161f'}`, borderRadius:12, padding:14, marginBottom:10}}>
+
+                {/* 1. HEADER */}
+                <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+                  {coin.image && <img src={coin.image} alt="" loading="lazy" referrerPolicy="no-referrer" style={{width:36, height:36, borderRadius:'50%', flexShrink:0, objectFit:'cover'}} onError={(e) => { e.currentTarget.style.display='none'; }}/>}
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
+                      <span style={{fontSize:15, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{coin.name}</span>
+                      <span style={{fontSize:11, color:'#4b5563'}}>{(coin.symbol || '').toUpperCase()}</span>
+                      <span style={{fontSize:10, padding:'1px 6px', borderRadius:10, background:`${chainColor}26`, color:chainColor, fontWeight:600, textTransform:'uppercase'}}>{coin.chainId || coin.chain}</span>
+                    </div>
+                    <div style={{display:'flex', alignItems:'center', gap:6}}>
+                      <span style={{fontSize:13, fontWeight:700, color:ageColor}}>{ageDisplay}</span>
+                      {coin.snipeWindow && (
+                        <span style={{fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:10, background:`${coin.snipeWindow.color}18`, color:coin.snipeWindow.color}}>
+                          {coin.snipeWindow.label}
+                        </span>
                       )}
                     </div>
-                    <div style={{ minWidth:0 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                        <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{coin.name || '—'}</span>
-                        <VerificationBadge v={verification}/>
-                      </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
-                        <span style={{ fontSize:11, color:'#6b7280' }}>{(coin.symbol || '').toUpperCase()}</span>
-                        {coin.chainId && (
-                          <span style={{ fontSize:9, padding:'2px 5px', borderRadius:4, background: chainColor + '22', color: chainColor, fontWeight:800, letterSpacing:'0.04em' }}>{chainShort}</span>
-                        )}
-                      </div>
-                    </div>
                   </div>
-                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
-                    <span style={{ fontSize:18, fontWeight:800, color: score >= 70 ? '#22c55e' : score >= 50 ? '#fbbf24' : '#6b7280', lineHeight:1 }}>{score}</span>
-                    {coin.snipeWindow && (
-                      <span style={{ fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:5, background: coin.snipeWindow.color + '22', color: coin.snipeWindow.color, whiteSpace:'nowrap' }}>{coin.snipeWindow.label}</span>
-                    )}
+                  <div style={{textAlign:'right', flexShrink:0}}>
+                    <div style={{fontSize:26, fontWeight:900, color: score >= 80 ? '#22c55e' : score >= 60 ? '#a5b4fc' : '#6b7280', letterSpacing:'-0.03em', lineHeight:1}}>{score}</div>
+                    <div style={{fontSize:9, color:'#4b5563'}}>/100</div>
                   </div>
                 </div>
 
+                {/* 2. PRICE CHANGES */}
                 <PriceChangeRow priceChange={coin.priceChange} />
 
-                <div style={{
-                  display:'inline-flex', alignItems:'center', gap:6,
-                  padding:'6px 14px', borderRadius:20,
-                  background:ageBg, border:`1px solid ${ageBorder}`,
-                  alignSelf:'flex-start'
-                }}>
-                  <span style={{fontSize:16}}>{ageEmoji}</span>
-                  <span style={{fontSize:18, fontWeight:900, color:ageColorBig}}>{ageDisplay}</span>
-                  <span style={{fontSize:11, color:ageColorBig, opacity:0.8}}>{ageHint}</span>
-                </div>
-
-                <VerificationBanner v={verification}/>
-
-                {change1h > 500 && (
-                  <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:6, padding:'8px 10px', marginBottom:8, fontSize:11, color:'#fca5a5' }}>
-                     Up {change1h.toFixed(0)}% in 1h — the easy money is gone. Early buyers are selling TO YOU.
-                  </div>
-                )}
-
-                {coin.signals && coin.signals.length > 0 && (
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                    {coin.signals.map((sig, i) => (
-                      <span key={i} style={{ fontSize:10, fontWeight:700, padding:'3px 7px', borderRadius:5, background: sig.color + '18', color: sig.color, border: '1px solid ' + sig.color + '40' }}>{sig.text}</span>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:4, marginBottom:8}}>
+                {/* 3. KEY STATS — 3 only */}
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:10}}>
                   {[
-                    {label:'AGE', value: ageDisplay, color: ageColorBig, fontSize: 16},
-                    {label:'1H', value: (coin.priceChange?.h1 > 0 ? '+' : '') + parseFloat(coin.priceChange?.h1 || 0).toFixed(0)+'%', color: parseFloat(coin.priceChange?.h1||0) > 100 ? '#ef4444' : parseFloat(coin.priceChange?.h1||0) > 0 ? '#22c55e' : '#6b7280', fontSize: 11},
-                    {label:'LIQ', value: '$'+formatNum(parseFloat(coin.liquidity?.usd||0)), color: parseFloat(coin.liquidity?.usd||0) > 5000 ? '#22c55e' : '#ef4444', fontSize: 11},
-                    {label:'MCAP', value: '$'+formatNum(parseFloat(coin.marketCap||0)), color: parseFloat(coin.marketCap||0) < 100000 ? '#22c55e' : '#6b7280', fontSize: 11},
+                    {label:'LIQ', value:`$${formatNum(parseFloat(coin.liquidity?.usd||0))}`, color: parseFloat(coin.liquidity?.usd||0) > 10000 ? '#22c55e' : parseFloat(coin.liquidity?.usd||0) > 3000 ? '#f59e0b' : '#ef4444'},
+                    {label:'MCAP', value:`$${formatNum(parseFloat(coin.marketCap||0))}`, color:'#fff'},
+                    {label:'BUYS', value:`${Math.round((coin.buyRatio||0.5)*100)}%`, color: (coin.buyRatio||0) > 0.6 ? '#22c55e' : (coin.buyRatio||0) > 0.45 ? '#f59e0b' : '#ef4444'},
                   ].map(s => (
-                    <div key={s.label} style={{background:'#1a1a24', borderRadius:4, padding:'4px 6px', textAlign:'center'}}>
-                      <div style={{fontSize:9, color:'#4b5563', marginBottom:1}}>{s.label}</div>
-                      <div style={{fontSize:s.fontSize, fontWeight:700, color:s.color}}>{s.value}</div>
+                    <div key={s.label} style={{background:'#1a1a24', borderRadius:6, padding:'7px 8px', textAlign:'center'}}>
+                      <div style={{fontSize:9, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:3}}>{s.label}</div>
+                      <div style={{fontSize:13, fontWeight:700, color:s.color}}>{s.value}</div>
                     </div>
                   ))}
                 </div>
 
-                {(() => {
-                  const hasTwitter = coin.info?.socials?.some((s:any) => s.type === 'twitter');
-                  const hasTelegram = coin.info?.socials?.some((s:any) => s.type === 'telegram');
-                  const hasWebsite = (coin.info?.websites || []).length > 0;
-                  const socialScore = (hasTwitter?1:0) + (hasTelegram?1:0) + (hasWebsite?1:0);
-                  const rugRiskLabel = socialScore === 0 ? 'No socials — likely rug'
-                    : socialScore === 1 ? ' Minimal socials — high risk'
-                    : 'Has community presence';
-                  const rugRiskColor = socialScore === 0 ? '#ef4444' : socialScore === 1 ? '#f59e0b' : '#22c55e';
-                  return (
-                    <>
-                      <div style={{display:'flex', gap:4, flexWrap:'wrap', marginBottom:6}}>
-                        {hasTwitter
-                          ? <a href={coin.info.socials.find((s:any)=>s.type==='twitter')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(29,161,242,0.15)', color:'#1da1f2', textDecoration:'none'}}> Twitter</a>
-                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}> No Twitter</span>
-                        }
-                        {hasTelegram
-                          ? <a href={coin.info.socials.find((s:any)=>s.type==='telegram')?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(33,150,243,0.15)', color:'#2196f3', textDecoration:'none'}}> Telegram</a>
-                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}> No Telegram</span>
-                        }
-                        {hasWebsite
-                          ? <a href={coin.info?.websites?.[0]?.url} target="_blank" rel="noreferrer" style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(34,197,94,0.1)', color:'#22c55e', textDecoration:'none'}}> Website</a>
-                          : <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}> No Website</span>
-                        }
-                      </div>
-                      <div style={{fontSize:10, color:rugRiskColor, marginBottom:4}}>{rugRiskLabel}</div>
-                    </>
-                  );
-                })()}
-
-                {(() => {
-                  const address = coin.baseToken?.address;
-                  const rug = address ? rugData[address] : null;
-                  const rugLoading2 = address ? rugLoading[address] : false;
-                  const isSolana = coin.chainId === 'solana' || coin.chain === 'solana';
-                  return (
-                    <>
-                      {!rug && !rugLoading2 && isSolana && (
-                        <button onClick={() => checkRug(coin)} style={{
-                          width:'100%', padding:'6px', borderRadius:8, marginBottom:6,
-                          border:'1px solid rgba(239,68,68,0.3)', background:'rgba(239,68,68,0.05)',
-                          color:'#fca5a5', fontSize:11, fontWeight:700, cursor:'pointer'
-                        }}>
-                           Check Holders & Rug Risk
-                        </button>
-                      )}
-
-                      {rugLoading2 && (
-                        <div style={{fontSize:11, color:'#6b7280', textAlign:'center', marginBottom:6}}>Checking blockchain data...</div>
-                      )}
-
-                      {rug && !rug.error && (
-                        <div style={{
-                          background: rug.rugRisk==='EXTREME'?'rgba(239,68,68,0.1)':rug.rugRisk==='HIGH'?'rgba(249,115,22,0.1)':rug.rugRisk==='MEDIUM'?'rgba(245,158,11,0.1)':'rgba(34,197,94,0.1)',
-                          border: `1px solid ${rug.rugRisk==='EXTREME'?'rgba(239,68,68,0.4)':rug.rugRisk==='HIGH'?'rgba(249,115,22,0.4)':rug.rugRisk==='MEDIUM'?'rgba(245,158,11,0.4)':'rgba(34,197,94,0.4)'}`,
-                          borderRadius:8, padding:10, marginBottom:8
-                        }}>
-                          <div style={{display:'flex', justifyContent:'space-between', marginBottom:6}}>
-                            <span style={{fontSize:12, fontWeight:800, color:
-                              rug.rugRisk==='EXTREME'?'#ef4444':rug.rugRisk==='HIGH'?'#f97316':rug.rugRisk==='MEDIUM'?'#f59e0b':'#22c55e'
-                            }}>
-                              {rug.rugRisk==='EXTREME'?'':rug.rugRisk==='HIGH'?'':rug.rugRisk==='MEDIUM'?'':''} {rug.rugRisk} RUG RISK
-                            </span>
-                            <span style={{fontSize:10, color:'#6b7280'}}>RugCheck score: {rug.score}</span>
-                          </div>
-
-                          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:6}}>
-                            <div style={{background:'rgba(0,0,0,0.2)', borderRadius:4, padding:'5px 8px', textAlign:'center'}}>
-                              <div style={{fontSize:9, color:'#6b7280', marginBottom:1}}>TOP HOLDER</div>
-                              <div style={{fontSize:14, fontWeight:800, color: parseFloat(rug.top1Pct) > 20 ? '#ef4444' : '#22c55e'}}>
-                                {rug.top1Pct}%
-                              </div>
-                            </div>
-                            <div style={{background:'rgba(0,0,0,0.2)', borderRadius:4, padding:'5px 8px', textAlign:'center'}}>
-                              <div style={{fontSize:9, color:'#6b7280', marginBottom:1}}>TOP 10 HOLD</div>
-                              <div style={{fontSize:14, fontWeight:800, color: parseFloat(rug.top10Pct) > 60 ? '#ef4444' : '#22c55e'}}>
-                                {rug.top10Pct}%
-                              </div>
-                            </div>
-                          </div>
-
-                          {rug.insiderCount > 0 && (
-                            <div style={{fontSize:11, color:'#ef4444', marginBottom:4}}>
-                               {rug.insiderCount} insider wallet{rug.insiderCount > 1 ? 's' : ''} detected
-                            </div>
-                          )}
-
-                          {rug.rugReasons?.length > 0 && (
-                            <div style={{fontSize:10, color:'#9ca3af'}}>
-                              {rug.rugReasons.slice(0,2).join(' · ')}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {rug?.error && (
-                        <div style={{fontSize:10, color:'#6b7280', marginBottom:6}}>{rug.error}</div>
-                      )}
-                    </>
-                  );
-                })()}
-
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8 }}>
-                  <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Age</div>
-                    <div style={{ fontSize:13, color: ageColor, fontWeight:700, marginTop:2 }}>{ageLabel}</div>
-                  </div>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Price</div>
-                    <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
-                      <div style={{ fontSize:13, color:'#fff', fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{priceStr}</div>
-                      <SparkLine coin={coin}/>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Mkt cap</div>
-                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpMcap(mcap)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>1h</div>
-                    <div style={{ fontSize:13, color: change1h < 0 ? '#ef4444' : change1h < 100 ? '#22c55e' : change1h < 500 ? '#fbbf24' : '#ef4444', fontWeight:700, marginTop:2, transition:'color 0.3s ease' }}>{change1h >= 0 ? '+' : ''}{change1h.toFixed(2)}%</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>24h</div>
-                    <div style={{ fontSize:13, color: change >= 0 ? '#22c55e' : '#ef4444', fontWeight:700, marginTop:2, transition:'color 0.3s ease' }}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:9, color:'#6b7280', textTransform:'uppercase', fontWeight:700 }}>Liquidity</div>
-                    <div style={{ fontSize:13, color:'#fff', fontWeight:700, marginTop:2 }}>{formatPumpMcap(liq)}</div>
-                  </div>
-                </div>
-
-                {/* Buy pressure bar */}
-                {(() => {
-                  const h1Buys = coin.txns?.h1?.buys || 0;
-                  const h1Sells = coin.txns?.h1?.sells || 0;
-                  if ((h1Buys + h1Sells) === 0) return null;
-                  const buyPct = Math.round((h1Buys / (h1Buys + h1Sells)) * 100);
-                  const pressureColor = buyPct > 60 ? '#22c55e' : buyPct < 40 ? '#ef4444' : '#f59e0b';
-                  return (
-                    <div style={{ marginBottom:8 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', marginBottom:2 }}>
-                        <span>Buy pressure (1h)</span>
-                        <span style={{ color: pressureColor }}>{buyPct}% buys · {100 - buyPct}% sells</span>
-                      </div>
-                      <div style={{ height:4, background:'#1a1a24', borderRadius:2, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${buyPct}%`, background: pressureColor, borderRadius:2 }}/>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <div style={{ fontSize:11, color:'#6b7280' }}>
-                  <span style={{ color:'#9ca3af', fontWeight:700 }}>Vol 24h: {formatPumpMcap(vol)}</span>
-                  {coin.snipeWindow && <span style={{ marginLeft:8 }}>· {coin.snipeWindow.desc}</span>}
-                </div>
-
-                <div style={{display:'flex', flexDirection:'column', gap:6, marginTop:8}}>
-                  {!snipeAnalysis[coin.coinId || coin.pairAddress] ? (
-                    <button onClick={() => analyzeSnipe(coin)}
-                      disabled={snipeAnalyzing[coin.coinId || coin.pairAddress]}
-                      style={{
-                        width:'100%', padding:'9px', borderRadius:8,
-                        border:'1px solid rgba(99,102,241,0.4)',
-                        background:'rgba(99,102,241,0.08)',
-                        color: snipeAnalyzing[coin.coinId||coin.pairAddress] ? '#4b5563' : '#a5b4fc',
-                        fontSize:12, fontWeight:700, cursor:'pointer'
-                      }}>
-                      {snipeAnalyzing[coin.coinId||coin.pairAddress] ? 'Analyzing...' : 'AI Snipe Analysis'}
-                    </button>
-                  ) : (
-                    <div style={{
-                      padding:'8px 10px', borderRadius:8, marginBottom:2,
-                      background: snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'rgba(34,197,94,0.1)' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
-                      border: `1px solid ${snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'rgba(34,197,94,0.3)' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`
-                    }}>
-                      <div style={{fontSize:13, fontWeight:800, color: snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? '#22c55e' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? '#ef4444' : '#f59e0b', marginBottom:2}}>
-                        {snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'BUY' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'SKIP' : 'WATCH'}
-                        <span style={{fontSize:10, fontWeight:400, color:'#6b7280', marginLeft:6}}>
-                          {snipeAnalysis[coin.coinId||coin.pairAddress].confidence} confidence
+                {/* 4. SOCIALS — one line */}
+                <div style={{display:'flex', gap:6, marginBottom:10, alignItems:'center'}}>
+                  {(() => {
+                    const hasTwitter = coin.info?.socials?.some((s:any) => s.type === 'twitter')
+                    const hasTelegram = coin.info?.socials?.some((s:any) => s.type === 'telegram')
+                    const hasWebsite = (coin.info?.websites || []).length > 0
+                    const count = [hasTwitter, hasTelegram, hasWebsite].filter(Boolean).length
+                    return (
+                      <>
+                        <span style={{fontSize:10, color: count >= 2 ? '#22c55e' : count === 1 ? '#f59e0b' : '#ef4444', fontWeight:600}}>
+                          {count >= 2 ? '✓' : count === 1 ? '⚠' : '✕'} Socials
                         </span>
-                      </div>
-                      <div style={{fontSize:11, color:'#d1d5db'}}>{snipeAnalysis[coin.coinId||coin.pairAddress].reason}</div>
-                    </div>
-                  )}
+                        {hasTwitter && <span style={{fontSize:10, color:'#1da1f2'}}>Twitter</span>}
+                        {hasTelegram && <span style={{fontSize:10, color:'#2196f3'}}>Telegram</span>}
+                        {hasWebsite && <span style={{fontSize:10, color:'#22c55e'}}>Web</span>}
+                        {!hasTwitter && !hasTelegram && !hasWebsite && <span style={{fontSize:10, color:'#ef4444'}}>No socials — rug risk</span>}
+                      </>
+                    )
+                  })()}
+                </div>
 
-                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6}}>
-                    <button onClick={() => {
-                      const address = coin.baseToken?.address || coin.pairAddress
-                      const name = coin.baseToken?.name || coin.name || 'Unknown'
-                      const symbol = coin.baseToken?.symbol || coin.symbol || ''
-                      const price = parseFloat(coin.priceUsd || coin.price || '0')
-
-                      // Open paper trade modal
-                      onBuy?.({
-                        ...coin,
-                        id: address,
-                        name,
-                        symbol,
-                        price,
-                        source: 'dexscreener',
-                        coinId: address,
-                      })
-                    }} style={{
-                      padding:'9px 6px', borderRadius:8, border:'none',
-                      background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
-                      fontSize:11, fontWeight:700, cursor:'pointer'
-                    }}>
-                       Paper
-                    </button>
-
-                    <button onClick={() => {
-                      const address = coin.baseToken?.address || coin.pairAddress
-                      if (address) {
-                        navigator.clipboard.writeText(address)
-                        window.open('https://fomo.family/r/al1valol', '_blank')
-                        const toast = document.createElement('div')
-                        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #6366f1;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;text-align:center'
-                        toast.innerHTML = 'CA copied! Paste in FOMO search'
-                        document.body.appendChild(toast)
-                        setTimeout(() => toast.remove(), 3000)
-                      } else {
-                        window.open('https://fomo.family/r/al1valol', '_blank')
-                      }
-                    }} style={{
-                      padding:'9px 6px', borderRadius:8, border:'none',
-                      background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
-                      fontSize:11, fontWeight:700, cursor:'pointer'
-                    }}>
-                       FOMO
-                    </button>
-
-                    <button onClick={() => {
-                      const address = coin.baseToken?.address || coin.pairAddress
-                      if (address) {
-                        navigator.clipboard.writeText(address)
-                        const toast = document.createElement('div')
-                        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #22c55e;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;text-align:center'
-                        toast.innerHTML = 'Contract address copied!'
-                        document.body.appendChild(toast)
-                        setTimeout(() => toast.remove(), 3000)
-                      }
-                    }} style={{
-                      padding:'9px 6px', borderRadius:8,
-                      border:'1px solid #2a2a3a', background:'transparent',
-                      color:'#6b7280', fontSize:11, fontWeight:700, cursor:'pointer'
-                    }}>
-                       CA
-                    </button>
+                {/* 5. AI RESULT or BUTTON + ACTIONS */}
+                {snipeAnalysis[coin.coinId||coin.pairAddress] && (
+                  <div style={{
+                    padding:'8px 10px', borderRadius:8, marginBottom:8,
+                    background: snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'rgba(34,197,94,0.08)' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
+                    border:`1px solid ${snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'rgba(34,197,94,0.25)' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`
+                  }}>
+                    <span style={{fontSize:12, fontWeight:700, color: snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY'?'#22c55e':snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP'?'#ef4444':'#f59e0b'}}>
+                      {snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY'?'✓ BUY':snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP'?'✕ SKIP':'◎ WATCH'}
+                    </span>
+                    <span style={{fontSize:11, color:'#9ca3af', marginLeft:8}}>{snipeAnalysis[coin.coinId||coin.pairAddress].reason}</span>
                   </div>
+                )}
+
+                <div style={{display:'grid', gridTemplateColumns: snipeAnalysis[coin.coinId||coin.pairAddress] ? '1fr 1fr 1fr' : '1fr 1fr 1fr 1fr', gap:6}}>
+                  {!snipeAnalysis[coin.coinId||coin.pairAddress] && (
+                    <button onClick={() => analyzeSnipe(coin)} disabled={snipeAnalyzing[coin.coinId||coin.pairAddress]} style={{
+                      padding:'8px', borderRadius:8,
+                      border:'1px solid rgba(99,102,241,0.3)', background:'rgba(99,102,241,0.08)',
+                      color: snipeAnalyzing[coin.coinId||coin.pairAddress] ? '#4b5563' : '#a5b4fc',
+                      fontSize:11, fontWeight:700, cursor:'pointer'
+                    }}>
+                      {snipeAnalyzing[coin.coinId||coin.pairAddress] ? '...' : 'AI'}
+                    </button>
+                  )}
+                  <button onClick={() => {
+                    const address = coin.baseToken?.address || coin.pairAddress
+                    const name = coin.baseToken?.name || coin.name || 'Unknown'
+                    const symbol = coin.baseToken?.symbol || coin.symbol || ''
+                    const price = parseFloat(coin.priceUsd || coin.price || '0')
+                    onBuy?.({ ...coin, id: address, name, symbol, price, source:'dexscreener', coinId: address })
+                  }} style={{
+                    padding:'8px', borderRadius:8, border:'none',
+                    background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
+                    fontSize:11, fontWeight:700, cursor:'pointer'
+                  }}>Paper</button>
+                  <button onClick={() => {
+                    const addr = coin.baseToken?.address||coin.pairAddress;
+                    if(addr){ navigator.clipboard.writeText(addr); window.open('https://fomo.family/r/al1valol','_blank') }
+                  }} style={{
+                    padding:'8px', borderRadius:8, border:'none',
+                    background:'rgba(34,197,94,0.15)', color:'#22c55e',
+                    fontSize:11, fontWeight:700, cursor:'pointer'
+                  }}>FOMO</button>
+                  <button onClick={() => {
+                    const addr = coin.baseToken?.address||coin.pairAddress;
+                    if(addr) navigator.clipboard.writeText(addr);
+                  }} style={{
+                    padding:'8px', borderRadius:8,
+                    border:'1px solid #1e1e2a', background:'transparent',
+                    color:'#4b5563', fontSize:11, cursor:'pointer'
+                  }}>CA</button>
                 </div>
               </div>
             );
