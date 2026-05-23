@@ -1,53 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const ODDS_KEY = '21dc56ed56eb5bf7ddfbb44ba8de79c3'
+const API_KEY = '21dc56ed56eb5bf7ddfbb44ba8de79c3'
 
 export async function GET(req: NextRequest) {
-  const sport = req.nextUrl.searchParams.get('sport') || 'baseball_mlb'
-
-  // Fetch each market separately since the API requires individual market calls for props
-  const markets = sport === 'baseball_mlb'
-    ? ['batter_hits', 'batter_home_runs', 'pitcher_strikeouts', 'batter_rbis']
-    : sport === 'basketball_nba'
-    ? ['player_points', 'player_rebounds', 'player_assists']
-    : ['batter_hits', 'batter_home_runs']
-
   try {
-    const allGames: any[] = []
+    const [mlbRes, nbaRes] = await Promise.all([
+      fetch(`https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?apiKey=${API_KEY}&regions=us&markets=player_hits,player_home_runs,player_strikeouts,player_runs,player_rbis,player_hits_runs_rbis,player_walks,player_total_bases,player_pitcher_hits_allowed,player_pitcher_strikeouts,player_pitcher_walks,player_pitcher_earned_runs&oddsFormat=american`, { cache: 'no-store' }),
+      fetch(`https://api.the-odds-api.com/v4/sports/basketball_nba/odds?apiKey=${API_KEY}&regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american`, { cache: 'no-store' })
+    ])
 
-    for (const market of markets) {
-      try {
-        const res = await fetch(
-          `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_KEY}&regions=us&markets=${market}&oddsFormat=american`,
-          { cache: 'no-store' }
-        )
-        if (!res.ok) continue
-        const data = await res.json()
-        if (!Array.isArray(data)) continue
+    console.log('MLB response status:', mlbRes.status)
+    console.log('NBA response status:', nbaRes.status)
 
-        // Merge market data into games
-        data.forEach((game: any) => {
-          const existing = allGames.find(g => g.id === game.id)
-          if (existing) {
-            game.bookmakers?.forEach((bk: any) => {
-              const existingBk = existing.bookmakers?.find((b: any) => b.key === bk.key)
-              if (existingBk) {
-                existingBk.markets = [...(existingBk.markets || []), ...(bk.markets || [])]
-              } else {
-                existing.bookmakers = [...(existing.bookmakers || []), bk]
-              }
-            })
-          } else {
-            allGames.push(game)
-          }
-        })
-      } catch(e) {
-        continue
-      }
-    }
+    const mlbGames = mlbRes.ok ? await mlbRes.json() : []
+    const nbaGames = nbaRes.ok ? await nbaRes.json() : []
+
+    const allGames = [
+      ...(Array.isArray(mlbGames) ? mlbGames : []),
+      ...(Array.isArray(nbaGames) ? nbaGames : []),
+    ]
 
     return NextResponse.json({ games: allGames })
   } catch(e: any) {
+    console.log('player-props error:', e.message)
     return NextResponse.json({ error: e.message, games: [] })
   }
 }

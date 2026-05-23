@@ -2962,9 +2962,12 @@ function PlayerPropsPanel({
       >
         <Clock size={36} style={{ marginBottom: 12, opacity: 0.5, color: C.textMuted }}/>
         <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
-          No Real Prop Lines Right Now
+          Props Loading — Games start at {nextWindow || "[earliest game time]"}
         </div>
         <div style={{ fontSize: 14, color: "#a5b4fc", marginBottom: 8, fontWeight: 600 }}>
+          Props usually appear 1-2 hours before tip-off/first pitch.
+        </div>
+        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 8 }}>
           {timeInfo}
         </div>
         {nextWindow && (
