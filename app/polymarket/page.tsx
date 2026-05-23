@@ -340,15 +340,20 @@ export default function PolymarketPage() {
 
               <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap'}}>
                 <div style={{display:'flex', gap:4, overflowX:'auto'}}>
-                  {categories.slice(0,6).map(cat => (
-                    <button key={cat} onClick={() => setCategory(cat)} style={{
-                      padding:'5px 12px', borderRadius:6, fontSize:12, whiteSpace:'nowrap',
-                      fontWeight: category===cat?700:400,
-                      border:`1px solid ${category===cat?C.accent:C.border}`,
-                      background: category===cat?'rgba(99,102,241,0.15)':'transparent',
-                      color: category===cat?'#a5b4fc':C.muted, cursor:'pointer'
-                    }}>{cat === 'all' ? 'All' : cat}</button>
-                  ))}
+                  {categories.map(cat => {
+                    const count = cat === 'all' ? markets.length : markets.filter(m => m.category === cat).length
+                    return (
+                      <button key={cat} onClick={() => setCategory(cat)} style={{
+                        padding:'5px 12px', borderRadius:6, fontSize:12, whiteSpace:'nowrap',
+                        fontWeight: category===cat?700:400,
+                        border:`1px solid ${category===cat?C.accent:C.border}`,
+                        background: category===cat?'rgba(99,102,241,0.15)':'transparent',
+                        color: category===cat?'#a5b4fc':C.muted, cursor:'pointer'
+                      }}>
+                        {cat === 'all' ? 'All' : cat} <span style={{fontSize:10, color:C.muted}}>({count})</span>
+                      </button>
+                    )
+                  })}
                 </div>
                 <select value={sortBy} onChange={e=>setSortBy(e.target.value as any)} style={{
                   padding:'5px 10px', borderRadius:6, fontSize:12,
