@@ -2321,39 +2321,31 @@ function ParlaysPanel({
     if (parlayAnalyzing[id] || parlayAnalysis[id]) return
     setParlayAnalyzing(prev => ({...prev, [id]: true}))
     try {
-      const legsText = (parlay.legs || []).map((leg: any, i: number) =>
-        `Leg ${i+1}: ${leg.team || leg.pick} (${leg.sport || ''}) at odds ${leg.odds > 0 ? '+' : ''}${leg.odds}`
+      const legsText = parlay.legs.map((leg: any, i: number) =>
+        `Leg ${i+1}: ${leg.team} in ${leg.matchup} at odds ${leg.price > 0 ? '+' : ''}${leg.price} (${Math.round(leg.impliedProb * 100)}% implied)`
       ).join('\n')
 
       const res = await fetch('/api/analyze-game', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          team1: 'BET PARLAY',
-          team2: 'SKIP PARLAY',
+          team1: 'BET',
+          team2: 'SKIP',
           sport: 'PARLAY',
-          odds1: parlay.payout || 400,
+          odds1: parlay.combinedAmerican,
           odds2: -500,
           gameTime: 'Today',
-          context: `You are analyzing a sports parlay bet. Give honest advice.
+          context: `Analyze this ${parlay.legs.length}-leg parlay at ${parlay.book}.
 
-PARLAY DETAILS:
-- Book: ${parlay.book}
-- Legs: ${parlay.legs?.length || 0}
-- Win probability: ${parlay.winPct || parlay.probability}%
-- Payout if won: +${parlay.payout || parlay.odds} on $100 bet
-- Expected value: ${parlay.ev || '$0.00'}
+Win probability: ${(parlay.winProb * 100).toFixed(1)}%
+Payout on $100: +$${parlay.payoutOn100.toFixed(0)}
+Expected value: $${parlay.ev.toFixed(2)}
+Combined odds: +${parlay.combinedAmerican}
 
-LEGS:
+Legs:
 ${legsText}
 
-Should someone bet this parlay? Consider:
-1. Are the legs independent or correlated?
-2. Is the win probability reasonable?
-3. Is the payout worth the risk?
-4. Any red flags?
-
-Reply with pick as "BET PARLAY" if worth betting or "SKIP PARLAY" if not.`
+Is this worth betting? Consider leg quality, correlation, and whether the payout justifies the risk.`
         })
       })
       const data = await res.json()
