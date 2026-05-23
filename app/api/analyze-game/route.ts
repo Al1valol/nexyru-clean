@@ -13,7 +13,18 @@ export async function POST(req: NextRequest) {
     weekday:'long', year:'numeric', month:'long', day:'numeric'
   })
 
-  const prompt = sport === 'CRYPTO'
+  const prompt = sport === 'PARLAY'
+    ? `You are a sharp sports betting analyst. Today is ${today}.
+
+${context}
+
+Give honest advice on whether this parlay is worth betting.
+Most parlays are bad bets — only recommend if legs are genuinely strong.
+
+Reply ONLY with JSON:
+{"pick":"BET or SKIP","confidence":"high or medium or low","reasoning":"one sentence honest assessment","warning":"one concern or null","avoid":false}`
+
+    : sport === 'CRYPTO'
     ? `You are a meme coin sniper. Analyze this opportunity quickly.
 
 ${context}

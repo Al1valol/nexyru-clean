@@ -2507,7 +2507,7 @@ Reply with pick as "BET PARLAY" if worth betting or "SKIP PARLAY" if not.`
               </button>
             </div>
             {parlayAnalysis[parlayId] && (() => {
-              const verdict = parlayAnalysis[parlayId].pick?.includes('BET') ? 'bet' : 'skip'
+              const verdict = parlayAnalysis[parlayId]?.pick === 'BET' ? 'bet' : 'skip'
               return (
               <div style={{
                 marginTop:10, padding:12, borderRadius:8,
