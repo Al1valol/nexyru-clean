@@ -786,41 +786,30 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
     try {
-      // Fetch truly new coins from DexScreener
-      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1')
-      const profiles = await profilesRes.json()
-      const arr = Array.isArray(profiles) ? profiles : []
-      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean)
+      // Fetch the newest Solana pairs directly - sorted by creation time
+      const res = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana&sort=createdAt')
+      const data = await res.json().catch(() => ({}))
+      const allPairs = Array.isArray(data?.pairs) ? data.pairs : []
 
-      if (addresses.length === 0) {
-        setGems([])
-        setGemsLoading(false)
-        return
-      }
+      // Sort by newest first
+      const sortedByAge = allPairs.sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0))
 
-      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`)
-      const pairsData = await pairsRes.json()
-      const allPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
-
-      // DEDUP: for each token address keep only the pair with the HIGHEST volume
-      // This prevents the same coin appearing multiple times (different trading pairs)
-      const bestPairPerToken: Record<string, any> = {}
-      allPairs.forEach(p => {
-        const tokenAddr = p.baseToken?.address
-        if (!tokenAddr) return
-        const vol = parseFloat(p.volume?.h24 || 0)
-        if (!bestPairPerToken[tokenAddr] || vol > parseFloat(bestPairPerToken[tokenAddr].volume?.h24 || 0)) {
-          bestPairPerToken[tokenAddr] = p
-        }
+      // Dedupe by token address keeping first occurrence (newest pair)
+      const seen = new Set<string>()
+      const pairs: any[] = []
+      sortedByAge.forEach(p => {
+        const key = p.baseToken?.address
+        if (!key || seen.has(key)) return
+        seen.add(key)
+        pairs.push(p)
       })
-      const pairs = Object.values(bestPairPerToken)
 
-      // AGE: pairCreatedAt is in milliseconds (13 digit number)
-      // Simple calculation - no special handling needed
-      const scored = pairs.map(p => {
+      // Score each pair
+      const scored = pairs.slice(0, 30).map(p => {
         const createdAt = p.pairCreatedAt
         const ageMs = createdAt ? Date.now() - Number(createdAt) : 999 * 3600000
         const ageHours = Math.max(0, ageMs / 3600000)
+        console.log('AGE CHECK:', p.baseToken?.name, ageHours.toFixed(1) + 'h', new Date(Number(createdAt)).toLocaleTimeString())
 
         const vol = parseFloat(p.volume?.h24 || 0);
         const change1h = parseFloat(p.priceChange?.h1 || 0);
