@@ -100,7 +100,7 @@ export default function OptionsPage() {
   }, [])
 
   const C = {
-    bg: '#080808', card: '#111111', border: '#1e1e2a',
+    bg: '#080808', card: '#0d0d12', border: '#16161f',
     green: '#22c55e', red: '#ef4444', accent: '#6366f1',
     muted: '#6b7280', yellow: '#f59e0b', text: '#ffffff'
   }
@@ -301,8 +301,8 @@ export default function OptionsPage() {
         borderBottom:`1px solid ${C.border}`,
         position:'sticky', top:0, zIndex:100, gap:12
       }}>
-        <div style={{display:'flex', alignItems:'center', gap:8, fontSize: 14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', letterSpacing:'-0.01em'}}>
-          <BarChart2 size={16}/> Options Flow
+        <div style={{fontSize:15, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', whiteSpace:'nowrap'}}>
+          Nexyru
         </div>
 
         {!isMobile && (
@@ -336,7 +336,7 @@ export default function OptionsPage() {
           <button onClick={enableNotifications} style={{
             display:'flex', alignItems:'center', gap:6,
             padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight:600,
-            border:`1px solid ${alertsEnabled ? 'rgba(34,197,94,0.25)' : '#1e1e2a'}`,
+            border:`1px solid ${alertsEnabled ? 'rgba(34,197,94,0.25)' : '#16161f'}`,
             background: alertsEnabled ? 'rgba(34,197,94,0.15)' : 'transparent',
             color: alertsEnabled ? C.green : '#6b7280', cursor:'pointer',
             transition:'all 0.15s'
@@ -344,9 +344,7 @@ export default function OptionsPage() {
             {alertsEnabled ? <Bell size={14}/> : <BellOff size={14}/>}
             {alertsEnabled ? 'ON' : 'Alerts'}
           </button>
-          <a href="/morning" style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#a5b4fc', textDecoration:'none', padding:'8px 14px', borderRadius:8, border:`1px solid rgba(99,102,241,0.3)`, whiteSpace:'nowrap', fontWeight:600}}>
-            <Award size={14}/> JARVIS
-          </a>
+          <a href="/morning" style={{padding:'6px 12px', borderRadius:6, border:'1px solid #1e1e2a', background:'transparent', color:'#6b7280', fontSize:12, fontWeight:600, textDecoration:'none'}}>Briefing</a>
         </div>
       </div>
 
@@ -449,7 +447,7 @@ export default function OptionsPage() {
                     <button key={f} onClick={() => setFilterType(f as any)} style={{
                       display:'flex', alignItems:'center', gap:6,
                       padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight: filterType===f ? 700 : 600,
-                      border:`1px solid ${filterType===f ? C.accent : '#1e1e2a'}`,
+                      border:`1px solid ${filterType===f ? C.accent : '#16161f'}`,
                       background: filterType===f ? `rgba(99,102,241,0.15)` : 'transparent',
                       color: filterType===f ? '#a5b4fc' : '#6b7280', cursor:'pointer',
                       transition:'all 0.15s'
@@ -465,7 +463,7 @@ export default function OptionsPage() {
                     <button key={f} onClick={() => setFilterUrgency(f as any)} style={{
                       display:'flex', alignItems:'center', gap:6,
                       padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight: filterUrgency===f ? 700 : 600,
-                      border:`1px solid ${filterUrgency===f ? (f==='HIGH'?'rgba(239,68,68,0.5)':f==='MEDIUM'?'rgba(245,158,11,0.5)':C.accent) : '#1e1e2a'}`,
+                      border:`1px solid ${filterUrgency===f ? (f==='HIGH'?'rgba(239,68,68,0.5)':f==='MEDIUM'?'rgba(245,158,11,0.5)':C.accent) : '#16161f'}`,
                       background: filterUrgency===f ? (f==='HIGH'?'rgba(239,68,68,0.1)':f==='MEDIUM'?'rgba(245,158,11,0.1)':`rgba(99,102,241,0.15)`) : 'transparent',
                       color: filterUrgency===f ? (f==='HIGH'?C.red:f==='MEDIUM'?C.yellow:'#a5b4fc') : '#6b7280', cursor:'pointer',
                       transition:'all 0.15s'
@@ -562,7 +560,7 @@ export default function OptionsPage() {
                         {label:'PREMIUM', value: `$${alert.premium >= 1000000 ? (alert.premium/1000000).toFixed(1)+'M' : (alert.premium/1000).toFixed(0)+'k'}`, color: C.green},
                         {label:'IV', value: `${alert.impliedVolatility}%`, color: C.text},
                       ].map(stat => (
-                        <div key={stat.label} style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                        <div key={stat.label} style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #16161f'}}>
                           <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>{stat.label}</div>
                           <div style={{fontSize:18, fontWeight:800, color:stat.color, letterSpacing:'-0.02em'}}>{stat.value}</div>
                         </div>
@@ -630,7 +628,7 @@ export default function OptionsPage() {
                       <a href={`https://finance.yahoo.com/quote/${alert.ticker}/options`} target="_blank" rel="noreferrer" style={{
                         display:'flex', alignItems:'center', gap:6,
                         padding:'8px 14px', borderRadius:8,
-                        border:`1px solid #1e1e2a`,
+                        border:`1px solid #16161f`,
                         background:'transparent', color:'#6b7280',
                         fontSize:13, fontWeight:600, textDecoration:'none',
                         transition:'all 0.15s'
@@ -646,7 +644,7 @@ export default function OptionsPage() {
                       }} style={{
                         display:'flex', alignItems:'center', justifyContent:'center',
                         padding:'8px 10px', borderRadius:8,
-                        border:`1px solid ${watchlist.includes(alert.ticker) ? 'rgba(245,158,11,0.4)' : '#1e1e2a'}`,
+                        border:`1px solid ${watchlist.includes(alert.ticker) ? 'rgba(245,158,11,0.4)' : '#16161f'}`,
                         background: watchlist.includes(alert.ticker) ? 'rgba(245,158,11,0.1)' : 'transparent',
                         color: watchlist.includes(alert.ticker) ? C.yellow : '#6b7280',
                         cursor:'pointer', transition:'all 0.15s'
@@ -738,7 +736,7 @@ export default function OptionsPage() {
                   {label:'WIN RATE', value:`${winRate}%`, color:winRate>=50?C.green:C.red},
                   {label:'OPEN', value:openTrades.length, color:C.text},
                 ].map(s => (
-                  <div key={s.label} style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                  <div key={s.label} style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #16161f'}}>
                     <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>{s.label}</div>
                     <div style={{fontSize:18, fontWeight:800, color:s.color, letterSpacing:'-0.02em'}}>{s.value}</div>
                   </div>
@@ -774,15 +772,15 @@ export default function OptionsPage() {
                   </div>
 
                   <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:12}}>
-                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #16161f'}}>
                       <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>CONTRACTS</div>
                       <div style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>{trade.contracts}</div>
                     </div>
-                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #16161f'}}>
                       <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>ENTRY</div>
                       <div style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>${trade.entryPrice.toFixed(2)}</div>
                     </div>
-                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #16161f'}}>
                       <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>TOTAL COST</div>
                       <div style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>${trade.totalCost.toFixed(0)}</div>
                     </div>
@@ -803,7 +801,7 @@ export default function OptionsPage() {
                         <button onClick={() => settleTrade(trade.id, 'lost')} style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px', borderRadius:8, background:'rgba(239,68,68,0.15)', color:C.red, fontSize:13, fontWeight:700, cursor:'pointer', border:'1px solid rgba(239,68,68,0.25)'}}>
                           <XCircle size={12}/> Lost
                         </button>
-                        <button onClick={() => settleTrade(trade.id, 'expired')} style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px', borderRadius:8, border:`1px solid #1e1e2a`, background:'transparent', color:'#6b7280', fontSize:13, fontWeight:600, cursor:'pointer'}}>
+                        <button onClick={() => settleTrade(trade.id, 'expired')} style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px', borderRadius:8, border:`1px solid #16161f`, background:'transparent', color:'#6b7280', fontSize:13, fontWeight:600, cursor:'pointer'}}>
                           <Clock size={12}/> Expired
                         </button>
                       </div>
@@ -903,7 +901,7 @@ export default function OptionsPage() {
           <div onClick={() => setTradeModal(null)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', zIndex:2000}}/>
           <div style={{
             position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
-            zIndex:2001, background:'#111', border:`1px solid ${C.border}`,
+            zIndex:2001, background:'#0d0d12', border:`1px solid ${C.border}`,
             borderRadius:16, padding:24, width:360, maxWidth:'90vw'
           }}>
             <div style={{fontSize:16, fontWeight:700, marginBottom:4}}>Paper Trade</div>

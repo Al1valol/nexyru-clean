@@ -354,8 +354,8 @@ function CryptoNewPairs({ refreshKey, onUpdated }) {
 
   if (loading && pairs.length === 0) return <div style={{color:"#6b7280",padding:32}}>Loading new pairs...</div>;
   return (
-    <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,overflow:"hidden"}}>
-      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
+    <div style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:12,overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #16161f"}}>
         {["Pair","Chain","Price","1h%","24h%","Volume 24h","Age"].map(h => (
           <div key={h} style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>{h}</div>
         ))}
@@ -372,7 +372,7 @@ function CryptoNewPairs({ refreshKey, onUpdated }) {
         const ch1 = parseFloat(p.priceChange?.h1 || 0);
         const ch24 = parseFloat(p.priceChange?.h24 || 0);
         return (
-          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
+          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #16161f",alignItems:"center"}}>
             <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{p.baseToken?.symbol}/{p.quoteToken?.symbol} {hot?"":""}</div>
             <div><span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:chainColor(p.chainId)+"22",color:chainColor(p.chainId),fontWeight:700}}>{p.chainId?.toUpperCase()?.slice(0,4)}</span></div>
             <div style={{color:"#fff",fontSize:12}}>{formatPrice(parseFloat(p.priceUsd || 0))}</div>
@@ -1011,7 +1011,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const launchedInLastHour = gems.filter(c => c.ageHours < 1).length;
 
   const pillStyle = (active, accent) => ({
-    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
+    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#16161f'}`,
     background: active ? (accent || '#6366f1') : '#1a1a24',
     color: active ? '#fff' : '#9ca3af',
     fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -1021,7 +1021,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
   return (
     <div>
-      <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'1px solid #1e1e2a' }}>
+      <div style={{ display:'flex', gap:8, marginBottom:16, borderBottom:'1px solid #16161f' }}>
         {[
           ['sniper', 'Coin Sniper'],
           ['fomo', 'Trade on FOMO'],
@@ -1076,7 +1076,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             </div>
           </div>
 
-          <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:20, marginBottom:16}}>
+          <div style={{background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, padding:20, marginBottom:16}}>
             <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:12}}> How to use Coin Sniper + FOMO</div>
             {[
               {step:'1', text:'Find a PRIME SNIPE coin here in Coin Sniper'},
@@ -1104,7 +1104,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           ].map(link => (
             <a key={link.url} href={link.url} target="_blank" rel="noreferrer" style={{
               display:'flex', justifyContent:'space-between', alignItems:'center',
-              padding:'12px 14px', borderRadius:8, border:'1px solid #1e1e2a',
+              padding:'12px 14px', borderRadius:8, border:'1px solid #16161f',
               background:'transparent', textDecoration:'none', marginBottom:8
             }}>
               <div>
@@ -1115,11 +1115,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             </a>
           ))}
 
-          <div style={{marginTop:16, padding:14, background:'#111', border:'1px solid #1e1e2a', borderRadius:12}}>
+          <div style={{marginTop:16, padding:14, background:'#0d0d12', border:'1px solid #16161f', borderRadius:12}}>
             <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}> Current Top Snipes to Trade on FOMO</div>
             <div style={{fontSize:12, color:'#6b7280', marginBottom:10}}>Based on Coin Sniper scores right now:</div>
             {gems.filter(g => g.snipeWindow?.id === 'prime' || g.snipeWindow?.id === 'early').slice(0,3).map((coin, i) => (
-              <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #1e1e2a'}}>
+              <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #16161f'}}>
                 <div>
                   <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{coin.name} ({coin.symbol})</div>
                   <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.score}/100 · {coin.snipeWindow?.label}</div>
@@ -1273,7 +1273,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       </div>
 
       {visible.length === 0 ? (
-        <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#111', border:'1px dashed #1e1e2a', borderRadius:12 }}>
+        <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#0d0d12', border:'1px dashed #16161f', borderRadius:12 }}>
           No coins matching your filters right now. Try widening the age or score filter.
         </div>
       ) : (
@@ -1357,7 +1357,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             };
             const verification = getVerificationStatus({ ...coin, source: 'dexscreener' });
             return (
-              <div key={coin.pairAddress || coin.coinId} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
+              <div key={coin.pairAddress || coin.coinId} style={{ background:'#0d0d12', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#16161f'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
                 {ageHoursNum < 0.5 && (
                   <div style={{
                     background:'rgba(34,197,94,0.1)',
@@ -1705,7 +1705,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         </div>
       )}
 
-      <div style={{marginTop:20, background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:16}}>
+      <div style={{marginTop:20, background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, padding:16}}>
         <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}> Whale Wallet Tracker</div>
         <div style={{fontSize:12, color:'#6b7280', marginBottom:10}}>
           Paste a known whale wallet address to see what they're buying on DexScreener
@@ -1714,7 +1714,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           <input
             value={whaleWallet} onChange={e=>setWhaleWallet(e.target.value)}
             placeholder="Paste wallet address (0x... or Solana address)"
-            style={{flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:12, outline:'none'}}
+            style={{flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #16161f', background:'#1a1a24', color:'#fff', fontSize:12, outline:'none'}}
           />
           <button onClick={() => {
             if (whaleWallet) {
@@ -1730,7 +1730,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
         <div style={{marginTop:8}}>
           {savedWhales.map(w => (
-            <div key={w.address} style={{display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid #1e1e2a', fontSize:11}}>
+            <div key={w.address} style={{display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid #16161f', fontSize:11}}>
               <span style={{color:'#9ca3af'}}>{w.label || w.address.substring(0,8)+'...'}</span>
               <a href={`https://dexscreener.com/solana?q=${w.address}`} target="_blank" rel="noreferrer" style={{color:'#6366f1', textDecoration:'none'}}>View →</a>
             </div>
@@ -1803,9 +1803,9 @@ function CryptoGainers({ refreshKey, onUpdated }) {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name or symbol..."
-          style={{flex:1, padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none"}}
+          style={{flex:1, padding:"8px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none"}}
         />
-        <div style={{display:"flex",gap:4,background:"#1a1a24",borderRadius:8,padding:4,border:"1px solid #1e1e2a"}}>
+        <div style={{display:"flex",gap:4,background:"#1a1a24",borderRadius:8,padding:4,border:"1px solid #16161f"}}>
           {['1h','24h','7d'].map(t => (
             <button key={t} onClick={() => setTimeframe(t)} style={{
               padding:"5px 12px", border:"none", borderRadius:6,
@@ -1816,8 +1816,8 @@ function CryptoGainers({ refreshKey, onUpdated }) {
           ))}
         </div>
       </div>
-      <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a"}}>
+      <div style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:12,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #16161f"}}>
           {["#","Coin","Price","1h%","24h%","Mkt Cap"].map(h => (
             <div key={h} style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>{h}</div>
           ))}
@@ -1828,7 +1828,7 @@ function CryptoGainers({ refreshKey, onUpdated }) {
           const ch1 = parseFloat(c.price_change_percentage_1h_in_currency || 0);
           const ch24 = parseFloat(c.price_change_percentage_24h || 0);
           return (
-            <div key={c.id} style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #1e1e2a",alignItems:"center"}}>
+            <div key={c.id} style={{display:"grid",gridTemplateColumns:"40px 2fr 1fr 1fr 1fr 1fr",padding:"10px 16px",borderBottom:"1px solid #16161f",alignItems:"center"}}>
               <div style={{color:"#6b7280",fontSize:12}}>{i+1}</div>
               <div style={{fontWeight:600,color:"#fff",fontSize:13}}>{c.name} <span style={{color:"#6b7280",fontSize:11}}>{c.symbol?.toUpperCase()}</span></div>
               <div style={{color:"#fff",fontSize:12}}>${c.current_price?.toLocaleString()}</div>
@@ -1927,7 +1927,7 @@ function CryptoWatchlist({ refreshKey, onUpdated }) {
             onChange={e => { setInput(e.target.value); setAddError(null); }}
             onKeyDown={e => { if (e.key === 'Enter') addCoin(); }}
             placeholder="Add coin (e.g. bitcoin, ethereum, solana)"
-            style={{flex:1, padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none"}}
+            style={{flex:1, padding:"8px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none"}}
           />
           <button
             onClick={addCoin}
@@ -1940,7 +1940,7 @@ function CryptoWatchlist({ refreshKey, onUpdated }) {
         {addError && <div style={{color:"#ef4444",fontSize:12,marginTop:8}}>{addError}</div>}
       </div>
       {list.length === 0 ? (
-        <div style={{textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#111", border:"1px dashed #1e1e2a", borderRadius:12}}>
+        <div style={{textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#0d0d12", border:"1px dashed #16161f", borderRadius:12}}>
           Add coins to track them here
         </div>
       ) : (
@@ -1953,7 +1953,7 @@ function CryptoWatchlist({ refreshKey, onUpdated }) {
             const priceStr = price === undefined ? '—'
               : '$' + price.toLocaleString(undefined, { maximumFractionDigits: price >= 1 ? 2 : 6 });
             return (
-              <div key={c.id} style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,padding:16}}>
+              <div key={c.id} style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:12,padding:16}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
                   <div>
                     <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{c.name}</div>
@@ -2061,7 +2061,7 @@ function SignalCard({ signal, livePrice, livePriceChange24h, history, onUpdate, 
   };
 
   return (
-    <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <div>
@@ -2176,7 +2176,7 @@ function SignalCard({ signal, livePrice, livePriceChange24h, history, onUpdate, 
         onBlur={saveNotes}
         placeholder="Notes (thesis, catalysts, exit plan…)"
         rows={2}
-        style={{width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none", resize:"vertical", fontFamily:"inherit"}}
+        style={{width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:12, outline:"none", resize:"vertical", fontFamily:"inherit"}}
       />
     </div>
   );
@@ -2249,7 +2249,7 @@ function CryptoJournal({ refreshKey, onUpdated, signals, onUpdateSignals }) {
 
   return (
     <div>
-      <div style={{display:"flex",gap:4,marginBottom:16,background:"#1a1a24",borderRadius:10,padding:4,border:"1px solid #1e1e2a",width:"fit-content"}}>
+      <div style={{display:"flex",gap:4,marginBottom:16,background:"#1a1a24",borderRadius:10,padding:4,border:"1px solid #16161f",width:"fit-content"}}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding:"7px 16px", border:"none", borderRadius:7,
@@ -2262,19 +2262,19 @@ function CryptoJournal({ refreshKey, onUpdated, signals, onUpdateSignals }) {
 
       {tab === 'taken' && (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(160px, 1fr))",gap:10,marginBottom:16}}>
-          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+          <div style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:10,padding:12}}>
             <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Logged</div>
             <div style={{fontSize:18,fontWeight:800,color:"#fff",marginTop:4}}>{signals?.length || 0}</div>
           </div>
-          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+          <div style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:10,padding:12}}>
             <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Taken</div>
             <div style={{fontSize:18,fontWeight:800,color:"#fff",marginTop:4}}>{taken.length}</div>
           </div>
-          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+          <div style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:10,padding:12}}>
             <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Win rate</div>
             <div style={{fontSize:18,fontWeight:800,color:"#fff",marginTop:4}}>{winRate == null ? '—' : winRate.toFixed(0) + '%'}</div>
           </div>
-          <div style={{background:"#111",border:"1px solid #1e1e2a",borderRadius:10,padding:12}}>
+          <div style={{background:"#0d0d12",border:"1px solid #16161f",borderRadius:10,padding:12}}>
             <div style={{fontSize:10,color:"#6b7280",textTransform:"uppercase"}}>Total P&amp;L</div>
             <div style={{fontSize:18,fontWeight:800,color: totalPnl >= 0 ? "#22c55e" : "#ef4444",marginTop:4}}>
               {closed.length === 0 ? '—' : (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(1) + '%'}
@@ -2284,7 +2284,7 @@ function CryptoJournal({ refreshKey, onUpdated, signals, onUpdateSignals }) {
       )}
 
       {(!signals || signals.length === 0) ? (
-        <div style={{textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#111", border:"1px dashed #1e1e2a", borderRadius:12}}>
+        <div style={{textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#0d0d12", border:"1px dashed #16161f", borderRadius:12}}>
           {tab === 'taken' ? 'No taken trades yet. Mark logged signals as taken to track them here.' : 'No logged signals yet. Click "Log Signal" on a trending coin to start.'}
         </div>
       ) : (
@@ -2589,7 +2589,7 @@ function CryptoHotNow({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy 
   }
 
   const pillStyle = (active, accent) => ({
-    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
+    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#16161f'}`,
     background: active ? (accent || '#6366f1') : '#1a1a24',
     color: active ? '#fff' : '#9ca3af',
     fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -2759,7 +2759,7 @@ function CryptoUptrends({ refreshKey, onUpdated, onBuy }) {
   }, [coins, timeframe, capFilter]);
 
   const pillStyle = (active, accent) => ({
-    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#1e1e2a'}`,
+    padding: '5px 12px', borderRadius: 999, border: `1px solid ${active ? (accent || '#6366f1') : '#16161f'}`,
     background: active ? (accent || '#6366f1') : '#1a1a24',
     color: active ? '#fff' : '#9ca3af',
     fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -2796,12 +2796,12 @@ function CryptoUptrends({ refreshKey, onUpdated, onBuy }) {
       </div>
 
       {filtered.length === 0 ? (
-        <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#111', border:'1px dashed #1e1e2a', borderRadius:12 }}>
+        <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#0d0d12', border:'1px dashed #16161f', borderRadius:12 }}>
           Market may be down — no coins showing uptrend across all timeframes. Try a shorter filter.
         </div>
       ) : (
-        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, overflow:'hidden' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'40px 2fr 1fr 60px 60px 60px 70px 80px 90px', gap:10, padding:'10px 14px', borderBottom:'1px solid #1e1e2a' }}>
+        <div style={{ background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'40px 2fr 1fr 60px 60px 60px 70px 80px 90px', gap:10, padding:'10px 14px', borderBottom:'1px solid #16161f' }}>
             {['#','Coin','Mkt Cap','1h','24h','7d','Score','7d Trend','Buy'].map(h => (
               <div key={h} style={{ fontSize:10, fontWeight:700, color:'#6b7280', textTransform:'uppercase' }}>{h}</div>
             ))}
@@ -2813,7 +2813,7 @@ function CryptoUptrends({ refreshKey, onUpdated, onBuy }) {
             const tier = capTier(c.market_cap);
             const sparkPoints = c.sparkline_in_7d?.price || [];
             return (
-              <div key={c.id} style={{ display:'grid', gridTemplateColumns:'40px 2fr 1fr 60px 60px 60px 70px 80px 90px', gap:10, padding:'10px 14px', borderBottom:'1px solid #1e1e2a', alignItems:'center' }}>
+              <div key={c.id} style={{ display:'grid', gridTemplateColumns:'40px 2fr 1fr 60px 60px 60px 70px 80px 90px', gap:10, padding:'10px 14px', borderBottom:'1px solid #16161f', alignItems:'center' }}>
                 <div style={{ fontSize:12, color:'#6b7280' }}>{i + 1}</div>
                 <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', minWidth:0 }}>
                   <div style={{ minWidth:0 }}>
@@ -2959,7 +2959,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
 
   if (accounts.length === 0) {
     return (
-      <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#111', border:'1px dashed #1e1e2a', borderRadius:12 }}>
+      <div style={{ textAlign:'center', padding:48, color:'#6b7280', fontSize:13, background:'#0d0d12', border:'1px dashed #16161f', borderRadius:12 }}>
         Create a crypto account to start tracking stats.
       </div>
     );
@@ -2979,7 +2979,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap:14, marginBottom:14 }}>
-        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+        <div style={{ background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, padding:14 }}>
           <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Best performing trades</div>
           {bestTrades.length === 0 ? (
             <div style={{ fontSize:12, color:'#6b7280' }}>No closed trades yet.</div>
@@ -2991,7 +2991,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
             </div>
           )}
         </div>
-        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+        <div style={{ background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, padding:14 }}>
           <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Worst performing trades</div>
           {worstTrades.length === 0 ? (
             <div style={{ fontSize:12, color:'#6b7280' }}>No closed trades yet.</div>
@@ -3006,7 +3006,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap:14, marginBottom:14 }}>
-        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+        <div style={{ background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, padding:14 }}>
           <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Chain breakdown</div>
           {chainBreakdown.length === 0 ? (
             <div style={{ fontSize:12, color:'#6b7280' }}>No positions yet.</div>
@@ -3030,7 +3030,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
           )}
         </div>
 
-        <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+        <div style={{ background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, padding:14 }}>
           <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Timing analysis</div>
           {closedWithPnl.length === 0 ? (
             <div style={{ fontSize:12, color:'#6b7280' }}>Close some trades to see timing analysis.</div>
@@ -3045,7 +3045,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
               <div style={{ fontSize:12, color:'#9ca3af' }}>
                 Avg hold (losses): <span style={{ color:'#ef4444', fontWeight:700 }}>{fmtMs(avgLossHold)}</span>
               </div>
-              <div style={{ paddingTop:6, borderTop:'1px solid #1e1e2a', marginTop:4 }}>
+              <div style={{ paddingTop:6, borderTop:'1px solid #16161f', marginTop:4 }}>
                 <div style={{ fontSize:10, color:'#6b7280', textTransform:'uppercase', fontWeight:700, marginBottom:6 }}>By day of week (avg P&L %)</div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:4 }}>
                   {dayAverages.map(d => (
@@ -3064,7 +3064,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
         </div>
       </div>
 
-      <div style={{ background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:14 }}>
+      <div style={{ background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, padding:14 }}>
         <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:10 }}>Monthly realized P&L</div>
         {monthlyPnl.length === 0 ? (
           <div style={{ fontSize:12, color:'#6b7280' }}>No closed trades yet.</div>
@@ -3091,7 +3091,7 @@ function CryptoMyStats({ store, refreshKey, onUpdated }) {
 function TradeRow({ p }) {
   const fmtPrice = (n) => fmtUsd(n, { maxFractionDigits: n >= 1 ? 4 : 8 });
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1.4fr 1fr 1fr auto auto', gap:8, padding:'6px 0', borderBottom:'1px solid #1e1e2a', alignItems:'center', fontSize:11 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'1.4fr 1fr 1fr auto auto', gap:8, padding:'6px 0', borderBottom:'1px solid #16161f', alignItems:'center', fontSize:11 }}>
       <div style={{ color:'#fff', fontWeight:700 }}>{p.name || p.symbol} <span style={{ color:'#6b7280', fontWeight:400 }}>{(p.symbol || '').toUpperCase()}</span></div>
       <div style={{ color:'#9ca3af' }}>{fmtPrice(p.entryPrice)} → {fmtPrice(p.exitPrice)}</div>
       <div style={{ color:'#9ca3af' }}>{fmtHoldDuration(p.entryDate, p.exitDate)}</div>
@@ -3124,7 +3124,7 @@ class ChartErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return this.props.fallback ?? (
-        <div style={{ color: '#6b7280', fontSize: 13, padding: 16, background: '#111', border: '1px dashed #1e1e2a', borderRadius: 10, textAlign: 'center' }}>
+        <div style={{ color: '#6b7280', fontSize: 13, padding: 16, background: '#0d0d12', border: '1px dashed #16161f', borderRadius: 10, textAlign: 'center' }}>
           Chart unavailable
         </div>
       );
@@ -3324,7 +3324,7 @@ function PositionChartModal({ position, onClose }) {
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1100, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#0a0a0f", border:"1px solid #1e1e2a", borderRadius:14, padding:24, width:"80vw", height:"80vh", maxWidth:1200, color:"#fff", display:"flex", flexDirection:"column", gap:16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0a0a0f", border:"1px solid #16161f", borderRadius:14, padding:24, width:"80vw", height:"80vh", maxWidth:1200, color:"#fff", display:"flex", flexDirection:"column", gap:16 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
           <div>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -3336,7 +3336,7 @@ function PositionChartModal({ position, onClose }) {
           <button onClick={onClose} aria-label="Close" style={{ background:"none", border:"none", color:"#9ca3af", cursor:"pointer", fontSize:24, lineHeight:1 }}>×</button>
         </div>
 
-        <div ref={wrapRef} style={{ flex:1, minHeight:240, background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:10, position:"relative", overflow:"hidden" }}>
+        <div ref={wrapRef} style={{ flex:1, minHeight:240, background:"#0f0f14", border:"1px solid #16161f", borderRadius:10, position:"relative", overflow:"hidden" }}>
           {loading && (
             <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", gap:12, color:"#9ca3af", fontSize:13 }}>
               <div style={{ width:22, height:22, border:'3px solid #2a2a3a', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite' }}/>
@@ -3361,7 +3361,7 @@ function PositionChartModal({ position, onClose }) {
             const livePnlPct = entryPrice > 0 ? ((cur / entryPrice) - 1) * 100 : 0;
             const linkUrl = position.dexUrl || (dexPair.url || (dexPair.chainId && dexPair.pairAddress ? `https://dexscreener.com/${dexPair.chainId}/${dexPair.pairAddress}` : null));
             const pctCard = (label, ch) => (
-              <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+              <div style={{ background:"#1a1a24", border:"1px solid #16161f", borderRadius:8, padding:"10px 12px" }}>
                 <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>{label}</div>
                 <div style={{ fontSize:16, fontWeight:800, color: ch >= 0 ? "#22c55e" : "#ef4444", marginTop:4 }}>
                   {ch >= 0 ? '+' : ''}{ch.toFixed(2)}%
@@ -3383,7 +3383,7 @@ function PositionChartModal({ position, onClose }) {
                 </div>
 
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10, marginBottom:12 }}>
-                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                  <div style={{ background:"#1a1a24", border:"1px solid #16161f", borderRadius:8, padding:"10px 12px" }}>
                     <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Entry</div>
                     <div style={{ fontSize:16, fontWeight:800, color:"#fff", marginTop:4 }}>{fmtPrice(entryPrice)}</div>
                   </div>
@@ -3409,15 +3409,15 @@ function PositionChartModal({ position, onClose }) {
                 </div>
 
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
-                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                  <div style={{ background:"#1a1a24", border:"1px solid #16161f", borderRadius:8, padding:"10px 12px" }}>
                     <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Volume 24h</div>
                     <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{formatBigUsd(vol)}</div>
                   </div>
-                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                  <div style={{ background:"#1a1a24", border:"1px solid #16161f", borderRadius:8, padding:"10px 12px" }}>
                     <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Liquidity</div>
                     <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{formatBigUsd(liq)}</div>
                   </div>
-                  <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                  <div style={{ background:"#1a1a24", border:"1px solid #16161f", borderRadius:8, padding:"10px 12px" }}>
                     <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Chain</div>
                     <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{(dexPair.chainId || position.chain || '?').toUpperCase()}</div>
                   </div>
@@ -3436,7 +3436,7 @@ function PositionChartModal({ position, onClose }) {
               {/* gridlines */}
               {linePath.yTicks.map((t, i) => (
                 <g key={`y${i}`}>
-                  <line x1={pad.left} y1={t.y} x2={size.w - pad.right} y2={t.y} stroke="#1e1e2a" strokeWidth="1"/>
+                  <line x1={pad.left} y1={t.y} x2={size.w - pad.right} y2={t.y} stroke="#16161f" strokeWidth="1"/>
                   <text x={pad.left - 8} y={t.y + 3} fill="#6b7280" fontSize="10" textAnchor="end">{fmtPrice(t.v)}</text>
                 </g>
               ))}
@@ -3499,7 +3499,7 @@ function PositionChartModal({ position, onClose }) {
         </div>
 
         {(position.notes || position.exitNotes) && (
-          <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:12, display:"flex", flexDirection:"column", gap:6 }}>
+          <div style={{ background:"#0d0d12", border:"1px solid #16161f", borderRadius:10, padding:12, display:"flex", flexDirection:"column", gap:6 }}>
             {position.notes && <div style={{ fontSize:12, color:"#9ca3af" }}><span style={{ color:"#a5b4fc", fontWeight:700 }}>Entry notes:</span> {position.notes}</div>}
             {position.exitNotes && <div style={{ fontSize:12, color:"#9ca3af" }}><span style={{ color:"#f59e0b", fontWeight:700 }}>Exit notes:</span> {position.exitNotes}</div>}
           </div>
@@ -3682,13 +3682,13 @@ function BalanceChart({ account, onDeposit }) {
   const isEmpty = !allSeries.points || allSeries.points.length < 2;
 
   return (
-    <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:12, padding:16, marginBottom:16 }}>
+    <div style={{ background:"#0f0f14", border:"1px solid #16161f", borderRadius:12, padding:16, marginBottom:16 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
         <div>
           <div style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Balance</div>
           <div style={{ fontSize:26, fontWeight:900, color:"#fff", marginTop:2 }}>{fmtUsd(current)}</div>
         </div>
-        <div style={{ display:"flex", gap:4, background:"#1a1a24", borderRadius:8, padding:4, border:"1px solid #1e1e2a" }}>
+        <div style={{ display:"flex", gap:4, background:"#1a1a24", borderRadius:8, padding:4, border:"1px solid #16161f" }}>
           {[['1w','1W'],['1m','1M'],['3m','3M'],['all','All']].map(([id, label]) => (
             <button key={id} onClick={() => setTf(id)} style={{
               padding:"5px 12px", border:"none", borderRadius:6,
@@ -3733,7 +3733,7 @@ function BalanceChart({ account, onDeposit }) {
             </defs>
             {chart.yTicks.map((t, i) => (
               <g key={i}>
-                <line x1={pad.left} y1={t.y} x2={size.w - pad.right} y2={t.y} stroke="#1e1e2a" strokeWidth="1"/>
+                <line x1={pad.left} y1={t.y} x2={size.w - pad.right} y2={t.y} stroke="#16161f" strokeWidth="1"/>
                 <text x={pad.left - 8} y={t.y + 3} fill="#6b7280" fontSize="10" textAnchor="end">{fmtUsd(t.v, { maxFractionDigits: 0 })}</text>
               </g>
             ))}
@@ -3833,7 +3833,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
   if (!coin) return null;
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflowY:"auto" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:460, color:"#fff", margin:"auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #16161f", borderRadius:14, padding:20, width:"100%", maxWidth:460, color:"#fff", margin:"auto" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
           <div>
             <div style={{ fontSize:18, fontWeight:800 }}>Buy {(coin.symbol || coin.name || '').toUpperCase()}</div>
@@ -3847,7 +3847,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
           <select
             value={accountId}
             onChange={e => setAccountId(e.target.value)}
-            style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+            style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
           >
             {store.accounts.map(a => (
               <option key={a.id} value={a.id}>{a.name} ({a.type.toUpperCase()}) · {fmtUsd(a.balance)}</option>
@@ -3862,7 +3862,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
         <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Amount in USD</label>
         <input
           type="number" value={usdInput} onChange={e => { setUsdInput(e.target.value); setError(null); }}
-          placeholder="500" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:6 }}
+          placeholder="500" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:6 }}
         />
         <div style={{ fontSize:11, color:"#6b7280", marginBottom:14 }}>
           ≈ {amount > 0 ? amount.toLocaleString(undefined, { maximumFractionDigits: 8 }) : '0'} {(coin.symbol || '').toUpperCase()}
@@ -3871,7 +3871,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
         <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Entry Price (USD)</label>
         <input
           type="number" value={priceInput} onChange={e => { setPriceInput(e.target.value); setError(null); }}
-          placeholder="0.00" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+          placeholder="0.00" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
         />
 
         <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Entry notes (optional)</label>
@@ -3879,7 +3879,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
           value={notesInput} onChange={e => setNotesInput(e.target.value)}
           placeholder="Why are you buying this? (thesis, catalyst, source…)"
           rows={2}
-          style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14, resize:"vertical", fontFamily:"inherit" }}
+          style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14, resize:"vertical", fontFamily:"inherit" }}
         />
 
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
@@ -3889,7 +3889,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
               <input
                 type="number" value={targetInput} onChange={e => setTargetInput(e.target.value)}
                 placeholder="50"
-                style={{ width:"100%", padding:"9px 28px 9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}
+                style={{ width:"100%", padding:"9px 28px 9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}
               />
               <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"#6b7280", fontSize:12 }}>%</span>
             </div>
@@ -3900,7 +3900,7 @@ function CryptoBuyModal({ coin, store, livePrice, onClose, onConfirm }) {
               <input
                 type="number" value={stopInput} onChange={e => setStopInput(e.target.value)}
                 placeholder="20"
-                style={{ width:"100%", padding:"9px 28px 9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}
+                style={{ width:"100%", padding:"9px 28px 9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}
               />
               <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:"#6b7280", fontSize:12 }}>%</span>
             </div>
@@ -4040,7 +4040,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
   if (!activeAccount) {
     return (
       <div>
-        <div style={{ textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#111", border:"1px dashed #1e1e2a", borderRadius:12, marginBottom:16 }}>
+        <div style={{ textAlign:"center", padding:48, color:"#6b7280", fontSize:13, background:"#0d0d12", border:"1px dashed #16161f", borderRadius:12, marginBottom:16 }}>
           No crypto accounts yet. Create one to start tracking trades.
         </div>
         <div style={{ display:"flex", gap:8 }}>
@@ -4106,8 +4106,8 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
               cursor:"pointer",
               padding:"10px 14px",
               borderRadius:10,
-              border: isActive ? "1px solid #6366f1" : "1px solid #1e1e2a",
-              background: isActive ? "rgba(99,102,241,0.08)" : "#111",
+              border: isActive ? "1px solid #6366f1" : "1px solid #16161f",
+              background: isActive ? "rgba(99,102,241,0.08)" : "#0d0d12",
               minWidth:200,
             }}>
               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
@@ -4128,7 +4128,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       {createType && <CreateAccountForm type={createType} name={createName} balance={createBalance} onName={setCreateName} onBalance={setCreateBalance} onCancel={() => { setCreateType(null); setCreateName(''); setCreateBalance(''); }} onSubmit={createAccount}/>}
 
       {/* Header */}
-      <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:12, padding:18, marginBottom:16 }}>
+      <div style={{ background:"#0f0f14", border:"1px solid #16161f", borderRadius:12, padding:18, marginBottom:16 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14, flexWrap:"wrap", gap:12 }}>
           <div>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -4156,7 +4156,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       </div>
 
       {/* Activity feed — simple history list (replaces SVG balance chart) */}
-      <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:12, padding:16, marginBottom:16 }}>
+      <div style={{ background:"#0f0f14", border:"1px solid #16161f", borderRadius:12, padding:16, marginBottom:16 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
           <div style={{ fontSize:11, color:"#6b7280", textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Activity</div>
           {(activeAccount?.history?.length ?? 0) === 0 && (
@@ -4184,7 +4184,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                           : isWithdraw ? 'Withdrawal'
                           : (h.type || 'Event');
               return (
-                <div key={h.id || i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #1e1e2a", gap:12 }}>
+                <div key={h.id || i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #16161f", gap:12 }}>
                   <div style={{ minWidth:0 }}>
                     <div style={{ fontSize:13, color:"#fff", fontWeight:600 }}>{label}</div>
                     <div style={{ fontSize:11, color:"#6b7280" }}>
@@ -4203,7 +4203,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       </div>
 
       {/* Tabs */}
-      <div style={{ display:"flex", gap:4, marginBottom:14, background:"#1a1a24", borderRadius:10, padding:4, border:"1px solid #1e1e2a", width:"fit-content" }}>
+      <div style={{ display:"flex", gap:4, marginBottom:14, background:"#1a1a24", borderRadius:10, padding:4, border:"1px solid #16161f", width:"fit-content" }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding:"7px 16px", border:"none", borderRadius:7,
@@ -4220,7 +4220,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
           <div style={{ marginBottom:18 }}>
             <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:8 }}>Open positions ({openPositions.length})</div>
             {openPositions.length === 0 ? (
-              <div style={{ padding:20, background:"#111", border:"1px dashed #1e1e2a", borderRadius:10, color:"#6b7280", fontSize:12, textAlign:"center" }}>
+              <div style={{ padding:20, background:"#0d0d12", border:"1px dashed #16161f", borderRadius:10, color:"#6b7280", fontSize:12, textAlign:"center" }}>
                 No open positions. Click "Buy →" on any trending coin to start.
               </div>
             ) : (
@@ -4228,7 +4228,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                 {positionsWithLive.map(p => {
                   const edit = alertEdits[p.id] || { target: p.alertTarget ?? '', stop: p.alertStop ?? '' };
                   return (
-                    <div key={p.id} onClick={() => setChartModal({ position: p })} style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:14, cursor:"pointer", transition:"border-color 0.15s, background 0.15s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "#2a2a3a"; e.currentTarget.style.background = "#141420"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e1e2a"; e.currentTarget.style.background = "#111"; }}>
+                    <div key={p.id} onClick={() => setChartModal({ position: p })} style={{ background:"#0d0d12", border:"1px solid #16161f", borderRadius:10, padding:14, cursor:"pointer", transition:"border-color 0.15s, background 0.15s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "#2a2a3a"; e.currentTarget.style.background = "#141420"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = "#16161f"; e.currentTarget.style.background = "#0d0d12"; }}>
                       <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr 1fr auto", gap:12, alignItems:"center" }}>
                         <div>
                           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
@@ -4272,7 +4272,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                         <button onClick={(e) => { e.stopPropagation(); setCloseFor(p); setClosePrice(String(p._cur || p.entryPrice)); setCloseNotes(''); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#22c55e", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.02em" }}>Close Position →</button>
                       </div>
 
-                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #1e1e2a", display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", cursor:"default" }}>
+                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #16161f", display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", cursor:"default" }}>
                         <span style={{ fontSize:11, color:"#9ca3af" }}>Alerts:</span>
                         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                           <span style={{ fontSize:11, color:"#9ca3af" }}>Target +</span>
@@ -4297,10 +4297,10 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
           <div>
             <div style={{ fontSize:13, fontWeight:700, color:"#fff", marginBottom:8 }}>Closed positions ({closedPositions.length})</div>
             {closedPositions.length === 0 ? (
-              <div style={{ padding:16, background:"#111", border:"1px dashed #1e1e2a", borderRadius:10, color:"#6b7280", fontSize:12, textAlign:"center" }}>No closed trades yet.</div>
+              <div style={{ padding:16, background:"#0d0d12", border:"1px dashed #16161f", borderRadius:10, color:"#6b7280", fontSize:12, textAlign:"center" }}>No closed trades yet.</div>
             ) : (
-              <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, overflow:"hidden" }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr", padding:"10px 14px", borderBottom:"1px solid #1e1e2a" }}>
+              <div style={{ background:"#0d0d12", border:"1px solid #16161f", borderRadius:10, overflow:"hidden" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr 1fr", padding:"10px 14px", borderBottom:"1px solid #16161f" }}>
                   {["Coin","Entry","Exit","Held for","P&L","P&L %"].map(h => (
                     <div key={h} style={{ fontSize:10, fontWeight:700, color:"#6b7280", textTransform:"uppercase" }}>{h}</div>
                   ))}
@@ -4309,7 +4309,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                   <div
                     key={p.id}
                     onClick={() => setChartModal({ position: p })}
-                    style={{ borderBottom:"1px solid #1e1e2a", cursor:"pointer", transition:"background 0.15s" }}
+                    style={{ borderBottom:"1px solid #16161f", cursor:"pointer", transition:"background 0.15s" }}
                     onMouseEnter={e => { e.currentTarget.style.background = "#141420"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                   >
@@ -4336,7 +4336,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       )}
 
       {tab === 'history' && (
-        <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, overflow:"hidden" }}>
+        <div style={{ background:"#0d0d12", border:"1px solid #16161f", borderRadius:10, overflow:"hidden" }}>
           {history.length === 0 ? (
             <div style={{ padding:20, color:"#6b7280", fontSize:12, textAlign:"center" }}>No activity yet.</div>
           ) : history.map(h => {
@@ -4354,7 +4354,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                         : h.type === 'deposit' ? "#22c55e"
                         : h.type === 'withdraw' ? "#f59e0b" : "#fff";
             return (
-              <div key={h.id} style={{ padding:"10px 14px", borderBottom:"1px solid #1e1e2a", fontSize:12, color, display:"flex", justifyContent:"space-between", gap:12 }}>
+              <div key={h.id} style={{ padding:"10px 14px", borderBottom:"1px solid #16161f", fontSize:12, color, display:"flex", justifyContent:"space-between", gap:12 }}>
                 <span>{line}</span>
                 <span style={{ color:"#6b7280", fontSize:11, whiteSpace:"nowrap" }}>{new Date(h.date).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' })}</span>
               </div>
@@ -4383,12 +4383,12 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
       {/* Deposit / Withdraw dialog */}
       {txnDialog && (
         <div onClick={() => setTxnDialog(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:380, color:"#fff" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #16161f", borderRadius:14, padding:20, width:"100%", maxWidth:380, color:"#fff" }}>
             <div style={{ fontSize:18, fontWeight:800, marginBottom:12 }}>{txnDialog === 'deposit' ? '+ Deposit' : '− Withdraw'}</div>
             <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700 }}>Amount (USD)</label>
-            <input type="number" value={txnAmount} onChange={e => setTxnAmount(e.target.value)} placeholder="100" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:12 }}/>
+            <input type="number" value={txnAmount} onChange={e => setTxnAmount(e.target.value)} placeholder="100" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:12 }}/>
             <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700 }}>Note (optional)</label>
-            <input type="text" value={txnNote} onChange={e => setTxnNote(e.target.value)} placeholder="e.g. paycheck, transferred from bank" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}/>
+            <input type="text" value={txnNote} onChange={e => setTxnNote(e.target.value)} placeholder="e.g. paycheck, transferred from bank" style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}/>
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={() => setTxnDialog(null)} style={{ flex:1, padding:"10px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancel</button>
               <button onClick={submitTxn} style={{ flex:1, padding:"10px", borderRadius:8, border:"none", background: txnDialog === 'deposit' ? "#22c55e" : "#f59e0b", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Confirm</button>
@@ -4403,7 +4403,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
           resetKey={chartModal.position.id}
           fallback={
             <div onClick={() => setChartModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1100, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-              <div onClick={e => e.stopPropagation()} style={{ background:"#0a0a0f", border:"1px solid #1e1e2a", borderRadius:14, padding:24, maxWidth:420, color:"#fff" }}>
+              <div onClick={e => e.stopPropagation()} style={{ background:"#0a0a0f", border:"1px solid #16161f", borderRadius:14, padding:24, maxWidth:420, color:"#fff" }}>
                 <div style={{ fontSize:16, fontWeight:800, marginBottom:6 }}>Chart unavailable</div>
                 <div style={{ fontSize:12, color:"#9ca3af", marginBottom:14 }}>This position's price data couldn't be rendered.</div>
                 <button onClick={() => setChartModal(null)} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Close</button>
@@ -4424,7 +4424,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
         const pnlPct = exit > 0 ? ((exit / closeFor.entryPrice) - 1) * 100 : null;
         return (
           <div onClick={() => setCloseFor(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflowY:"auto" }}>
-            <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:14, padding:20, width:"100%", maxWidth:440, color:"#fff", margin:"auto" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:"#0f0f14", border:"1px solid #16161f", borderRadius:14, padding:20, width:"100%", maxWidth:440, color:"#fff", margin:"auto" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
                 <div>
                   <div style={{ fontSize:18, fontWeight:800 }}>Close {sym} position</div>
@@ -4434,7 +4434,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
-                <div style={{ background:"#1a1a24", border:"1px solid #1e1e2a", borderRadius:8, padding:"10px 12px" }}>
+                <div style={{ background:"#1a1a24", border:"1px solid #16161f", borderRadius:8, padding:"10px 12px" }}>
                   <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", fontWeight:700 }}>Entry price</div>
                   <div style={{ fontSize:14, fontWeight:700, color:"#fff", marginTop:4 }}>{fmtUsd(closeFor.entryPrice, { maxFractionDigits: 6 })}</div>
                   <div style={{ fontSize:10, color:"#6b7280", marginTop:2 }}>locked</div>
@@ -4460,7 +4460,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                     onClick={() => setExitMode(m.id)}
                     style={{
                       flex:1, padding:"8px", borderRadius:8,
-                      border:`1px solid ${exitMode === m.id ? '#6366f1' : '#1e1e2a'}`,
+                      border:`1px solid ${exitMode === m.id ? '#6366f1' : '#16161f'}`,
                       background: exitMode === m.id ? 'rgba(99,102,241,0.15)' : 'transparent',
                       color: exitMode === m.id ? '#a5b4fc' : '#9ca3af',
                       fontSize:12, fontWeight:700, cursor:'pointer',
@@ -4501,7 +4501,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                       {[25, 50, 75].map(pct => (
                         <button key={pct} onClick={() => setPercent(pct)} style={{
                           flex:1, padding:'6px', borderRadius:6,
-                          border:`1px solid ${partialPercent === pct ? '#6366f1' : '#1e1e2a'}`,
+                          border:`1px solid ${partialPercent === pct ? '#6366f1' : '#16161f'}`,
                           background: partialPercent === pct ? 'rgba(99,102,241,0.15)' : 'transparent',
                           color: partialPercent === pct ? '#a5b4fc' : '#6b7280',
                           fontSize:12, fontWeight:700, cursor:'pointer',
@@ -4517,7 +4517,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                           const usd = parseFloat(e.target.value) || 0;
                           if (positionUSD > 0) setPercent(Math.round((usd / positionUSD) * 100));
                         }}
-                        style={{ width:100, padding:'6px 8px', borderRadius:6, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none' }}
+                        style={{ width:100, padding:'6px 8px', borderRadius:6, border:'1px solid #16161f', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none' }}
                       />
                     </div>
 
@@ -4537,7 +4537,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
               <label style={{ display:"block", fontSize:11, color:"#9ca3af", marginBottom:6, textTransform:"uppercase", fontWeight:700, letterSpacing:"0.04em" }}>Exit price (USD)</label>
               <input
                 type="number" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.00"
-                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14 }}
               />
 
               {pnl != null && (() => {
@@ -4557,7 +4557,7 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
                 value={closeNotes} onChange={e => setCloseNotes(e.target.value)}
                 placeholder="Why are you selling? (target hit, thesis broken, profit-taking…)"
                 rows={2}
-                style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14, resize:"vertical", fontFamily:"inherit" }}
+                style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none", marginBottom:14, resize:"vertical", fontFamily:"inherit" }}
               />
 
               <div style={{ display:"flex", gap:8 }}>
@@ -4577,14 +4577,14 @@ function CryptoAccounts({ store, onUpdate, refreshKey, onUpdated, onRequestBuy }
 function CreateAccountForm({ type, name, balance, onName, onBalance, onCancel, onSubmit }) {
   const canSubmit = name.trim().length > 0;
   return (
-    <div style={{ background:"#0f0f14", border:"1px solid #1e1e2a", borderRadius:10, padding:14, marginBottom:16 }}>
+    <div style={{ background:"#0f0f14", border:"1px solid #16161f", borderRadius:10, padding:14, marginBottom:16 }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
         <span style={{ fontSize:11, fontWeight:800, padding:"3px 8px", borderRadius:5, background: type === 'real' ? "rgba(34,197,94,0.18)" : "rgba(99,102,241,0.20)", color: type === 'real' ? "#22c55e" : "#a5b4fc", letterSpacing:"0.05em" }}>{type.toUpperCase()}</span>
         <span style={{ fontSize:13, fontWeight:700, color:"#fff" }}>New {type === 'real' ? 'real' : 'paper'} account</span>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr auto auto", gap:8 }}>
-        <input value={name} onChange={e => onName(e.target.value)} placeholder="Account name (e.g. Main Portfolio)" style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}/>
-        <input type="number" value={balance} onChange={e => onBalance(e.target.value)} placeholder="Starting balance USD" style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #1e1e2a", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}/>
+        <input value={name} onChange={e => onName(e.target.value)} placeholder="Account name (e.g. Main Portfolio)" style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}/>
+        <input type="number" value={balance} onChange={e => onBalance(e.target.value)} placeholder="Starting balance USD" style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #16161f", background:"#1a1a24", color:"#fff", fontSize:13, outline:"none" }}/>
         <button onClick={onCancel} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #2a2a3a", background:"transparent", color:"#9ca3af", fontSize:12, fontWeight:700, cursor:"pointer" }}>Cancel</button>
         <button onClick={onSubmit} disabled={!canSubmit} style={{ padding:"8px 14px", borderRadius:8, border:"none", background: canSubmit ? "#6366f1" : "#2a2a3a", color:"#fff", fontSize:12, fontWeight:700, cursor: canSubmit ? "pointer" : "not-allowed" }}>Create</button>
       </div>
@@ -4594,7 +4594,7 @@ function CreateAccountForm({ type, name, balance, onName, onBalance, onCancel, o
 
 function Stat({ label, value, color }) {
   return (
-    <div style={{ background:"#111", border:"1px solid #1e1e2a", borderRadius:10, padding:12 }}>
+    <div style={{ background:"#0d0d12", border:"1px solid #16161f", borderRadius:10, padding:12 }}>
       <div style={{ fontSize:10, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.04em", fontWeight:700 }}>{label}</div>
       <div style={{ fontSize:16, fontWeight:800, color: color || "#fff", marginTop:4 }}>{value}</div>
     </div>
@@ -4982,7 +4982,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
     <>
       {buyModalCoin && <CryptoBuyModal coin={buyModalCoin} livePrice={buyModalLivePrice} store={cryptoAccountStore} onClose={() => setBuyModalCoin(null)} onConfirm={handleConfirmBuy}/>}
 
-      <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
+      <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #16161f', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
         {[
           {id:'hotnow',    label:'Hot Now',     Icon: Activity},
           {id:'gems',      label:'Coin Sniper', Icon: Target},
@@ -5002,13 +5002,13 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
       </aside>
 
       <header style={{
-        background:"rgba(8,8,8,0.95)", backdropFilter:"blur(12px)", borderBottom:"1px solid #1e1e2a",
+        background:"rgba(8,8,8,0.95)", backdropFilter:"blur(12px)", borderBottom:"1px solid #16161f",
         display:"flex", alignItems:"center", justifyContent:"space-between",
         padding: isMobile ? '12px 16px' : '14px 24px', gap:12, position:"sticky", top:bannerOffset, zIndex:100,
         marginLeft: isMobile ? 0 : 56,
       }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:14, fontWeight:800, color:"#fff", whiteSpace:"nowrap", letterSpacing:"-0.01em" }}>
-          <Activity size={16}/> Crypto
+        <div style={{ fontSize:15, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', whiteSpace:"nowrap" }}>
+          Nexyru
         </div>
         <div style={{ display:"flex", gap:4, alignItems:"center" }}>
           {[
@@ -5031,16 +5031,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             </a>
           ))}
         </div>
-        <a href="/morning" style={{
-          display:"flex", alignItems:"center", gap:6,
-          padding:"8px 14px", borderRadius:8,
-          border:"1px solid rgba(0,212,255,0.3)",
-          background:"rgba(0,212,255,0.05)",
-          color:"#00d4ff", textDecoration:"none",
-          fontSize:13, fontWeight:700, whiteSpace:"nowrap",
-        }}>
-          <Award size={14}/> {isMobile ? '' : 'Daily Briefing'}
-        </a>
+        <a href="/morning" style={{padding:'6px 12px', borderRadius:6, border:'1px solid #1e1e2a', background:'transparent', color:'#6b7280', fontSize:12, fontWeight:600, textDecoration:'none'}}>Briefing</a>
       </header>
 
       <div style={{ flex:1, padding: isMobile ? 12 : 24, overflowY:"auto", marginLeft: isMobile ? 0 : 80, paddingBottom: isMobile ? 80 : 0 }}>
@@ -5099,7 +5090,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                 <div style={{fontSize:16, fontWeight:700}}>Scanning for dips...</div>
               </div>
             ) : dips.length === 0 ? (
-              <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:12, padding:32, textAlign:'center'}}>
+              <div style={{background:'#0f0f15', border:'1px solid #16161f', borderRadius:12, padding:32, textAlign:'center'}}>
                 <TrendingUp size={32} style={{marginBottom:12, opacity:0.5, color:'#22c55e'}}/>
                 <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:8}}>Market Trending Up</div>
                 <div style={{fontSize:13, color:'#6b7280', marginBottom:16, lineHeight:1.6}}>
@@ -5134,8 +5125,8 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
 
                   return (
                     <div key={id} style={{
-                      background:'#111',
-                      border:`1px solid ${coin.score >= 70 ? 'rgba(99,102,241,0.4)' : coin.score >= 50 ? 'rgba(245,158,11,0.3)' : '#1e1e2a'}`,
+                      background:'#0d0d12',
+                      border:`1px solid ${coin.score >= 70 ? 'rgba(99,102,241,0.4)' : coin.score >= 50 ? 'rgba(245,158,11,0.3)' : '#16161f'}`,
                       borderRadius:12, padding:16, marginBottom:12
                     }}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
@@ -5252,14 +5243,14 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
           </div>
         )}
         {cryptoSection === 'uptrends'  && <ChartErrorBoundary resetKey="uptrends"><CryptoUptrends  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
-        {cryptoSection === 'accounts'  && <ChartErrorBoundary resetKey={`accounts:${cryptoAccountStore?.activeAccountId ?? 'none'}`} fallback={<div style={{ padding:32, color:'#9ca3af', background:'#111', border:'1px solid #1e1e2a', borderRadius:12, fontSize:13, textAlign:'center' }}>Error loading accounts. Refresh the page or pick a different account.</div>}><CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} /></ChartErrorBoundary>}
+        {cryptoSection === 'accounts'  && <ChartErrorBoundary resetKey={`accounts:${cryptoAccountStore?.activeAccountId ?? 'none'}`} fallback={<div style={{ padding:32, color:'#9ca3af', background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, fontSize:13, textAlign:'center' }}>Error loading accounts. Refresh the page or pick a different account.</div>}><CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} /></ChartErrorBoundary>}
         {cryptoSection === 'mystats'   && <ChartErrorBoundary resetKey="mystats"><CryptoMyStats   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} /></ChartErrorBoundary>}
       </div>
 
       {isMobile && (
         <div style={{
           position:'fixed', bottom:0, left:0, right:0, zIndex:200,
-          background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderTop:'1px solid #1e1e2a',
+          background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderTop:'1px solid #16161f',
           display:'flex', paddingBottom:'env(safe-area-inset-bottom)',
           height:70
         }}>

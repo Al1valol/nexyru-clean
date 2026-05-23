@@ -13,9 +13,9 @@ import {
 // ──────────────────────── theme ────────────────────────
 const C = {
   bg: "#080808",
-  card: "#111111",
+  card: "#0d0d12",
   card2: "#161616",
-  border: "#1e1e2a",
+  border: "#16161f",
   borderSoft: "#1a1a1a",
   text: "#ffffff",
   textDim: "#9aa0aa",
@@ -460,7 +460,7 @@ export default function SportsPage() {
       {!isMobile && (
         <aside
           style={{
-            width: 180,
+            width: 52,
             background: "#0a0a0f",
             borderRight: `1px solid ${C.border}`,
             position: "sticky",
@@ -468,38 +468,31 @@ export default function SportsPage() {
             height: "100vh",
             display: "flex",
             flexDirection: "column",
-            padding: "16px 0",
+            paddingTop: 16,
             flexShrink: 0,
           }}
         >
-          <div style={{ padding: "0 16px 14px", borderBottom: `1px solid ${C.border}`, marginBottom: 8 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8, fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing:"-0.02em" }}>
-              <Target size={16}/> Sports
-            </div>
-          </div>
           {sidebarItems.map((it) => (
             <button
               key={it.id}
               onClick={() => setSection(it.id)}
+              title={it.label}
               style={{
-                width: "100%",
+                width: 52,
+                height: 48,
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "10px 16px",
+                justifyContent: "center",
                 border: "none",
-                background: section === it.id ? "rgba(99,102,241,0.15)" : "transparent",
-                color: section === it.id ? "#a5b4fc" : "#6b7280",
-                fontSize: 13,
-                fontWeight: section === it.id ? 700 : 500,
+                background: section === it.id ? "rgba(99,102,241,0.08)" : "transparent",
+                color: section === it.id ? "#6366f1" : "#4b5563",
                 cursor: "pointer",
-                textAlign: "left",
-                borderLeft: section === it.id ? `3px solid ${C.accent}` : "3px solid transparent",
+                borderLeft: section === it.id ? "2px solid #6366f1" : "2px solid transparent",
                 transition: "all 0.15s",
+                marginBottom: 4,
               }}
             >
-              <it.Icon size={16}/>
-              {it.label}
+              <it.Icon size={18}/>
             </button>
           ))}
         </aside>
@@ -510,7 +503,7 @@ export default function SportsPage() {
         {isMobile && (
           <div style={{
             display:'flex', background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)',
-            borderBottom:'1px solid #1e1e2a',
+            borderBottom:'1px solid #16161f',
             padding:'0 4px'
           }}>
             {[
@@ -553,8 +546,8 @@ export default function SportsPage() {
           }}
         >
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8, fontSize: isMobile ? 13 : 14, fontWeight: 800, color:"#fff", whiteSpace:"nowrap", letterSpacing:"-0.01em" }}>
-              <Target size={16}/> Sports{isMobile ? "" : " Betting"}
+            <div style={{ fontSize:15, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', whiteSpace:"nowrap" }}>
+              Nexyru
             </div>
             {!isMobile && (
               <div
@@ -603,23 +596,7 @@ export default function SportsPage() {
                 ${bankroll.toFixed(0)}
               </span>
             )}
-            <a
-              href="/morning"
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: isMobile ? "6px 10px" : "8px 14px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,212,255,0.3)",
-                background: "rgba(0,212,255,0.06)",
-                color: "#00d4ff",
-                fontSize: isMobile ? 12 : 13,
-                fontWeight: 700,
-                textDecoration: "none",
-                whiteSpace:"nowrap",
-              }}
-            >
-              <Award size={14}/> JARVIS
-            </a>
+            <a href="/morning" style={{padding:'6px 12px', borderRadius:6, border:'1px solid #1e1e2a', background:'transparent', color:'#6b7280', fontSize:12, fontWeight:600, textDecoration:'none'}}>Briefing</a>
           </div>
         </header>
 
@@ -767,7 +744,7 @@ export default function SportsPage() {
               transform: "translate(-50%,-50%)",
               zIndex: 2001,
               background: "#111",
-              border: "1px solid #1e1e2a",
+              border: "1px solid #16161f",
               borderRadius: 16,
               padding: 24,
               width: 360,
@@ -806,7 +783,7 @@ export default function SportsPage() {
                 width: "100%",
                 padding: "12px",
                 borderRadius: 8,
-                border: "1px solid #1e1e2a",
+                border: "1px solid #16161f",
                 background: "#1a1a24",
                 color: "#fff",
                 fontSize: 16,
@@ -838,7 +815,7 @@ export default function SportsPage() {
                   flex: 1,
                   padding: "10px",
                   borderRadius: 8,
-                  border: "1px solid #1e1e2a",
+                  border: "1px solid #16161f",
                   background: "transparent",
                   color: "#fff",
                   fontSize: 13,
@@ -1044,7 +1021,7 @@ function DeepDiveSection({
             borderRadius: 6,
             marginBottom: 6,
             background: "#111",
-            border: "1px solid #1e1e2a",
+            border: "1px solid #16161f",
           }}
         >
           <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 3 }}>
@@ -1833,7 +1810,7 @@ function ArbFinderPanel({
                     <div
                       style={{
                         background: "#111",
-                        border: "1px solid #1e1e2a",
+                        border: "1px solid #16161f",
                         borderRadius: 12,
                         padding: 32,
                         textAlign: "center",
@@ -1854,7 +1831,7 @@ function ArbFinderPanel({
                     <div
                       style={{
                         background: "#111",
-                        border: "1px solid #1e1e2a",
+                        border: "1px solid #16161f",
                         borderRadius: 12,
                         padding: 32,
                         textAlign: "center",
@@ -2949,7 +2926,7 @@ function PlayerPropsPanel({
       <div
         style={{
           background: "#111",
-          border: "1px solid #1e1e2a",
+          border: "1px solid #16161f",
           borderRadius: 12,
           padding: 32,
           textAlign: "center",
@@ -3043,7 +3020,7 @@ function PlayerPropsPanel({
           <span style={{display:"inline-flex", alignItems:"center", gap:6}}><RefreshCw size={12}/> Check Again Now</span>
         </button>
 
-        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #1e1e2a" }}>
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #16161f" }}>
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
             Meanwhile — these always work:
           </div>
@@ -3053,7 +3030,7 @@ function PlayerPropsPanel({
               style={{
                 padding: "8px 16px",
                 borderRadius: 8,
-                border: "1px solid #1e1e2a",
+                border: "1px solid #16161f",
                 background: "transparent",
                 color: "#a5b4fc",
                 fontSize: 12,
@@ -3068,7 +3045,7 @@ function PlayerPropsPanel({
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "9px 18px",
                 borderRadius: 8,
-                border: "1px solid #1e1e2a",
+                border: "1px solid #16161f",
                 background: "transparent",
                 color: "#a5b4fc",
                 fontSize: 13,
@@ -3107,7 +3084,7 @@ function PlayerPropsPanel({
               display: "flex", alignItems: "center", gap: 6,
               padding: "8px 14px",
               borderRadius: 8,
-              border: `1px solid ${propsMode === m.id ? C.accent : "#1e1e2a"}`,
+              border: `1px solid ${propsMode === m.id ? C.accent : "#16161f"}`,
               background: propsMode === m.id ? "rgba(99,102,241,0.15)" : "transparent",
               color: propsMode === m.id ? "#a5b4fc" : "#6b7280",
               fontSize: 13,
@@ -3814,7 +3791,7 @@ function PaperBetsPanel({
   const s = {
     bg: "#080808",
     card: "#111",
-    border: "#1e1e2a",
+    border: "#16161f",
     green: "#22c55e",
     red: "#ef4444",
     muted: "#6b7280",
@@ -3838,7 +3815,7 @@ function PaperBetsPanel({
               transform: "translate(-50%,-50%)",
               zIndex: 1001,
               background: "#111",
-              border: "1px solid #1e1e2a",
+              border: "1px solid #16161f",
               borderRadius: 16,
               padding: 24,
               width: 360,
@@ -3858,7 +3835,7 @@ function PaperBetsPanel({
                 width: "100%",
                 padding: "10px",
                 borderRadius: 8,
-                border: "1px solid #1e1e2a",
+                border: "1px solid #16161f",
                 background: "#1a1a24",
                 color: "#fff",
                 fontSize: 14,
@@ -3880,7 +3857,7 @@ function PaperBetsPanel({
                 width: "100%",
                 padding: "10px",
                 borderRadius: 8,
-                border: "1px solid #1e1e2a",
+                border: "1px solid #16161f",
                 background: "#1a1a24",
                 color: "#fff",
                 fontSize: 14,
@@ -3897,7 +3874,7 @@ function PaperBetsPanel({
                   flex: 1,
                   padding: "10px",
                   borderRadius: 8,
-                  border: "1px solid #1e1e2a",
+                  border: "1px solid #16161f",
                   background: "transparent",
                   color: "#fff",
                   fontSize: 13,
@@ -3934,7 +3911,7 @@ function PaperBetsPanel({
               </button>
             </div>
 
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #1e1e2a" }}>
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #16161f" }}>
               <button
                 onClick={() => {
                   if (!confirm("Reset everything? This clears all bets and resets bankroll.")) return;
@@ -3977,7 +3954,7 @@ function PaperBetsPanel({
             display: "flex", alignItems: "center", gap: 6,
             padding: "8px 14px",
             borderRadius: 8,
-            border: "1px solid #1e1e2a",
+            border: "1px solid #16161f",
             background: "transparent",
             color: "#6b7280",
             fontSize: 13,
@@ -4027,7 +4004,7 @@ function PaperBetsPanel({
         ].map((stat) => (
           <div
             key={stat.label}
-            style={{ background: s.card, border: "1px solid #1e1e2a", borderRadius: 10, padding: 14 }}
+            style={{ background: s.card, border: "1px solid #16161f", borderRadius: 10, padding: 14 }}
           >
             <div
               style={{
@@ -4052,7 +4029,7 @@ function PaperBetsPanel({
         <div
           style={{
             background: s.card,
-            border: "1px solid #1e1e2a",
+            border: "1px solid #16161f",
             borderRadius: 10,
             padding: 14,
             marginBottom: 16,
@@ -4082,7 +4059,7 @@ function PaperBetsPanel({
               borderRadius: 8,
               fontSize: 13,
               fontWeight: betFilter === f.id ? 700 : 600,
-              border: `1px solid ${betFilter === f.id ? s.accent : "#1e1e2a"}`,
+              border: `1px solid ${betFilter === f.id ? s.accent : "#16161f"}`,
               background: betFilter === f.id ? "rgba(99,102,241,0.15)" : "transparent",
               color: betFilter === f.id ? "#a5b4fc" : "#6b7280",
               cursor: "pointer",
@@ -4101,7 +4078,7 @@ function PaperBetsPanel({
         <div
           style={{
             background: s.card,
-            border: "1px solid #1e1e2a",
+            border: "1px solid #16161f",
             borderRadius: 12,
             padding: 32,
             textAlign: "center",
@@ -4124,7 +4101,7 @@ function PaperBetsPanel({
                   : bet.status === "lost"
                     ? "rgba(239,68,68,0.3)"
                     : bet.status === "void"
-                      ? "#1e1e2a"
+                      ? "#16161f"
                       : "rgba(245,158,11,0.2)"
               }`,
               borderRadius: 12,
@@ -4262,7 +4239,7 @@ function PaperBetsPanel({
                   style={{
                     padding: "9px",
                     borderRadius: 8,
-                    border: "1px solid #1e1e2a",
+                    border: "1px solid #16161f",
                     background: "transparent",
                     color: "#6b7280",
                     fontSize: 13,
@@ -4277,7 +4254,7 @@ function PaperBetsPanel({
                   style={{
                     padding: "9px",
                     borderRadius: 8,
-                    border: "1px solid #1e1e2a",
+                    border: "1px solid #16161f",
                     background: "transparent",
                     color: "#6b7280",
                     fontSize: 13,

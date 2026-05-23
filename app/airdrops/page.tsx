@@ -70,7 +70,7 @@ export default function AirdropsPage() {
   }, [])
 
   const C = {
-    bg:'#080808', card:'#111', border:'#1e1e2a',
+    bg:'#080808', card:'#0d0d12', border:'#16161f',
     green:'#22c55e', red:'#ef4444', accent:'#6366f1',
     muted:'#6b7280', yellow:'#f59e0b', text:'#fff'
   }
@@ -722,8 +722,8 @@ export default function AirdropsPage() {
         position:'sticky', top:0, zIndex:100
       }}>
         {/* Left - Logo */}
-        <div style={{display:'flex', alignItems:'center', gap:8, fontSize:14, fontWeight:800, color:'#fff', letterSpacing:'-0.01em', minWidth: isMobile ? 'auto' : 80}}>
-          {isMobile ? <><Zap size={16}/> Airdrop Hunter</> : 'Nexyru'}
+        <div style={{display:'flex', alignItems:'center', gap:8, fontSize:15, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', minWidth: isMobile ? 'auto' : 80}}>
+          Nexyru
         </div>
 
         {/* Center - Nav links */}
@@ -750,11 +750,7 @@ export default function AirdropsPage() {
 
         {/* Right - Briefing */}
         <div style={{minWidth: isMobile ? 'auto' : 80, display:'flex', justifyContent:'flex-end'}}>
-          <a href="/morning" style={{
-            fontSize:12, color:'#6b7280', textDecoration:'none',
-            padding:'6px 10px', borderRadius:6,
-            border:'1px solid #1e1e2a'
-          }}>Briefing</a>
+          <a href="/morning" style={{padding:'6px 12px', borderRadius:6, border:'1px solid #1e1e2a', background:'transparent', color:'#6b7280', fontSize:12, fontWeight:600, textDecoration:'none'}}>Briefing</a>
         </div>
       </div>
 
@@ -827,7 +823,7 @@ export default function AirdropsPage() {
                       display:'flex', alignItems:'center', gap:6,
                       padding:'8px 14px', borderRadius:8, fontSize:13,
                       fontWeight: filter===f.id?700:600,
-                      border:`1px solid ${filter===f.id?C.accent:'#1e1e2a'}`,
+                      border:`1px solid ${filter===f.id?C.accent:'#16161f'}`,
                       background: filter===f.id?'rgba(99,102,241,0.15)':'transparent',
                       color: filter===f.id?'#a5b4fc':'#6b7280', cursor:'pointer',
                       transition:'all 0.15s'
@@ -842,7 +838,7 @@ export default function AirdropsPage() {
                     <button key={c} onClick={() => setChainFilter(c)} style={{
                       padding:'8px 14px', borderRadius:8, fontSize:13,
                       fontWeight: chainFilter===c?700:600,
-                      border:`1px solid ${chainFilter===c?C.accent:'#1e1e2a'}`,
+                      border:`1px solid ${chainFilter===c?C.accent:'#16161f'}`,
                       background: chainFilter===c?'rgba(99,102,241,0.15)':'transparent',
                       color: chainFilter===c?'#a5b4fc':'#6b7280', cursor:'pointer',
                       whiteSpace:'nowrap', transition:'all 0.15s'
