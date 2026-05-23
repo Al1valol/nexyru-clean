@@ -809,7 +809,13 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         const createdAt = p.pairCreatedAt
         const ageMs = createdAt ? Date.now() - Number(createdAt) : 999 * 3600000
         const ageHours = Math.max(0, ageMs / 3600000)
-        console.log('AGE CHECK:', p.baseToken?.name, ageHours.toFixed(1) + 'h', new Date(Number(createdAt)).toLocaleTimeString())
+        console.log(
+          'COIN:', p.baseToken?.name,
+          '| pairCreatedAt:', p.pairCreatedAt,
+          '| as date:', p.pairCreatedAt ? new Date(Number(p.pairCreatedAt)).toLocaleString() : 'none',
+          '| ageHours:', ageHours.toFixed(2),
+          '| pairAddress:', p.pairAddress
+        )
 
         const vol = parseFloat(p.volume?.h24 || 0);
         const change1h = parseFloat(p.priceChange?.h1 || 0);
