@@ -19,6 +19,8 @@ Reply ONLY with valid JSON — no markdown, no backticks, no prose around it. Us
   "opportunities": "Best opportunities today across trading, crypto, and sports betting. Be specific and actionable. 3-4 sentences.",
   "warnings": "Risks to watch. If they have overnight meme coins warn them. If too many pending arbs warn about getting banned by bookmakers. Recent-loss streak warnings. 2-3 sentences.",
   "hot_alert": "If there is a hot gem, exceptional arb, or anything genuinely urgent RIGHT NOW, describe it in 2-3 sentences with specific details — name the coin/bet and why it's interesting. If nothing urgent, return null (the JSON literal null, not the string).",
+  "optionsAlert": { "ticker": "TICKER", "type": "CALL or PUT", "summary": "one sentence explaining why this alert matters and what it might mean", "score": 0-100 } or null if no unusual options activity,
+  "coinSnipe": { "name": "coin name", "symbol": "SYMBOL", "chain": "solana/base/etc", "summary": "one sentence on why this coin looks interesting (age, volume, buy pressure)", "score": 0-100 } or null if no prime snipes,
   "goals": ["Goal 1 specific and actionable", "Goal 2 specific and actionable", "Goal 3 specific and actionable", "Goal 4 specific and actionable", "Goal 5 specific and actionable"],
   "motivation": "One sharp Iron Man style closing line under 20 words."
 }`;
@@ -30,6 +32,8 @@ type Briefing = {
   opportunities: string;
   warnings: string;
   hot_alert: string | null;
+  optionsAlert: { ticker: string; type: string; summary: string; score: number } | null;
+  coinSnipe: { name: string; symbol: string; chain: string; summary: string; score: number } | null;
   goals: string[];
   motivation: string;
 };
@@ -69,6 +73,27 @@ function coerceBriefing(parsed: unknown): Briefing | null {
   // Check rawGoals (pre-fallback) — otherwise the static fallback would let
   // an otherwise-empty response slip through as a valid briefing.
   if (text === 0 && rawGoals.length === 0) return null;
+  const oa = p.optionsAlert;
+  const optionsAlert =
+    oa && typeof oa === "object" && typeof (oa as any).ticker === "string"
+      ? {
+          ticker: String((oa as any).ticker),
+          type: String((oa as any).type || ""),
+          summary: String((oa as any).summary || ""),
+          score: Number((oa as any).score || 0),
+        }
+      : null;
+  const cs = p.coinSnipe;
+  const coinSnipe =
+    cs && typeof cs === "object" && typeof (cs as any).name === "string"
+      ? {
+          name: String((cs as any).name),
+          symbol: String((cs as any).symbol || ""),
+          chain: String((cs as any).chain || ""),
+          summary: String((cs as any).summary || ""),
+          score: Number((cs as any).score || 0),
+        }
+      : null;
   return {
     greeting: str(p.greeting),
     overnight: str(p.overnight),
@@ -76,6 +101,8 @@ function coerceBriefing(parsed: unknown): Briefing | null {
     opportunities: str(p.opportunities),
     warnings: str(p.warnings),
     hot_alert,
+    optionsAlert,
+    coinSnipe,
     goals,
     motivation: str(p.motivation),
   };
@@ -104,6 +131,12 @@ export async function POST(req: Request) {
   const m = ((body as { markets?: unknown }).markets ?? {}) as Record<string, unknown>;
   const hg = ((body as { hotGem?: unknown }).hotGem ?? null) as
     | { name?: string; symbol?: string; change1h?: number; change24h?: number; chain?: string }
+    | null;
+  const topGem = ((body as { topGem?: unknown }).topGem ?? null) as
+    | { name?: string; symbol?: string; chain?: string; score?: number; snipeWindow?: { label?: string }; ageHours?: number; change1h?: number; volume?: number; liquidity?: number; buyRatio?: number }
+    | null;
+  const topAlert = ((body as { topAlert?: unknown }).topAlert ?? null) as
+    | { ticker?: string; type?: string; score?: number; volume?: number; volumeRatio?: number; premium?: number; urgency?: string; strike?: number | string; expiry?: string; sentiment?: string }
     | null;
   const trendingList = Array.isArray(m.topTrending)
     ? (m.topTrending as Array<{ name?: string; change?: number }>)
@@ -146,7 +179,18 @@ MARKET DATA:
 - ETH: $${Number(m.ethPrice ?? 0).toLocaleString()} (${Number(m.ethChange ?? 0).toFixed(1)}% 24h)
 - Market sentiment: ${m.marketSentiment ?? "unknown"} (${m.gainers ?? 0}/10 top coins up)
 ${trendingList ? `- Trending: ${trendingList}` : ""}
-${hg ? `- HOT GEM RIGHT NOW: ${hg.name} (${hg.symbol}) up ${Number(hg.change1h ?? 0).toFixed(0)}% in 1h on ${hg.chain}` : ""}`;
+${hg ? `- HOT GEM RIGHT NOW: ${hg.name} (${hg.symbol}) up ${Number(hg.change1h ?? 0).toFixed(0)}% in 1h on ${hg.chain}` : ""}
+
+${topAlert ? `TODAY'S TOP OPTIONS ALERT:
+${topAlert.ticker} ${topAlert.type} - Score ${topAlert.score}/100
+Volume: ${Number(topAlert.volume ?? 0).toLocaleString()} contracts (${Number(topAlert.volumeRatio ?? 0).toFixed(1)}x normal)
+Premium: $${Number(topAlert.premium ?? 0) >= 1000000 ? (Number(topAlert.premium) / 1000000).toFixed(1) + 'M' : (Number(topAlert.premium ?? 0) / 1000).toFixed(0) + 'k'}
+Urgency: ${topAlert.urgency ?? 'normal'}
+Strike: $${topAlert.strike} expiring ${topAlert.expiry}
+Sentiment: ${topAlert.sentiment ?? 'unknown'}` : 'No unusual options activity detected today.'}
+
+${topGem ? `TOP COIN SNIPER SIGNAL: ${topGem.name} (${topGem.symbol}) on ${topGem.chain} - Score ${topGem.score}/100 - ${topGem.snipeWindow?.label ?? ''}
+- Age: ${Number(topGem.ageHours ?? 0).toFixed(1)}h, 1h change: ${Number(topGem.change1h ?? 0).toFixed(1)}%, volume 24h: $${Number(topGem.volume ?? 0).toLocaleString()}, liquidity: $${Number(topGem.liquidity ?? 0).toLocaleString()}, buy ratio: ${Math.round(Number(topGem.buyRatio ?? 0) * 100)}%` : 'No prime snipes right now.'}`;
 
   try {
     const message = await client.messages.create({

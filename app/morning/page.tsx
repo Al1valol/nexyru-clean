@@ -148,7 +148,7 @@ export default function MorningBriefing() {
       const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
       const profiles = await profilesRes.json();
       const addresses = (Array.isArray(profiles) ? profiles : [])
-        .slice(0, 5)
+        .slice(0, 20)
         .map((p) => p.tokenAddress)
         .filter(Boolean)
         .join(',');
@@ -170,8 +170,63 @@ export default function MorningBriefing() {
             url: hotGem.url,
           };
         }
+
+        // 7b. Top coin sniper signal — pick the best prime/early snipe by age + volume + buy pressure.
+        const scored = pairs.map((p) => {
+          const h1 = parseFloat(p.priceChange?.h1 || 0);
+          const vol = parseFloat(p.volume?.h24 || 0);
+          const liq = parseFloat(p.liquidity?.usd || 0);
+          const buys = p.txns?.h1?.buys || 0;
+          const sells = p.txns?.h1?.sells || 0;
+          const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5;
+          const createdAt = p.pairCreatedAt;
+          const ageMs = createdAt ? Date.now() - Number(createdAt) : 999 * 3600000;
+          const ageHours = Math.max(0, ageMs / 3600000);
+
+          let score = 0;
+          if (ageHours < 1) score += 35;
+          else if (ageHours < 3) score += 25;
+          else if (ageHours < 6) score += 15;
+          else if (ageHours < 24) score += 5;
+          if (h1 > 500) score -= 30;
+          else if (h1 > 200) score -= 15;
+          else if (h1 > 50) score += 5;
+          else if (h1 > 0) score += 15;
+          if (buyRatio > 0.65) score += 20; else if (buyRatio > 0.5) score += 10;
+          if (vol > 100000) score += 15; else if (vol > 25000) score += 8;
+          if (liq > 50000) score += 15; else if (liq > 10000) score += 8;
+
+          const snipeWindow =
+            h1 > 500 ? { id: 'toolate', label: '🚨 TOO LATE' }
+            : ageHours < 1 && h1 < 50 ? { id: 'prime', label: '🎯 PRIME SNIPE' }
+            : ageHours < 3 && h1 < 100 ? { id: 'early', label: '⚡ EARLY' }
+            : ageHours < 6 && h1 < 200 ? { id: 'watch', label: '👀 WATCH' }
+            : { id: 'cold', label: '❄️ COLD' };
+
+          return {
+            name: p.baseToken?.name || 'Unknown',
+            symbol: p.baseToken?.symbol || '???',
+            chain: p.chainId,
+            score: Math.max(0, Math.min(100, score)),
+            ageHours,
+            change1h: h1,
+            volume: vol,
+            liquidity: liq,
+            buyRatio,
+            snipeWindow,
+            url: p.url,
+          };
+        }).sort((a, b) => b.score - a.score);
+        data.topGem = scored[0] || null;
       }
-    } catch { data.hotGem = null; }
+    } catch { data.hotGem = null; data.topGem = null; }
+
+    // 8. Top options flow alert.
+    try {
+      const optionsRes = await fetch('/api/options-flow').catch(() => null);
+      const optionsData = optionsRes ? await optionsRes.json().catch(() => ({})) : {};
+      data.topAlert = optionsData?.alerts?.[0] || null;
+    } catch { data.topAlert = null; }
 
     return data;
   };
@@ -208,6 +263,8 @@ export default function MorningBriefing() {
         arbs: data.arbs,
         markets: data.markets,
         hotGem: data.hotGem,
+        topGem: data.topGem,
+        topAlert: data.topAlert,
       }),
     });
     const result = await res.json();
@@ -410,6 +467,50 @@ export default function MorningBriefing() {
                   View {hotGem.symbol} on DexScreener →
                 </a>
               )}
+            </div>
+          )}
+
+          {briefing?.optionsAlert && (
+            <div style={{background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.3)', borderRadius:12, padding:20, marginBottom:16}}>
+              <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:8}}>
+                <span style={{fontSize:20}}>📊</span>
+                <span style={{fontSize:11, fontWeight:700, color:'#a5b4fc', letterSpacing:'0.1em'}}>OPTIONS ALERT</span>
+              </div>
+              <div style={{fontSize:18, fontWeight:800, color:'#fff', marginBottom:4}}>
+                {briefing.optionsAlert.ticker} {briefing.optionsAlert.type}
+              </div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:10, lineHeight:1.6}}>
+                {briefing.optionsAlert.summary}
+              </div>
+              <a href="/options" style={{
+                display:'inline-block', padding:'8px 16px', borderRadius:8,
+                background:'rgba(99,102,241,0.2)', border:'1px solid rgba(99,102,241,0.3)',
+                color:'#a5b4fc', fontSize:12, fontWeight:700, textDecoration:'none'
+              }}>
+                View in Options Scanner →
+              </a>
+            </div>
+          )}
+
+          {briefing?.coinSnipe && (
+            <div style={{background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:12, padding:20, marginBottom:16}}>
+              <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:8}}>
+                <span style={{fontSize:20}}>🎯</span>
+                <span style={{fontSize:11, fontWeight:700, color:'#22c55e', letterSpacing:'0.1em'}}>COIN SNIPER SIGNAL</span>
+              </div>
+              <div style={{fontSize:18, fontWeight:800, color:'#fff', marginBottom:4}}>
+                {briefing.coinSnipe.name} ({briefing.coinSnipe.symbol})
+              </div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:10, lineHeight:1.6}}>
+                {briefing.coinSnipe.summary}
+              </div>
+              <a href="/crypto" style={{
+                display:'inline-block', padding:'8px 16px', borderRadius:8,
+                background:'rgba(34,197,94,0.1)', border:'1px solid rgba(34,197,94,0.3)',
+                color:'#22c55e', fontSize:12, fontWeight:700, textDecoration:'none'
+              }}>
+                View in Coin Sniper →
+              </a>
             </div>
           )}
 
