@@ -355,7 +355,12 @@ function CryptoNewPairs({ refreshKey, onUpdated }) {
       </div>
       {pairs.map((p,i) => {
         const vol = parseFloat(p.volume?.h24 || 0);
-        const ageHrs = p.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600000 : null;
+        const ageHrs = p.pairCreatedAt ? (() => {
+          const ts = typeof p.pairCreatedAt === 'number' && p.pairCreatedAt < 2000000000
+            ? p.pairCreatedAt * 1000
+            : p.pairCreatedAt
+          return (Date.now() - new Date(ts).getTime()) / 3600000
+        })() : null;
         const hot = vol > 500000 && ageHrs !== null && ageHrs < 24;
         const ch1 = parseFloat(p.priceChange?.h1 || 0);
         const ch24 = parseFloat(p.priceChange?.h24 || 0);
@@ -384,7 +389,12 @@ function gemBadge(score) {
 
 function gemScore(pair) {
   let score = 0;
-  const ageHours = pair.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 3600000 : 999;
+  const ageHours = pair.pairCreatedAt ? (() => {
+    const ts = typeof pair.pairCreatedAt === 'number' && pair.pairCreatedAt < 2000000000
+      ? pair.pairCreatedAt * 1000
+      : pair.pairCreatedAt
+    return (Date.now() - new Date(ts).getTime()) / 3600000
+  })() : 999;
   const vol = parseFloat(pair.volume?.h24 || 0);
   const liq = parseFloat(pair.liquidity?.usd || 0);
   const c1h = parseFloat(pair.priceChange?.h1 || 0);
@@ -464,9 +474,16 @@ function scoreGem(pair: any): number {
 
   const createdAt = pair.pairCreatedAt;
   const ageMs = createdAt
-    ? (typeof createdAt === 'number'
-      ? Date.now() - createdAt
-      : Date.now() - new Date(createdAt).getTime())
+    ? (() => {
+        if (typeof createdAt === 'number') {
+          // DexScreener returns Unix timestamp in milliseconds
+          // But if the number is less than 2000000000 it's in SECONDS not ms
+          const ms = createdAt < 2000000000 ? createdAt * 1000 : createdAt
+          return Date.now() - ms
+        }
+        // String format — parse as ISO date
+        return Date.now() - new Date(createdAt).getTime()
+      })()
     : 999 * 3600000;
   const ageHours = ageMs / 3600000;
 
