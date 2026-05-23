@@ -4661,32 +4661,6 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
     <>
       {buyModalCoin && <CryptoBuyModal coin={buyModalCoin} livePrice={buyModalLivePrice} store={cryptoAccountStore} onClose={() => setBuyModalCoin(null)} onConfirm={handleConfirmBuy}/>}
 
-      {isMobile && (
-        <div style={{
-          display:'flex', background:'#0a0a0f',
-          borderBottom:'1px solid #1e1e2a',
-          padding:'0 4px'
-        }}>
-          {[
-            {label:'📈 Trading', href:'/dashboard', active: false},
-            {label:'🪙 Crypto', href:'/crypto', active: true},
-            {label:'🎰 Sports', href:'/sports', active: false},
-            {label:'📊 Options', href:'/options', active: false},
-            {label:'⬡ JARVIS', href:'/morning', active: false},
-          ].map(link => (
-            <a key={link.href} href={link.href} style={{
-              flex:1, textAlign:'center', padding:'10px 4px',
-              fontSize:12, fontWeight: link.active ? 700 : 400,
-              color: link.active ? '#fff' : '#6b7280',
-              textDecoration:'none',
-              borderBottom: link.active ? '2px solid #6366f1' : '2px solid transparent'
-            }}>
-              {link.label}
-            </a>
-          ))}
-        </div>
-      )}
-
       <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
         {[
           {id:'hotnow',   label:'Hot Now', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 2s2 3 2 6c0 1.5-1 3-2 3s-2-1.5-2-3c0-1 0-2 1-4z"/><path d="M19 14c0 4-3 7-7 7s-7-3-7-7c0-2 1-4 3-5 0 3 2 4 4 4-1-3 1-6 3-7 2 3 4 5 4 8z"/></svg>},
@@ -4705,39 +4679,37 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         ))}
       </aside>
 
-      {!isMobile && (
-        <header style={{
-          background:"#0a0a0f", borderBottom:"1px solid #1e1e2a",
-          display:"flex", alignItems:"center", justifyContent:"space-between",
-          padding:"8px 12px", gap:12, position:"sticky", top:bannerOffset, zIndex:100,
-          marginLeft: 56,
-        }}>
-          <div style={{ fontSize:14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>🪙 Crypto</div>
-          <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-            {[
-              { href:"/dashboard", label:"📈 Trading", active:false },
-              { href:"/crypto",    label:"🪙 Crypto",  active:true  },
-              { href:"/sports",    label:"🎰 Sports",  active:false },
-              { href:"/options",   label:"📊 Options", active:false },
-            ].map(l => (
-              <a key={l.href} href={l.href} style={{
-                padding:"6px 12px", fontSize:13,
-                color: l.active ? "#fff" : "#6b7280",
-                textDecoration:"none", whiteSpace:"nowrap",
-                fontWeight: l.active ? 700 : 500,
-                borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
-              }}>{l.label}</a>
-            ))}
-          </div>
-          <a href="/morning" style={{
-            padding:"6px 12px", borderRadius:6,
-            border:"1px solid rgba(0,212,255,0.3)",
-            background:"rgba(0,212,255,0.05)",
-            color:"#00d4ff", textDecoration:"none",
-            fontSize:11, fontWeight:700, whiteSpace:"nowrap",
-          }}>⬡ Daily Briefing</a>
-        </header>
-      )}
+      <header style={{
+        background:"#0a0a0f", borderBottom:"1px solid #1e1e2a",
+        display:"flex", alignItems:"center", justifyContent:"space-between",
+        padding: isMobile ? '8px 8px' : '8px 12px', gap:12, position:"sticky", top:bannerOffset, zIndex:100,
+        marginLeft: isMobile ? 0 : 56,
+      }}>
+        <div style={{ fontSize:14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>🪙 Crypto</div>
+        <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+          {[
+            { href:"/dashboard", label:"📈 Trading", active:false },
+            { href:"/crypto",    label:"🪙 Crypto",  active:true  },
+            { href:"/sports",    label:"🎰 Sports",  active:false },
+            { href:"/options",   label:"📊 Options", active:false },
+          ].map(l => (
+            <a key={l.href} href={l.href} style={{
+              padding: isMobile ? "6px 6px" : "6px 12px", fontSize: isMobile ? 11 : 13,
+              color: l.active ? "#fff" : "#6b7280",
+              textDecoration:"none", whiteSpace:"nowrap",
+              fontWeight: l.active ? 700 : 500,
+              borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
+            }}>{l.label}</a>
+          ))}
+        </div>
+        <a href="/morning" style={{
+          padding:"6px 12px", borderRadius:6,
+          border:"1px solid rgba(0,212,255,0.3)",
+          background:"rgba(0,212,255,0.05)",
+          color:"#00d4ff", textDecoration:"none",
+          fontSize:11, fontWeight:700, whiteSpace:"nowrap",
+        }}>⬡ Daily Briefing</a>
+      </header>
 
       <div style={{ flex:1, padding: isMobile ? 12 : 24, overflowY:"auto", marginLeft: isMobile ? 0 : 80, paddingBottom: isMobile ? 80 : 0 }}>
         <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom: isMobile ? 12 : 20, gap: isMobile ? 8 : 16, flexWrap:"wrap" }}>
