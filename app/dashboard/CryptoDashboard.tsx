@@ -4625,6 +4625,148 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
   const [buyModalCoin, setBuyModalCoin] = useState(null);
   const [buyModalLivePrice, setBuyModalLivePrice] = useState(null);
 
+  const [dips, setDips] = useState<any[]>([])
+  const [dipsLoading, setDipsLoading] = useState(false)
+  const [dipAnalysis, setDipAnalysis] = useState<Record<string,any>>({})
+  const [dipAnalyzing, setDipAnalyzing] = useState<Record<string,boolean>>({})
+
+  const fetchDips = async () => {
+    setDipsLoading(true)
+    try {
+      const searches = [
+        'https://api.dexscreener.com/latest/dex/search?q=solana',
+        'https://api.dexscreener.com/latest/dex/search?q=base',
+      ]
+
+      const results = await Promise.all(
+        searches.map(url => fetch(url).then(r => r.json()).catch(() => ({})))
+      )
+
+      const allPairs = results.flatMap(d => d?.pairs || [])
+
+      const seen = new Set<string>()
+      const unique = allPairs.filter(p => {
+        const key = p.baseToken?.address
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+
+      const dipCandidates = unique.filter(p => {
+        const h1 = parseFloat(p.priceChange?.h1 || 0)
+        const h24 = parseFloat(p.priceChange?.h24 || 0)
+        const vol = parseFloat(p.volume?.h24 || 0)
+        const liq = parseFloat(p.liquidity?.usd || 0)
+        const buys = p.txns?.h1?.buys || 0
+        const sells = p.txns?.h1?.sells || 0
+        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
+
+        return (
+          h24 < -20 &&
+          h24 > -90 &&
+          h1 > -10 &&
+          vol > 10000 &&
+          liq > 5000 &&
+          buyRatio > 0.45
+        )
+      })
+
+      const scored = dipCandidates.map(p => {
+        const h1 = parseFloat(p.priceChange?.h1 || 0)
+        const h6 = parseFloat(p.priceChange?.h6 || 0)
+        const h24 = parseFloat(p.priceChange?.h24 || 0)
+        const vol = parseFloat(p.volume?.h24 || 0)
+        const liq = parseFloat(p.liquidity?.usd || 0)
+        const buys = p.txns?.h1?.buys || 0
+        const sells = p.txns?.h1?.sells || 0
+        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
+
+        let score = 0
+
+        const pullback = Math.abs(h24)
+        if (pullback >= 30 && pullback <= 50) score += 30
+        else if (pullback >= 20 && pullback <= 70) score += 20
+        else if (pullback >= 70 && pullback <= 85) score += 10
+        else score += 5
+
+        if (h1 > 5) score += 30
+        else if (h1 > 0) score += 20
+        else if (h1 > -5) score += 10
+        else score += 0
+
+        if (buyRatio > 0.65) score += 20
+        else if (buyRatio > 0.55) score += 14
+        else if (buyRatio > 0.45) score += 8
+        else score += 0
+
+        if (vol > 100000) score += 10
+        else if (vol > 50000) score += 7
+        else if (vol > 10000) score += 4
+
+        if (liq > 50000) score += 10
+        else if (liq > 20000) score += 7
+        else if (liq > 5000) score += 4
+
+        const dipLabel = pullback >= 70 ? '💀 Severe dip'
+          : pullback >= 50 ? '🔴 Deep dip'
+          : pullback >= 30 ? '🟡 Healthy dip'
+          : '🟢 Mild dip'
+
+        const recoveryLabel = h1 > 5 ? '🚀 Recovering'
+          : h1 > 0 ? '📈 Stabilizing'
+          : h1 > -5 ? '😐 Flat'
+          : '📉 Still falling'
+
+        return {
+          ...p,
+          score: Math.min(100, score),
+          h1, h6, h24,
+          vol, liq, buyRatio,
+          buys, sells,
+          pullback,
+          dipLabel,
+          recoveryLabel,
+          name: p.baseToken?.name || 'Unknown',
+          symbol: p.baseToken?.symbol || '???',
+          chain: p.chainId,
+          price: p.priceUsd,
+        }
+      }).sort((a, b) => b.score - a.score)
+
+      setDips(scored)
+    } catch(e) {
+      console.error(e)
+    }
+    setDipsLoading(false)
+  }
+
+  const analyzeDip = async (coin: any) => {
+    const id = coin.baseToken?.address || coin.pairAddress
+    if (dipAnalyzing[id] || dipAnalysis[id]) return
+    setDipAnalyzing(prev => ({...prev, [id]: true}))
+    try {
+      const res = await fetch('/api/analyze-game', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          team1: 'BUY',
+          team2: 'SKIP',
+          sport: 'CRYPTO_DIP',
+          odds1: 0, odds2: 0,
+          gameTime: 'Now',
+          context: `Meme coin dip analysis. Coin: ${coin.name} (${coin.symbol}) on ${coin.chain}. Down ${coin.pullback.toFixed(0)}% in 24h. Last 1h: ${coin.h1 > 0 ? '+' : ''}${coin.h1.toFixed(1)}%. Volume 24h: $${(coin.vol/1000).toFixed(0)}k. Liquidity: $${(coin.liq/1000).toFixed(0)}k. Buy ratio last hour: ${Math.round(coin.buyRatio*100)}% buys. Score: ${coin.score}/100. Is this a good dip to buy — is it recovering or still falling? Reply with pick BUY, SKIP, or WATCH.`
+        })
+      })
+      const data = await res.json()
+      setDipAnalysis(prev => ({...prev, [id]: data}))
+    } catch(e) {}
+    setDipAnalyzing(prev => ({...prev, [id]: false}))
+  }
+
+  useEffect(() => {
+    if (cryptoSection === 'dipfinder') fetchDips()
+  }, [cryptoSection])
+
   useEffect(() => {
     if (!buyModalCoin) return;
     let cancelled = false;
@@ -4671,11 +4813,12 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
   }, []);
 
   const cryptoSectionLabel = {
-    hotnow:   "What's trending across the market right now (auto-refresh 3m)",
-    gems:     'Find meme coins BEFORE they pump — early signals only',
-    uptrends: 'Top 100 coins on a confirmed uptrend across 1h / 24h / 7d',
-    accounts: 'Paper & real account portfolios',
-    mystats:  'Aggregate stats across all your accounts',
+    hotnow:    "What's trending across the market right now (auto-refresh 3m)",
+    gems:      'Find meme coins BEFORE they pump — early signals only',
+    dipfinder: 'Coins that pumped and pulled back — looking for the bounce',
+    uptrends:  'Top 100 coins on a confirmed uptrend across 1h / 24h / 7d',
+    accounts:  'Paper & real account portfolios',
+    mystats:   'Aggregate stats across all your accounts',
   }[cryptoSection] || cryptoSection;
 
   const cryptoSignalsRef = useRef(cryptoSignals);
@@ -4805,6 +4948,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
   const cryptoMobileItems = [
     { id: 'hotnow',   icon: '🔥', label: 'Hot' },
     { id: 'gems',     icon: '🎯', label: 'Coin Sniper' },
+    { id: 'dipfinder', icon: '🔄', label: 'Dip Finder' },
     { id: 'uptrends', icon: '📈', label: 'Trends' },
     { id: 'accounts', icon: '💼', label: 'Accounts' },
     { id: 'mystats',  icon: '📊', label: 'Stats' },
@@ -4818,6 +4962,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         {[
           {id:'hotnow',   label:'Hot Now', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 2s2 3 2 6c0 1.5-1 3-2 3s-2-1.5-2-3c0-1 0-2 1-4z"/><path d="M19 14c0 4-3 7-7 7s-7-3-7-7c0-2 1-4 3-5 0 3 2 4 4 4-1-3 1-6 3-7 2 3 4 5 4 8z"/></svg>},
           {id:'gems',     label:'🎯 Coin Sniper', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3L8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>},
+          {id:'dipfinder', label:'🔄 Dip Finder', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>},
           {id:'uptrends', label:'Uptrends', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
           {id:'accounts', label:'Accounts', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>},
           {id:'mystats',  label:'My Stats', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>},
@@ -4888,6 +5033,164 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         </div>
         {cryptoSection === 'hotnow'    && <ChartErrorBoundary resetKey="hotnow"><CryptoHotNow    refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
         {cryptoSection === 'gems'      && <ChartErrorBoundary resetKey="gems"><CryptoGems      refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
+        {cryptoSection === 'dipfinder' && (
+          <div>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:8}}>
+              <div>
+                <div style={{fontSize:22, fontWeight:800, marginBottom:4}}>🔄 Dip Finder</div>
+                <div style={{fontSize:13, color:'#6b7280'}}>Coins that pumped and pulled back — looking for the bounce</div>
+              </div>
+              <button onClick={fetchDips} disabled={dipsLoading} style={{
+                padding:'8px 16px', borderRadius:8, border:'none',
+                background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
+              }}>{dipsLoading ? '⟳ Scanning...' : '⟳ Refresh'}</button>
+            </div>
+
+            <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:12, marginBottom:16, fontSize:12, color:'#a5b4fc', lineHeight:1.6}}>
+              💡 <strong>Strategy:</strong> Find coins down 30-70% from their peak that are starting to recover. Buy the stabilization, ride the bounce. Best signals: recovery in last 1h + more buyers than sellers + healthy liquidity still present.
+            </div>
+
+            {dipsLoading ? (
+              <div style={{textAlign:'center', padding:48, color:'#6b7280'}}>
+                <div style={{fontSize:32, marginBottom:12}}>🔄</div>
+                <div style={{fontSize:16, fontWeight:700}}>Scanning for dips...</div>
+              </div>
+            ) : dips.length === 0 ? (
+              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:32, textAlign:'center', color:'#6b7280'}}>
+                <div style={{fontSize:32, marginBottom:12}}>😴</div>
+                <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:8}}>No good dips right now</div>
+                <div style={{fontSize:13}}>Market might be trending up or nothing has pulled back enough. Check back later.</div>
+              </div>
+            ) : (
+              <div>
+                <div style={{fontSize:13, color:'#6b7280', marginBottom:16}}>
+                  {dips.length} dip candidates found · Sorted by recovery score
+                </div>
+
+                {dips.map(coin => {
+                  const id = coin.baseToken?.address || coin.pairAddress
+                  const ai = dipAnalysis[id]
+                  const isAnalyzing = dipAnalyzing[id]
+
+                  return (
+                    <div key={id} style={{
+                      background:'#111',
+                      border:`1px solid ${coin.score >= 70 ? 'rgba(99,102,241,0.4)' : coin.score >= 50 ? 'rgba(245,158,11,0.3)' : '#1e1e2a'}`,
+                      borderRadius:12, padding:16, marginBottom:12
+                    }}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
+                        <div style={{display:'flex', alignItems:'center', gap:10}}>
+                          {coin.info?.imageUrl && <img src={coin.info.imageUrl} style={{width:32, height:32, borderRadius:'50%'}} alt="" onError={e => (e.currentTarget.style.display='none')}/>}
+                          <div>
+                            <div style={{fontSize:15, fontWeight:800}}>{coin.name}</div>
+                            <div style={{fontSize:11, color:'#6b7280'}}>{coin.symbol} · {coin.chain?.toUpperCase()}</div>
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontSize:24, fontWeight:900, color: coin.score >= 70 ? '#6366f1' : coin.score >= 50 ? '#f59e0b' : '#6b7280'}}>
+                            {coin.score}
+                          </div>
+                          <div style={{fontSize:10, color:'#6b7280'}}>/100</div>
+                        </div>
+                      </div>
+
+                      <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12}}>
+                        {[
+                          {label:'24H DIP', value:`${coin.h24.toFixed(0)}%`, color:'#ef4444'},
+                          {label:'1H NOW', value:`${coin.h1 > 0 ? '+' : ''}${coin.h1.toFixed(1)}%`, color: coin.h1 > 0 ? '#22c55e' : coin.h1 > -5 ? '#f59e0b' : '#ef4444'},
+                          {label:'LIQUIDITY', value:`$${coin.liq >= 1000 ? (coin.liq/1000).toFixed(0)+'k' : coin.liq.toFixed(0)}`, color:'#fff'},
+                          {label:'BUY %', value:`${Math.round(coin.buyRatio*100)}%`, color: coin.buyRatio > 0.6 ? '#22c55e' : coin.buyRatio > 0.45 ? '#f59e0b' : '#ef4444'},
+                        ].map(s => (
+                          <div key={s.label} style={{background:'#1a1a24', borderRadius:6, padding:8, textAlign:'center'}}>
+                            <div style={{fontSize:9, color:'#6b7280', marginBottom:2}}>{s.label}</div>
+                            <div style={{fontSize:13, fontWeight:700, color:s.color}}>{s.value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{display:'flex', gap:6, marginBottom:10, flexWrap:'wrap'}}>
+                        <span style={{fontSize:11, padding:'3px 8px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444', fontWeight:600}}>
+                          {coin.dipLabel}
+                        </span>
+                        <span style={{fontSize:11, padding:'3px 8px', borderRadius:4, background: coin.h1 > 0 ? 'rgba(34,197,94,0.1)' : 'rgba(107,114,128,0.1)', color: coin.h1 > 0 ? '#22c55e' : '#6b7280', fontWeight:600}}>
+                          {coin.recoveryLabel}
+                        </span>
+                        <span style={{fontSize:11, padding:'3px 8px', borderRadius:4, background:'rgba(99,102,241,0.08)', color:'#a5b4fc'}}>
+                          Vol: ${coin.vol >= 1000 ? (coin.vol/1000).toFixed(0)+'k' : coin.vol.toFixed(0)}
+                        </span>
+                      </div>
+
+                      {ai && (
+                        <div style={{
+                          background: ai.pick==='BUY' ? 'rgba(34,197,94,0.08)' : ai.pick==='WATCH' ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)',
+                          border:`1px solid ${ai.pick==='BUY' ? 'rgba(34,197,94,0.3)' : ai.pick==='WATCH' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                          borderRadius:8, padding:10, marginBottom:10
+                        }}>
+                          <div style={{fontSize:13, fontWeight:800, color: ai.pick==='BUY'?'#22c55e':ai.pick==='WATCH'?'#f59e0b':'#ef4444', marginBottom:4}}>
+                            {ai.pick==='BUY'?'✅ Buy the dip':ai.pick==='WATCH'?'👀 Wait for confirmation':'🚫 Skip — still falling'}
+                          </div>
+                          <div style={{fontSize:12, color:'#d1d5db'}}>{ai.reasoning}</div>
+                        </div>
+                      )}
+
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6}}>
+                        {!ai ? (
+                          <button onClick={() => analyzeDip(coin)} disabled={isAnalyzing} style={{
+                            gridColumn:'1', padding:'8px', borderRadius:8,
+                            border:'1px solid rgba(99,102,241,0.4)',
+                            background:'rgba(99,102,241,0.08)',
+                            color: isAnalyzing ? '#4b5563' : '#a5b4fc',
+                            fontSize:11, fontWeight:700, cursor:'pointer'
+                          }}>
+                            {isAnalyzing ? '🤔 Analyzing...' : '✦ AI Analysis'}
+                          </button>
+                        ) : (
+                          <div/>
+                        )}
+
+                        <button onClick={() => {
+                          const price = parseFloat(coin.priceUsd || coin.price || '0')
+                          setBuyModalCoin({
+                            ...coin,
+                            id: id,
+                            coinId: id,
+                            price,
+                            priceUsd: String(price),
+                            source: 'dexscreener',
+                          })
+                          setBuyModalLivePrice(price)
+                        }} style={{
+                          padding:'8px', borderRadius:8, border:'none',
+                          background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
+                          fontSize:11, fontWeight:700, cursor:'pointer'
+                        }}>
+                          📝 Paper
+                        </button>
+
+                        <button onClick={() => {
+                          navigator.clipboard.writeText(id)
+                          window.open('https://fomo.family/r/al1valol', '_blank')
+                          const toast = document.createElement('div')
+                          toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #6366f1;color:#fff;padding:10px 16px;borderRadius:8px;fontSize:12px;zIndex:9999'
+                          toast.innerHTML = '📋 CA copied! Paste in FOMO'
+                          document.body.appendChild(toast)
+                          setTimeout(() => toast.remove(), 3000)
+                        }} style={{
+                          padding:'8px', borderRadius:8,
+                          border:'1px solid rgba(99,102,241,0.3)',
+                          background:'rgba(99,102,241,0.08)',
+                          color:'#a5b4fc', fontSize:11, fontWeight:700, cursor:'pointer'
+                        }}>
+                          🎯 FOMO
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {cryptoSection === 'uptrends'  && <ChartErrorBoundary resetKey="uptrends"><CryptoUptrends  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
         {cryptoSection === 'accounts'  && <ChartErrorBoundary resetKey={`accounts:${cryptoAccountStore?.activeAccountId ?? 'none'}`} fallback={<div style={{ padding:32, color:'#9ca3af', background:'#111', border:'1px solid #1e1e2a', borderRadius:12, fontSize:13, textAlign:'center' }}>Error loading accounts. Refresh the page or pick a different account.</div>}><CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} /></ChartErrorBoundary>}
         {cryptoSection === 'mystats'   && <ChartErrorBoundary resetKey="mystats"><CryptoMyStats   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} /></ChartErrorBoundary>}
