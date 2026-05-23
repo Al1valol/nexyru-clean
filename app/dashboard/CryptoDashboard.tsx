@@ -843,14 +843,32 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       // Fetch 10 pages of newest Solana pools
       const pages = await Promise.all(
         [1,2,3,4,5,6,7,8,9,10].map(page =>
-          fetch(`https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=${page}`)
+          fetch(`https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=${page}&include=base_token`)
             .then(r => r.json())
-            .then(d => d?.data || [])
-            .catch(() => [])
+            .catch(() => ({}))
         )
       )
 
-      const allPools = pages.flat()
+      // Build a map of token address -> token info from included data
+      const tokenMap: Record<string, any> = {}
+      pages.forEach(pageData => {
+        const included = pageData?.included || []
+        included.forEach((item: any) => {
+          if (item.type === 'token') {
+            const address = item.attributes?.address
+            if (address) {
+              tokenMap[address] = {
+                address,
+                name: item.attributes?.name,
+                symbol: item.attributes?.symbol,
+                image: item.attributes?.image_url,
+              }
+            }
+          }
+        })
+      })
+
+      const allPools = pages.flatMap(d => d?.data || [])
 
       // Dedupe by pool address
       const seen = new Set<string>()
@@ -866,6 +884,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         const attr = pool.attributes
         const name = attr.name?.split(' / ')?.[0] || 'Unknown'
         const symbol = name
+
+        // Extract real token address from relationships
+        const baseTokenId = pool.relationships?.base_token?.data?.id || ''
+        const tokenAddress = baseTokenId.replace('solana_', '')
+        const tokenInfo = tokenMap[tokenAddress] || {}
 
         const m5 = parseFloat(attr.price_change_percentage?.m5 || 0)
         const m15 = parseFloat(attr.price_change_percentage?.m15 || 0)
@@ -934,16 +957,16 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
         return {
           // Core identity
-          pairAddress: attr.address,
-          coinId: attr.address,
-          name,
-          symbol,
+          pairAddress: attr.address,       // pool address for DexScreener link
+          coinId: tokenAddress,            // token CA for FOMO/Jupiter
+          name: tokenInfo.name || name,
+          symbol: tokenInfo.symbol || symbol,
           chain: 'solana',
           chainId: 'solana',
           price: attr.base_token_price_usd,
           priceUsd: attr.base_token_price_usd,
-          image: null,
-          url: `https://www.geckoterminal.com/solana/pools/${attr.address}`,
+          image: tokenInfo.image || null,
+          url: `https://dexscreener.com/solana/${tokenAddress}`,
 
           // Price changes — all timeframes
           priceChange: { m5, m15, m30, h1, h6, h24 },
@@ -976,7 +999,11 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
           // Socials — GeckoTerminal doesn't have these
           info: { socials: [], websites: [] },
-          baseToken: { address: attr.address, name, symbol },
+          baseToken: {
+            address: tokenAddress,         // THIS is what FOMO needs
+            name: tokenInfo.name || name,
+            symbol: tokenInfo.symbol || symbol,
+          },
         }
       }).sort((a, b) => b.score - a.score)
 
@@ -1229,10 +1256,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{coin.name} ({coin.symbol})</div>
                   <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.score}/100 · {coin.snipeWindow?.label}</div>
                 </div>
-                {getContractAddress(coin) && (
+                {(coin.baseToken?.address || coin.coinId) && (
                   <button onClick={() => {
-                    navigator.clipboard.writeText(getContractAddress(coin) || '');
-                    alert(`Contract copied: ${getContractAddress(coin)}\n\nPaste this in FOMO or Jupiter to find ${coin.name}`);
+                    navigator.clipboard.writeText(coin.baseToken?.address || coin.coinId || '');
+                    alert(`Contract copied: ${coin.baseToken?.address || coin.coinId}\n\nPaste this in FOMO or Jupiter to find ${coin.name}`);
                   }} style={{padding:'6px 12px', borderRadius:6, border:'none', background:'#6366f1', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer'}}>
                      Copy CA
                   </button>
@@ -1563,7 +1590,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     fontSize:11, fontWeight:700, cursor:'pointer'
                   }}>Paper</button>
                   <button onClick={() => {
-                    const addr = coin.baseToken?.address||coin.pairAddress;
+                    const addr = coin.baseToken?.address || coin.coinId || coin.pairAddress;
                     if(addr){ navigator.clipboard.writeText(addr); window.open('https://fomo.family/r/al1valol','_blank') }
                   }} style={{
                     padding:'8px', borderRadius:8, border:'none',
@@ -1571,7 +1598,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     fontSize:11, fontWeight:700, cursor:'pointer'
                   }}>FOMO</button>
                   <button onClick={() => {
-                    const addr = coin.baseToken?.address||coin.pairAddress;
+                    const addr = coin.baseToken?.address || coin.coinId || coin.pairAddress;
                     if(addr) navigator.clipboard.writeText(addr);
                   }} style={{
                     padding:'8px', borderRadius:8,
