@@ -1190,8 +1190,38 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const vol = Number(coin.volume24h) || 0;
             const liq = parseFloat(coin.liquidity?.usd) || 0;
             const ageHours = coin.ageHours;
+            const ageHoursNum = ageHours || 0;
             const ageLabel = ageHours < 1 ? `${Math.round(ageHours * 60)}m old` : `${ageHours.toFixed(1)}h old`;
             const ageColor = ageHours < 2 ? '#22c55e' : ageHours < 6 ? '#fbbf24' : '#6b7280';
+            const ageDisplay = ageHoursNum < 1
+              ? `${Math.round(ageHoursNum * 60)}m old`
+              : ageHoursNum < 24
+              ? `${ageHoursNum.toFixed(1)}h old`
+              : `${Math.floor(ageHoursNum/24)}d old`;
+            const ageColorBig = ageHoursNum < 0.5 ? '#22c55e'
+              : ageHoursNum < 1 ? '#86efac'
+              : ageHoursNum < 2 ? '#fbbf24'
+              : ageHoursNum < 6 ? '#f97316'
+              : '#6b7280';
+            const ageBg = ageHoursNum < 0.5 ? 'rgba(34,197,94,0.15)'
+              : ageHoursNum < 1 ? 'rgba(134,239,172,0.1)'
+              : ageHoursNum < 2 ? 'rgba(251,191,36,0.1)'
+              : ageHoursNum < 6 ? 'rgba(249,115,22,0.1)'
+              : 'rgba(107,114,128,0.1)';
+            const ageBorder = ageHoursNum < 0.5 ? 'rgba(34,197,94,0.4)'
+              : ageHoursNum < 1 ? 'rgba(134,239,172,0.3)'
+              : ageHoursNum < 2 ? 'rgba(251,191,36,0.3)'
+              : ageHoursNum < 6 ? 'rgba(249,115,22,0.3)'
+              : 'rgba(107,114,128,0.2)';
+            const ageEmoji = ageHoursNum < 0.5 ? '🚀'
+              : ageHoursNum < 1 ? '🔥'
+              : ageHoursNum < 2 ? '⚡'
+              : ageHoursNum < 6 ? '👀' : '❄️';
+            const ageHint = ageHoursNum < 0.5 ? '— JUST LAUNCHED'
+              : ageHoursNum < 1 ? '— VERY EARLY'
+              : ageHoursNum < 2 ? '— STILL EARLY'
+              : ageHoursNum < 6 ? '— GETTING LATE'
+              : '— LIKELY MISSED';
             const rawPrice = parseFloat(coin.price);
             const priceStr = Number.isFinite(rawPrice) && rawPrice > 0
               ? (rawPrice < 0.0001 ? '$' + rawPrice.toExponential(2)
@@ -1231,6 +1261,20 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const verification = getVerificationStatus({ ...coin, source: 'dexscreener' });
             return (
               <div key={coin.pairAddress || coin.coinId} style={{ background:'#111', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#1e1e2a'}`, borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
+                {ageHoursNum < 0.5 && (
+                  <div style={{
+                    background:'rgba(34,197,94,0.1)',
+                    border:'1px solid rgba(34,197,94,0.4)',
+                    borderRadius:8, padding:'6px 10px',
+                    display:'flex', alignItems:'center', gap:6,
+                    animation:'pulse 2s infinite'
+                  }}>
+                    <span style={{fontSize:14}}>🚀</span>
+                    <span style={{fontSize:12, fontWeight:800, color:'#22c55e'}}>
+                      JUST LAUNCHED — {Math.round(ageHoursNum*60)} MINUTES AGO
+                    </span>
+                  </div>
+                )}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
                     <div style={{ width:40, height:40, borderRadius:'50%', background:'#1a1a24', flexShrink:0, overflow:'hidden' }}>
@@ -1266,6 +1310,17 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   </div>
                 </div>
 
+                <div style={{
+                  display:'inline-flex', alignItems:'center', gap:6,
+                  padding:'6px 14px', borderRadius:20,
+                  background:ageBg, border:`1px solid ${ageBorder}`,
+                  alignSelf:'flex-start'
+                }}>
+                  <span style={{fontSize:16}}>{ageEmoji}</span>
+                  <span style={{fontSize:18, fontWeight:900, color:ageColorBig}}>{ageDisplay}</span>
+                  <span style={{fontSize:11, color:ageColorBig, opacity:0.8}}>{ageHint}</span>
+                </div>
+
                 <VerificationBanner v={verification}/>
 
                 {change1h > 500 && (
@@ -1284,14 +1339,14 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
                 <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:4, marginBottom:8}}>
                   {[
-                    {label:'AGE', value: coin.ageHours < 1 ? Math.round(coin.ageHours*60)+'m' : coin.ageHours?.toFixed(1)+'h', color: coin.ageHours < 2 ? '#22c55e' : coin.ageHours < 6 ? '#f59e0b' : '#6b7280'},
-                    {label:'1H', value: (coin.priceChange?.h1 > 0 ? '+' : '') + parseFloat(coin.priceChange?.h1 || 0).toFixed(0)+'%', color: parseFloat(coin.priceChange?.h1||0) > 100 ? '#ef4444' : parseFloat(coin.priceChange?.h1||0) > 0 ? '#22c55e' : '#6b7280'},
-                    {label:'LIQ', value: '$'+formatNum(parseFloat(coin.liquidity?.usd||0)), color: parseFloat(coin.liquidity?.usd||0) > 5000 ? '#22c55e' : '#ef4444'},
-                    {label:'MCAP', value: '$'+formatNum(parseFloat(coin.marketCap||0)), color: parseFloat(coin.marketCap||0) < 100000 ? '#22c55e' : '#6b7280'},
+                    {label:'AGE', value: ageDisplay, color: ageColorBig, fontSize: 16},
+                    {label:'1H', value: (coin.priceChange?.h1 > 0 ? '+' : '') + parseFloat(coin.priceChange?.h1 || 0).toFixed(0)+'%', color: parseFloat(coin.priceChange?.h1||0) > 100 ? '#ef4444' : parseFloat(coin.priceChange?.h1||0) > 0 ? '#22c55e' : '#6b7280', fontSize: 11},
+                    {label:'LIQ', value: '$'+formatNum(parseFloat(coin.liquidity?.usd||0)), color: parseFloat(coin.liquidity?.usd||0) > 5000 ? '#22c55e' : '#ef4444', fontSize: 11},
+                    {label:'MCAP', value: '$'+formatNum(parseFloat(coin.marketCap||0)), color: parseFloat(coin.marketCap||0) < 100000 ? '#22c55e' : '#6b7280', fontSize: 11},
                   ].map(s => (
                     <div key={s.label} style={{background:'#1a1a24', borderRadius:4, padding:'4px 6px', textAlign:'center'}}>
                       <div style={{fontSize:9, color:'#4b5563', marginBottom:1}}>{s.label}</div>
-                      <div style={{fontSize:11, fontWeight:700, color:s.color}}>{s.value}</div>
+                      <div style={{fontSize:s.fontSize, fontWeight:700, color:s.color}}>{s.value}</div>
                     </div>
                   ))}
                 </div>
