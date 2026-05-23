@@ -4656,12 +4656,16 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         const h24 = parseFloat(p.priceChange?.h24 || 0)
         const vol = parseFloat(p.volume?.h24 || 0)
         const liq = parseFloat(p.liquidity?.usd || 0)
+        const buys = p.txns?.h1?.buys || 0
+        const sells = p.txns?.h1?.sells || 0
+        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
 
         return (
-          h24 < -5 &&
+          h24 < -10 &&
           h24 > -90 &&
           vol > 5000 &&
-          liq > 1000
+          liq > 1000 &&
+          buyRatio > 0.40
         )
       })
 
@@ -5050,10 +5054,26 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                 <div style={{fontSize:16, fontWeight:700}}>Scanning for dips...</div>
               </div>
             ) : dips.length === 0 ? (
-              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:32, textAlign:'center', color:'#6b7280'}}>
-                <div style={{fontSize:32, marginBottom:12}}>😴</div>
-                <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:8}}>No good dips right now</div>
-                <div style={{fontSize:13}}>Market might be trending up or nothing has pulled back enough. Check back later.</div>
+              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:32, textAlign:'center'}}>
+                <div style={{fontSize:32, marginBottom:12}}>📈</div>
+                <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:8}}>Market Trending Up</div>
+                <div style={{fontSize:13, color:'#6b7280', marginBottom:16, lineHeight:1.6}}>
+                  No good dip opportunities right now. Most coins are rising or stable —
+                  which means your existing positions are probably doing well!
+                </div>
+                <div style={{background:'#1a1a24', borderRadius:8, padding:12, marginBottom:16, fontSize:12, color:'#9ca3af', textAlign:'left'}}>
+                  <div style={{fontWeight:700, color:'#fff', marginBottom:6}}>Best times to find dips:</div>
+                  <div style={{marginBottom:3}}>• After a big market drop (BTC down 5%+)</div>
+                  <div style={{marginBottom:3}}>• 2-6 hours after a coin's initial pump</div>
+                  <div style={{marginBottom:3}}>• Early morning EST when Asian markets sell off</div>
+                  <div>• Check back every few hours</div>
+                </div>
+                <button onClick={fetchDips} style={{
+                  padding:'10px 24px', borderRadius:8, border:'none',
+                  background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
+                }}>
+                  🔄 Check Again
+                </button>
               </div>
             ) : (
               <div>
