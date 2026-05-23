@@ -49,7 +49,11 @@ export default function OptionsPage() {
   const [analyzing, setAnalyzing] = useState<Record<string, boolean>>({})
   const [trades, setTrades] = useState<PaperTrade[]>([])
   const [bankroll, setBankroll] = useState(10000)
-  const [watchlist, setWatchlist] = useState<string[]>(["NVDA","AAPL","TSLA","SPY","AMD"])
+  const [watchlist, setWatchlist] = useState<string[]>([
+    'NVDA', 'AAPL', 'TSLA', 'META', 'AMZN',
+    'GOOGL', 'MSFT', 'SPY', 'QQQ', 'AMD',
+    'COIN', 'MSTR', 'PLTR', 'ARM', 'SMCI'
+  ])
   const [tradeModal, setTradeModal] = useState<OptionsAlert | null>(null)
   const [tradeContracts, setTradeContracts] = useState('1')
   const [tradePrice, setTradePrice] = useState('')
@@ -65,8 +69,18 @@ export default function OptionsPage() {
       setTrades(t)
       const b = parseFloat(localStorage.getItem('options_bankroll') || '10000')
       setBankroll(b)
-      const w = JSON.parse(localStorage.getItem('options_watchlist') || '["NVDA","AAPL","TSLA","SPY","AMD"]')
-      setWatchlist(w)
+      const saved = localStorage.getItem('options_watchlist')
+      if (saved) {
+        setWatchlist(JSON.parse(saved))
+      } else {
+        const defaults = [
+          'NVDA', 'AAPL', 'TSLA', 'META', 'AMZN',
+          'GOOGL', 'MSFT', 'SPY', 'QQQ', 'AMD',
+          'COIN', 'MSTR', 'PLTR', 'ARM', 'SMCI'
+        ]
+        localStorage.setItem('options_watchlist', JSON.stringify(defaults))
+        setWatchlist(defaults)
+      }
       setAlertsEnabled(localStorage.getItem('options_alerts') === 'true')
     } catch {}
   }, [])
