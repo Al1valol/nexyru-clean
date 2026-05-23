@@ -10,6 +10,44 @@ import {
   Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen
 } from 'lucide-react'
 
+function PriceChangeRow({ priceChange }: { priceChange: any }) {
+  const timeframes = [
+    { label: '5m', value: parseFloat(priceChange?.m5 || 0) },
+    { label: '1h', value: parseFloat(priceChange?.h1 || 0) },
+    { label: '6h', value: parseFloat(priceChange?.h6 || 0) },
+    { label: '24h', value: parseFloat(priceChange?.h24 || 0) },
+  ]
+
+  return (
+    <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, marginBottom:10}}>
+      {timeframes.map(tf => {
+        const isPos = tf.value > 0
+        const isNeg = tf.value < 0
+        const color = isPos ? '#22c55e' : isNeg ? '#ef4444' : '#6b7280'
+        const bg = isPos ? 'rgba(34,197,94,0.08)' : isNeg ? 'rgba(239,68,68,0.08)' : 'rgba(107,114,128,0.08)'
+        const border = isPos ? 'rgba(34,197,94,0.2)' : isNeg ? 'rgba(239,68,68,0.2)' : 'rgba(107,114,128,0.15)'
+
+        return (
+          <div key={tf.label} style={{
+            background: bg,
+            border: `1px solid ${border}`,
+            borderRadius: 6,
+            padding: '6px 4px',
+            textAlign: 'center'
+          }}>
+            <div style={{fontSize:9, color:'#4b5563', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3}}>
+              {tf.label}
+            </div>
+            <div style={{fontSize:13, fontWeight:800, color, letterSpacing:'-0.02em'}}>
+              {isPos ? '+' : ''}{tf.value.toFixed(1)}%
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function toast(message, type = "info") {
   if (typeof window !== "undefined" && typeof window.showToast === "function") {
     window.showToast(message, type);
@@ -1406,6 +1444,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     )}
                   </div>
                 </div>
+
+                <PriceChangeRow priceChange={coin.priceChange} />
 
                 <div style={{
                   display:'inline-flex', alignItems:'center', gap:6,
@@ -5141,6 +5181,8 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                           <div style={{fontSize:10, color:'#6b7280'}}>/100</div>
                         </div>
                       </div>
+
+                      <PriceChangeRow priceChange={coin.priceChange} />
 
                       <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12}}>
                         {[
