@@ -13,9 +13,9 @@ import {
 function PriceChangeRow({ priceChange }: { priceChange: any }) {
   const timeframes = [
     { label: '5m', value: parseFloat(priceChange?.m5 || 0) },
+    { label: '15m', value: parseFloat(priceChange?.m15 || 0) },
     { label: '1h', value: parseFloat(priceChange?.h1 || 0) },
     { label: '6h', value: parseFloat(priceChange?.h6 || 0) },
-    { label: '24h', value: parseFloat(priceChange?.h24 || 0) },
   ]
 
   return (
@@ -838,100 +838,154 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   };
 
   const fetchGems = React.useCallback(async () => {
-    setGemsLoading(true);
+    setGemsLoading(true)
     try {
-      // Step 1: Get latest token profiles (has real contract addresses)
-      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1')
-      const profiles = await profilesRes.json().catch(() => [])
-      const arr = Array.isArray(profiles) ? profiles : []
-
-      // Step 2: Get addresses
-      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean)
-      if (addresses.length === 0) {
-        setGems([])
-        setGemsLoading(false)
-        return
-      }
-
-      // Step 3: Fetch from TOKENS endpoint (not search) - this has pairCreatedAt
-      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`)
-      const pairsData = await pairsRes.json().catch(() => ({}))
-      const allPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
-
-      // Step 4: Dedupe - one coin can have multiple pairs (SOL/COIN and USDC/COIN)
-      // Keep the pair with highest volume per token
-      const bestPairPerToken: Record<string, any> = {}
-      allPairs.forEach(p => {
-        const key = p.baseToken?.address
-        if (!key) return
-        const vol = parseFloat(p.volume?.h24 || 0)
-        const existing = bestPairPerToken[key]
-        if (!existing || vol > parseFloat(existing.volume?.h24 || 0)) {
-          bestPairPerToken[key] = p
-        }
-      })
-      const pairs = Object.values(bestPairPerToken)
-
-      // Step 5: Calculate age correctly - pairCreatedAt is in milliseconds from tokens endpoint
-      const scored = pairs.map(p => {
-        const createdAt = p.pairCreatedAt  // milliseconds, e.g. 1768479521000
-        const ageMs = createdAt ? Date.now() - Number(createdAt) : 999 * 3600000
-        const ageHours = Math.max(0, ageMs / 3600000)
-        console.log(
-          'COIN:', p.baseToken?.name,
-          '| pairCreatedAt:', p.pairCreatedAt,
-          '| as date:', p.pairCreatedAt ? new Date(Number(p.pairCreatedAt)).toLocaleString() : 'none',
-          '| ageHours:', ageHours.toFixed(2),
-          '| pairAddress:', p.pairAddress
+      // Fetch 5 pages of trending Solana pools = 100 coins
+      const pages = await Promise.all(
+        [1,2,3,4,5].map(page =>
+          fetch(`https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=${page}`)
+            .then(r => r.json())
+            .then(d => d?.data || [])
+            .catch(() => [])
         )
+      )
 
-        const vol = parseFloat(p.volume?.h24 || 0);
-        const change1h = parseFloat(p.priceChange?.h1 || 0);
-        const change24h = parseFloat(p.priceChange?.h24 || 0);
-        const buys = p.txns?.h1?.buys || 0;
-        const sells = p.txns?.h1?.sells || 0;
-        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5;
+      const allPools = pages.flat()
 
-        const score = scoreGem(p);
-        const signals = getSignals(p);
-        const snipeWindow = getSnipeWindow(p);
+      // Dedupe by pool address
+      const seen = new Set<string>()
+      const unique = allPools.filter(pool => {
+        const addr = pool?.attributes?.address
+        if (!addr || seen.has(addr)) return false
+        seen.add(addr)
+        return true
+      })
+
+      // Convert GeckoTerminal format to our coin format
+      const scored = unique.map(pool => {
+        const attr = pool.attributes
+        const name = attr.name?.split(' / ')?.[0] || 'Unknown'
+        const symbol = name
+
+        const m5 = parseFloat(attr.price_change_percentage?.m5 || 0)
+        const m15 = parseFloat(attr.price_change_percentage?.m15 || 0)
+        const m30 = parseFloat(attr.price_change_percentage?.m30 || 0)
+        const h1 = parseFloat(attr.price_change_percentage?.h1 || 0)
+        const h6 = parseFloat(attr.price_change_percentage?.h6 || 0)
+        const h24 = parseFloat(attr.price_change_percentage?.h24 || 0)
+
+        const liq = parseFloat(attr.reserve_in_usd || 0)
+        const mc = parseFloat(attr.market_cap_usd || attr.fdv_usd || 0)
+        const vol24 = parseFloat(attr.volume_usd?.h24 || 0)
+        const vol1h = parseFloat(attr.volume_usd?.h1 || 0)
+
+        const buys = attr.transactions?.h1?.buys || 0
+        const sells = attr.transactions?.h1?.sells || 0
+        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
+
+        const createdAt = attr.pool_created_at ? new Date(attr.pool_created_at).getTime() : 0
+        const ageMs = createdAt ? Date.now() - createdAt : 999 * 3600000
+        const ageHours = Math.max(0, ageMs / 3600000)
+
+        // Score the gem
+        let score = 0
+
+        // Age (25pts)
+        if (ageHours < 0.5) score += 25
+        else if (ageHours < 1) score += 20
+        else if (ageHours < 2) score += 15
+        else if (ageHours < 6) score += 10
+        else if (ageHours < 24) score += 5
+
+        // 5m momentum (25pts) — key signal
+        if (m5 > 20) score += 25
+        else if (m5 > 10) score += 20
+        else if (m5 > 5) score += 15
+        else if (m5 > 0) score += 8
+        else if (m5 > -5) score += 3
+
+        // Buy pressure (20pts)
+        if (buyRatio > 0.7) score += 20
+        else if (buyRatio > 0.6) score += 14
+        else if (buyRatio > 0.5) score += 8
+
+        // Liquidity (15pts)
+        if (liq > 50000) score += 15
+        else if (liq > 20000) score += 11
+        else if (liq > 5000) score += 7
+        else if (liq > 1000) score += 3
+
+        // Volume (15pts)
+        if (vol1h > 100000) score += 15
+        else if (vol1h > 50000) score += 11
+        else if (vol1h > 10000) score += 7
+        else if (vol1h > 1000) score += 3
+
+        score = Math.min(100, score)
+
+        // Snipe window based on age + m5
+        const getSnipeWindow = () => {
+          if (h24 > 500 || h6 > 200) return {id:'toolate', label:'Too Late', color:'#ef4444'}
+          if (ageHours < 1 && m5 >= 0) return {id:'prime', label:'Prime Snipe', color:'#22c55e'}
+          if (ageHours < 6 && m5 > 0) return {id:'early', label:'Early', color:'#f59e0b'}
+          if (ageHours < 24) return {id:'watch', label:'Watch', color:'#6b7280'}
+          return {id:'toolate', label:'Too Late', color:'#ef4444'}
+        }
 
         return {
-          ...p,
-          gemScore: score,
-          score,
+          // Core identity
+          pairAddress: attr.address,
+          coinId: attr.address,
+          name,
+          symbol,
+          chain: 'solana',
+          chainId: 'solana',
+          price: attr.base_token_price_usd,
+          priceUsd: attr.base_token_price_usd,
+          image: null,
+          url: `https://www.geckoterminal.com/solana/pools/${attr.address}`,
+
+          // Price changes — all timeframes
+          priceChange: { m5, m15, m30, h1, h6, h24 },
+
+          // Volume
+          volume: {
+            m5: parseFloat(attr.volume_usd?.m5 || 0),
+            m15: parseFloat(attr.volume_usd?.m15 || 0),
+            m30: parseFloat(attr.volume_usd?.m30 || 0),
+            h1: vol1h,
+            h6: parseFloat(attr.volume_usd?.h6 || 0),
+            h24: vol24,
+          },
+
+          // Transactions
+          txns: attr.transactions,
+
+          // Liquidity
+          liquidity: { usd: liq },
+          marketCap: mc,
+          fdv: parseFloat(attr.fdv_usd || 0),
+
+          // Computed
           ageHours,
-          name: p.baseToken?.name || 'Unknown',
-          symbol: p.baseToken?.symbol || '???',
-          chain: p.chainId,
-          price: p.priceUsd,
-          change1h,
-          change24h,
-          volume24h: vol,
+          buyRatio,
           buys,
           sells,
-          buyRatio,
-          signals,
-          snipeWindow,
-          url: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
-          coinId: p.baseToken?.address || p.pairAddress,
-          image: p.info?.imageUrl || null,
-        };
-      });
+          score,
+          snipeWindow: getSnipeWindow(),
 
-      scored.sort((a, b) => b.gemScore - a.gemScore);
-      setGems(scored);
-      const now = Date.now();
-      setGemsLastUpdated(now);
-      setSecondsAgo(0);
-      onUpdated?.(now);
-    } catch (e) {
-      if (typeof console !== 'undefined') console.error('fetchGems error:', e?.message || e);
-      setGems([]);
-    } finally {
-      setGemsLoading(false);
+          // Socials — GeckoTerminal doesn't have these
+          info: { socials: [], websites: [] },
+          baseToken: { address: attr.address, name, symbol },
+        }
+      }).sort((a, b) => b.score - a.score)
+
+      setGems(scored)
+    } catch(e) {
+      console.error('fetchGems error:', e)
     }
-  }, [onUpdated]);
+    setGemsLoading(false)
+  }, [onUpdated])
 
   // Auto-refresh every 60 seconds. The component only mounts while the gems
   // sub-section is active, so this is equivalent to gating on appMode/section.
@@ -1191,10 +1245,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
          New coins are extremely high risk. Most will go to zero. Only invest what you can afford to lose completely.
       </div>
 
-      {launchedInLastHour > 0 && (
+      {gems.length > 0 && (
         <div style={{ padding:'8px 14px', borderRadius:10, background:'rgba(239,68,68,0.10)', border:'1px solid rgba(239,68,68,0.30)', color:'#fca5a5', fontSize:12, fontWeight:700, marginBottom:12, display:'inline-flex', alignItems:'center', gap:8 }}>
           <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'#ef4444', animation:'pulse 1.5s ease-in-out infinite' }}/>
-          LIVE: {launchedInLastHour} {launchedInLastHour === 1 ? 'coin' : 'coins'} launched in last hour
+          {gems.length} Solana pools · {gems.filter(g => parseFloat(g.priceChange?.m5||0) > 5).length} moving 5m
         </div>
       )}
 
