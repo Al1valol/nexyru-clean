@@ -786,27 +786,41 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
     try {
-      // Fetch the newest Solana pairs directly - sorted by creation time
-      const res = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana&sort=createdAt')
-      const data = await res.json().catch(() => ({}))
-      const allPairs = Array.isArray(data?.pairs) ? data.pairs : []
+      // Step 1: Get latest token profiles (has real contract addresses)
+      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1')
+      const profiles = await profilesRes.json().catch(() => [])
+      const arr = Array.isArray(profiles) ? profiles : []
 
-      // Sort by newest first
-      const sortedByAge = allPairs.sort((a, b) => (b.pairCreatedAt || 0) - (a.pairCreatedAt || 0))
+      // Step 2: Get addresses
+      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean)
+      if (addresses.length === 0) {
+        setGems([])
+        setGemsLoading(false)
+        return
+      }
 
-      // Dedupe by token address keeping first occurrence (newest pair)
-      const seen = new Set<string>()
-      const pairs: any[] = []
-      sortedByAge.forEach(p => {
+      // Step 3: Fetch from TOKENS endpoint (not search) - this has pairCreatedAt
+      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`)
+      const pairsData = await pairsRes.json().catch(() => ({}))
+      const allPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
+
+      // Step 4: Dedupe - one coin can have multiple pairs (SOL/COIN and USDC/COIN)
+      // Keep the pair with highest volume per token
+      const bestPairPerToken: Record<string, any> = {}
+      allPairs.forEach(p => {
         const key = p.baseToken?.address
-        if (!key || seen.has(key)) return
-        seen.add(key)
-        pairs.push(p)
+        if (!key) return
+        const vol = parseFloat(p.volume?.h24 || 0)
+        const existing = bestPairPerToken[key]
+        if (!existing || vol > parseFloat(existing.volume?.h24 || 0)) {
+          bestPairPerToken[key] = p
+        }
       })
+      const pairs = Object.values(bestPairPerToken)
 
-      // Score each pair
-      const scored = pairs.slice(0, 30).map(p => {
-        const createdAt = p.pairCreatedAt
+      // Step 5: Calculate age correctly - pairCreatedAt is in milliseconds from tokens endpoint
+      const scored = pairs.map(p => {
+        const createdAt = p.pairCreatedAt  // milliseconds, e.g. 1768479521000
         const ageMs = createdAt ? Date.now() - Number(createdAt) : 999 * 3600000
         const ageHours = Math.max(0, ageMs / 3600000)
         console.log(
