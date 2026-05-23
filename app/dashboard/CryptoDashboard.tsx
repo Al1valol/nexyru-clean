@@ -1508,107 +1508,86 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   {coin.snipeWindow && <span style={{ marginLeft:8 }}>· {coin.snipeWindow.desc}</span>}
                 </div>
 
-                {(() => {
-                  const analysis = snipeAnalysis[coin.coinId || coin.pairAddress];
-                  const analyzingKey = coin.coinId || coin.pairAddress;
-                  return (
-                    <>
-                      {analysis && (
-                        <div style={{
-                          padding:'8px 10px', borderRadius:6, marginBottom:8,
-                          background: analysis.verdict==='BUY'?'rgba(34,197,94,0.1)':analysis.verdict==='SKIP'?'rgba(239,68,68,0.1)':'rgba(245,158,11,0.1)',
-                          border: `1px solid ${analysis.verdict==='BUY'?'rgba(34,197,94,0.3)':analysis.verdict==='SKIP'?'rgba(239,68,68,0.3)':'rgba(245,158,11,0.3)'}`
-                        }}>
-                          <div style={{display:'flex', justifyContent:'space-between', marginBottom:3}}>
-                            <span style={{fontSize:13, fontWeight:800, color: analysis.verdict==='BUY'?'#22c55e':analysis.verdict==='SKIP'?'#ef4444':'#f59e0b'}}>
-                              {analysis.verdict==='BUY'?'✅ BUY':analysis.verdict==='SKIP'?'🚫 SKIP':'👀 WATCH'}
-                            </span>
-                            <span style={{fontSize:10, color:'#6b7280'}}>{analysis.confidence} confidence · {analysis.risk} risk</span>
-                          </div>
-                          <div style={{fontSize:11, color:'#d1d5db'}}>{analysis.reason}</div>
-                        </div>
-                      )}
-                      {!analysis && (
-                        <button onClick={() => analyzeSnipe(coin)} disabled={snipeAnalyzing[analyzingKey]}
-                          style={{
-                            padding:'5px 10px', borderRadius:6, fontSize:11, fontWeight:700,
-                            border:'1px solid rgba(99,102,241,0.4)', background:'rgba(99,102,241,0.08)',
-                            color: snipeAnalyzing[analyzingKey]?'#4b5563':'#a5b4fc',
-                            cursor:'pointer', marginBottom:8, width:'100%'
-                          }}>
-                          {snipeAnalyzing[analyzingKey] ? '🤔 Analyzing...' : '✦ AI Snipe Analysis'}
-                        </button>
-                      )}
-                    </>
-                  );
-                })()}
+                <div style={{display:'flex', flexDirection:'column', gap:6, marginTop:8}}>
+                  {!snipeAnalysis[coin.coinId || coin.pairAddress] ? (
+                    <button onClick={() => analyzeSnipe(coin)}
+                      disabled={snipeAnalyzing[coin.coinId || coin.pairAddress]}
+                      style={{
+                        width:'100%', padding:'9px', borderRadius:8,
+                        border:'1px solid rgba(99,102,241,0.4)',
+                        background:'rgba(99,102,241,0.08)',
+                        color: snipeAnalyzing[coin.coinId||coin.pairAddress] ? '#4b5563' : '#a5b4fc',
+                        fontSize:12, fontWeight:700, cursor:'pointer'
+                      }}>
+                      {snipeAnalyzing[coin.coinId||coin.pairAddress] ? '🤔 Analyzing...' : '✦ AI Snipe Analysis'}
+                    </button>
+                  ) : (
+                    <div style={{
+                      padding:'8px 10px', borderRadius:8, marginBottom:2,
+                      background: snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'rgba(34,197,94,0.1)' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                      border: `1px solid ${snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? 'rgba(34,197,94,0.3)' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`
+                    }}>
+                      <div style={{fontSize:13, fontWeight:800, color: snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? '#22c55e' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? '#ef4444' : '#f59e0b', marginBottom:2}}>
+                        {snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='BUY' ? '✅ BUY' : snipeAnalysis[coin.coinId||coin.pairAddress].verdict==='SKIP' ? '🚫 SKIP' : '👀 WATCH'}
+                        <span style={{fontSize:10, fontWeight:400, color:'#6b7280', marginLeft:6}}>
+                          {snipeAnalysis[coin.coinId||coin.pairAddress].confidence} confidence
+                        </span>
+                      </div>
+                      <div style={{fontSize:11, color:'#d1d5db'}}>{snipeAnalysis[coin.coinId||coin.pairAddress].reason}</div>
+                    </div>
+                  )}
 
-                {(() => {
-                  const tweetText = `🎯 Coin Sniper Alert!\n\n${coin.name} (${coin.symbol}) on ${coin.chain}\n${coin.snipeWindow?.label} · Score: ${coin.score}/100\n\nCA: ${getContractAddress(coin) || 'see dexscreener'}\n\nTrade: https://fomo.family/r/al1valol\n\n#memecoin #crypto`;
-                  return (
-                    <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`}
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6}}>
+                    <a href={`https://jup.ag/swap/SOL-${coin.baseToken?.address || coin.pairAddress}`}
                       target="_blank" rel="noreferrer"
                       style={{
-                        display:'block', padding:'7px', borderRadius:8, textAlign:'center',
-                        border:'1px solid rgba(29,161,242,0.4)', background:'rgba(29,161,242,0.08)',
-                        color:'#1da1f2', fontSize:12, fontWeight:700, textDecoration:'none', marginBottom:6
+                        display:'block', padding:'9px 6px', borderRadius:8, textAlign:'center',
+                        background:'#22c55e', color:'#fff',
+                        fontSize:11, fontWeight:700, textDecoration:'none'
                       }}>
-                      🐦 Share Pick on X/Twitter
+                      ⚡ Buy
                     </a>
-                  );
-                })()}
 
-                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  <button
-                    onClick={logIt}
-                    disabled={logged}
-                    style={{
-                      flex:1, padding:'7px 10px', borderRadius:8, border:'1px solid #2a2a3a',
-                      background: logged ? '#2a2a3a' : '#1a1a24',
-                      color: logged ? '#6b7280' : '#a5b4fc',
-                      fontSize:12, fontWeight:700, cursor: logged ? 'default' : 'pointer',
-                      minWidth:90,
-                    }}
-                  >{logged ? 'Logged ✓' : 'Log Signal'}</button>
-                  <button
-                    onClick={() => onBuy?.({
-                      coinId: trackedCoinId,
-                      name: coin.name || 'Unknown',
-                      symbol: (coin.symbol || '').toUpperCase(),
-                      chain: coin.chainId || 'ethereum',
-                      pairAddress: coin.pairAddress || null,
-                      dexUrl: linkUrl,
-                      price: buyEntryPrice,
-                    })}
-                    style={{
-                      flex:1, padding:'7px 10px', borderRadius:8, border:'none',
-                      background:'#22c55e', color:'#fff',
-                      fontSize:12, fontWeight:700, cursor:'pointer', minWidth:70,
-                    }}
-                  >Buy →</button>
+                    <button onClick={() => {
+                      const address = coin.baseToken?.address || coin.pairAddress
+                      if (address) {
+                        navigator.clipboard.writeText(address)
+                        window.open('https://fomo.family/r/al1valol', '_blank')
+                        const toast = document.createElement('div')
+                        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #6366f1;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;text-align:center'
+                        toast.innerHTML = '📋 CA copied! Paste in FOMO search'
+                        document.body.appendChild(toast)
+                        setTimeout(() => toast.remove(), 3000)
+                      } else {
+                        window.open('https://fomo.family/r/al1valol', '_blank')
+                      }
+                    }} style={{
+                      padding:'9px 6px', borderRadius:8, border:'none',
+                      background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
+                      fontSize:11, fontWeight:700, cursor:'pointer'
+                    }}>
+                      🎯 FOMO
+                    </button>
+
+                    <button onClick={() => {
+                      const address = coin.baseToken?.address || coin.pairAddress
+                      if (address) {
+                        navigator.clipboard.writeText(address)
+                        const toast = document.createElement('div')
+                        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #22c55e;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;text-align:center'
+                        toast.innerHTML = '✅ Contract address copied!'
+                        document.body.appendChild(toast)
+                        setTimeout(() => toast.remove(), 3000)
+                      }
+                    }} style={{
+                      padding:'9px 6px', borderRadius:8,
+                      border:'1px solid #2a2a3a', background:'transparent',
+                      color:'#6b7280', fontSize:11, fontWeight:700, cursor:'pointer'
+                    }}>
+                      📋 Copy CA
+                    </button>
+                  </div>
                 </div>
-
-                {getTradeLinks(coin).map(link => (
-                  <a key={link.label} href={link.url} target="_blank" rel="noreferrer" style={{
-                    display:'block', padding:'8px', borderRadius:8, textAlign:'center',
-                    background:`${link.color}22`, border:`1px solid ${link.color}44`,
-                    color:link.color, fontSize:12, fontWeight:700, textDecoration:'none', marginBottom:6
-                  }}>{link.label}</a>
-                ))}
-
-                <button onClick={() => {
-                  const addr = coin.baseToken?.address || coin.pairAddress;
-                  if (addr) {
-                    navigator.clipboard.writeText(addr);
-                    alert(`✅ Contract address copied!\n${addr}\n\nPaste this in any DEX or FOMO to find the coin.`);
-                  }
-                }} style={{
-                  width:'100%', padding:'6px', borderRadius:8,
-                  border:'1px solid #2a2a3a', background:'transparent',
-                  color:'#6b7280', fontSize:11, cursor:'pointer', marginBottom:6
-                }}>
-                  📋 Copy Contract Address
-                </button>
               </div>
             );
           })}
