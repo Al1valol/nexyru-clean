@@ -1147,13 +1147,22 @@ function BestPicksPanel({
   }, [picks]);
 
   const filtered = useMemo(() => {
-    let list = picks;
-    if (sport !== "all") list = list.filter((p) => p.game.sport_title === sport);
+    let list = picks  // picks should already be deduped by buildPicks
+    if (sport !== "all") list = list.filter((p) => p.game.sport_title === sport)
     list = list.filter((p) => {
-      const t = new Date(p.game.commence_time).getTime();
-      return !isFinite(t) || t > nowMs - 3 * 3600_000;
-    });
-    return list.slice(0, 30);
+      const t = new Date(p.game.commence_time).getTime()
+      return !isFinite(t) || t > nowMs - 3 * 3600_000
+    })
+
+    // EXTRA SAFETY DEDUP - ensure only one pick per game
+    const seenGames = new Set<string>()
+    list = list.filter(p => {
+      if (seenGames.has(p.game.id)) return false
+      seenGames.add(p.game.id)
+      return true
+    })
+
+    return list.slice(0, 30)
   }, [picks, sport, nowMs]);
 
   const analyzeGame = async (p: Pick) => {
