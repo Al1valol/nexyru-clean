@@ -4653,21 +4653,15 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
       })
 
       const dipCandidates = unique.filter(p => {
-        const h1 = parseFloat(p.priceChange?.h1 || 0)
         const h24 = parseFloat(p.priceChange?.h24 || 0)
         const vol = parseFloat(p.volume?.h24 || 0)
         const liq = parseFloat(p.liquidity?.usd || 0)
-        const buys = p.txns?.h1?.buys || 0
-        const sells = p.txns?.h1?.sells || 0
-        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
 
         return (
-          h24 < -20 &&
+          h24 < -5 &&
           h24 > -90 &&
-          h1 > -10 &&
-          vol > 10000 &&
-          liq > 5000 &&
-          buyRatio > 0.45
+          vol > 5000 &&
+          liq > 1000
         )
       })
 
