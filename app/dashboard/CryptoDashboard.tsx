@@ -610,8 +610,12 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const [tab, setTab] = React.useState<'sniper'|'fomo'>('sniper');
   const [rugData, setRugData] = React.useState<Record<string, any>>({});
   const [rugLoading, setRugLoading] = React.useState<Record<string, boolean>>({});
-  const [alertsEnabled, setAlertsEnabled] = React.useState(false);
-  const [knownPrimes, setKnownPrimes] = React.useState<Set<string>>(new Set());
+  const [alertsEnabled, setAlertsEnabled] = useState(() => typeof window !== 'undefined' && localStorage.getItem('sniper_alerts') === 'true')
+  const [knownPrimeIds, setKnownPrimeIds] = useState<Set<string>>(() => new Set())
+  const [alertedIds, setAlertedIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try { return new Set(JSON.parse(localStorage.getItem('sniper_alerted_ids') || '[]')) } catch { return new Set() }
+  })
   const [whaleWallet, setWhaleWallet] = React.useState('');
   const [savedWhales, setSavedWhales] = React.useState<{address:string;label:string}[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -619,15 +623,20 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   });
 
   const enableAlerts = async () => {
-    if (typeof Notification === 'undefined') {
-      alert('Notifications not supported in this browser.');
-      return;
+    if (!('Notification' in window)) {
+      alert('Your browser does not support notifications')
+      return
     }
-    const permission = await Notification.requestPermission();
+    const permission = await Notification.requestPermission()
     if (permission === 'granted') {
-      setAlertsEnabled(true);
-      localStorage.setItem('sniper_alerts', 'true');
-      alert('✅ Alerts enabled! You will be notified when new Prime Snipe coins appear.');
+      setAlertsEnabled(true)
+      localStorage.setItem('sniper_alerts', 'true')
+      new Notification('🎯 Coin Sniper Alerts ON', {
+        body: 'You will be notified when a new Prime Snipe appears',
+        icon: '/favicon.ico'
+      })
+    } else {
+      alert('Please allow notifications in your browser settings to get alerts')
     }
   };
 
@@ -904,29 +913,62 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   }, []);
 
   // Fire browser notifications when new Prime Snipes appear
-  React.useEffect(() => {
-    if (!alertsEnabled) return;
-    const currentPrimes = new Set(
-      gems.filter(g => g.snipeWindow?.id === 'prime').map(g => g.baseToken?.address || g.pairAddress)
-    );
-    currentPrimes.forEach(addr => {
-      if (!knownPrimes.has(addr) && knownPrimes.size > 0) {
-        const coin = gems.find(g => (g.baseToken?.address || g.pairAddress) === addr);
-        try {
-          new Notification('🎯 New Prime Snipe!', {
-            body: `${coin?.baseToken?.name || 'New coin'} just appeared — score ${coin?.score}/100`,
-            icon: '/favicon.ico',
-          });
-        } catch {}
-      }
-    });
-    setKnownPrimes(currentPrimes);
-  }, [gems]);
+  useEffect(() => {
+    if (!alertsEnabled || gems.length === 0) return
+
+    const primeSnipes = gems.filter(g =>
+      g.snipeWindow?.id === 'prime' ||
+      (g.ageHours < 1 && parseFloat(g.priceChange?.h1 || 0) < 50)
+    )
+
+    primeSnipes.forEach(coin => {
+      const id = coin.baseToken?.address || coin.pairAddress
+      if (!id || alertedIds.has(id)) return
+
+      // New prime snipe found - send notification
+      const ageDisplay = coin.ageHours < 1
+        ? `${Math.round(coin.ageHours * 60)}m old`
+        : `${coin.ageHours.toFixed(1)}h old`
+
+      const name = coin.baseToken?.name || coin.name || 'New Coin'
+      const symbol = coin.baseToken?.symbol || coin.symbol || ''
+      const chain = (coin.chainId || coin.chain || '').toUpperCase()
+
+      try {
+        const notif = new Notification(`🎯 PRIME SNIPE: ${name}`, {
+          body: `${symbol} on ${chain} · ${ageDisplay} · Score ${coin.score}/100 · Not yet pumped`,
+          icon: coin.image || '/favicon.ico',
+          tag: id, // prevents duplicate notifications
+          requireInteraction: true // stays on screen until dismissed
+        })
+
+        // Clicking notification opens the crypto page
+        notif.onclick = () => {
+          window.focus()
+          window.location.href = '/crypto'
+        }
+      } catch(e) {}
+
+      // Mark as alerted so we don't notify again
+      const newAlerted = new Set([...alertedIds, id])
+      setAlertedIds(newAlerted)
+      localStorage.setItem('sniper_alerted_ids', JSON.stringify([...newAlerted]))
+    })
+
+    // Clean up old alerted IDs (keep last 100 to prevent localStorage bloat)
+    if (alertedIds.size > 100) {
+      const trimmed = new Set([...alertedIds].slice(-100))
+      setAlertedIds(trimmed)
+      localStorage.setItem('sniper_alerted_ids', JSON.stringify([...trimmed]))
+    }
+  }, [gems, alertsEnabled]);
 
   const loggedKeys = React.useMemo(
     () => new Set(signals.map(s => s.coinId)),
     [signals]
   );
+
+  const primeCount = gems.filter(g => g.snipeWindow?.id === 'prime').length
 
   const visible = React.useMemo(() => {
     let arr = gems;
@@ -1121,12 +1163,26 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           <span style={{ color:'#4b5563' }}>· source: dexscreener · auto-refreshes every 60s</span>
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-          <button onClick={alertsEnabled ? ()=>{} : enableAlerts} style={{
+          {primeCount > 0 && (
+            <div style={{
+              padding:'6px 12px', borderRadius:8,
+              background:'rgba(34,197,94,0.1)',
+              border:'1px solid rgba(34,197,94,0.3)',
+              fontSize:12, fontWeight:700, color:'#22c55e'
+            }}>
+              🎯 {primeCount} Prime Snipe{primeCount > 1 ? 's' : ''} right now
+            </div>
+          )}
+          <button onClick={alertsEnabled ? () => {
+            setAlertsEnabled(false)
+            localStorage.setItem('sniper_alerts', 'false')
+          } : enableAlerts} style={{
             padding:'7px 14px', borderRadius:8,
-            border:`1px solid ${alertsEnabled?'rgba(34,197,94,0.4)':'#2a2a3a'}`,
-            background:alertsEnabled?'rgba(34,197,94,0.1)':'transparent',
-            color:alertsEnabled?'#22c55e':'#6b7280',
-            fontSize:12, fontWeight:700, cursor:'pointer'
+            border:`1px solid ${alertsEnabled ? 'rgba(34,197,94,0.4)' : '#2a2a3a'}`,
+            background: alertsEnabled ? 'rgba(34,197,94,0.1)' : 'transparent',
+            color: alertsEnabled ? '#22c55e' : '#6b7280',
+            fontSize:12, fontWeight:700, cursor:'pointer',
+            display:'flex', alignItems:'center', gap:6
           }}>
             {alertsEnabled ? '🔔 Alerts ON' : '🔕 Enable Alerts'}
           </button>
