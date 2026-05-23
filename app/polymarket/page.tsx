@@ -38,7 +38,7 @@ interface PaperBet {
 export default function PolymarketPage() {
   const [markets, setMarkets] = useState<Market[]>([])
   const [loading, setLoading] = useState(false)
-  const [section, setSection] = useState<'markets'|'trades'|'learn'>('markets')
+  const [section, setSection] = useState<'markets'|'trades'|'learn'|'value'>('markets')
   const [category, setCategory] = useState('all')
   const [sortBy, setSortBy] = useState<'volume'|'probability'|'ending'>('volume')
   const [analysis, setAnalysis] = useState<Record<string,any>>({})
@@ -49,6 +49,9 @@ export default function PolymarketPage() {
   const [betShares, setBetShares] = useState('10')
   const [isMobile, setIsMobile] = useState(false)
   const [search, setSearch] = useState('')
+  const [valueBets, setValueBets] = useState<any[]>([])
+  const [valueLoading, setValueLoading] = useState(false)
+  const [valueRan, setValueRan] = useState(false)
 
   useEffect(() => {
     try {
@@ -148,6 +151,64 @@ export default function PolymarketPage() {
     }
   }
 
+  const findValue = async () => {
+    setValueLoading(true)
+    setValueRan(true)
+    const results: any[] = []
+
+    const topMarkets = markets.slice(0, 10)
+
+    for (const market of topMarkets) {
+      try {
+        const res = await fetch('/api/analyze-game', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            team1: 'YES',
+            team2: 'NO',
+            sport: 'PREDICTION',
+            odds1: 0, odds2: 0,
+            gameTime: market.endDate,
+            context: `Prediction market: "${market.question}". Market currently prices YES at ${Math.round(market.yesPrice*100)}% probability. ${market.daysLeft} days remaining. Volume: $${(market.volume/1000).toFixed(0)}k. Is the market's probability correct? What probability would YOU assign to YES happening? Is there value betting YES or NO?`
+          })
+        })
+        const ai = await res.json()
+
+        const aiProbability = ai.pick === 'YES'
+          ? (ai.confidence === 'high' ? 0.70 : ai.confidence === 'medium' ? 0.60 : 0.55)
+          : ai.pick === 'NO'
+          ? (ai.confidence === 'high' ? 0.25 : ai.confidence === 'medium' ? 0.35 : 0.45)
+          : 0.50
+
+        const marketProbability = market.yesPrice
+        const edge = aiProbability - marketProbability
+        const absEdge = Math.abs(edge)
+
+        if (absEdge > 0.08) {
+          results.push({
+            market,
+            ai,
+            aiProbability,
+            marketProbability,
+            edge,
+            absEdge,
+            pick: edge > 0 ? 'YES' : 'NO',
+            edgePct: Math.round(absEdge * 100),
+            value: absEdge > 0.20 ? 'STRONG' : absEdge > 0.12 ? 'GOOD' : 'SLIGHT'
+          })
+        }
+
+        await new Promise(r => setTimeout(r, 600))
+      } catch(e) {
+        continue
+      }
+    }
+
+    results.sort((a, b) => b.absEdge - a.absEdge)
+    setValueBets(results)
+    setValueLoading(false)
+  }
+
   const categories = ['all', ...Array.from(new Set(markets.map(m => m.category))).filter(Boolean)]
 
   const filtered = markets
@@ -162,6 +223,7 @@ export default function PolymarketPage() {
 
   const navItems = [
     {id:'markets', icon:'🔮', label:'Markets'},
+    {id:'value', icon:'💎', label:'Value Finder'},
     {id:'trades', icon:'💼', label:'Trades'},
     {id:'learn', icon:'📚', label:'Learn'},
   ]
@@ -407,6 +469,149 @@ export default function PolymarketPage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+
+          {section === 'value' && (
+            <div>
+              <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>💎 Value Finder</div>
+              <div style={{fontSize:12, color:C.muted, marginBottom:16}}>
+                AI scans all markets and finds where the crowd probability might be wrong
+              </div>
+
+              <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:12, marginBottom:16, fontSize:12, color:'#a5b4fc', lineHeight:1.6}}>
+                💡 <strong>How it works:</strong> AI analyzes each market independently and estimates the true probability. When AI thinks the chance is significantly different from the market price — that's a potential edge. The bigger the gap the more value.
+              </div>
+
+              {!valueRan ? (
+                <div style={{textAlign:'center', padding:48}}>
+                  <div style={{fontSize:48, marginBottom:16}}>💎</div>
+                  <div style={{fontSize:16, fontWeight:700, color:C.text, marginBottom:8}}>Find Mispriced Markets</div>
+                  <div style={{fontSize:13, color:C.muted, marginBottom:24}}>
+                    AI will analyze the top 10 markets by volume and identify where the crowd might be wrong.
+                    Takes about 60 seconds.
+                  </div>
+                  <button onClick={findValue} style={{
+                    padding:'12px 32px', borderRadius:10, border:'none',
+                    background:C.accent, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer'
+                  }}>
+                    🔍 Find Value Bets
+                  </button>
+                </div>
+              ) : valueLoading ? (
+                <div style={{textAlign:'center', padding:48}}>
+                  <div style={{fontSize:48, marginBottom:16}}>🔍</div>
+                  <div style={{fontSize:16, fontWeight:700, color:C.text, marginBottom:8}}>Analyzing markets...</div>
+                  <div style={{fontSize:13, color:C.muted}}>Checking top 10 markets for mispricing. This takes about 60 seconds.</div>
+                  <div style={{marginTop:16, height:4, background:'#1a1a24', borderRadius:2, overflow:'hidden'}}>
+                    <div style={{height:'100%', background:C.accent, borderRadius:2, animation:'pulse 1.5s infinite'}}/>
+                  </div>
+                </div>
+              ) : valueBets.length === 0 ? (
+                <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:'center'}}>
+                  <div style={{fontSize:32, marginBottom:12}}>🎯</div>
+                  <div style={{fontSize:15, fontWeight:700, color:C.text, marginBottom:8}}>Markets Look Fairly Priced</div>
+                  <div style={{fontSize:13, color:C.muted, marginBottom:16}}>
+                    AI didn't find significant mispricing in the current top markets. Try again later when new markets open.
+                  </div>
+                  <button onClick={() => { setValueRan(false); setValueBets([]) }} style={{
+                    padding:'8px 20px', borderRadius:8, border:`1px solid ${C.border}`,
+                    background:'transparent', color:C.muted, fontSize:13, cursor:'pointer'
+                  }}>
+                    🔄 Run Again
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div style={{fontSize:13, color:C.muted, marginBottom:16}}>
+                    Found <strong style={{color:C.text}}>{valueBets.length}</strong> potentially mispriced market{valueBets.length!==1?'s':''} · Sorted by edge size
+                  </div>
+
+                  {valueBets.map((vb, i) => (
+                    <div key={vb.market.id} style={{
+                      background:C.card,
+                      border:`1px solid ${vb.value==='STRONG'?'rgba(34,197,94,0.4)':vb.value==='GOOD'?'rgba(99,102,241,0.3)':'rgba(245,158,11,0.2)'}`,
+                      borderRadius:12, padding:16, marginBottom:12,
+                      boxShadow: vb.value==='STRONG'?'0 0 20px rgba(34,197,94,0.06)':'none'
+                    }}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10, gap:8}}>
+                        <div style={{flex:1}}>
+                          <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:4}}>
+                            <span style={{
+                              fontSize:11, fontWeight:800, padding:'3px 8px', borderRadius:4,
+                              background: vb.value==='STRONG'?'rgba(34,197,94,0.15)':vb.value==='GOOD'?'rgba(99,102,241,0.15)':'rgba(245,158,11,0.15)',
+                              color: vb.value==='STRONG'?C.green:vb.value==='GOOD'?'#a5b4fc':C.yellow
+                            }}>
+                              {vb.value==='STRONG'?'💎 STRONG VALUE':vb.value==='GOOD'?'⭐ GOOD VALUE':'👀 SLIGHT VALUE'}
+                            </span>
+                            <span style={{fontSize:11, color:C.muted}}>{vb.market.category}</span>
+                          </div>
+                          <div style={{fontSize:14, fontWeight:700, lineHeight:1.4}}>{vb.market.question}</div>
+                        </div>
+                        <div style={{textAlign:'right', flexShrink:0}}>
+                          <div style={{fontSize:22, fontWeight:900, color: vb.pick==='YES'?C.green:C.red}}>
+                            +{vb.edgePct}%
+                          </div>
+                          <div style={{fontSize:10, color:C.muted}}>edge</div>
+                        </div>
+                      </div>
+
+                      <div style={{background:'#1a1a24', borderRadius:8, padding:12, marginBottom:12}}>
+                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:10, color:C.muted, marginBottom:4}}>MARKET SAYS</div>
+                            <div style={{fontSize:24, fontWeight:800, color:C.text}}>{Math.round(vb.marketProbability*100)}%</div>
+                            <div style={{fontSize:11, color:C.muted}}>chance of YES</div>
+                          </div>
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:10, color:C.muted, marginBottom:4}}>AI THINKS</div>
+                            <div style={{fontSize:24, fontWeight:800, color: vb.pick==='YES'?C.green:C.red}}>{Math.round(vb.aiProbability*100)}%</div>
+                            <div style={{fontSize:11, color:C.muted}}>chance of YES</div>
+                          </div>
+                        </div>
+
+                        <div style={{marginTop:10, padding:'8px 10px', borderRadius:6, background: vb.pick==='YES'?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)', border:`1px solid ${vb.pick==='YES'?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'}`}}>
+                          <div style={{fontSize:13, fontWeight:800, color:vb.pick==='YES'?C.green:C.red, marginBottom:3}}>
+                            {vb.pick==='YES'?'✅ Bet YES — market underpricing':'❌ Bet NO — market overpricing'}
+                          </div>
+                          <div style={{fontSize:12, color:'#d1d5db'}}>{vb.ai.reasoning}</div>
+                        </div>
+                      </div>
+
+                      <div style={{fontSize:12, color:C.muted, marginBottom:12}}>
+                        Bet $10 on {vb.pick} → win <strong style={{color:C.green}}>
+                          ${vb.pick==='YES' ? (10/vb.market.yesPrice).toFixed(2) : (10/vb.market.noPrice).toFixed(2)}
+                        </strong> if correct
+                        · {vb.market.daysLeft}d remaining
+                      </div>
+
+                      <div style={{display:'flex', gap:8}}>
+                        <button onClick={() => { setBetModal({market: vb.market, pick: vb.pick}); setBetShares('10'); setSection('markets') }} style={{
+                          flex:2, padding:'9px', borderRadius:8, border:'none',
+                          background: vb.pick==='YES'?C.green:C.red,
+                          color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
+                        }}>
+                          + Bet {vb.pick} on {vb.market.question.substring(0,30)}...
+                        </button>
+                        <a href={`https://polymarket.com/event/${vb.market.slug}`} target="_blank" rel="noreferrer" style={{
+                          padding:'9px 12px', borderRadius:8,
+                          border:`1px solid ${C.border}`, background:'transparent',
+                          color:C.muted, fontSize:12, textDecoration:'none', fontWeight:700
+                        }}>
+                          Poly →
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button onClick={() => { setValueRan(false); setValueBets([]) }} style={{
+                    width:'100%', padding:'10px', borderRadius:8, border:`1px solid ${C.border}`,
+                    background:'transparent', color:C.muted, fontSize:13, cursor:'pointer', marginTop:8
+                  }}>
+                    🔄 Run Again
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
