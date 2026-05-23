@@ -262,7 +262,6 @@ export default function OptionsPage() {
             {label:'🪙 Crypto', href:'/crypto'},
             {label:'🎰 Sports', href:'/sports'},
             {label:'📊 Options', href:'/options', active:true},
-            {label:'🔮 Polymarket', href:'/polymarket'},
             {label:'⬡ JARVIS', href:'/morning'},
           ].map(link => (
             <a key={link.href} href={link.href} style={{
@@ -288,11 +287,10 @@ export default function OptionsPage() {
         {!isMobile && (
           <div style={{display:'flex', gap:4, alignItems:'center'}}>
             {[
-              { href:'/dashboard',  label:'📈 Trading',   active:false },
-              { href:'/crypto',     label:'🪙 Crypto',    active:false },
-              { href:'/sports',     label:'🎰 Sports',    active:false },
-              { href:'/options',    label:'📊 Options',   active:true  },
-              { href:'/polymarket', label:'🔮 Polymarket', active:false },
+              { href:'/dashboard', label:'📈 Trading', active:false },
+              { href:'/crypto',    label:'🪙 Crypto',  active:false },
+              { href:'/sports',    label:'🎰 Sports',  active:false },
+              { href:'/options',   label:'📊 Options', active:true  },
             ].map(l => (
               <a key={l.href} href={l.href} style={{
                 padding:'6px 12px', fontSize:13,
