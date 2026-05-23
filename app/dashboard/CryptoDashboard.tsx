@@ -1628,15 +1628,29 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   )}
 
                   <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6}}>
-                    <a href={`https://jup.ag/swap/SOL-${coin.baseToken?.address || coin.pairAddress}`}
-                      target="_blank" rel="noreferrer"
-                      style={{
-                        display:'block', padding:'9px 6px', borderRadius:8, textAlign:'center',
-                        background:'#22c55e', color:'#fff',
-                        fontSize:11, fontWeight:700, textDecoration:'none'
-                      }}>
-                      ⚡ Buy
-                    </a>
+                    <button onClick={() => {
+                      const address = coin.baseToken?.address || coin.pairAddress
+                      const name = coin.baseToken?.name || coin.name || 'Unknown'
+                      const symbol = coin.baseToken?.symbol || coin.symbol || ''
+                      const price = parseFloat(coin.priceUsd || coin.price || '0')
+
+                      // Open paper trade modal
+                      onBuy?.({
+                        ...coin,
+                        id: address,
+                        name,
+                        symbol,
+                        price,
+                        source: 'dexscreener',
+                        coinId: address,
+                      })
+                    }} style={{
+                      padding:'9px 6px', borderRadius:8, border:'none',
+                      background:'rgba(99,102,241,0.2)', color:'#a5b4fc',
+                      fontSize:11, fontWeight:700, cursor:'pointer'
+                    }}>
+                      📝 Paper
+                    </button>
 
                     <button onClick={() => {
                       const address = coin.baseToken?.address || coin.pairAddress
@@ -1674,7 +1688,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                       border:'1px solid #2a2a3a', background:'transparent',
                       color:'#6b7280', fontSize:11, fontWeight:700, cursor:'pointer'
                     }}>
-                      📋 Copy CA
+                      📋 CA
                     </button>
                   </div>
                 </div>
