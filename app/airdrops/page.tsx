@@ -1,5 +1,12 @@
 'use client'
 import { useState, useEffect } from 'react'
+import {
+  TrendingUp, TrendingDown, Activity, RefreshCw, Bell, BellOff,
+  Search, Filter, Star, StarOff, Copy, ExternalLink, ChevronDown,
+  ChevronUp, AlertTriangle, CheckCircle, XCircle, Clock, Zap,
+  Shield, Target, BarChart2, Wallet, ArrowUpRight, ArrowDownRight,
+  Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen
+} from 'lucide-react'
 
 interface Airdrop {
   id: string
@@ -675,9 +682,9 @@ export default function AirdropsPage() {
   const chains = ['all', ...Array.from(new Set(airdrops.map(a => a.chain)))]
 
   const navItems = [
-    {id:'airdrops', icon:'💧', label:'Airdrops'},
-    {id:'daily', icon:'✅', label:'Daily Tasks'},
-    {id:'learn', icon:'📚', label:'Learn'},
+    {id:'airdrops', Icon: Zap, label:'Airdrops'},
+    {id:'daily', Icon: CheckCircle, label:'Daily Tasks'},
+    {id:'learn', Icon: BookOpen, label:'Learn'},
   ]
 
   const probColor = (p: string) => p === 'HIGH' ? C.green : p === 'MEDIUM' ? C.yellow : C.muted
@@ -687,50 +694,60 @@ export default function AirdropsPage() {
     <div style={{background:C.bg, minHeight:'100vh', color:C.text, fontFamily:'system-ui,sans-serif'}}>
 
       {isMobile && (
-        <div style={{display:'flex', background:'#0a0a0f', borderBottom:`1px solid ${C.border}`, padding:'0 2px'}}>
+        <div style={{display:'flex', background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${C.border}`, padding:'0 2px'}}>
           {[
-            {label:'📈', href:'/dashboard'},
-            {label:'🪙', href:'/crypto'},
-            {label:'🎰', href:'/sports'},
-            {label:'📊', href:'/options'},
-            {label:'💧', href:'/airdrops', active:true},
-            {label:'⬡', href:'/morning'},
+            {Icon: TrendingUp, href:'/dashboard'},
+            {Icon: Activity, href:'/crypto'},
+            {Icon: Target, href:'/sports'},
+            {Icon: BarChart2, href:'/options'},
+            {Icon: Zap, href:'/airdrops', active:true},
+            {Icon: Award, href:'/morning'},
           ].map(link => (
             <a key={link.href} href={link.href} style={{
-              flex:1, textAlign:'center', padding:'10px 2px', fontSize:16,
-              color: link.active ? '#fff' : C.muted, textDecoration:'none',
-              borderBottom: link.active ? `2px solid ${C.accent}` : '2px solid transparent'
-            }}>{link.label}</a>
+              flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'12px 2px',
+              color: link.active ? '#fff' : '#4b5563', textDecoration:'none',
+              borderBottom: link.active ? `2px solid ${C.accent}` : '2px solid transparent',
+              transition:'color 0.15s, border-color 0.15s'
+            }}>
+              <link.Icon size={18}/>
+            </a>
           ))}
         </div>
       )}
 
       <div style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding: isMobile ? '10px 12px' : '10px 24px',
-        background:'#0a0a0f', borderBottom:`1px solid ${C.border}`,
+        padding: isMobile ? '12px 16px' : '14px 24px',
+        background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${C.border}`,
         position:'sticky', top:0, zIndex:100
       }}>
         {!isMobile && (
           <div style={{display:'flex', gap:4, alignItems:'center'}}>
             {[
-              {label:'📈 Trading', href:'/dashboard'},
-              {label:'🪙 Crypto', href:'/crypto'},
-              {label:'🎰 Sports', href:'/sports'},
-              {label:'📊 Options', href:'/options'},
-              {label:'💧 Airdrops', href:'/airdrops', active:true},
+              {Icon: TrendingUp, label:'Trading', href:'/dashboard'},
+              {Icon: Activity, label:'Crypto', href:'/crypto'},
+              {Icon: Target, label:'Sports', href:'/sports'},
+              {Icon: BarChart2, label:'Options', href:'/options'},
+              {Icon: Zap, label:'Airdrops', href:'/airdrops', active:true},
             ].map(l => (
               <a key={l.href} href={l.href} style={{
-                padding:'6px 12px', fontSize:13,
-                color: l.active ? '#fff' : C.muted, textDecoration:'none',
-                fontWeight: l.active ? 700 : 500,
-                borderBottom: l.active ? `2px solid ${C.accent}` : '2px solid transparent'
-              }}>{l.label}</a>
+                display:'flex', alignItems:'center', gap:6,
+                padding:'6px 14px', fontSize:13, fontWeight:500,
+                color: l.active ? '#fff' : '#4b5563', textDecoration:'none',
+                borderBottom: l.active ? `2px solid ${C.accent}` : '2px solid transparent',
+                transition:'color 0.15s, border-color 0.15s', letterSpacing:'-0.01em'
+              }}>
+                <l.Icon size={14}/> {l.label}
+              </a>
             ))}
           </div>
         )}
-        <div style={{fontSize: isMobile?15:18, fontWeight:800}}>💧 Airdrop Hunter</div>
-        <a href="/morning" style={{fontSize:11, color:'#a5b4fc', textDecoration:'none', padding:'6px 10px', borderRadius:6, border:'1px solid rgba(99,102,241,0.3)'}}>⬡ JARVIS</a>
+        <div style={{display:'flex', alignItems:'center', gap:8, fontSize: isMobile?15:18, fontWeight:800, letterSpacing:'-0.02em'}}>
+          <Zap size={isMobile?16:18}/> Airdrop Hunter
+        </div>
+        <a href="/morning" style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#a5b4fc', textDecoration:'none', padding:'8px 14px', borderRadius:8, border:'1px solid rgba(99,102,241,0.3)', fontWeight:600}}>
+          <Award size={14}/> JARVIS
+        </a>
       </div>
 
       <div style={{display:'flex'}}>
@@ -741,27 +758,28 @@ export default function AirdropsPage() {
                 width:'100%', display:'flex', alignItems:'center', gap:10,
                 padding:'10px 16px', border:'none',
                 background: section===item.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                color: section===item.id ? '#a5b4fc' : C.muted,
-                fontSize:13, fontWeight: section===item.id?700:400,
+                color: section===item.id ? '#a5b4fc' : '#6b7280',
+                fontSize:13, fontWeight: section===item.id?700:500,
                 cursor:'pointer', textAlign:'left',
-                borderLeft: section===item.id ? `3px solid ${C.accent}` : '3px solid transparent'
+                borderLeft: section===item.id ? `3px solid ${C.accent}` : '3px solid transparent',
+                transition:'all 0.15s'
               }}>
-                <span style={{fontSize:16}}>{item.icon}</span>
+                <item.Icon size={16}/>
                 {item.label}
               </button>
             ))}
 
-            <div style={{margin:'16px', padding:10, background:C.card, borderRadius:8, border:`1px solid ${C.border}`}}>
-              <div style={{fontSize:10, color:C.muted, marginBottom:6}}>YOUR PROGRESS</div>
-              <div style={{fontSize:12, marginBottom:2}}>
-                Airdrops: <strong>{airdrops.length}</strong>
+            <div style={{margin:'16px', padding:12, background:'#0f0f15', borderRadius:12, border:`1px solid ${C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
+              <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:8}}>YOUR PROGRESS</div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
+                Airdrops: <strong style={{color:'#fff'}}>{airdrops.length}</strong>
               </div>
-              <div style={{fontSize:12, marginBottom:2}}>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
                 Tasks done: <strong style={{color:C.green}}>
                   {airdrops.reduce((s,a) => s + getCompletedCount(a), 0)}
                 </strong>/{airdrops.reduce((s,a) => s + a.tasks.length, 0)}
               </div>
-              <div style={{fontSize:12}}>
+              <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>
                 Est. value: <strong style={{color:C.green}}>$1,600-25,500</strong>
               </div>
             </div>
@@ -774,44 +792,52 @@ export default function AirdropsPage() {
             <div>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:8}}>
                 <div>
-                  <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>💧 Active Airdrops</div>
-                  <div style={{fontSize:12, color:C.muted}}>Complete tasks to qualify for free tokens</div>
+                  <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                    <Zap size={22}/> Active Airdrops
+                  </div>
+                  <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>Complete tasks to qualify for free tokens</div>
                 </div>
-                <div style={{background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:8, padding:'8px 12px', fontSize:12}}>
+                <div style={{background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:8, padding:'10px 14px', fontSize:13}}>
                   <span style={{color:C.muted}}>Total est. value: </span>
                   <strong style={{color:C.green}}>$1,600 - $25,500</strong>
                 </div>
               </div>
 
-              <div style={{background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:10, padding:12, marginBottom:16, fontSize:12, color:'#fbbf24', lineHeight:1.6}}>
-                ⚠️ <strong>Airdrop risk:</strong> Not guaranteed. Only invest time and gas fees you can afford to lose. Never share your seed phrase. Only use official links.
+              <div style={{background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:12, padding:14, marginBottom:16, fontSize:13, color:'#fbbf24', lineHeight:1.6, display:'flex', alignItems:'flex-start', gap:8}}>
+                <AlertTriangle size={14} style={{flexShrink:0, marginTop:2}}/>
+                <div><strong>Airdrop risk:</strong> Not guaranteed. Only invest time and gas fees you can afford to lose. Never share your seed phrase. Only use official links.</div>
               </div>
 
               <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap'}}>
                 <div style={{display:'flex', gap:4}}>
                   {[
-                    {id:'all', label:'All'},
-                    {id:'confirmed', label:'✅ Confirmed'},
-                    {id:'likely', label:'🔮 Likely'},
+                    {id:'all', label:'All', Icon: null},
+                    {id:'confirmed', label:'Confirmed', Icon: CheckCircle},
+                    {id:'likely', label:'Likely', Icon: Eye},
                   ].map(f => (
                     <button key={f.id} onClick={() => setFilter(f.id as any)} style={{
-                      padding:'5px 12px', borderRadius:6, fontSize:12,
-                      fontWeight: filter===f.id?700:400,
-                      border:`1px solid ${filter===f.id?C.accent:C.border}`,
+                      display:'flex', alignItems:'center', gap:6,
+                      padding:'8px 14px', borderRadius:8, fontSize:13,
+                      fontWeight: filter===f.id?700:600,
+                      border:`1px solid ${filter===f.id?C.accent:'#1e1e2a'}`,
                       background: filter===f.id?'rgba(99,102,241,0.15)':'transparent',
-                      color: filter===f.id?'#a5b4fc':C.muted, cursor:'pointer'
-                    }}>{f.label}</button>
+                      color: filter===f.id?'#a5b4fc':'#6b7280', cursor:'pointer',
+                      transition:'all 0.15s'
+                    }}>
+                      {f.Icon && <f.Icon size={12}/>}
+                      {f.label}
+                    </button>
                   ))}
                 </div>
                 <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
                   {chains.map(c => (
                     <button key={c} onClick={() => setChainFilter(c)} style={{
-                      padding:'5px 12px', borderRadius:6, fontSize:12,
-                      fontWeight: chainFilter===c?700:400,
-                      border:`1px solid ${chainFilter===c?C.accent:C.border}`,
+                      padding:'8px 14px', borderRadius:8, fontSize:13,
+                      fontWeight: chainFilter===c?700:600,
+                      border:`1px solid ${chainFilter===c?C.accent:'#1e1e2a'}`,
                       background: chainFilter===c?'rgba(99,102,241,0.15)':'transparent',
-                      color: chainFilter===c?'#a5b4fc':C.muted, cursor:'pointer',
-                      whiteSpace:'nowrap'
+                      color: chainFilter===c?'#a5b4fc':'#6b7280', cursor:'pointer',
+                      whiteSpace:'nowrap', transition:'all 0.15s'
                     }}>{c}</button>
                   ))}
                 </div>
@@ -825,9 +851,10 @@ export default function AirdropsPage() {
 
                 return (
                   <div key={airdrop.id} style={{
-                    background:C.card,
+                    background:'#0f0f15',
                     border:`1px solid ${airdrop.confirmed?'rgba(34,197,94,0.3)':C.border}`,
-                    borderRadius:12, marginBottom:12, overflow:'hidden'
+                    borderRadius:12, marginBottom:12, overflow:'hidden',
+                    boxShadow:'0 1px 3px rgba(0,0,0,0.3)', transition:'border-color 0.2s'
                   }}>
                     <div style={{padding:16, cursor:'pointer'}} onClick={() => setExpandedId(isExpanded ? null : airdrop.id)}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
@@ -836,7 +863,7 @@ export default function AirdropsPage() {
                           <div>
                             <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
                               <span style={{fontSize:16, fontWeight:800}}>{airdrop.name}</span>
-                              {airdrop.confirmed && <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(34,197,94,0.15)', color:C.green, fontWeight:700}}>✅ CONFIRMED</span>}
+                              {airdrop.confirmed && <span style={{display:'inline-flex', alignItems:'center', gap:3, fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(34,197,94,0.15)', color:C.green, fontWeight:700}}><CheckCircle size={11}/> CONFIRMED</span>}
                             </div>
                             <div style={{display:'flex', gap:6, alignItems:'center'}}>
                               <span style={{fontSize:11, padding:'2px 6px', borderRadius:4, background:`${airdrop.chainColor}22`, color:airdrop.chainColor, fontWeight:600}}>{airdrop.chain}</span>
@@ -864,18 +891,23 @@ export default function AirdropsPage() {
                         </div>
                       </div>
 
-                      <div style={{fontSize:11, color:C.muted, display:'flex', gap:12, flexWrap:'wrap'}}>
+                      <div style={{fontSize:11, color:C.muted, display:'flex', gap:12, flexWrap:'wrap', alignItems:'center'}}>
                         <span>Raised: <strong style={{color:C.text}}>{airdrop.totalRaised}</strong></span>
                         <span>VCs: <strong style={{color:C.text}}>{airdrop.vcBacking.join(', ')}</strong></span>
-                        <span style={{color:C.accent}}>{isExpanded ? '▲ Less' : '▼ See tasks'}</span>
+                        <span style={{display:'inline-flex', alignItems:'center', gap:4, color:C.accent}}>
+                          {isExpanded ? <><ChevronUp size={12}/> Less</> : <><ChevronDown size={12}/> See tasks</>}
+                        </span>
                       </div>
                     </div>
 
                     {isExpanded && (
                       <div style={{borderTop:`1px solid ${C.border}`, padding:16}}>
-                        <div style={{fontSize:13, fontWeight:700, marginBottom:4}}>💡 Pro tip: {airdrop.tips}</div>
+                        <div style={{display:'flex', alignItems:'flex-start', gap:6, fontSize:13, fontWeight:700, marginBottom:4, color:'#fff'}}>
+                          <Zap size={14} style={{flexShrink:0, marginTop:2, color:'#a5b4fc'}}/>
+                          <div>Pro tip: <span style={{fontWeight:500, color:'#d1d5db'}}>{airdrop.tips}</span></div>
+                        </div>
 
-                        <div style={{fontSize:12, fontWeight:700, color:C.muted, marginBottom:10, marginTop:12, textTransform:'uppercase'}}>Tasks to complete:</div>
+                        <div style={{fontSize:11, fontWeight:600, color:'#4b5563', marginBottom:10, marginTop:12, textTransform:'uppercase', letterSpacing:'0.06em'}}>Tasks to complete:</div>
 
                         {airdrop.tasks.map(task => {
                           const done = progress[airdrop.id]?.[task.id] || false
@@ -893,20 +925,20 @@ export default function AirdropsPage() {
                                 cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
                                 color:'#fff', fontSize:12, marginTop:1
                               }}>
-                                {done ? '✓' : ''}
+                                {done ? <CheckCircle size={12}/> : ''}
                               </button>
                               <div style={{flex:1}}>
                                 <div style={{fontSize:13, fontWeight:600, color: done?C.muted:C.text, textDecoration:done?'line-through':'none', marginBottom:2}}>
                                   {task.label}
                                 </div>
-                                <div style={{fontSize:11, color:C.muted, marginBottom:4}}>{task.description}</div>
+                                <div style={{fontSize:12, color:'#9ca3af', marginBottom:6, lineHeight:1.5}}>{task.description}</div>
                                 <div style={{display:'flex', gap:8, alignItems:'center'}}>
-                                  <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(99,102,241,0.1)', color:'#a5b4fc'}}>
+                                  <span style={{fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(99,102,241,0.1)', color:'#a5b4fc', fontWeight:600}}>
                                     {task.difficulty}
                                   </span>
                                   <span style={{fontSize:10, color:C.muted}}>Cost: {task.cost}</span>
-                                  <a href={task.link} target="_blank" rel="noreferrer" style={{fontSize:10, color:C.accent, textDecoration:'none'}}>
-                                    Go →
+                                  <a href={task.link} target="_blank" rel="noreferrer" style={{display:'inline-flex', alignItems:'center', gap:3, fontSize:10, color:C.accent, textDecoration:'none', fontWeight:600}}>
+                                    Go <ExternalLink size={10}/>
                                   </a>
                                 </div>
                                 {task.steps && task.steps.length > 0 && (
@@ -929,11 +961,13 @@ export default function AirdropsPage() {
                         <div style={{display:'flex', gap:8, marginTop:12, flexWrap:'wrap'}}>
                           {airdrop.links.map(link => (
                             <a key={link.url} href={link.url} target="_blank" rel="noreferrer" style={{
-                              padding:'7px 14px', borderRadius:8,
+                              display:'inline-flex', alignItems:'center', gap:6,
+                              padding:'9px 18px', borderRadius:8,
                               border:`1px solid ${C.accent}40`,
                               background:'rgba(99,102,241,0.08)',
-                              color:'#a5b4fc', fontSize:12, fontWeight:700, textDecoration:'none'
-                            }}>{link.label} →</a>
+                              color:'#a5b4fc', fontSize:13, fontWeight:700, textDecoration:'none',
+                              transition:'all 0.15s'
+                            }}>{link.label} <ExternalLink size={12}/></a>
                           ))}
                         </div>
                       </div>
@@ -946,11 +980,14 @@ export default function AirdropsPage() {
 
           {section === 'daily' && (
             <div>
-              <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>✅ Daily Tasks</div>
-              <div style={{fontSize:12, color:C.muted, marginBottom:16}}>Quick tasks to do every day — takes 15-30 mins total</div>
+              <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                <CheckCircle size={22}/> Daily Tasks
+              </div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:16, lineHeight:1.6}}>Quick tasks to do every day — takes 15-30 mins total</div>
 
-              <div style={{background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:10, padding:12, marginBottom:20, fontSize:12, color:'#86efac', lineHeight:1.6}}>
-                💡 <strong>Daily habit:</strong> Open this page every morning. Complete unchecked tasks. Close it. Takes 15-30 mins. Consistency = bigger airdrops.
+              <div style={{background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:12, padding:14, marginBottom:20, fontSize:13, color:'#86efac', lineHeight:1.6, display:'flex', alignItems:'flex-start', gap:8}}>
+                <Zap size={14} style={{flexShrink:0, marginTop:2}}/>
+                <div><strong>Daily habit:</strong> Open this page every morning. Complete unchecked tasks. Close it. Takes 15-30 mins. Consistency = bigger airdrops.</div>
               </div>
 
               {airdrops.map(airdrop => {
@@ -958,14 +995,14 @@ export default function AirdropsPage() {
                 const hasUncompleted = easyTasks.some(t => !progress[airdrop.id]?.[t.id])
 
                 return (
-                  <div key={airdrop.id} style={{background:C.card, border:`1px solid ${!hasUncompleted?'rgba(34,197,94,0.3)':C.border}`, borderRadius:12, padding:16, marginBottom:12}}>
+                  <div key={airdrop.id} style={{background:'#0f0f15', border:`1px solid ${!hasUncompleted?'rgba(34,197,94,0.3)':C.border}`, borderRadius:12, padding:16, marginBottom:12, boxShadow:'0 1px 3px rgba(0,0,0,0.3)', transition:'border-color 0.2s'}}>
                     <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
                       <span style={{fontSize:22}}>{airdrop.logo}</span>
                       <div>
                         <div style={{fontSize:14, fontWeight:700}}>{airdrop.name}</div>
                         <div style={{fontSize:11, color:C.muted}}>{airdrop.chain} · {airdrop.estimatedValue}</div>
                       </div>
-                      {!hasUncompleted && <span style={{marginLeft:'auto', fontSize:12, color:C.green, fontWeight:700}}>✅ All done!</span>}
+                      {!hasUncompleted && <span style={{marginLeft:'auto', display:'inline-flex', alignItems:'center', gap:4, fontSize:12, color:C.green, fontWeight:700}}><CheckCircle size={12}/> All done!</span>}
                     </div>
 
                     {easyTasks.map(task => {
@@ -981,17 +1018,17 @@ export default function AirdropsPage() {
                               width:20, height:20, borderRadius:4, flexShrink:0,
                               border:`2px solid ${done?C.green:C.muted}`,
                               background:done?C.green:'transparent',
-                              cursor:'pointer', color:'#fff', fontSize:11
+                              cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center'
                             }}>
-                              {done?'✓':''}
+                              {done && <CheckCircle size={10}/>}
                             </button>
                             <span
                               onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
-                              style={{fontSize:12, flex:1, color:done?C.muted:C.text, textDecoration:done?'line-through':'none', cursor:'pointer'}}
+                              style={{display:'inline-flex', alignItems:'center', gap:4, fontSize:12, flex:1, color:done?C.muted:C.text, textDecoration:done?'line-through':'none', cursor:'pointer'}}
                             >
-                              {task.label} <span style={{fontSize:10, color:C.muted}}>{expandedTask === task.id ? '▲' : '▼'}</span>
+                              {task.label} {expandedTask === task.id ? <ChevronUp size={10}/> : <ChevronDown size={10}/>}
                             </span>
-                            <a href={task.link} target="_blank" rel="noreferrer" style={{fontSize:11, color:C.accent, textDecoration:'none', flexShrink:0}}>Go →</a>
+                            <a href={task.link} target="_blank" rel="noreferrer" style={{display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:C.accent, textDecoration:'none', flexShrink:0, fontWeight:600}}>Go <ExternalLink size={10}/></a>
                           </div>
                           {expandedTask === task.id && task.steps && (
                             <div style={{marginTop:8, paddingLeft:32, borderLeft:'2px solid rgba(99,102,241,0.3)'}}>
@@ -999,9 +1036,9 @@ export default function AirdropsPage() {
                                 <div key={i} style={{fontSize:11, color:'#9ca3af', marginBottom:3, lineHeight:1.5}}>{step}</div>
                               ))}
                               <a href={task.link} target="_blank" rel="noreferrer" style={{
-                                display:'inline-block', marginTop:6, fontSize:11, fontWeight:700,
+                                display:'inline-flex', alignItems:'center', gap:4, marginTop:6, fontSize:11, fontWeight:700,
                                 color:'#a5b4fc', textDecoration:'none'
-                              }}>Open app to complete →</a>
+                              }}>Open app to complete <ExternalLink size={10}/></a>
                             </div>
                           )}
                         </div>
@@ -1015,8 +1052,10 @@ export default function AirdropsPage() {
 
           {section === 'learn' && (
             <div>
-              <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>📚 How Airdrops Work</div>
-              <div style={{fontSize:12, color:C.muted, marginBottom:20}}>Everything you need to know</div>
+              <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                <BookOpen size={22}/> How Airdrops Work
+              </div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:20, lineHeight:1.6}}>Everything you need to know</div>
 
               {[
                 {title:'What is an airdrop?', content:'When a crypto project launches a token, they often give free tokens to early users as a reward for using their protocol before launch. This is called an airdrop. You can receive hundreds or thousands of dollars worth of tokens just for using an app.', example:'Jupiter (Solana DEX) gave $800+ in free JUP tokens to everyone who had made at least 1 swap before the snapshot date.'},
@@ -1026,11 +1065,12 @@ export default function AirdropsPage() {
                 {title:'Rug pulls and scams', content:'NEVER share your seed phrase. NEVER approve random contracts. Only use official links from verified Twitter accounts or the official Discord. Fake airdrop websites are the #1 crypto scam.', example:'Real airdrops: you go to THEIR app and connect wallet. Fake airdrops: they ask you to enter your seed phrase or send tokens first. Always fake.'},
                 {title:'Tax implications', content:'In most countries airdrop tokens are taxed as income at the fair market value when you receive them. Keep records of what you received and when. Consult a crypto-savvy accountant.', example:'You receive 1,000 tokens at $1 each = $1,000 taxable income. If they go to $5 and you sell = $4,000 additional capital gains.'},
               ].map((item, i) => (
-                <div key={i} style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:12}}>
+                <div key={i} style={{background:'#0f0f15', border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:12, boxShadow:'0 1px 3px rgba(0,0,0,0.3)', transition:'border-color 0.2s'}}>
                   <div style={{fontSize:14, fontWeight:700, color:'#a5b4fc', marginBottom:8}}>{item.title}</div>
                   <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6, marginBottom:8}}>{item.content}</div>
-                  <div style={{background:'rgba(99,102,241,0.05)', border:'1px solid rgba(99,102,241,0.15)', borderRadius:6, padding:10, fontSize:12, color:C.muted}}>
-                    💡 {item.example}
+                  <div style={{background:'rgba(99,102,241,0.05)', border:'1px solid rgba(99,102,241,0.15)', borderRadius:8, padding:10, fontSize:12, color:'#d1d5db', display:'flex', alignItems:'flex-start', gap:6, lineHeight:1.6}}>
+                    <Zap size={12} style={{flexShrink:0, marginTop:2, color:'#a5b4fc'}}/>
+                    {item.example}
                   </div>
                 </div>
               ))}
@@ -1040,15 +1080,17 @@ export default function AirdropsPage() {
       </div>
 
       {isMobile && (
-        <div style={{position:'fixed', bottom:0, left:0, right:0, zIndex:200, background:'#0a0a0f', borderTop:`1px solid ${C.border}`, display:'flex', height:70}}>
+        <div style={{position:'fixed', bottom:0, left:0, right:0, zIndex:200, background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderTop:`1px solid ${C.border}`, display:'flex', height:70, paddingBottom:'env(safe-area-inset-bottom)'}}>
           {navItems.map(item => (
             <button key={item.id} onClick={() => setSection(item.id as any)} style={{
               flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-              border:'none', background:'transparent', gap:3, cursor:'pointer',
-              borderTop: section===item.id ? `2px solid ${C.accent}` : '2px solid transparent'
+              border:'none', background:'transparent', gap:4, cursor:'pointer',
+              color: section===item.id?'#a5b4fc':'#4b5563',
+              borderTop: section===item.id ? `2px solid ${C.accent}` : '2px solid transparent',
+              transition:'all 0.15s'
             }}>
-              <span style={{fontSize:22}}>{item.icon}</span>
-              <span style={{fontSize:10, fontWeight:section===item.id?700:400, color:section===item.id?'#a5b4fc':C.muted}}>{item.label}</span>
+              <item.Icon size={20}/>
+              <span style={{fontSize:11, fontWeight:section===item.id?700:500, letterSpacing:'-0.01em'}}>{item.label}</span>
             </button>
           ))}
         </div>

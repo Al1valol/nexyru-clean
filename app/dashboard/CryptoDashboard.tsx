@@ -2,6 +2,13 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  TrendingUp, TrendingDown, Activity, RefreshCw, Bell, BellOff,
+  Search, Filter, Star, StarOff, Copy, ExternalLink, ChevronDown,
+  ChevronUp, AlertTriangle, CheckCircle, XCircle, Clock, Zap,
+  Shield, Target, BarChart2, Wallet, ArrowUpRight, ArrowDownRight,
+  Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen
+} from 'lucide-react'
 
 function toast(message, type = "info") {
   if (typeof window !== "undefined" && typeof window.showToast === "function") {
@@ -4963,12 +4970,12 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
   }, []);
 
   const cryptoMobileItems = [
-    { id: 'hotnow',   icon: '🔥', label: 'Hot' },
-    { id: 'gems',     icon: '🎯', label: 'Coin Sniper' },
-    { id: 'dipfinder', icon: '🔄', label: 'Dip Finder' },
-    { id: 'uptrends', icon: '📈', label: 'Trends' },
-    { id: 'accounts', icon: '💼', label: 'Accounts' },
-    { id: 'mystats',  icon: '📊', label: 'Stats' },
+    { id: 'hotnow',    Icon: Activity,     label: 'Hot' },
+    { id: 'gems',      Icon: Target,       label: 'Sniper' },
+    { id: 'dipfinder', Icon: TrendingDown, label: 'Dips' },
+    { id: 'uptrends',  Icon: TrendingUp,   label: 'Trends' },
+    { id: 'accounts',  Icon: Wallet,       label: 'Accounts' },
+    { id: 'mystats',   Icon: BarChart2,    label: 'Stats' },
   ];
 
   return (
@@ -4977,12 +4984,12 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
 
       <aside className="hide-mobile" style={{ position:"fixed", top:bannerOffset, left:0, bottom:0, width:56, background:'#0a0a0f', borderRight:'1px solid #1e1e2a', display:'flex', flexDirection:'column', paddingTop:16, flexShrink:0, zIndex:50 }}>
         {[
-          {id:'hotnow',   label:'Hot Now', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 2s2 3 2 6c0 1.5-1 3-2 3s-2-1.5-2-3c0-1 0-2 1-4z"/><path d="M19 14c0 4-3 7-7 7s-7-3-7-7c0-2 1-4 3-5 0 3 2 4 4 4-1-3 1-6 3-7 2 3 4 5 4 8z"/></svg>},
-          {id:'gems',     label:'🎯 Coin Sniper', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3L8 9l4 12 4-12-3-6"/><path d="M2 9h20"/></svg>},
-          {id:'dipfinder', label:'🔄 Dip Finder', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>},
-          {id:'uptrends', label:'Uptrends', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>},
-          {id:'accounts', label:'Accounts', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>},
-          {id:'mystats',  label:'My Stats', icon:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>},
+          {id:'hotnow',    label:'Hot Now',     Icon: Activity},
+          {id:'gems',      label:'Coin Sniper', Icon: Target},
+          {id:'dipfinder', label:'Dip Finder',  Icon: TrendingDown},
+          {id:'uptrends',  label:'Uptrends',    Icon: TrendingUp},
+          {id:'accounts',  label:'Accounts',    Icon: Wallet},
+          {id:'mystats',   label:'My Stats',    Icon: BarChart2},
         ].map(s=>(
           <div key={s.id} onClick={()=>setCryptoSection(s.id)} title={s.label} style={{
             width:56, height:48, display:'flex', alignItems:'center', justifyContent:'center',
@@ -4990,40 +4997,50 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             background: cryptoSection===s.id ? 'rgba(99,102,241,0.08)' : 'transparent',
             borderLeft: cryptoSection===s.id ? '2px solid #6366f1' : '2px solid transparent',
             transition:'all 0.15s', marginBottom:4
-          }}>{s.icon}</div>
+          }}><s.Icon size={18}/></div>
         ))}
       </aside>
 
       <header style={{
-        background:"#0a0a0f", borderBottom:"1px solid #1e1e2a",
+        background:"rgba(8,8,8,0.95)", backdropFilter:"blur(12px)", borderBottom:"1px solid #1e1e2a",
         display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding: isMobile ? '8px 8px' : '8px 12px', gap:12, position:"sticky", top:bannerOffset, zIndex:100,
+        padding: isMobile ? '12px 16px' : '14px 24px', gap:12, position:"sticky", top:bannerOffset, zIndex:100,
         marginLeft: isMobile ? 0 : 56,
       }}>
-        <div style={{ fontSize:14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>🪙 Crypto</div>
+        <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:14, fontWeight:800, color:"#fff", whiteSpace:"nowrap", letterSpacing:"-0.01em" }}>
+          <Activity size={16}/> Crypto
+        </div>
         <div style={{ display:"flex", gap:4, alignItems:"center" }}>
           {[
-            { href:"/dashboard", label:"📈 Trading", active:false },
-            { href:"/crypto",    label:"🪙 Crypto",  active:true  },
-            { href:"/sports",    label:"🎰 Sports",  active:false },
-            { href:"/options",   label:"📊 Options", active:false },
+            { href:"/dashboard", Icon: TrendingUp, label:"Trading", active:false },
+            { href:"/crypto",    Icon: Activity,   label:"Crypto",  active:true  },
+            { href:"/sports",    Icon: Target,     label:"Sports",  active:false },
+            { href:"/options",   Icon: BarChart2,  label:"Options", active:false },
+            { href:"/airdrops",  Icon: Zap,        label:"Airdrops", active:false },
           ].map(l => (
             <a key={l.href} href={l.href} style={{
-              padding: isMobile ? "6px 6px" : "6px 12px", fontSize: isMobile ? 11 : 13,
-              color: l.active ? "#fff" : "#6b7280",
+              display:"flex", alignItems:"center", gap:6,
+              padding: isMobile ? "6px 8px" : "6px 14px", fontSize: isMobile ? 12 : 13,
+              fontWeight: 500,
+              color: l.active ? "#fff" : "#4b5563",
               textDecoration:"none", whiteSpace:"nowrap",
-              fontWeight: l.active ? 700 : 500,
               borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
-            }}>{l.label}</a>
+              transition:"color 0.15s, border-color 0.15s", letterSpacing:"-0.01em"
+            }}>
+              <l.Icon size={14}/> {!isMobile && l.label}
+            </a>
           ))}
         </div>
         <a href="/morning" style={{
-          padding:"6px 12px", borderRadius:6,
+          display:"flex", alignItems:"center", gap:6,
+          padding:"8px 14px", borderRadius:8,
           border:"1px solid rgba(0,212,255,0.3)",
           background:"rgba(0,212,255,0.05)",
           color:"#00d4ff", textDecoration:"none",
-          fontSize:11, fontWeight:700, whiteSpace:"nowrap",
-        }}>⬡ Daily Briefing</a>
+          fontSize:13, fontWeight:700, whiteSpace:"nowrap",
+        }}>
+          <Award size={14}/> {isMobile ? '' : 'Daily Briefing'}
+        </a>
       </header>
 
       <div style={{ flex:1, padding: isMobile ? 12 : 24, overflowY:"auto", marginLeft: isMobile ? 0 : 80, paddingBottom: isMobile ? 80 : 0 }}>
@@ -5041,11 +5058,12 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             <button
               onClick={() => setCryptoRefreshKey(k => k + 1)}
               style={{
-                padding: isMobile ? "5px 10px" : "6px 14px", borderRadius:8, border:"1px solid #2a2a3a",
-                background:"#1a1a24", color:"#fff", fontSize:12, fontWeight:700,
-                cursor:"pointer", letterSpacing:"0.02em",
+                display:"flex", alignItems:"center", gap:6,
+                padding: isMobile ? "8px 12px" : "9px 18px", borderRadius:8, border:"none",
+                background:"#6366f1", color:"#fff", fontSize:13, fontWeight:700,
+                cursor:"pointer", letterSpacing:"-0.01em", transition:"all 0.15s"
               }}
-            >Refresh</button>
+            ><RefreshCw size={14}/> Refresh</button>
           </div>
         </div>
         {cryptoSection === 'hotnow'    && <ChartErrorBoundary resetKey="hotnow"><CryptoHotNow    refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
@@ -5054,17 +5072,25 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
           <div>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:8}}>
               <div>
-                <div style={{fontSize:22, fontWeight:800, marginBottom:4}}>🔄 Dip Finder</div>
-                <div style={{fontSize:13, color:'#6b7280'}}>Down in the last 4-6 hours but recovering in the last hour — buy the bounce</div>
+                <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                  <TrendingDown size={22}/> Dip Finder
+                </div>
+                <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>Down in the last 4-6 hours but recovering in the last hour — buy the bounce</div>
               </div>
               <button onClick={fetchDips} disabled={dipsLoading} style={{
-                padding:'8px 16px', borderRadius:8, border:'none',
-                background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
-              }}>{dipsLoading ? '⟳ Scanning...' : '⟳ Refresh'}</button>
+                display:'flex', alignItems:'center', gap:6,
+                padding:'9px 18px', borderRadius:8, border:'none',
+                background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer',
+                transition:'all 0.15s'
+              }}>
+                <RefreshCw size={14}/>
+                {dipsLoading ? 'Scanning...' : 'Refresh'}
+              </button>
             </div>
 
-            <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:12, marginBottom:16, fontSize:12, color:'#a5b4fc', lineHeight:1.6}}>
-              💡 <strong>Strategy:</strong> These coins dipped recently but are now bouncing back up in the last hour. The dip already happened — you're buying the recovery. Look for strong 1h bounce + healthy volume.
+            <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:12, padding:14, marginBottom:16, fontSize:13, color:'#a5b4fc', lineHeight:1.6, display:'flex', alignItems:'flex-start', gap:8}}>
+              <Zap size={14} style={{flexShrink:0, marginTop:2}}/>
+              <div><strong>Strategy:</strong> These coins dipped recently but are now bouncing back up in the last hour. The dip already happened — you're buying the recovery. Look for strong 1h bounce + healthy volume.</div>
             </div>
 
             {dipsLoading ? (
@@ -5232,7 +5258,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
       {isMobile && (
         <div style={{
           position:'fixed', bottom:0, left:0, right:0, zIndex:200,
-          background:'#0a0a0f', borderTop:'1px solid #1e1e2a',
+          background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderTop:'1px solid #1e1e2a',
           display:'flex', paddingBottom:'env(safe-area-inset-bottom)',
           height:70
         }}>
@@ -5241,13 +5267,15 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
               flex:1, display:'flex', flexDirection:'column',
               alignItems:'center', justifyContent:'center',
               border:'none', background:'transparent',
-              gap:3, cursor:'pointer', padding:'8px 4px',
+              gap:4, cursor:'pointer', padding:'8px 4px',
+              color: cryptoSection===item.id ? '#a5b4fc' : '#4b5563',
               borderTop: cryptoSection===item.id ? '2px solid #6366f1' : '2px solid transparent',
+              transition:'all 0.15s',
             }}>
-              <span style={{fontSize:22}}>{item.icon}</span>
+              <item.Icon size={20}/>
               <span style={{
-                fontSize:10, fontWeight: cryptoSection===item.id ? 700 : 400,
-                color: cryptoSection===item.id ? '#a5b4fc' : '#4b5563'
+                fontSize:11, fontWeight: cryptoSection===item.id ? 700 : 500,
+                letterSpacing:'-0.01em'
               }}>{item.label}</span>
             </button>
           ))}

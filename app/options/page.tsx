@@ -1,5 +1,12 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import {
+  TrendingUp, TrendingDown, Activity, RefreshCw, Bell, BellOff,
+  Search, Filter, Star, StarOff, Copy, ExternalLink, ChevronDown,
+  ChevronUp, AlertTriangle, CheckCircle, XCircle, Clock, Zap,
+  Shield, Target, BarChart2, Wallet, ArrowUpRight, ArrowDownRight,
+  Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen
+} from 'lucide-react'
 
 // Types
 interface OptionsAlert {
@@ -232,7 +239,12 @@ export default function OptionsPage() {
 
   const urgencyColor = (u: string) => u === 'HIGH' ? C.red : u === 'MEDIUM' ? C.yellow : C.muted
   const sentimentColor = (s: string) => s.includes('BULLISH') ? C.green : C.red
-  const sentimentEmoji = (s: string) => s === 'VERY BULLISH' ? '🚀' : s === 'BULLISH' ? '📈' : s === 'BEARISH' ? '📉' : '💥'
+  const SentimentIcon = ({s}: {s: string}) => {
+    if (s === 'VERY BULLISH') return <ArrowUpRight size={18}/>
+    if (s === 'BULLISH') return <TrendingUp size={18}/>
+    if (s === 'BEARISH') return <TrendingDown size={18}/>
+    return <ArrowDownRight size={18}/>
+  }
 
   const filtered = alerts
     .filter(a => filterType === 'all' || a.type === filterType)
@@ -245,10 +257,10 @@ export default function OptionsPage() {
   const winRate = closedTrades.length ? Math.round(closedTrades.filter(t => t.status === 'won').length / closedTrades.length * 100) : 0
 
   const navItems = [
-    {id:'scanner', icon:'📡', label:'Scanner'},
-    {id:'watchlist', icon:'⭐', label:'Watchlist'},
-    {id:'trades', icon:'💼', label:'Trades'},
-    {id:'learn', icon:'📚', label:'Learn'},
+    {id:'scanner', Icon: Radio, label:'Scanner'},
+    {id:'watchlist', Icon: Star, label:'Watchlist'},
+    {id:'trades', Icon: Wallet, label:'Trades'},
+    {id:'learn', Icon: BookOpen, label:'Learn'},
   ]
 
   return (
@@ -256,22 +268,27 @@ export default function OptionsPage() {
 
       {/* Mobile app switcher */}
       {isMobile && (
-        <div style={{display:'flex', background:'#0a0a0f', borderBottom:`1px solid ${C.border}`, padding:'0 4px'}}>
+        <div style={{display:'flex', background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${C.border}`, padding:'0 4px'}}>
           {[
-            {label:'📈 Trading', href:'/dashboard'},
-            {label:'🪙 Crypto', href:'/crypto'},
-            {label:'🎰 Sports', href:'/sports'},
-            {label:'📊 Options', href:'/options', active:true},
-            {label:'💧 Airdrops', href:'/airdrops'},
-            {label:'⬡ JARVIS', href:'/morning'},
+            {Icon: TrendingUp, label:'Trading', href:'/dashboard'},
+            {Icon: Activity, label:'Crypto', href:'/crypto'},
+            {Icon: Target, label:'Sports', href:'/sports'},
+            {Icon: BarChart2, label:'Options', href:'/options', active:true},
+            {Icon: Zap, label:'Airdrops', href:'/airdrops'},
+            {Icon: Award, label:'JARVIS', href:'/morning'},
           ].map(link => (
             <a key={link.href} href={link.href} style={{
-              flex:1, textAlign:'center', padding:'8px 2px', fontSize:10,
-              fontWeight: link.active ? 700 : 400,
-              color: link.active ? '#fff' : C.muted,
+              flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+              padding:'8px 2px', fontSize:10,
+              fontWeight: link.active ? 700 : 500,
+              color: link.active ? '#fff' : '#4b5563',
               textDecoration:'none',
-              borderBottom: link.active ? `2px solid ${C.accent}` : '2px solid transparent'
-            }}>{link.label}</a>
+              borderBottom: link.active ? `2px solid ${C.accent}` : '2px solid transparent',
+              transition:'color 0.15s, border-color 0.15s'
+            }}>
+              <link.Icon size={14}/>
+              <span>{link.label}</span>
+            </a>
           ))}
         </div>
       )}
@@ -279,45 +296,57 @@ export default function OptionsPage() {
       {/* Top bar */}
       <div style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding: isMobile ? '10px 12px' : '8px 12px',
-        background:'#0a0a0f', borderBottom:`1px solid ${C.border}`,
+        padding: isMobile ? '12px 16px' : '14px 24px',
+        background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)',
+        borderBottom:`1px solid ${C.border}`,
         position:'sticky', top:0, zIndex:100, gap:12
       }}>
-        <div style={{fontSize: isMobile?14:14, fontWeight:700, color:'#fff', whiteSpace:'nowrap'}}>📊 Options Flow</div>
+        <div style={{display:'flex', alignItems:'center', gap:8, fontSize: 14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', letterSpacing:'-0.01em'}}>
+          <BarChart2 size={16}/> Options Flow
+        </div>
 
         {!isMobile && (
           <div style={{display:'flex', gap:4, alignItems:'center'}}>
             {[
-              { href:'/dashboard', label:'📈 Trading',  active:false },
-              { href:'/crypto',    label:'🪙 Crypto',   active:false },
-              { href:'/sports',    label:'🎰 Sports',   active:false },
-              { href:'/options',   label:'📊 Options',  active:true  },
-              { href:'/airdrops',  label:'💧 Airdrops', active:false },
+              { href:'/dashboard', Icon: TrendingUp, label:'Trading',  active:false },
+              { href:'/crypto',    Icon: Activity,   label:'Crypto',   active:false },
+              { href:'/sports',    Icon: Target,     label:'Sports',   active:false },
+              { href:'/options',   Icon: BarChart2,  label:'Options',  active:true  },
+              { href:'/airdrops',  Icon: Zap,        label:'Airdrops', active:false },
             ].map(l => (
               <a key={l.href} href={l.href} style={{
-                padding:'6px 12px', fontSize:13,
-                color: l.active ? '#fff' : '#6b7280',
+                display:'flex', alignItems:'center', gap:6,
+                padding:'6px 14px', fontSize:13, fontWeight:500,
+                color: l.active ? '#fff' : '#4b5563',
                 textDecoration:'none', whiteSpace:'nowrap',
-                fontWeight: l.active ? 700 : 500,
                 borderBottom: l.active ? '2px solid #6366f1' : '2px solid transparent',
-              }}>{l.label}</a>
+                transition:'color 0.15s, border-color 0.15s',
+                letterSpacing:'-0.01em'
+              }}>
+                <l.Icon size={14}/> {l.label}
+              </a>
             ))}
           </div>
         )}
 
         <div style={{display:'flex', alignItems:'center', gap:8}}>
-          <div style={{fontSize:12, color: bankroll >= 10000 ? C.green : C.red, fontWeight:700, whiteSpace:'nowrap'}}>
+          <div style={{fontSize:13, color: bankroll >= 10000 ? C.green : C.red, fontWeight:700, whiteSpace:'nowrap'}}>
             ${bankroll.toLocaleString('en-US', {maximumFractionDigits:0})}
           </div>
           <button onClick={enableNotifications} style={{
-            padding:'6px 10px', borderRadius:6, fontSize:11, fontWeight:700,
-            border:`1px solid ${alertsEnabled ? C.green : C.border}`,
-            background: alertsEnabled ? `${C.green}15` : 'transparent',
-            color: alertsEnabled ? C.green : C.muted, cursor:'pointer'
+            display:'flex', alignItems:'center', gap:6,
+            padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight:600,
+            border:`1px solid ${alertsEnabled ? 'rgba(34,197,94,0.25)' : '#1e1e2a'}`,
+            background: alertsEnabled ? 'rgba(34,197,94,0.15)' : 'transparent',
+            color: alertsEnabled ? C.green : '#6b7280', cursor:'pointer',
+            transition:'all 0.15s'
           }}>
-            {alertsEnabled ? '🔔 ON' : '🔕 Alerts'}
+            {alertsEnabled ? <Bell size={14}/> : <BellOff size={14}/>}
+            {alertsEnabled ? 'ON' : 'Alerts'}
           </button>
-          <a href="/morning" style={{fontSize:11, color:'#a5b4fc', textDecoration:'none', padding:'6px 10px', borderRadius:6, border:`1px solid rgba(99,102,241,0.3)`, whiteSpace:'nowrap'}}>⬡ JARVIS</a>
+          <a href="/morning" style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#a5b4fc', textDecoration:'none', padding:'8px 14px', borderRadius:8, border:`1px solid rgba(99,102,241,0.3)`, whiteSpace:'nowrap', fontWeight:600}}>
+            <Award size={14}/> JARVIS
+          </a>
         </div>
       </div>
 
@@ -331,18 +360,19 @@ export default function OptionsPage() {
                 width:'100%', display:'flex', alignItems:'center', gap:10,
                 padding:'10px 16px', border:'none',
                 background: section===item.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                color: section===item.id ? '#a5b4fc' : C.muted,
-                fontSize:13, fontWeight: section===item.id ? 700 : 400,
+                color: section===item.id ? '#a5b4fc' : '#6b7280',
+                fontSize:13, fontWeight: section===item.id ? 700 : 500,
                 cursor:'pointer', textAlign:'left',
-                borderLeft: section===item.id ? `3px solid ${C.accent}` : '3px solid transparent'
+                borderLeft: section===item.id ? `3px solid ${C.accent}` : '3px solid transparent',
+                transition:'all 0.15s'
               }}>
-                <span style={{fontSize:16}}>{item.icon}</span>
+                <item.Icon size={16}/>
                 {item.label}
               </button>
             ))}
 
             {/* Market status */}
-            <div style={{margin:'16px', padding:10, background:C.card, borderRadius:8, border:`1px solid ${C.border}`}}>
+            <div style={{margin:'16px', padding:12, background:'#0f0f15', borderRadius:12, border:`1px solid ${C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
               {(() => {
                 const now = new Date()
                 const hour = now.getHours()
@@ -350,11 +380,12 @@ export default function OptionsPage() {
                 const isOpen = day >= 1 && day <= 5 && hour >= 9 && hour < 16
                 return (
                   <>
-                    <div style={{fontSize:10, color:C.muted, marginBottom:4}}>MARKET</div>
-                    <div style={{fontSize:13, fontWeight:700, color: isOpen ? C.green : C.muted}}>
-                      {isOpen ? '🟢 OPEN' : '🔴 CLOSED'}
+                    <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>MARKET</div>
+                    <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:700, color: isOpen ? C.green : C.muted}}>
+                      <span style={{width:8, height:8, borderRadius:'50%', background: isOpen ? C.green : C.red, boxShadow: isOpen ? `0 0 8px ${C.green}` : 'none'}}/>
+                      {isOpen ? 'OPEN' : 'CLOSED'}
                     </div>
-                    <div style={{fontSize:10, color:C.muted, marginTop:2}}>
+                    <div style={{fontSize:11, color:C.muted, marginTop:4}}>
                       {isOpen ? 'Live data' : 'Opens 9:30 EST'}
                     </div>
                   </>
@@ -363,15 +394,15 @@ export default function OptionsPage() {
             </div>
 
             {/* Stats */}
-            <div style={{margin:'0 16px', padding:10, background:C.card, borderRadius:8, border:`1px solid ${C.border}`}}>
-              <div style={{fontSize:10, color:C.muted, marginBottom:6}}>PAPER TRADING</div>
-              <div style={{fontSize:12, color:C.text, marginBottom:2}}>
+            <div style={{margin:'0 16px', padding:12, background:'#0f0f15', borderRadius:12, border:`1px solid ${C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
+              <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:8}}>PAPER TRADING</div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
                 Win rate: <strong style={{color: winRate >= 50 ? C.green : C.red}}>{winRate}%</strong>
               </div>
-              <div style={{fontSize:12, color:C.text, marginBottom:2}}>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
                 P&L: <strong style={{color: totalPnl >= 0 ? C.green : C.red}}>{totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}</strong>
               </div>
-              <div style={{fontSize:12, color:C.text}}>
+              <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>
                 Open: <strong>{openTrades.length}</strong>
               </div>
             </div>
@@ -386,23 +417,29 @@ export default function OptionsPage() {
             <div>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:8}}>
                 <div>
-                  <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>📡 Options Flow Scanner</div>
-                  <div style={{fontSize:12, color:C.muted}}>
+                  <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                    <Radio size={22}/> Options Flow Scanner
+                  </div>
+                  <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>
                     Unusual options activity — when whales make big bets
                     {lastUpdated && ` · Updated ${lastUpdated.toLocaleTimeString()}`}
                   </div>
                 </div>
                 <button onClick={fetchAlerts} disabled={loading} style={{
-                  padding:'8px 16px', borderRadius:8, border:'none',
-                  background: C.accent, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
+                  display:'flex', alignItems:'center', gap:6,
+                  padding:'9px 18px', borderRadius:8, border:'none',
+                  background: C.accent, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer',
+                  transition:'all 0.15s'
                 }}>
-                  {loading ? '⟳ Scanning...' : '⟳ Refresh'}
+                  <RefreshCw size={14} className={loading ? 'spin' : ''}/>
+                  {loading ? 'Scanning...' : 'Refresh'}
                 </button>
               </div>
 
               {/* Info banner */}
-              <div style={{background:'rgba(99,102,241,0.06)', border:`1px solid rgba(99,102,241,0.2)`, borderRadius:10, padding:12, marginBottom:16, fontSize:12, color:'#a5b4fc', lineHeight:1.6}}>
-                💡 <strong>How to use:</strong> When you see HIGH urgency with score 70+, someone big is making a move. Click AI Analysis to understand why. If it says BUY, consider following with paper money first. Always verify on your own before using real money.
+              <div style={{background:'rgba(99,102,241,0.06)', border:`1px solid rgba(99,102,241,0.2)`, borderRadius:12, padding:14, marginBottom:16, fontSize:13, color:'#a5b4fc', lineHeight:1.6, display:'flex', alignItems:'flex-start', gap:8}}>
+                <Zap size={14} style={{flexShrink:0, marginTop:2}}/>
+                <div><strong>How to use:</strong> When you see HIGH urgency with score 70+, someone big is making a move. Click AI Analysis to understand why. If it says BUY, consider following with paper money first. Always verify on your own before using real money.</div>
               </div>
 
               {/* Filters */}
@@ -410,24 +447,32 @@ export default function OptionsPage() {
                 <div style={{display:'flex', gap:4}}>
                   {['all','CALL','PUT'].map(f => (
                     <button key={f} onClick={() => setFilterType(f as any)} style={{
-                      padding:'5px 12px', borderRadius:6, fontSize:12, fontWeight: filterType===f ? 700 : 400,
-                      border:`1px solid ${filterType===f ? C.accent : C.border}`,
+                      display:'flex', alignItems:'center', gap:6,
+                      padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight: filterType===f ? 700 : 600,
+                      border:`1px solid ${filterType===f ? C.accent : '#1e1e2a'}`,
                       background: filterType===f ? `rgba(99,102,241,0.15)` : 'transparent',
-                      color: filterType===f ? '#a5b4fc' : C.muted, cursor:'pointer'
+                      color: filterType===f ? '#a5b4fc' : '#6b7280', cursor:'pointer',
+                      transition:'all 0.15s'
                     }}>
-                      {f === 'all' ? 'All' : f === 'CALL' ? '📈 Calls' : '📉 Puts'}
+                      {f === 'CALL' && <TrendingUp size={12}/>}
+                      {f === 'PUT' && <TrendingDown size={12}/>}
+                      {f === 'all' ? 'All' : f === 'CALL' ? 'Calls' : 'Puts'}
                     </button>
                   ))}
                 </div>
                 <div style={{display:'flex', gap:4}}>
                   {['all','HIGH','MEDIUM'].map(f => (
                     <button key={f} onClick={() => setFilterUrgency(f as any)} style={{
-                      padding:'5px 12px', borderRadius:6, fontSize:12, fontWeight: filterUrgency===f ? 700 : 400,
-                      border:`1px solid ${filterUrgency===f ? (f==='HIGH'?'rgba(239,68,68,0.5)':f==='MEDIUM'?'rgba(245,158,11,0.5)':C.accent) : C.border}`,
+                      display:'flex', alignItems:'center', gap:6,
+                      padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight: filterUrgency===f ? 700 : 600,
+                      border:`1px solid ${filterUrgency===f ? (f==='HIGH'?'rgba(239,68,68,0.5)':f==='MEDIUM'?'rgba(245,158,11,0.5)':C.accent) : '#1e1e2a'}`,
                       background: filterUrgency===f ? (f==='HIGH'?'rgba(239,68,68,0.1)':f==='MEDIUM'?'rgba(245,158,11,0.1)':`rgba(99,102,241,0.15)`) : 'transparent',
-                      color: filterUrgency===f ? (f==='HIGH'?C.red:f==='MEDIUM'?C.yellow:'#a5b4fc') : C.muted, cursor:'pointer'
+                      color: filterUrgency===f ? (f==='HIGH'?C.red:f==='MEDIUM'?C.yellow:'#a5b4fc') : '#6b7280', cursor:'pointer',
+                      transition:'all 0.15s'
                     }}>
-                      {f === 'all' ? 'All' : f === 'HIGH' ? '🚨 High' : '⚡ Medium'}
+                      {f === 'HIGH' && <AlertTriangle size={12}/>}
+                      {f === 'MEDIUM' && <Zap size={12}/>}
+                      {f === 'all' ? 'All' : f === 'HIGH' ? 'High' : 'Medium'}
                     </button>
                   ))}
                 </div>
@@ -444,15 +489,15 @@ export default function OptionsPage() {
               {/* Alert cards */}
               {loading && alerts.length === 0 ? (
                 <div style={{textAlign:'center', padding:48, color:C.muted}}>
-                  <div style={{fontSize:32, marginBottom:12}}>📡</div>
-                  <div style={{fontSize:16, fontWeight:700, marginBottom:8}}>Scanning options flow...</div>
+                  <Radio size={32} style={{marginBottom:12, opacity:0.5}}/>
+                  <div style={{fontSize:16, fontWeight:700, marginBottom:8, color:'#fff'}}>Scanning options flow...</div>
                   <div style={{fontSize:13}}>Checking for unusual activity across all US stocks</div>
                 </div>
               ) : alerts.length === 0 ? (
-                <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:'center'}}>
-                  <div style={{fontSize:32, marginBottom:12}}>😴</div>
+                <div style={{background:'#0f0f15', border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:'center', boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
+                  <Clock size={32} style={{marginBottom:12, opacity:0.5, color:C.muted}}/>
                   <div style={{fontSize:16, fontWeight:700, color:C.text, marginBottom:8}}>No unusual activity right now</div>
-                  <div style={{fontSize:13, color:C.muted, marginBottom:16}}>
+                  <div style={{fontSize:13, color:'#d1d5db', marginBottom:16, lineHeight:1.6}}>
                     Markets may be closed or activity is normal today.
                     Scanner runs automatically every 5 minutes during market hours (9:30am-4pm EST).
                   </div>
@@ -466,10 +511,11 @@ export default function OptionsPage() {
 
                 return (
                   <div key={alert.id} style={{
-                    background: C.card,
+                    background: '#0f0f15',
                     border:`1px solid ${alert.urgency==='HIGH' ? 'rgba(239,68,68,0.4)' : alert.urgency==='MEDIUM' ? 'rgba(245,158,11,0.3)' : C.border}`,
                     borderRadius:12, padding:16, marginBottom:12,
-                    boxShadow: alert.urgency==='HIGH' ? '0 0 20px rgba(239,68,68,0.08)' : 'none'
+                    boxShadow: alert.urgency==='HIGH' ? '0 0 20px rgba(239,68,68,0.08)' : '0 1px 3px rgba(0,0,0,0.3)',
+                    transition:'border-color 0.2s'
                   }}>
                     {/* Header */}
                     <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12}}>
@@ -477,18 +523,27 @@ export default function OptionsPage() {
                         <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4}}>
                           <span style={{fontSize:22, fontWeight:900, color:C.text}}>{alert.ticker}</span>
                           <span style={{
+                            display:'inline-flex', alignItems:'center', gap:4,
                             fontSize:12, fontWeight:800, padding:'3px 8px', borderRadius:4,
                             background: alert.type==='CALL' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
                             color: alert.type==='CALL' ? C.green : C.red
-                          }}>{alert.type==='CALL' ? '📈 CALL' : '📉 PUT'}</span>
+                          }}>
+                            {alert.type==='CALL' ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
+                            {alert.type}
+                          </span>
                           <span style={{
+                            display:'inline-flex', alignItems:'center', gap:4,
                             fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:4,
                             background: alert.urgency==='HIGH' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
                             color: urgencyColor(alert.urgency)
-                          }}>{alert.urgency==='HIGH' ? '🚨 HIGH' : '⚡ MEDIUM'}</span>
+                          }}>
+                            {alert.urgency==='HIGH' ? <AlertTriangle size={12}/> : <Zap size={12}/>}
+                            {alert.urgency}
+                          </span>
                         </div>
-                        <div style={{fontSize:12, color:C.muted}}>
-                          ${alert.strike} strike · Expires {alert.expiry} ({alert.daysToExpiry}d) · {alert.inTheMoney ? '✅ ITM' : '⚪ OTM'}
+                        <div style={{display:'flex', alignItems:'center', gap:6, fontSize:12, color:C.muted}}>
+                          ${alert.strike} strike · Expires {alert.expiry} ({alert.daysToExpiry}d) ·
+                          {alert.inTheMoney ? <span style={{display:'inline-flex', alignItems:'center', gap:3, color:C.green}}><CheckCircle size={12}/>ITM</span> : <span style={{display:'inline-flex', alignItems:'center', gap:3}}>OTM</span>}
                         </div>
                       </div>
                       <div style={{textAlign:'right'}}>
@@ -500,16 +555,16 @@ export default function OptionsPage() {
                     </div>
 
                     {/* Stats grid */}
-                    <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12}}>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16}}>
                       {[
                         {label:'VOLUME', value: alert.volume.toLocaleString(), color: C.text},
                         {label:'VS NORMAL', value: `${alert.volumeRatio.toFixed(1)}x`, color: alert.volumeRatio > 10 ? C.red : alert.volumeRatio > 5 ? C.yellow : C.text},
                         {label:'PREMIUM', value: `$${alert.premium >= 1000000 ? (alert.premium/1000000).toFixed(1)+'M' : (alert.premium/1000).toFixed(0)+'k'}`, color: C.green},
                         {label:'IV', value: `${alert.impliedVolatility}%`, color: C.text},
                       ].map(stat => (
-                        <div key={stat.label} style={{background:'#1a1a24', borderRadius:6, padding:'8px', textAlign:'center'}}>
-                          <div style={{fontSize:9, color:C.muted, marginBottom:2}}>{stat.label}</div>
-                          <div style={{fontSize:14, fontWeight:700, color:stat.color}}>{stat.value}</div>
+                        <div key={stat.label} style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                          <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>{stat.label}</div>
+                          <div style={{fontSize:18, fontWeight:800, color:stat.color, letterSpacing:'-0.02em'}}>{stat.value}</div>
                         </div>
                       ))}
                     </div>
@@ -521,7 +576,7 @@ export default function OptionsPage() {
                       background: alert.type==='CALL' ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
                       border: `1px solid ${alert.type==='CALL' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`
                     }}>
-                      <span style={{fontSize:18}}>{sentimentEmoji(alert.sentiment)}</span>
+                      <SentimentIcon s={alert.sentiment}/>
                       <div>
                         <div style={{fontSize:13, fontWeight:700, color: sentimentColor(alert.sentiment)}}>{alert.sentiment}</div>
                         <div style={{fontSize:11, color:C.muted}}>
@@ -538,13 +593,13 @@ export default function OptionsPage() {
                         borderRadius:8, padding:12, marginBottom:10
                       }}>
                         <div style={{display:'flex', justifyContent:'space-between', marginBottom:6}}>
-                          <span style={{fontSize:14, fontWeight:800, color: ai.pick==='BUY'?C.green:ai.pick==='WATCH'?C.yellow:C.red}}>
-                            {ai.pick==='BUY'?'✅ FOLLOW THIS TRADE':ai.pick==='WATCH'?'👀 WATCH & WAIT':'🚫 SKIP THIS ONE'}
+                          <span style={{display:'inline-flex', alignItems:'center', gap:6, fontSize:14, fontWeight:800, color: ai.pick==='BUY'?C.green:ai.pick==='WATCH'?C.yellow:C.red}}>
+                            {ai.pick==='BUY' ? <><CheckCircle size={14}/>FOLLOW THIS TRADE</> : ai.pick==='WATCH' ? <><Eye size={14}/>WATCH & WAIT</> : <><XCircle size={14}/>SKIP THIS ONE</>}
                           </span>
                           <span style={{fontSize:11, color:C.muted}}>{ai.confidence} confidence</span>
                         </div>
-                        <div style={{fontSize:12, color:'#d1d5db', lineHeight:1.5}}>{ai.reasoning}</div>
-                        {ai.warning && <div style={{fontSize:11, color:C.yellow, marginTop:6}}>⚠️ {ai.warning}</div>}
+                        <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>{ai.reasoning}</div>
+                        {ai.warning && <div style={{display:'flex', alignItems:'center', gap:4, fontSize:11, color:C.yellow, marginTop:6}}><AlertTriangle size={11}/> {ai.warning}</div>}
                       </div>
                     )}
 
@@ -552,28 +607,35 @@ export default function OptionsPage() {
                     <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
                       {!ai && (
                         <button onClick={() => analyzeAlert(alert)} disabled={isAnalyzing} style={{
-                          flex:1, padding:'8px', borderRadius:8,
+                          flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                          padding:'9px 14px', borderRadius:8,
                           border:`1px solid rgba(99,102,241,0.4)`,
                           background:'rgba(99,102,241,0.08)',
                           color: isAnalyzing ? C.muted : '#a5b4fc',
-                          fontSize:12, fontWeight:700, cursor:'pointer'
+                          fontSize:13, fontWeight:700, cursor:'pointer',
+                          transition:'all 0.15s'
                         }}>
-                          {isAnalyzing ? '🤔 Analyzing...' : '✦ AI Analysis'}
+                          <Zap size={14}/>
+                          {isAnalyzing ? 'Analyzing...' : 'AI Analysis'}
                         </button>
                       )}
                       <button onClick={() => { setTradeModal(alert); setTradeContracts('1'); setTradePrice('') }} style={{
-                        flex:1, padding:'8px', borderRadius:8, border:'none',
-                        background: C.accent, color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer'
+                        flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                        padding:'9px 18px', borderRadius:8, border:'none',
+                        background: C.accent, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer',
+                        transition:'all 0.15s'
                       }}>
-                        + Paper Trade
+                        <Plus size={14}/> Paper Trade
                       </button>
                       <a href={`https://finance.yahoo.com/quote/${alert.ticker}/options`} target="_blank" rel="noreferrer" style={{
-                        padding:'8px 12px', borderRadius:8,
-                        border:`1px solid ${C.border}`,
-                        background:'transparent', color:C.muted,
-                        fontSize:12, fontWeight:700, textDecoration:'none'
+                        display:'flex', alignItems:'center', gap:6,
+                        padding:'8px 14px', borderRadius:8,
+                        border:`1px solid #1e1e2a`,
+                        background:'transparent', color:'#6b7280',
+                        fontSize:13, fontWeight:600, textDecoration:'none',
+                        transition:'all 0.15s'
                       }}>
-                        Yahoo →
+                        Yahoo <ExternalLink size={12}/>
                       </a>
                       <button onClick={() => {
                         const wl = watchlist.includes(alert.ticker)
@@ -582,13 +644,14 @@ export default function OptionsPage() {
                         setWatchlist(wl)
                         localStorage.setItem('options_watchlist', JSON.stringify(wl))
                       }} style={{
+                        display:'flex', alignItems:'center', justifyContent:'center',
                         padding:'8px 10px', borderRadius:8,
-                        border:`1px solid ${watchlist.includes(alert.ticker) ? 'rgba(245,158,11,0.4)' : C.border}`,
+                        border:`1px solid ${watchlist.includes(alert.ticker) ? 'rgba(245,158,11,0.4)' : '#1e1e2a'}`,
                         background: watchlist.includes(alert.ticker) ? 'rgba(245,158,11,0.1)' : 'transparent',
-                        color: watchlist.includes(alert.ticker) ? C.yellow : C.muted,
-                        fontSize:14, cursor:'pointer'
+                        color: watchlist.includes(alert.ticker) ? C.yellow : '#6b7280',
+                        cursor:'pointer', transition:'all 0.15s'
                       }}>
-                        {watchlist.includes(alert.ticker) ? '⭐' : '☆'}
+                        {watchlist.includes(alert.ticker) ? <Star size={14} fill="currentColor"/> : <StarOff size={14}/>}
                       </button>
                     </div>
                   </div>
@@ -600,8 +663,10 @@ export default function OptionsPage() {
           {/* WATCHLIST SECTION */}
           {section === 'watchlist' && (
             <div>
-              <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>⭐ Watchlist</div>
-              <div style={{fontSize:12, color:C.muted, marginBottom:16}}>Stocks you're monitoring for unusual activity</div>
+              <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                <Star size={22}/> Watchlist
+              </div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:16, lineHeight:1.6}}>Stocks you're monitoring for unusual activity</div>
 
               <div style={{display:'flex', gap:8, marginBottom:16}}>
                 <input
@@ -626,26 +691,30 @@ export default function OptionsPage() {
                   const tickerAlerts = alerts.filter(a => a.ticker === ticker)
                   return (
                     <div key={ticker} style={{
-                      background:C.card, border:`1px solid ${tickerAlerts.length > 0 ? 'rgba(34,197,94,0.4)' : C.border}`,
-                      borderRadius:10, padding:'12px 16px', minWidth:140
+                      background:'#0f0f15', border:`1px solid ${tickerAlerts.length > 0 ? 'rgba(34,197,94,0.4)' : C.border}`,
+                      borderRadius:12, padding:'14px 16px', minWidth:140, boxShadow:'0 1px 3px rgba(0,0,0,0.3)', transition:'border-color 0.2s'
                     }}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
-                        <span style={{fontSize:16, fontWeight:800}}>{ticker}</span>
+                        <span style={{fontSize:16, fontWeight:800, letterSpacing:'-0.02em'}}>{ticker}</span>
                         <button onClick={() => {
                           const wl = watchlist.filter(t => t !== ticker)
                           setWatchlist(wl)
                           localStorage.setItem('options_watchlist', JSON.stringify(wl))
-                        }} style={{background:'transparent', border:'none', color:C.muted, cursor:'pointer', fontSize:14}}>×</button>
+                        }} style={{display:'flex', alignItems:'center', background:'transparent', border:'none', color:C.muted, cursor:'pointer'}}>
+                          <Trash2 size={14}/>
+                        </button>
                       </div>
                       {tickerAlerts.length > 0 ? (
-                        <div style={{fontSize:11, color:C.green, fontWeight:700}}>
-                          🚨 {tickerAlerts.length} alert{tickerAlerts.length>1?'s':''}
+                        <div style={{display:'flex', alignItems:'center', gap:4, fontSize:11, color:C.green, fontWeight:700}}>
+                          <AlertTriangle size={11}/> {tickerAlerts.length} alert{tickerAlerts.length>1?'s':''}
                         </div>
                       ) : (
                         <div style={{fontSize:11, color:C.muted}}>No alerts today</div>
                       )}
                       <a href={`https://finance.yahoo.com/quote/${ticker}/options`} target="_blank" rel="noreferrer"
-                        style={{fontSize:10, color:'#a5b4fc', textDecoration:'none'}}>View options →</a>
+                        style={{display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#a5b4fc', textDecoration:'none', marginTop:4}}>
+                        View options <ExternalLink size={10}/>
+                      </a>
                     </div>
                   )
                 })}
@@ -656,34 +725,36 @@ export default function OptionsPage() {
           {/* TRADES SECTION */}
           {section === 'trades' && (
             <div>
-              <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>💼 Paper Trades</div>
-              <div style={{fontSize:12, color:C.muted, marginBottom:16}}>Track your options picks without real money</div>
+              <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                <Wallet size={22}/> Paper Trades
+              </div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:16, lineHeight:1.6}}>Track your options picks without real money</div>
 
               {/* Stats */}
-              <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10, marginBottom:16}}>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16}}>
                 {[
                   {label:'BANKROLL', value:`$${bankroll.toLocaleString('en-US',{maximumFractionDigits:0})}`, color: bankroll>=10000?C.green:C.red},
                   {label:'NET P&L', value:`${totalPnl>=0?'+':''}$${totalPnl.toFixed(0)}`, color:totalPnl>=0?C.green:C.red},
                   {label:'WIN RATE', value:`${winRate}%`, color:winRate>=50?C.green:C.red},
-                  {label:'OPEN TRADES', value:openTrades.length, color:C.text},
+                  {label:'OPEN', value:openTrades.length, color:C.text},
                 ].map(s => (
-                  <div key={s.label} style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:14}}>
-                    <div style={{fontSize:10, color:C.muted, marginBottom:4}}>{s.label}</div>
-                    <div style={{fontSize:20, fontWeight:700, color:s.color}}>{s.value}</div>
+                  <div key={s.label} style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                    <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>{s.label}</div>
+                    <div style={{fontSize:18, fontWeight:800, color:s.color, letterSpacing:'-0.02em'}}>{s.value}</div>
                   </div>
                 ))}
               </div>
 
               {/* Trade list */}
               {trades.length === 0 ? (
-                <div style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:'center', color:C.muted}}>
-                  No paper trades yet — click "+ Paper Trade" on any alert in the Scanner
+                <div style={{background:'#0f0f15', border:`1px solid ${C.border}`, borderRadius:12, padding:32, textAlign:'center', color:C.muted, boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
+                  No paper trades yet — click "Paper Trade" on any alert in the Scanner
                 </div>
               ) : trades.map(trade => (
                 <div key={trade.id} style={{
-                  background:C.card,
+                  background:'#0f0f15',
                   border:`1px solid ${trade.status==='won'?'rgba(34,197,94,0.3)':trade.status==='lost'||trade.status==='expired'?'rgba(239,68,68,0.3)':C.border}`,
-                  borderRadius:12, padding:16, marginBottom:10
+                  borderRadius:12, padding:16, marginBottom:10, boxShadow:'0 1px 3px rgba(0,0,0,0.3)', transition:'border-color 0.2s'
                 }}>
                   <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
                     <div>
@@ -695,25 +766,25 @@ export default function OptionsPage() {
                       </div>
                     </div>
                     <div style={{textAlign:'right'}}>
-                      {trade.status==='open' && <div style={{fontSize:12, fontWeight:700, color:C.yellow}}>⏳ OPEN</div>}
-                      {trade.status==='won' && <div style={{fontSize:12, fontWeight:700, color:C.green}}>✅ +${trade.pnl?.toFixed(0)} ({trade.pnlPct?.toFixed(0)}%)</div>}
-                      {trade.status==='lost' && <div style={{fontSize:12, fontWeight:700, color:C.red}}>❌ -${trade.totalCost.toFixed(0)}</div>}
-                      {trade.status==='expired' && <div style={{fontSize:12, fontWeight:700, color:C.muted}}>💀 Expired</div>}
+                      {trade.status==='open' && <div style={{display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:700, color:C.yellow}}><Clock size={12}/> OPEN</div>}
+                      {trade.status==='won' && <div style={{display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:700, color:C.green}}><CheckCircle size={12}/> +${trade.pnl?.toFixed(0)} ({trade.pnlPct?.toFixed(0)}%)</div>}
+                      {trade.status==='lost' && <div style={{display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:700, color:C.red}}><XCircle size={12}/> -${trade.totalCost.toFixed(0)}</div>}
+                      {trade.status==='expired' && <div style={{display:'inline-flex', alignItems:'center', gap:4, fontSize:12, fontWeight:700, color:C.muted}}><Clock size={12}/> Expired</div>}
                     </div>
                   </div>
 
-                  <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:10}}>
-                    <div style={{background:'#1a1a24', borderRadius:6, padding:8, textAlign:'center'}}>
-                      <div style={{fontSize:9, color:C.muted}}>CONTRACTS</div>
-                      <div style={{fontSize:14, fontWeight:700}}>{trade.contracts}</div>
+                  <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:12}}>
+                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                      <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>CONTRACTS</div>
+                      <div style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>{trade.contracts}</div>
                     </div>
-                    <div style={{background:'#1a1a24', borderRadius:6, padding:8, textAlign:'center'}}>
-                      <div style={{fontSize:9, color:C.muted}}>ENTRY</div>
-                      <div style={{fontSize:14, fontWeight:700}}>${trade.entryPrice.toFixed(2)}</div>
+                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                      <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>ENTRY</div>
+                      <div style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>${trade.entryPrice.toFixed(2)}</div>
                     </div>
-                    <div style={{background:'#1a1a24', borderRadius:6, padding:8, textAlign:'center'}}>
-                      <div style={{fontSize:9, color:C.muted}}>TOTAL COST</div>
-                      <div style={{fontSize:14, fontWeight:700}}>${trade.totalCost.toFixed(0)}</div>
+                    <div style={{background:'#0f0f15', borderRadius:10, padding:'12px 10px', textAlign:'center', border:'1px solid #1e1e2a'}}>
+                      <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>TOTAL COST</div>
+                      <div style={{fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.02em'}}>${trade.totalCost.toFixed(0)}</div>
                     </div>
                   </div>
 
@@ -726,19 +797,19 @@ export default function OptionsPage() {
                         <button onClick={() => {
                           const closePrice = parseFloat(prompt('Close price per share? (e.g. 5.50)') || '0')
                           if (closePrice > 0) settleTrade(trade.id, 'won', closePrice)
-                        }} style={{padding:'8px', borderRadius:6, border:'none', background:'rgba(34,197,94,0.2)', color:C.green, fontSize:12, fontWeight:700, cursor:'pointer'}}>
-                          ✅ Won
+                        }} style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px', borderRadius:8, background:'rgba(34,197,94,0.15)', color:C.green, fontSize:13, fontWeight:700, cursor:'pointer', border:'1px solid rgba(34,197,94,0.25)'}}>
+                          <CheckCircle size={12}/> Won
                         </button>
-                        <button onClick={() => settleTrade(trade.id, 'lost')} style={{padding:'8px', borderRadius:6, border:'none', background:'rgba(239,68,68,0.2)', color:C.red, fontSize:12, fontWeight:700, cursor:'pointer'}}>
-                          ❌ Lost
+                        <button onClick={() => settleTrade(trade.id, 'lost')} style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px', borderRadius:8, background:'rgba(239,68,68,0.15)', color:C.red, fontSize:13, fontWeight:700, cursor:'pointer', border:'1px solid rgba(239,68,68,0.25)'}}>
+                          <XCircle size={12}/> Lost
                         </button>
-                        <button onClick={() => settleTrade(trade.id, 'expired')} style={{padding:'8px', borderRadius:6, border:`1px solid ${C.border}`, background:'transparent', color:C.muted, fontSize:12, cursor:'pointer'}}>
-                          💀 Expired
+                        <button onClick={() => settleTrade(trade.id, 'expired')} style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px', borderRadius:8, border:`1px solid #1e1e2a`, background:'transparent', color:'#6b7280', fontSize:13, fontWeight:600, cursor:'pointer'}}>
+                          <Clock size={12}/> Expired
                         </button>
                       </div>
                       <a href={`https://finance.yahoo.com/quote/${trade.ticker}/options`} target="_blank" rel="noreferrer"
-                        style={{display:'block', textAlign:'center', padding:'6px', borderRadius:6, border:`1px solid rgba(59,130,246,0.3)`, background:'rgba(59,130,246,0.05)', color:'#60a5fa', fontSize:11, textDecoration:'none'}}>
-                        🔍 Check price on Yahoo Finance →
+                        style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'8px', borderRadius:8, border:`1px solid rgba(59,130,246,0.3)`, background:'rgba(59,130,246,0.05)', color:'#60a5fa', fontSize:12, textDecoration:'none', fontWeight:600}}>
+                        <Search size={12}/> Check price on Yahoo Finance
                       </a>
                     </div>
                   )}
@@ -750,8 +821,10 @@ export default function OptionsPage() {
           {/* LEARN SECTION */}
           {section === 'learn' && (
             <div>
-              <div style={{fontSize:20, fontWeight:800, marginBottom:4}}>📚 Learn Options</div>
-              <div style={{fontSize:12, color:C.muted, marginBottom:20}}>Quick guide to understanding unusual options activity</div>
+              <div style={{display:'flex', alignItems:'center', gap:8, fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:4}}>
+                <BookOpen size={22}/> Learn Options
+              </div>
+              <div style={{fontSize:13, color:'#d1d5db', marginBottom:20, lineHeight:1.6}}>Quick guide to understanding unusual options activity</div>
 
               {[
                 {
@@ -785,11 +858,12 @@ export default function OptionsPage() {
                   example:'Start with 1-2 contracts maximum. One contract = 100 shares. A $5 option price means $500 total cost per contract.'
                 },
               ].map((item, i) => (
-                <div key={i} style={{background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:12}}>
+                <div key={i} style={{background:'#0f0f15', border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:12, boxShadow:'0 1px 3px rgba(0,0,0,0.3)', transition:'border-color 0.2s'}}>
                   <div style={{fontSize:14, fontWeight:700, color:'#a5b4fc', marginBottom:8}}>{item.title}</div>
                   <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6, marginBottom:8}}>{item.content}</div>
-                  <div style={{background:'rgba(99,102,241,0.05)', border:`1px solid rgba(99,102,241,0.15)`, borderRadius:6, padding:10, fontSize:12, color:C.muted}}>
-                    💡 Example: {item.example}
+                  <div style={{background:'rgba(99,102,241,0.05)', border:`1px solid rgba(99,102,241,0.15)`, borderRadius:8, padding:10, fontSize:12, color:'#d1d5db', display:'flex', alignItems:'flex-start', gap:6, lineHeight:1.6}}>
+                    <Zap size={12} style={{flexShrink:0, marginTop:2, color:'#a5b4fc'}}/>
+                    <div><strong style={{color:'#a5b4fc'}}>Example:</strong> {item.example}</div>
                   </div>
                 </div>
               ))}
@@ -802,18 +876,20 @@ export default function OptionsPage() {
       {isMobile && (
         <div style={{
           position:'fixed', bottom:0, left:0, right:0, zIndex:200,
-          background:'#0a0a0f', borderTop:`1px solid ${C.border}`,
+          background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderTop:`1px solid ${C.border}`,
           display:'flex', height:70, paddingBottom:'env(safe-area-inset-bottom)'
         }}>
           {navItems.map(item => (
             <button key={item.id} onClick={() => setSection(item.id as any)} style={{
               flex:1, display:'flex', flexDirection:'column',
               alignItems:'center', justifyContent:'center',
-              border:'none', background:'transparent', gap:3, cursor:'pointer',
-              borderTop: section===item.id ? `2px solid ${C.accent}` : '2px solid transparent'
+              border:'none', background:'transparent', gap:4, cursor:'pointer',
+              color: section===item.id?'#a5b4fc':'#4b5563',
+              borderTop: section===item.id ? `2px solid ${C.accent}` : '2px solid transparent',
+              transition:'all 0.15s'
             }}>
-              <span style={{fontSize:22}}>{item.icon}</span>
-              <span style={{fontSize:10, fontWeight:section===item.id?700:400, color:section===item.id?'#a5b4fc':C.muted}}>
+              <item.Icon size={20}/>
+              <span style={{fontSize:11, fontWeight:section===item.id?700:500, letterSpacing:'-0.01em'}}>
                 {item.label}
               </span>
             </button>

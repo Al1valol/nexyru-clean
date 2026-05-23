@@ -2,6 +2,13 @@
 export const dynamic = "force-dynamic";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  TrendingUp, TrendingDown, Activity, RefreshCw, Bell, BellOff,
+  Search, Filter, Star, StarOff, Copy, ExternalLink, ChevronDown,
+  ChevronUp, AlertTriangle, CheckCircle, XCircle, Clock, Zap,
+  Shield, Target, BarChart2, Wallet, ArrowUpRight, ArrowDownRight,
+  Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen
+} from 'lucide-react'
 
 // ──────────────────────── theme ────────────────────────
 const C = {
@@ -194,10 +201,10 @@ function buildPicks(games: Game[]): Pick[] {
 }
 
 function scoreBadge(score: number) {
-  if (score >= 75) return { label: "🔥 Strong", color: C.green };
-  if (score >= 55) return { label: "⭐ Good", color: C.blue };
-  if (score >= 35) return { label: "👀 Fair", color: C.amber };
-  return { label: "Skip", color: C.textMuted };
+  if (score >= 75) return { label: "Strong", Icon: Activity, color: C.green };
+  if (score >= 55) return { label: "Good", Icon: Star, color: C.blue };
+  if (score >= 35) return { label: "Fair", Icon: Eye, color: C.amber };
+  return { label: "Skip", Icon: null, color: C.textMuted };
 }
 
 function countdown(commence: string, now: number) {
@@ -430,21 +437,21 @@ export default function SportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sidebarItems: { id: Section; icon: string; label: string }[] = [
-    { id: "best", icon: "🎯", label: "Best Picks" },
-    { id: "arb", icon: "💰", label: "Arb Finder" },
-    { id: "parlays", icon: "🎰", label: "Parlays" },
-    { id: "props", icon: "🏀", label: "Player Props" },
-    { id: "bets", icon: "📋", label: "Paper Bets" },
-    { id: "books", icon: "📚", label: "Book Health" },
+  const sidebarItems: { id: Section; Icon: any; label: string }[] = [
+    { id: "best", Icon: Target, label: "Best Picks" },
+    { id: "arb", Icon: Wallet, label: "Arb Finder" },
+    { id: "parlays", Icon: Award, label: "Parlays" },
+    { id: "props", Icon: Activity, label: "Player Props" },
+    { id: "bets", Icon: BarChart2, label: "Paper Bets" },
+    { id: "books", Icon: BookOpen, label: "Book Health" },
   ];
 
-  const mobileItems: { id: Section; icon: string; label: string }[] = [
-    { id: "best", icon: "🎯", label: "Picks" },
-    { id: "arb", icon: "💰", label: "Arbs" },
-    { id: "props", icon: "🏀", label: "Props" },
-    { id: "bets", icon: "📋", label: "Bets" },
-    { id: "books", icon: "📚", label: "Books" },
+  const mobileItems: { id: Section; Icon: any; label: string }[] = [
+    { id: "best", Icon: Target, label: "Picks" },
+    { id: "arb", Icon: Wallet, label: "Arbs" },
+    { id: "props", Icon: Activity, label: "Props" },
+    { id: "bets", Icon: BarChart2, label: "Bets" },
+    { id: "books", Icon: BookOpen, label: "Books" },
   ];
 
   return (
@@ -466,7 +473,9 @@ export default function SportsPage() {
           }}
         >
           <div style={{ padding: "0 16px 14px", borderBottom: `1px solid ${C.border}`, marginBottom: 8 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>🎰 Sports</div>
+            <div style={{ display:"flex", alignItems:"center", gap:8, fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing:"-0.02em" }}>
+              <Target size={16}/> Sports
+            </div>
           </div>
           {sidebarItems.map((it) => (
             <button
@@ -480,15 +489,16 @@ export default function SportsPage() {
                 padding: "10px 16px",
                 border: "none",
                 background: section === it.id ? "rgba(99,102,241,0.15)" : "transparent",
-                color: section === it.id ? "#a5b4fc" : C.textMuted,
+                color: section === it.id ? "#a5b4fc" : "#6b7280",
                 fontSize: 13,
-                fontWeight: section === it.id ? 700 : 400,
+                fontWeight: section === it.id ? 700 : 500,
                 cursor: "pointer",
                 textAlign: "left",
                 borderLeft: section === it.id ? `3px solid ${C.accent}` : "3px solid transparent",
+                transition: "all 0.15s",
               }}
             >
-              <span style={{ fontSize: 16 }}>{it.icon}</span>
+              <it.Icon size={16}/>
               {it.label}
             </button>
           ))}
@@ -499,26 +509,29 @@ export default function SportsPage() {
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: isMobile ? 80 : 0 }}>
         {isMobile && (
           <div style={{
-            display:'flex', background:'#0a0a0f',
+            display:'flex', background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)',
             borderBottom:'1px solid #1e1e2a',
             padding:'0 4px'
           }}>
             {[
-              {label:'📈 Trading', href:'/dashboard', active: false},
-              {label:'🪙 Crypto', href:'/crypto', active: false},
-              {label:'🎰 Sports', href:'/sports', active: true},
-              {label:'📊 Options', href:'/options', active: false},
-              {label:'💧 Airdrops', href:'/airdrops', active: false},
-              {label:'⬡ JARVIS', href:'/morning', active: false},
+              {Icon: TrendingUp, label:'Trading', href:'/dashboard', active: false},
+              {Icon: Activity, label:'Crypto', href:'/crypto', active: false},
+              {Icon: Target, label:'Sports', href:'/sports', active: true},
+              {Icon: BarChart2, label:'Options', href:'/options', active: false},
+              {Icon: Zap, label:'Airdrops', href:'/airdrops', active: false},
+              {Icon: Award, label:'JARVIS', href:'/morning', active: false},
             ].map(link => (
               <a key={link.href} href={link.href} style={{
-                flex:1, textAlign:'center', padding:'10px 4px',
-                fontSize:12, fontWeight: link.active ? 700 : 400,
-                color: link.active ? '#fff' : '#6b7280',
+                flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+                padding:'10px 4px',
+                fontSize:10, fontWeight: link.active ? 700 : 500,
+                color: link.active ? '#fff' : '#4b5563',
                 textDecoration:'none',
-                borderBottom: link.active ? '2px solid #6366f1' : '2px solid transparent'
+                borderBottom: link.active ? '2px solid #6366f1' : '2px solid transparent',
+                transition:'color 0.15s, border-color 0.15s'
               }}>
-                {link.label}
+                <link.Icon size={14}/>
+                <span>{link.label}</span>
               </a>
             ))}
           </div>
@@ -530,17 +543,18 @@ export default function SportsPage() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: isMobile ? 6 : 12,
-            padding: isMobile ? "8px 12px" : "8px 12px",
+            padding: isMobile ? "12px 16px" : "14px 24px",
             borderBottom: `1px solid ${C.border}`,
-            background: "#0a0a0f",
+            background: "rgba(8,8,8,0.95)",
+            backdropFilter: "blur(12px)",
             position: "sticky",
             top: 0,
             zIndex: 30,
           }}
         >
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ fontSize: isMobile ? 13 : 14, fontWeight: 700, color:"#fff", whiteSpace:"nowrap" }}>
-              🎰 Sports{isMobile ? "" : " Betting"}
+            <div style={{ display:"flex", alignItems:"center", gap:8, fontSize: isMobile ? 13 : 14, fontWeight: 800, color:"#fff", whiteSpace:"nowrap", letterSpacing:"-0.01em" }}>
+              <Target size={16}/> Sports{isMobile ? "" : " Betting"}
             </div>
             {!isMobile && (
               <div
@@ -563,19 +577,22 @@ export default function SportsPage() {
           {!isMobile && (
             <div style={{ display:"flex", gap:4, alignItems:"center" }}>
               {[
-                { href:"/dashboard", label:"📈 Trading",  active:false },
-                { href:"/crypto",    label:"🪙 Crypto",   active:false },
-                { href:"/sports",    label:"🎰 Sports",   active:true  },
-                { href:"/options",   label:"📊 Options",  active:false },
-                { href:"/airdrops",  label:"💧 Airdrops", active:false },
+                { href:"/dashboard", Icon: TrendingUp, label:"Trading",  active:false },
+                { href:"/crypto",    Icon: Activity,   label:"Crypto",   active:false },
+                { href:"/sports",    Icon: Target,     label:"Sports",   active:true  },
+                { href:"/options",   Icon: BarChart2,  label:"Options",  active:false },
+                { href:"/airdrops",  Icon: Zap,        label:"Airdrops", active:false },
               ].map(l => (
                 <a key={l.href} href={l.href} style={{
-                  padding:"6px 12px", fontSize:13,
-                  color: l.active ? "#fff" : "#6b7280",
+                  display:"flex", alignItems:"center", gap:6,
+                  padding:"6px 14px", fontSize:13, fontWeight:500,
+                  color: l.active ? "#fff" : "#4b5563",
                   textDecoration:"none", whiteSpace:"nowrap",
-                  fontWeight: l.active ? 700 : 500,
                   borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
-                }}>{l.label}</a>
+                  transition:"color 0.15s, border-color 0.15s", letterSpacing:"-0.01em"
+                }}>
+                  <l.Icon size={14}/> {l.label}
+                </a>
               ))}
             </div>
           )}
@@ -589,18 +606,19 @@ export default function SportsPage() {
             <a
               href="/morning"
               style={{
-                padding: isMobile ? "4px 8px" : "6px 12px",
+                display: "flex", alignItems: "center", gap: 6,
+                padding: isMobile ? "6px 10px" : "8px 14px",
                 borderRadius: 8,
                 border: "1px solid rgba(0,212,255,0.3)",
                 background: "rgba(0,212,255,0.06)",
                 color: "#00d4ff",
-                fontSize: isMobile ? 11 : 12,
+                fontSize: isMobile ? 12 : 13,
                 fontWeight: 700,
                 textDecoration: "none",
                 whiteSpace:"nowrap",
               }}
             >
-              ⬡ JARVIS
+              <Award size={14}/> JARVIS
             </a>
           </div>
         </header>
@@ -691,7 +709,8 @@ export default function SportsPage() {
             left: 0,
             right: 0,
             zIndex: 200,
-            background: "#0a0a0f",
+            background: "rgba(8,8,8,0.95)",
+            backdropFilter: "blur(12px)",
             borderTop: `1px solid ${C.border}`,
             display: "flex",
             paddingBottom: "env(safe-area-inset-bottom)",
@@ -710,18 +729,20 @@ export default function SportsPage() {
                 justifyContent: "center",
                 border: "none",
                 background: "transparent",
-                gap: 3,
+                gap: 4,
                 cursor: "pointer",
                 padding: "8px 4px",
+                color: section === it.id ? "#a5b4fc" : "#4b5563",
                 borderTop: section === it.id ? "2px solid #6366f1" : "2px solid transparent",
+                transition: "all 0.15s",
               }}
             >
-              <span style={{ fontSize: 22 }}>{it.icon}</span>
+              <it.Icon size={20}/>
               <span
                 style={{
-                  fontSize: 10,
-                  fontWeight: section === it.id ? 700 : 400,
-                  color: section === it.id ? "#a5b4fc" : "#4b5563",
+                  fontSize: 11,
+                  fontWeight: section === it.id ? 700 : 500,
+                  letterSpacing: "-0.01em",
                 }}
               >
                 {it.label}
@@ -855,10 +876,12 @@ function SectionHeader({
   title,
   subtitle,
   right,
+  Icon,
 }: {
   title: string;
   subtitle?: string;
   right?: React.ReactNode;
+  Icon?: any;
 }) {
   return (
     <div
@@ -868,13 +891,16 @@ function SectionHeader({
         justifyContent: "space-between",
         gap: 12,
         flexWrap: "wrap",
-        marginBottom: 14,
+        marginBottom: 16,
       }}
     >
       <div>
-        <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>
+          {Icon && <Icon size={22}/>}
+          {title}
+        </div>
         {subtitle && (
-          <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 3 }}>
+          <div style={{ fontSize: 13, color: "#d1d5db", lineHeight: 1.6 }}>
             {subtitle}
           </div>
         )}
@@ -896,18 +922,23 @@ function RefreshButton({
       onClick={onClick}
       disabled={loading}
       style={{
-        padding: "6px 14px",
-        borderRadius: 999,
-        border: `1px solid ${loading ? C.border : C.accent}`,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "9px 18px",
+        borderRadius: 8,
+        border: "none",
         background: loading ? C.card2 : C.accent,
         color: loading ? C.textDim : "#fff",
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: 700,
         cursor: loading ? "not-allowed" : "pointer",
-        minHeight: 32,
+        minHeight: 36,
+        transition: "all 0.15s",
       }}
     >
-      {loading ? "Loading…" : "↻ Refresh"}
+      <RefreshCw size={14}/>
+      {loading ? "Loading…" : "Refresh"}
     </button>
   );
 }
@@ -1196,7 +1227,8 @@ function BestPicksPanel({
   return (
     <>
       <SectionHeader
-        title="🎯 Best Picks"
+        Icon={Target}
+        title="Best Picks"
         subtitle="Every pick scored 0-100 by line value and matchup quality"
         right={<RefreshButton loading={loading} onClick={onRefresh} />}
       />
@@ -1240,7 +1272,7 @@ function BestPicksPanel({
             textAlign: "center",
           }}
         >
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+          <Radio size={32} style={{ marginBottom: 12, opacity: 0.5, color: C.textMuted }}/>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
             Odds API Credits Used Up
           </div>
@@ -1254,7 +1286,8 @@ function BestPicksPanel({
             <button
               onClick={() => onSwitchSection("props")}
               style={{
-                padding: "8px 16px",
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "9px 18px",
                 borderRadius: 8,
                 border: "none",
                 background: C.accent,
@@ -1263,9 +1296,10 @@ function BestPicksPanel({
                 fontWeight: 700,
                 cursor: "pointer",
                 minHeight: 36,
+                transition: "all 0.15s",
               }}
             >
-              🏀 Player Props →
+              <Activity size={14}/> Player Props
             </button>
           </div>
         </div>
@@ -1317,7 +1351,9 @@ function BestPicksPanel({
 
               <div
                 style={{
-                  display: "inline-block",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
                   padding: "3px 8px",
                   borderRadius: 6,
                   fontSize: 10.5,
@@ -1328,6 +1364,7 @@ function BestPicksPanel({
                   marginBottom: 8,
                 }}
               >
+                {badge.Icon && <badge.Icon size={11}/>}
                 {badge.label}
               </div>
 
@@ -1742,17 +1779,18 @@ function ArbFinderPanel({
   return (
     <>
       <SectionHeader
-        title="💰 Arb Finder"
+        Icon={Wallet}
+        title="Arb Finder"
         subtitle="Risk-free profit by hedging both sides across books. ROI capped at 8% (anything higher is usually stale)."
         right={<RefreshButton loading={loading} onClick={onRefresh} />}
       />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <button onClick={() => setArbMode("game")} style={pillStyle(arbMode === "game")}>
-          💰 Game Arbs
+          <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Wallet size={12}/> Game Arbs</span>
         </button>
         <button onClick={() => setArbMode("prop")} style={pillStyle(arbMode === "prop")}>
-          🏀 Prop Arbs
+          <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Activity size={12}/> Prop Arbs</span>
         </button>
       </div>
 
@@ -1784,10 +1822,10 @@ function ArbFinderPanel({
                 <div>
                   <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                     <button onClick={() => setShowMiddles(false)} style={pillStyle(!showMiddles)}>
-                      💰 True Arbs ({propArbs.length})
+                      <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Wallet size={12}/> True Arbs ({propArbs.length})</span>
                     </button>
                     <button onClick={() => setShowMiddles(true)} style={pillStyle(showMiddles)}>
-                      🎯 Middles ({middles.length})
+                      <span style={{display:"inline-flex", alignItems:"center", gap:6}}><Target size={12}/> Middles ({middles.length})</span>
                     </button>
                   </div>
 
@@ -1801,7 +1839,7 @@ function ArbFinderPanel({
                         textAlign: "center",
                       }}
                     >
-                      <div style={{ fontSize: 24, marginBottom: 8 }}>📡</div>
+                      <Radio size={24} style={{ marginBottom: 8, opacity: 0.5 }}/>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4 }}>
                         No prop arbs right now
                       </div>
@@ -1903,8 +1941,8 @@ function ArbFinderPanel({
                             marginBottom: 10,
                           }}
                         >
-                          <div style={{ fontSize: 16, fontWeight: 800, color: "#22c55e" }}>
-                            💰 +${arb.profit.toFixed(2)} guaranteed · {arb.roi.toFixed(2)}% ROI
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 16, fontWeight: 800, color: "#22c55e" }}>
+                            <Wallet size={16}/> +${arb.profit.toFixed(2)} guaranteed · {arb.roi.toFixed(2)}% ROI
                           </div>
                           <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>
                             On $1,000 total stake · Different bookmakers
@@ -1978,7 +2016,7 @@ function ArbFinderPanel({
                               whiteSpace: "nowrap",
                             }}
                           >
-                            🎯 MIDDLE
+                            <span style={{display:"inline-flex", alignItems:"center", gap:4}}><Target size={12}/> MIDDLE</span>
                           </div>
                         </div>
 
@@ -3021,21 +3059,24 @@ function PlayerPropsPanel({
                 cursor: "pointer",
               }}
             >
-              📊 Season Average Picks →
+              <span style={{display:"inline-flex", alignItems:"center", gap:6}}><BarChart2 size={12}/> Season Average Picks</span>
             </button>
             <button
               onClick={() => onSwitchSection("best")}
               style={{
-                padding: "8px 16px",
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "9px 18px",
                 borderRadius: 8,
                 border: "1px solid #1e1e2a",
                 background: "transparent",
                 color: "#a5b4fc",
-                fontSize: 12,
+                fontSize: 13,
+                fontWeight: 600,
                 cursor: "pointer",
+                transition: "all 0.15s",
               }}
             >
-              🎯 Best Game Picks →
+              <Target size={12}/> Best Game Picks
             </button>
           </div>
         </div>
@@ -3046,7 +3087,8 @@ function PlayerPropsPanel({
   return (
     <>
       <SectionHeader
-        title="🏀 Player Props — Best Bets Today"
+        Icon={Activity}
+        title="Player Props — Best Bets Today"
         subtitle="Ranked by statistical edge vs standard prop lines"
         right={<RefreshButton loading={loading} onClick={load} />}
       />
@@ -3054,23 +3096,26 @@ function PlayerPropsPanel({
       {/* Mode toggle */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         {[
-          { id: "avg" as const, label: "📊 Season Average Picks" },
-          { id: "real" as const, label: "🎯 Real Lines" },
+          { id: "avg" as const, label: "Season Average Picks", Icon: BarChart2 },
+          { id: "real" as const, label: "Real Lines", Icon: Target },
         ].map((m) => (
           <button
             key={m.id}
             onClick={() => setPropsMode(m.id)}
             style={{
-              padding: "6px 14px",
-              borderRadius: 999,
-              border: `1px solid ${propsMode === m.id ? C.accent : C.border}`,
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: `1px solid ${propsMode === m.id ? C.accent : "#1e1e2a"}`,
               background: propsMode === m.id ? "rgba(99,102,241,0.15)" : "transparent",
-              color: propsMode === m.id ? "#a5b4fc" : C.textMuted,
-              fontSize: 12,
-              fontWeight: propsMode === m.id ? 700 : 500,
+              color: propsMode === m.id ? "#a5b4fc" : "#6b7280",
+              fontSize: 13,
+              fontWeight: propsMode === m.id ? 700 : 600,
               cursor: "pointer",
+              transition: "all 0.15s",
             }}
           >
+            <m.Icon size={12}/>
             {m.label}
           </button>
         ))}
@@ -3154,13 +3199,13 @@ function PlayerPropsPanel({
           marginBottom: 12,
         }}
       >
-        ℹ️ Lines are estimated — always verify on DraftKings or FanDuel before betting real money
+        <span style={{display:"flex", alignItems:"center", gap:6}}><AlertTriangle size={12}/> Lines are estimated — always verify on DraftKings or FanDuel before betting real money</span>
       </div>
 
       {/* Count */}
       {bets.length > 0 && (
         <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12, fontWeight: 600 }}>
-          {bets.length} prop bet{bets.length === 1 ? "" : "s"} · {strongCount} 🔥 Strong · sorted by edge
+          {bets.length} prop bet{bets.length === 1 ? "" : "s"} · {strongCount} Strong · sorted by edge
         </div>
       )}
 
@@ -3192,12 +3237,12 @@ function PlayerPropsPanel({
             const a = analysis[b.id];
             const badge =
               b.edgePct > 20
-                ? { emoji: "🔥", label: "Strong", color: C.green }
+                ? { Icon: Activity, label: "Strong", color: C.green }
                 : b.edgePct > 12
-                  ? { emoji: "⭐", label: "Good", color: "#a5b4fc" }
+                  ? { Icon: Star, label: "Good", color: "#a5b4fc" }
                   : b.edgePct > 5
-                    ? { emoji: "👀", label: "Fair", color: C.amber }
-                    : { emoji: "·", label: "Low", color: C.textMuted };
+                    ? { Icon: Eye, label: "Fair", color: C.amber }
+                    : { Icon: null, label: "Low", color: C.textMuted };
             const scoreColor =
               b.propScore >= 75
                 ? C.green
@@ -3241,7 +3286,9 @@ function PlayerPropsPanel({
 
                 <div
                   style={{
-                    display: "inline-block",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                     padding: "3px 8px",
                     borderRadius: 6,
                     fontSize: 10.5,
@@ -3252,7 +3299,8 @@ function PlayerPropsPanel({
                     marginBottom: 8,
                   }}
                 >
-                  {badge.emoji} {badge.label}
+                  {badge.Icon && <badge.Icon size={11}/>}
+                  {badge.label}
                 </div>
 
                 <div style={{ fontSize: 20, fontWeight: 800, color: pickColor }}>
@@ -3917,24 +3965,27 @@ function PaperBetsPanel({
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 2 }}>📋 Paper Bets</div>
-          <div style={{ fontSize: 13, color: s.muted }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 4, letterSpacing: "-0.02em" }}><BarChart2 size={22}/> Paper Bets</div>
+          <div style={{ fontSize: 13, color: "#d1d5db", lineHeight: 1.6 }}>
             Track your bets — mark won or lost after each game
           </div>
         </div>
         <button
           onClick={() => setShowSetup(true)}
           style={{
-            padding: "7px 14px",
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "8px 14px",
             borderRadius: 8,
             border: "1px solid #1e1e2a",
             background: "transparent",
-            color: s.muted,
-            fontSize: 12,
+            color: "#6b7280",
+            fontSize: 13,
+            fontWeight: 600,
             cursor: "pointer",
+            transition: "all 0.15s",
           }}
         >
-          ⚙️ Setup
+          <Edit2 size={12}/> Setup
         </button>
       </div>
 
@@ -4015,26 +4066,33 @@ function PaperBetsPanel({
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         {[
           { id: "all" as const, label: `All (${bets.length})` },
-          { id: "pending" as const, label: `⏳ Pending (${pending.length})` },
-          { id: "won" as const, label: `✅ Won (${won.length})` },
-          { id: "lost" as const, label: `❌ Lost (${lost.length})` },
-        ].map((f) => (
+          { id: "pending" as const, Icon: Clock, label: `Pending (${pending.length})` },
+          { id: "won" as const, Icon: CheckCircle, label: `Won (${won.length})` },
+          { id: "lost" as const, Icon: XCircle, label: `Lost (${lost.length})` },
+        ].map((f) => {
+          const FIcon = (f as any).Icon;
+          return (
           <button
             key={f.id}
             onClick={() => setBetFilter(f.id)}
             style={{
-              padding: "6px 12px",
-              borderRadius: 20,
-              fontSize: 12,
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: betFilter === f.id ? 700 : 600,
               border: `1px solid ${betFilter === f.id ? s.accent : "#1e1e2a"}`,
               background: betFilter === f.id ? "rgba(99,102,241,0.15)" : "transparent",
-              color: betFilter === f.id ? "#a5b4fc" : s.muted,
+              color: betFilter === f.id ? "#a5b4fc" : "#6b7280",
               cursor: "pointer",
+              transition: "all 0.15s",
             }}
           >
+            {FIcon && <FIcon size={12}/>}
             {f.label}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* Bets list */}
@@ -4091,23 +4149,23 @@ function PaperBetsPanel({
               </div>
               <div style={{ textAlign: "right" }}>
                 {bet.status === "pending" && (
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>⏳ PENDING</div>
+                  <div style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize: 12, fontWeight: 700, color: "#f59e0b" }}><Clock size={12}/> PENDING</div>
                 )}
                 {bet.status === "won" && (
-                  <div style={{ fontSize: 12, fontWeight: 700, color: s.green }}>
-                    ✅ WON +${(bet.profit ?? bet.potWin ?? 0).toFixed(2)}
+                  <div style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize: 12, fontWeight: 700, color: s.green }}>
+                    <CheckCircle size={12}/> WON +${(bet.profit ?? bet.potWin ?? 0).toFixed(2)}
                   </div>
                 )}
                 {bet.status === "lost" && (
-                  <div style={{ fontSize: 12, fontWeight: 700, color: s.red }}>
-                    ❌ LOST -${(bet.stake ?? 0).toFixed(2)}
+                  <div style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize: 12, fontWeight: 700, color: s.red }}>
+                    <XCircle size={12}/> LOST -${(bet.stake ?? 0).toFixed(2)}
                   </div>
                 )}
                 {bet.status === "void" && (
-                  <div style={{ fontSize: 12, fontWeight: 700, color: s.muted }}>↩️ VOID</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: s.muted }}>VOID</div>
                 )}
                 {bet.status === "push" && (
-                  <div style={{ fontSize: 12, fontWeight: 700, color: s.muted }}>🤝 PUSH</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: s.muted }}>PUSH</div>
                 )}
               </div>
             </div>
@@ -4169,60 +4227,64 @@ function PaperBetsPanel({
                 <button
                   onClick={() => settleBet(bet.id, "won")}
                   style={{
-                    padding: "8px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: "rgba(34,197,94,0.2)",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    padding: "9px",
+                    borderRadius: 8,
+                    background: "rgba(34,197,94,0.15)",
                     color: s.green,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                     cursor: "pointer",
+                    border: "1px solid rgba(34,197,94,0.25)",
                   }}
                 >
-                  ✅ Won
+                  <CheckCircle size={12}/> Won
                 </button>
                 <button
                   onClick={() => settleBet(bet.id, "lost")}
                   style={{
-                    padding: "8px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: "rgba(239,68,68,0.2)",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    padding: "9px",
+                    borderRadius: 8,
+                    background: "rgba(239,68,68,0.15)",
                     color: s.red,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                     cursor: "pointer",
+                    border: "1px solid rgba(239,68,68,0.25)",
                   }}
                 >
-                  ❌ Lost
+                  <XCircle size={12}/> Lost
                 </button>
                 <button
                   onClick={() => settleBet(bet.id, "push")}
                   style={{
-                    padding: "8px",
-                    borderRadius: 6,
+                    padding: "9px",
+                    borderRadius: 8,
                     border: "1px solid #1e1e2a",
                     background: "transparent",
-                    color: s.muted,
-                    fontSize: 12,
+                    color: "#6b7280",
+                    fontSize: 13,
+                    fontWeight: 600,
                     cursor: "pointer",
                   }}
                 >
-                  🤝 Push
+                  Push
                 </button>
                 <button
                   onClick={() => settleBet(bet.id, "void")}
                   style={{
-                    padding: "8px",
-                    borderRadius: 6,
+                    padding: "9px",
+                    borderRadius: 8,
                     border: "1px solid #1e1e2a",
                     background: "transparent",
-                    color: s.muted,
-                    fontSize: 12,
+                    color: "#6b7280",
+                    fontSize: 13,
+                    fontWeight: 600,
                     cursor: "pointer",
                   }}
                 >
-                  ↩️ Void
+                  Void
                 </button>
               </div>
             )}
@@ -4241,7 +4303,7 @@ function PaperBetsPanel({
                   marginTop: 6,
                 }}
               >
-                ✏️ Edit Result
+                <span style={{display:"inline-flex", alignItems:"center", gap:4}}><Edit2 size={11}/> Edit Result</span>
               </button>
             )}
 
@@ -4294,7 +4356,7 @@ function PaperBetsPanel({
                               : "#9ca3af",
                       }}
                     >
-                      {result === "won" ? "✅ Won" : result === "lost" ? "❌ Lost" : result === "push" ? "🤝 Push" : "↩️ Void"}
+                      {result === "won" ? <span style={{display:"inline-flex", alignItems:"center", gap:4}}><CheckCircle size={12}/> Won</span> : result === "lost" ? <span style={{display:"inline-flex", alignItems:"center", gap:4}}><XCircle size={12}/> Lost</span> : result === "push" ? "Push" : "Void"}
                     </button>
                   ))}
                 </div>
@@ -4323,7 +4385,7 @@ function PaperBetsPanel({
                     marginBottom: 8,
                   }}
                 >
-                  ⏳ Set Back to Pending
+                  <span style={{display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6, width:"100%"}}><Clock size={12}/> Set Back to Pending</span>
                 </button>
 
                 <button
@@ -4498,7 +4560,8 @@ function BookHealthPanel({
   return (
     <>
       <SectionHeader
-        title="📚 Book Health"
+        Icon={BookOpen}
+        title="Book Health"
         subtitle="Track which books you've used and how. Arbing too often = limits/bans."
       />
 
