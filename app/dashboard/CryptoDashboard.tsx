@@ -39,15 +39,27 @@ function scoreBadge(score) {
 // per-client (CoinGecko throttles aggressively from the browser). Detection:
 // '0x' or ':' in the id means a DexScreener contract address; otherwise a
 // CoinGecko named coin like 'bitcoin' / 'hyperliquid'.
-async function fetchCurrentPrice(coinId) {
+async function fetchCurrentPrice(coinId: string): Promise<number> {
   if (!coinId) return 0;
   try {
+    // EVM address (0x...) or chain-prefixed (solana:ADDRESS, base:ADDRESS)
     if (coinId.includes('0x') || coinId.includes(':')) {
       const address = coinId.split(':').pop() || coinId;
       const res = await fetch(`/api/price?address=${encodeURIComponent(address)}`);
       const data = await res.json();
       return data?.price || 0;
     }
+
+    // Solana address — base58, typically 32-44 chars, no special prefix
+    // Detect by length and character set (no spaces, no hyphens)
+    const isSolanaAddress = coinId.length >= 32 && coinId.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(coinId);
+    if (isSolanaAddress) {
+      const res = await fetch(`/api/price?address=${encodeURIComponent(coinId)}`);
+      const data = await res.json();
+      return data?.price || 0;
+    }
+
+    // CoinGecko named coin (bitcoin, ethereum, hyperliquid etc)
     const res = await fetch(`/api/price?ids=${encodeURIComponent(coinId)}`);
     const data = await res.json();
     return data?.[coinId]?.usd || 0;
@@ -1192,7 +1204,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             const chainShort = ({ solana:'SOL', ethereum:'ETH', base:'BASE', bsc:'BSC' }[chainKey] || (coin.chainId || '').toUpperCase().slice(0, 4));
             // Build the chain-prefixed coinId used by signals/positions/journal
             // so the lookup matches what we store on buy.
-            const trackedCoinId = coin.chainId && coin.coinId ? `${coin.chainId}:${coin.coinId}` : (coin.coinId || coin.pairAddress);
+            const chainPrefix = coin.chainId || coin.chain;
+            const trackedCoinId = chainPrefix && coin.coinId
+              ? `${chainPrefix}:${coin.coinId}`
+              : (coin.coinId || coin.pairAddress);
             const logged = loggedKeys.has(trackedCoinId);
             const buyEntryPrice = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : 0;
             const linkUrl = coin.url;
