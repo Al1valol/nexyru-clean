@@ -721,33 +721,41 @@ export default function AirdropsPage() {
         background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${C.border}`,
         position:'sticky', top:0, zIndex:100
       }}>
+        {/* Left - Logo */}
+        <div style={{display:'flex', alignItems:'center', gap:8, fontSize:14, fontWeight:800, color:'#fff', letterSpacing:'-0.01em', minWidth: isMobile ? 'auto' : 80}}>
+          {isMobile ? <><Zap size={16}/> Airdrop Hunter</> : 'Nexyru'}
+        </div>
+
+        {/* Center - Nav links */}
         {!isMobile && (
-          <div style={{display:'flex', gap:4, alignItems:'center'}}>
+          <nav style={{display:'flex', gap:2, alignItems:'center'}}>
             {[
-              {Icon: TrendingUp, label:'Trading', href:'/dashboard'},
-              {Icon: Activity, label:'Crypto', href:'/crypto'},
-              {Icon: Target, label:'Sports', href:'/sports'},
-              {Icon: BarChart2, label:'Options', href:'/options'},
-              {Icon: Zap, label:'Airdrops', href:'/airdrops', active:true},
+              {label:'Trading', href:'/dashboard'},
+              {label:'Crypto', href:'/crypto'},
+              {label:'Sports', href:'/sports'},
+              {label:'Options', href:'/options'},
+              {label:'Airdrops', href:'/airdrops', active:true},
             ].map(l => (
               <a key={l.href} href={l.href} style={{
-                display:'flex', alignItems:'center', gap:6,
-                padding:'6px 14px', fontSize:13, fontWeight:500,
-                color: l.active ? '#fff' : '#4b5563', textDecoration:'none',
-                borderBottom: l.active ? `2px solid ${C.accent}` : '2px solid transparent',
-                transition:'color 0.15s, border-color 0.15s', letterSpacing:'-0.01em'
-              }}>
-                <l.Icon size={14}/> {l.label}
-              </a>
+                padding:'6px 14px', fontSize:13,
+                color: l.active ? '#fff' : '#4b5563',
+                textDecoration:'none', whiteSpace:'nowrap',
+                fontWeight: l.active ? 700 : 500,
+                borderBottom: l.active ? '2px solid #6366f1' : '2px solid transparent',
+                transition:'color 0.15s'
+              }}>{l.label}</a>
             ))}
-          </div>
+          </nav>
         )}
-        <div style={{display:'flex', alignItems:'center', gap:8, fontSize: isMobile?15:18, fontWeight:800, letterSpacing:'-0.02em'}}>
-          <Zap size={isMobile?16:18}/> Airdrop Hunter
+
+        {/* Right - Briefing */}
+        <div style={{minWidth: isMobile ? 'auto' : 80, display:'flex', justifyContent:'flex-end'}}>
+          <a href="/morning" style={{
+            fontSize:12, color:'#6b7280', textDecoration:'none',
+            padding:'6px 10px', borderRadius:6,
+            border:'1px solid #1e1e2a'
+          }}>Briefing</a>
         </div>
-        <a href="/morning" style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#a5b4fc', textDecoration:'none', padding:'8px 14px', borderRadius:8, border:'1px solid rgba(99,102,241,0.3)', fontWeight:600}}>
-          <Award size={14}/> JARVIS
-        </a>
       </div>
 
       <div style={{display:'flex'}}>

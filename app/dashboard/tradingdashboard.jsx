@@ -8438,24 +8438,25 @@ function TradingDashboard({ session, onLogout }) {
       <>
         {isMobile && (
           <div style={{
-            display:'flex', background:'#0a0a0f',
+            display:'flex', background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)',
             borderBottom:'1px solid #1e1e2a',
             padding:'0 4px'
           }}>
             {[
-              {label:'📈 Trading', href:'/dashboard', active: true},
-              {label:'🪙 Crypto', href:'/crypto', active: false},
-              {label:'🎰 Sports', href:'/sports', active: false},
-              {label:'📊 Options', href:'/options', active: false},
-              {label:'💧 Airdrops', href:'/airdrops', active: false},
-              {label:'⬡ JARVIS', href:'/morning', active: false},
+              {label:'Trading', href:'/dashboard', active: true},
+              {label:'Crypto', href:'/crypto', active: false},
+              {label:'Sports', href:'/sports', active: false},
+              {label:'Options', href:'/options', active: false},
+              {label:'Airdrops', href:'/airdrops', active: false},
+              {label:'Briefing', href:'/morning', active: false},
             ].map(link => (
               <a key={link.href} href={link.href} style={{
                 flex:1, textAlign:'center', padding:'10px 4px',
-                fontSize:12, fontWeight: link.active ? 700 : 400,
-                color: link.active ? '#fff' : '#6b7280',
-                textDecoration:'none',
-                borderBottom: link.active ? '2px solid #6366f1' : '2px solid transparent'
+                fontSize:12, fontWeight: link.active ? 700 : 500,
+                color: link.active ? '#fff' : '#4b5563',
+                textDecoration:'none', letterSpacing:'-0.01em',
+                borderBottom: link.active ? '2px solid #6366f1' : '2px solid transparent',
+                transition:'color 0.15s'
               }}>
                 {link.label}
               </a>
@@ -8604,43 +8605,40 @@ function TradingDashboard({ session, onLogout }) {
         {/* ── Top bar ── */}
         <header style={{ background:"#0a0a0f", borderBottom:"1px solid #1e1e2a", display:"flex", alignItems:"center", justifyContent:"space-between", padding: isMobile ? "8px 12px" : "8px 12px", gap: isMobile ? 6 : 12, position:"sticky", top:bannerOffset, zIndex:100, flexShrink:0, maxWidth:"100%", overflow:"hidden", marginLeft: isMobile ? 0 : 56 }}>
           {/* Left: page title / logo */}
-          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight:700, color:"#fff", whiteSpace:"nowrap" }}>
-            {isMobile ? "📈 Nexyru" : "Dashboard"}
+          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight:800, color:"#fff", whiteSpace:"nowrap", letterSpacing:"-0.01em", minWidth: isMobile ? "auto" : 80 }}>
+            Nexyru
           </div>
 
           {/* Center: nav links (desktop only) */}
           {!isMobile && (
-            <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+            <nav style={{ display:"flex", gap:2, alignItems:"center" }}>
               {[
-                { href:"/dashboard", label:"📈 Trading",  active:true  },
-                { href:"/crypto",    label:"🪙 Crypto",   active:false },
-                { href:"/sports",    label:"🎰 Sports",   active:false },
-                { href:"/options",   label:"📊 Options",  active:false },
-                { href:"/airdrops",  label:"💧 Airdrops", active:false },
+                {label:'Trading', href:'/dashboard', active:true},
+                {label:'Crypto', href:'/crypto'},
+                {label:'Sports', href:'/sports'},
+                {label:'Options', href:'/options'},
+                {label:'Airdrops', href:'/airdrops'},
               ].map(l => (
                 <a key={l.href} href={l.href} style={{
-                  padding:"6px 12px", fontSize:13,
-                  color: l.active ? "#fff" : "#6b7280",
-                  textDecoration:"none", whiteSpace:"nowrap",
+                  padding:'6px 14px', fontSize:13,
+                  color: l.active ? '#fff' : '#4b5563',
+                  textDecoration:'none', whiteSpace:'nowrap',
                   fontWeight: l.active ? 700 : 500,
-                  borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
+                  borderBottom: l.active ? '2px solid #6366f1' : '2px solid transparent',
+                  transition:'color 0.15s', letterSpacing:'-0.01em'
                 }}>{l.label}</a>
               ))}
-            </div>
+            </nav>
           )}
 
           {/* Right: essential controls */}
           <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
             {!isMobile && (
               <a href="/morning" style={{
-                padding:"6px 12px", borderRadius:6,
-                border:"1px solid rgba(0,212,255,0.3)",
-                background:"rgba(0,212,255,0.05)",
-                color:"#00d4ff", textDecoration:"none",
-                fontSize:11, fontWeight:700, whiteSpace:"nowrap",
-              }}>
-                ⬡ Daily Briefing
-              </a>
+                fontSize:12, color:'#6b7280', textDecoration:'none',
+                padding:'6px 10px', borderRadius:6,
+                border:'1px solid #1e1e2a'
+              }}>Briefing</a>
             )}
             <AccountSwitcher
               accounts={paperAccts.accounts}
