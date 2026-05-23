@@ -570,22 +570,20 @@ export default function SportsPage() {
           {!isMobile && (
             <div style={{ display:"flex", gap:4, alignItems:"center" }}>
               {[
-                { href:"/dashboard", Icon: TrendingUp, label:"Trading",  active:false },
-                { href:"/crypto",    Icon: Activity,   label:"Crypto",   active:false },
-                { href:"/sports",    Icon: Target,     label:"Sports",   active:true  },
-                { href:"/options",   Icon: BarChart2,  label:"Options",  active:false },
-                { href:"/airdrops",  Icon: Zap,        label:"Airdrops", active:false },
+                { href:'/dashboard', label:'Trading',  active:false },
+                { href:'/crypto',    label:'Crypto',   active:false },
+                { href:'/sports',    label:'Sports',   active:true  },
+                { href:'/options',   label:'Options',  active:false },
+                { href:'/airdrops',  label:'Airdrops', active:false },
               ].map(l => (
                 <a key={l.href} href={l.href} style={{
-                  display:"flex", alignItems:"center", gap:6,
-                  padding:"6px 14px", fontSize:13, fontWeight:500,
-                  color: l.active ? "#fff" : "#4b5563",
-                  textDecoration:"none", whiteSpace:"nowrap",
-                  borderBottom: l.active ? "2px solid #6366f1" : "2px solid transparent",
-                  transition:"color 0.15s, border-color 0.15s", letterSpacing:"-0.01em"
-                }}>
-                  <l.Icon size={14}/> {l.label}
-                </a>
+                  padding:'6px 14px', fontSize:13,
+                  color: l.active ? '#ffffff' : '#6b7280',
+                  textDecoration:'none', whiteSpace:'nowrap',
+                  fontWeight: l.active ? 700 : 500,
+                  borderBottom: l.active ? '2px solid #6366f1' : '2px solid transparent',
+                  transition:'color 0.15s'
+                }}>{l.label}</a>
               ))}
             </div>
           )}

@@ -728,7 +728,7 @@ export default function AirdropsPage() {
 
         {/* Center - Nav links */}
         {!isMobile && (
-          <nav style={{display:'flex', gap:2, alignItems:'center'}}>
+          <nav style={{display:'flex', gap:4, alignItems:'center'}}>
             {[
               {label:'Trading', href:'/dashboard'},
               {label:'Crypto', href:'/crypto'},
@@ -738,7 +738,7 @@ export default function AirdropsPage() {
             ].map(l => (
               <a key={l.href} href={l.href} style={{
                 padding:'6px 14px', fontSize:13,
-                color: l.active ? '#fff' : '#4b5563',
+                color: l.active ? '#ffffff' : '#6b7280',
                 textDecoration:'none', whiteSpace:'nowrap',
                 fontWeight: l.active ? 700 : 500,
                 borderBottom: l.active ? '2px solid #6366f1' : '2px solid transparent',
