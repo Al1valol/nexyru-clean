@@ -2305,6 +2305,8 @@ function ParlaysPanel({
 }) {
   const parlays = useMemo(() => (games ? buildParlays(games) : []), [games]);
   const [saved, setSaved] = useState<ParlaySuggestion[]>([]);
+  const [parlayAnalysis, setParlayAnalysis] = useState<Record<string,any>>({})
+  const [parlayAnalyzing, setParlayAnalyzing] = useState<Record<string,boolean>>({})
   useEffect(() => {
     setSaved(readLS<ParlaySuggestion[]>(PARLAYS_KEY, []));
   }, []);
@@ -2314,6 +2316,33 @@ function ParlaysPanel({
     setSaved(next);
     writeLS(PARLAYS_KEY, next);
   };
+
+  const analyzeParlay = async (parlay: any, id: string) => {
+    if (parlayAnalyzing[id] || parlayAnalysis[id]) return
+    setParlayAnalyzing(prev => ({...prev, [id]: true}))
+    try {
+      const legs = parlay.legs || parlay
+      const legsText = legs.map((leg: any) =>
+        `${leg.team || leg.pick} (${leg.odds > 0 ? '+' : ''}${leg.odds})`
+      ).join(', ')
+
+      const res = await fetch('/api/analyze-game', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          team1: 'WIN PARLAY',
+          team2: 'SKIP',
+          sport: 'PARLAY',
+          odds1: 0, odds2: 0,
+          gameTime: 'Today',
+          context: `Parlay analysis. ${legs.length}-leg parlay at ${parlay.book || 'sportsbook'}. Win probability: ${parlay.winPct || parlay.probability}%. Payout: +${parlay.payout || parlay.odds}. Legs: ${legsText}. Is this a good parlay to bet? Are the legs correlated or independent? Is the payout worth the risk?`
+        })
+      })
+      const data = await res.json()
+      setParlayAnalysis(prev => ({...prev, [id]: data}))
+    } catch(e) {}
+    setParlayAnalyzing(prev => ({...prev, [id]: false}))
+  }
 
   return (
     <>
@@ -2342,7 +2371,9 @@ function ParlaysPanel({
         </div>
       )}
       <div style={{ display: "grid", gap: 12 }}>
-        {parlays.map((p, i) => (
+        {parlays.map((p, i) => {
+        const parlayId = `parlay_${p.book}_${i}`
+        return (
           <div
             key={i}
             style={{
@@ -2414,26 +2445,30 @@ function ParlaysPanel({
                 ? <span style={{display:"inline-flex", alignItems:"center", gap:4}}><CheckCircle size={12}/> Expected value: +${p.ev.toFixed(2)} per $100</span>
                 : <span style={{display:"inline-flex", alignItems:"center", gap:4}}><XCircle size={12}/> Expected value: −${Math.abs(p.ev).toFixed(2)} per $100 — house edge</span>}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => save(p)}
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginTop:12}}>
+              <button onClick={() => analyzeParlay(p, parlayId)}
+                disabled={parlayAnalyzing[parlayId]}
                 style={{
-                  flex: 1,
-                  padding: 9,
-                  borderRadius: 8,
-                  border: `1px solid ${C.border}`,
-                  background: C.card2,
-                  color: C.text,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  minHeight: 36,
-                }}
-              >
-                + Save Parlay
+                  padding:'9px', borderRadius:8,
+                  border:'1px solid rgba(99,102,241,0.3)',
+                  background:'rgba(99,102,241,0.08)',
+                  color: parlayAnalyzing[parlayId] ? '#4b5563' : '#a5b4fc',
+                  fontSize:12, fontWeight:700, cursor:'pointer',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6
+                }}>
+                <Zap size={13}/>
+                {parlayAnalyzing[parlayId] ? 'Analyzing...' : 'AI Analysis'}
               </button>
-              <button
-                onClick={() =>
+
+              <button onClick={() => save(p)} style={{
+                padding:'9px', borderRadius:8,
+                border:'1px solid #1e1e2a', background:'transparent',
+                color:'#6b7280', fontSize:12, fontWeight:600, cursor:'pointer'
+              }}>
+                Save
+              </button>
+
+              <button onClick={() =>
                   onAddBet({
                     type: "parlay",
                     sport: "Mixed",
@@ -2445,25 +2480,40 @@ function ParlaysPanel({
                     potWin: p.payoutOn100,
                     notes: `${p.legs.length}-leg parlay, ${(p.winProb * 100).toFixed(1)}% win prob`,
                   })
-                }
-                style={{
-                  flex: 1,
-                  padding: 9,
-                  borderRadius: 8,
-                  border: "none",
-                  background: C.accent,
-                  color: "#fff",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  minHeight: 36,
-                }}
-              >
-                + Paper Bet
+                } style={{
+                padding:'9px', borderRadius:8, border:'none',
+                background:'#6366f1', color:'#fff',
+                fontSize:12, fontWeight:700, cursor:'pointer'
+              }}>
+                Paper Bet
               </button>
             </div>
+            {parlayAnalysis[parlayId] && (
+              <div style={{
+                marginTop:10, padding:12, borderRadius:8,
+                background: parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`
+              }}>
+                <div style={{fontSize:13, fontWeight:700, marginBottom:4,
+                  color: parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? '#22c55e' : '#ef4444'
+                }}>
+                  {parlayAnalysis[parlayId].pick === 'WIN PARLAY' ? '✓ Worth a shot' : '✕ Skip this parlay'}
+                  <span style={{fontSize:10, color:'#6b7280', fontWeight:400, marginLeft:8}}>
+                    {parlayAnalysis[parlayId].confidence} confidence
+                  </span>
+                </div>
+                <div style={{fontSize:12, color:'#d1d5db', lineHeight:1.5}}>
+                  {parlayAnalysis[parlayId].reasoning}
+                </div>
+                {parlayAnalysis[parlayId].warning && (
+                  <div style={{fontSize:11, color:'#f59e0b', marginTop:6}}>
+                    ⚠ {parlayAnalysis[parlayId].warning}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        ))}
+        )})}
       </div>
     </>
   );
