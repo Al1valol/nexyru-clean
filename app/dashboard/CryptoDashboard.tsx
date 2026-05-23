@@ -4627,23 +4627,40 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
 
   const [dips, setDips] = useState<any[]>([])
   const [dipsLoading, setDipsLoading] = useState(false)
+  const [dipsScanned, setDipsScanned] = useState(0)
   const [dipAnalysis, setDipAnalysis] = useState<Record<string,any>>({})
   const [dipAnalyzing, setDipAnalyzing] = useState<Record<string,boolean>>({})
 
   const fetchDips = async () => {
     setDipsLoading(true)
     try {
+      // Fetch from multiple search queries to get more coins
       const searches = [
         'https://api.dexscreener.com/latest/dex/search?q=solana',
-        'https://api.dexscreener.com/latest/dex/search?q=base',
+        'https://api.dexscreener.com/latest/dex/search?q=pump',
+        'https://api.dexscreener.com/latest/dex/search?q=meme',
+        'https://api.dexscreener.com/latest/dex/search?q=dog',
+        'https://api.dexscreener.com/latest/dex/search?q=cat',
+        'https://api.dexscreener.com/latest/dex/search?q=pepe',
+        'https://api.dexscreener.com/latest/dex/search?q=ai',
+        'https://api.dexscreener.com/latest/dex/search?q=trump',
+        'https://api.dexscreener.com/latest/dex/search?q=base+meme',
+        'https://api.dexscreener.com/latest/dex/search?q=sol+token',
       ]
 
+      // Fetch all in parallel
       const results = await Promise.all(
-        searches.map(url => fetch(url).then(r => r.json()).catch(() => ({})))
+        searches.map(url =>
+          fetch(url)
+            .then(r => r.json())
+            .then(d => d?.pairs || [])
+            .catch(() => [])
+        )
       )
 
-      const allPairs = results.flatMap(d => d?.pairs || [])
+      const allPairs = results.flat()
 
+      // Dedupe by token address
       const seen = new Set<string>()
       const unique = allPairs.filter(p => {
         const key = p.baseToken?.address
@@ -4652,22 +4669,23 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         return true
       })
 
+      console.log('Total unique coins scanned:', unique.length)
+      setDipsScanned(unique.length)
+
+      // Filter: down in 6h but up in last 1h
       const dipCandidates = unique.filter(p => {
         const h1 = parseFloat(p.priceChange?.h1 || 0)
         const h6 = parseFloat(p.priceChange?.h6 || 0)
         const h24 = parseFloat(p.priceChange?.h24 || 0)
         const vol = parseFloat(p.volume?.h24 || 0)
         const liq = parseFloat(p.liquidity?.usd || 0)
-        const buys = p.txns?.h1?.buys || 0
-        const sells = p.txns?.h1?.sells || 0
-        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
 
         return (
-          h6 < -5 &&      // Down in last 6 hours (had a dip)
-          h1 > 0 &&       // BUT up in the last hour (bouncing)
-          h24 > -95 &&    // Not completely dead
-          vol > 5000 &&   // Still has volume
-          liq > 1000      // Has liquidity
+          h6 < -5 &&     // Down in last 6 hours
+          h1 > 0 &&      // But up in last hour
+          h24 > -95 &&   // Not completely dead
+          vol > 5000 &&  // Has volume
+          liq > 1000     // Has liquidity
         )
       })
 
@@ -4732,7 +4750,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         }
       }).sort((a, b) => b.score - a.score)
 
-      setDips(scored)
+      setDips(scored.slice(0, 50)) // Show up to 50 results
     } catch(e) {
       console.error(e)
     }
@@ -5079,7 +5097,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             ) : (
               <div>
                 <div style={{fontSize:13, color:'#6b7280', marginBottom:16}}>
-                  {dips.length} dip candidates found · Sorted by recovery score
+                  {dips.length} bounce candidates found from {dipsScanned}+ coins scanned
                 </div>
 
                 {dips.map(coin => {
