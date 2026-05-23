@@ -786,48 +786,41 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
     try {
-      const [profilesRes, newPairsRes] = await Promise.all([
-        fetch('https://api.dexscreener.com/token-profiles/latest/v1'),
-        fetch('https://api.dexscreener.com/latest/dex/search?q=solana&order=pairAge&limit=30'),
-      ])
-
+      // Fetch truly new coins from DexScreener
+      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1')
       const profiles = await profilesRes.json()
-      const newPairsData = await newPairsRes.json()
+      const arr = Array.isArray(profiles) ? profiles : []
+      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean)
 
-      // Combine addresses from both sources
-      const profileAddresses = (Array.isArray(profiles) ? profiles : [])
-        .slice(0, 15)
-        .map(p => p?.tokenAddress)
-        .filter(Boolean)
-
-      // Get the newest pairs directly from search
-      const directNewPairs = Array.isArray(newPairsData?.pairs) ? newPairsData.pairs : []
-
-      // Fetch pair data for profile tokens
-      let profilePairs: any[] = []
-      if (profileAddresses.length > 0) {
-        const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${profileAddresses.join(',')}`)
-        const pairsData = await pairsRes.json()
-        profilePairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
+      if (addresses.length === 0) {
+        setGems([])
+        setGemsLoading(false)
+        return
       }
 
-      // Merge both sources, deduplicate by pairAddress
-      const seen = new Set()
-      const pairs = [...directNewPairs, ...profilePairs].filter(p => {
-        if (!p?.pairAddress || seen.has(p.pairAddress)) return false
-        seen.add(p.pairAddress)
-        return true
-      })
+      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`)
+      const pairsData = await pairsRes.json()
+      const allPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
 
-      // Step 4: score each pair with the sniper-focused scoring
+      // DEDUP: for each token address keep only the pair with the HIGHEST volume
+      // This prevents the same coin appearing multiple times (different trading pairs)
+      const bestPairPerToken: Record<string, any> = {}
+      allPairs.forEach(p => {
+        const tokenAddr = p.baseToken?.address
+        if (!tokenAddr) return
+        const vol = parseFloat(p.volume?.h24 || 0)
+        if (!bestPairPerToken[tokenAddr] || vol > parseFloat(bestPairPerToken[tokenAddr].volume?.h24 || 0)) {
+          bestPairPerToken[tokenAddr] = p
+        }
+      })
+      const pairs = Object.values(bestPairPerToken)
+
+      // AGE: pairCreatedAt is in milliseconds (13 digit number)
+      // Simple calculation - no special handling needed
       const scored = pairs.map(p => {
-        const createdAt = p.pairCreatedAt;
-        const ageMs = createdAt
-          ? (typeof createdAt === 'number'
-            ? (createdAt < 2000000000 ? Date.now() - createdAt * 1000 : Date.now() - createdAt)
-            : Date.now() - new Date(createdAt).getTime())
-          : 999 * 3600000;
-        const ageHours = ageMs / 3600000;
+        const createdAt = p.pairCreatedAt
+        const ageMs = createdAt ? Date.now() - Number(createdAt) : 999 * 3600000
+        const ageHours = Math.max(0, ageMs / 3600000)
 
         const vol = parseFloat(p.volume?.h24 || 0);
         const change1h = parseFloat(p.priceChange?.h1 || 0);
