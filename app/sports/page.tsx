@@ -7,7 +7,7 @@ import {
   Search, Filter, Star, StarOff, Copy, ExternalLink, ChevronDown,
   ChevronUp, AlertTriangle, CheckCircle, XCircle, Clock, Zap,
   Shield, Target, BarChart2, Wallet, ArrowUpRight, ArrowDownRight,
-  Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen
+  Radio, Eye, Trash2, Edit2, Plus, Award, BookOpen, Layers
 } from 'lucide-react'
 
 // ──────────────────────── theme ────────────────────────
@@ -437,13 +437,13 @@ export default function SportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sidebarItems: { id: Section; Icon: any; label: string }[] = [
-    { id: "best", Icon: Target, label: "Best Picks" },
-    { id: "arb", Icon: Wallet, label: "Arb Finder" },
-    { id: "parlays", Icon: Award, label: "Parlays" },
-    { id: "props", Icon: Activity, label: "Player Props" },
-    { id: "bets", Icon: BarChart2, label: "Paper Bets" },
-    { id: "books", Icon: BookOpen, label: "Book Health" },
+  const sidebarItems: { id: Section; icon: any; label: string }[] = [
+    { id: "best",    icon: <Target size={18}/>,     label: "Best Picks" },
+    { id: "arb",     icon: <TrendingUp size={18}/>, label: "Arb Finder" },
+    { id: "parlays", icon: <Layers size={18}/>,     label: "Parlays" },
+    { id: "props",   icon: <Activity size={18}/>,   label: "Player Props" },
+    { id: "bets",    icon: <BookOpen size={18}/>,   label: "Paper Bets" },
+    { id: "books",   icon: <Shield size={18}/>,     label: "Book Health" },
   ];
 
   const mobileItems: { id: Section; Icon: any; label: string }[] = [
@@ -455,51 +455,78 @@ export default function SportsPage() {
   ];
 
   return (
-    <div style={{ background: C.bg, color: C.text, minHeight: "100vh", display: "flex" }}>
+    <div style={{ background: C.bg, color: C.text, minHeight: "100vh" }}>
       {/* Sidebar (desktop only) */}
       {!isMobile && (
-        <aside
-          style={{
+        <aside style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 52,
+          background: '#0a0a0f',
+          borderRight: '1px solid #16161f',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingTop: 0,
+          zIndex: 50,
+          gap: 0,
+        }}>
+          <a href="/" aria-label="Nexyru" style={{
             width: 52,
-            background: "#0a0a0f",
-            borderRight: `1px solid ${C.border}`,
-            position: "sticky",
-            top: 0,
-            height: "100vh",
-            display: "flex",
-            flexDirection: "column",
-            paddingTop: 16,
+            height: 52,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderBottom: '1px solid #16161f',
+            marginBottom: 8,
             flexShrink: 0,
-          }}
-        >
-          {sidebarItems.map((it) => (
+            textDecoration: 'none',
+          }}>
+            <div style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 14,
+              fontWeight: 900,
+              color: '#fff',
+              letterSpacing: '-0.05em',
+            }}>N</div>
+          </a>
+
+          {sidebarItems.map(item => (
             <button
-              key={it.id}
-              onClick={() => setSection(it.id)}
-              title={it.label}
+              key={item.id}
+              onClick={() => setSection(item.id)}
+              title={item.label}
               style={{
                 width: 52,
-                height: 48,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "none",
-                background: section === it.id ? "rgba(99,102,241,0.08)" : "transparent",
-                color: section === it.id ? "#6366f1" : "#4b5563",
-                cursor: "pointer",
-                borderLeft: section === it.id ? "2px solid #6366f1" : "2px solid transparent",
-                transition: "all 0.15s",
-                marginBottom: 4,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                background: section === item.id ? 'rgba(99,102,241,0.12)' : 'transparent',
+                color: section === item.id ? '#6366f1' : '#4b5563',
+                cursor: 'pointer',
+                borderLeft: section === item.id ? '2px solid #6366f1' : '2px solid transparent',
+                transition: 'all 0.15s',
+                marginBottom: 2,
               }}
             >
-              <it.Icon size={18}/>
+              {item.icon}
             </button>
           ))}
         </aside>
       )}
 
       {/* Main */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: isMobile ? 80 : 0 }}>
+      <div style={{ marginLeft: isMobile ? 0 : 52, minHeight: '100vh', display: "flex", flexDirection: "column", paddingBottom: isMobile ? 80 : 0 }}>
         {isMobile && (
           <div style={{
             display:'flex', background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)',
@@ -536,12 +563,15 @@ export default function SportsPage() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: isMobile ? 6 : 12,
-            padding: isMobile ? "12px 16px" : "14px 24px",
+            padding: isMobile ? "12px 16px" : "0 24px",
             borderBottom: `1px solid ${C.border}`,
             background: "rgba(8,8,8,0.95)",
             backdropFilter: "blur(12px)",
-            position: "sticky",
+            position: "fixed",
             top: 0,
+            left: isMobile ? 0 : 52,
+            right: 0,
+            height: 52,
             zIndex: 30,
           }}
         >
@@ -621,7 +651,7 @@ export default function SportsPage() {
         )}
 
         {/* Section content */}
-        <main style={{ padding: isMobile ? 12 : 20, maxWidth: 1200, width: "100%" }}>
+        <main style={{ padding: isMobile ? 12 : 20, paddingTop: isMobile ? 12 : 72, maxWidth: 1200, width: "100%" }}>
           {section === "best" && (
             <BestPicksPanel
               games={games}

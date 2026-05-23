@@ -257,14 +257,83 @@ export default function OptionsPage() {
   const winRate = closedTrades.length ? Math.round(closedTrades.filter(t => t.status === 'won').length / closedTrades.length * 100) : 0
 
   const navItems = [
-    {id:'scanner', Icon: Radio, label:'Scanner'},
-    {id:'watchlist', Icon: Star, label:'Watchlist'},
-    {id:'trades', Icon: Wallet, label:'Trades'},
-    {id:'learn', Icon: BookOpen, label:'Learn'},
+    {id:'scanner',   icon: <Radio size={18}/>,    label:'Scanner'},
+    {id:'watchlist', icon: <Star size={18}/>,     label:'Watchlist'},
+    {id:'trades',    icon: <Wallet size={18}/>,   label:'Trades'},
+    {id:'learn',     icon: <BookOpen size={18}/>, label:'Learn'},
   ]
 
   return (
     <div style={{background: C.bg, minHeight:'100vh', color: C.text, fontFamily:'system-ui,sans-serif'}}>
+
+      {/* Desktop sidebar */}
+      {!isMobile && (
+        <aside style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 52,
+          background: '#0a0a0f',
+          borderRight: '1px solid #16161f',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingTop: 0,
+          zIndex: 50,
+          gap: 0,
+        }}>
+          <a href="/" aria-label="Nexyru" style={{
+            width: 52,
+            height: 52,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderBottom: '1px solid #16161f',
+            marginBottom: 8,
+            flexShrink: 0,
+            textDecoration: 'none',
+          }}>
+            <div style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 14,
+              fontWeight: 900,
+              color: '#fff',
+              letterSpacing: '-0.05em',
+            }}>N</div>
+          </a>
+
+          {navItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setSection(item.id as any)}
+              title={item.label}
+              style={{
+                width: 52,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                background: section === item.id ? 'rgba(99,102,241,0.12)' : 'transparent',
+                color: section === item.id ? '#6366f1' : '#4b5563',
+                cursor: 'pointer',
+                borderLeft: section === item.id ? '2px solid #6366f1' : '2px solid transparent',
+                transition: 'all 0.15s',
+                marginBottom: 2,
+              }}
+            >
+              {item.icon}
+            </button>
+          ))}
+        </aside>
+      )}
 
       {/* Mobile app switcher */}
       {isMobile && (
@@ -296,10 +365,10 @@ export default function OptionsPage() {
       {/* Top bar */}
       <div style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding: isMobile ? '12px 16px' : '14px 24px',
+        padding: isMobile ? '12px 16px' : '0 24px',
         background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)',
         borderBottom:`1px solid ${C.border}`,
-        position:'sticky', top:0, zIndex:100, gap:12
+        position:'fixed', top:0, left: isMobile ? 0 : 52, right:0, height:52, zIndex:100, gap:12
       }}>
         <div style={{fontSize:15, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', whiteSpace:'nowrap'}}>
           Nexyru
@@ -345,67 +414,10 @@ export default function OptionsPage() {
         </div>
       </div>
 
-      <div style={{display:'flex', minHeight:'calc(100vh - 60px)'}}>
-
-        {/* Desktop sidebar */}
-        {!isMobile && (
-          <div style={{width:180, background:'#0a0a0f', borderRight:`1px solid ${C.border}`, padding:'16px 0', position:'sticky', top:60, height:'calc(100vh - 60px)'}}>
-            {navItems.map(item => (
-              <button key={item.id} onClick={() => setSection(item.id as any)} style={{
-                width:'100%', display:'flex', alignItems:'center', gap:10,
-                padding:'10px 16px', border:'none',
-                background: section===item.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                color: section===item.id ? '#a5b4fc' : '#6b7280',
-                fontSize:13, fontWeight: section===item.id ? 700 : 500,
-                cursor:'pointer', textAlign:'left',
-                borderLeft: section===item.id ? `3px solid ${C.accent}` : '3px solid transparent',
-                transition:'all 0.15s'
-              }}>
-                <item.Icon size={16}/>
-                {item.label}
-              </button>
-            ))}
-
-            {/* Market status */}
-            <div style={{margin:'16px', padding:12, background:'#0f0f15', borderRadius:12, border:`1px solid ${C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
-              {(() => {
-                const now = new Date()
-                const hour = now.getHours()
-                const day = now.getDay()
-                const isOpen = day >= 1 && day <= 5 && hour >= 9 && hour < 16
-                return (
-                  <>
-                    <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:6}}>MARKET</div>
-                    <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:700, color: isOpen ? C.green : C.muted}}>
-                      <span style={{width:8, height:8, borderRadius:'50%', background: isOpen ? C.green : C.red, boxShadow: isOpen ? `0 0 8px ${C.green}` : 'none'}}/>
-                      {isOpen ? 'OPEN' : 'CLOSED'}
-                    </div>
-                    <div style={{fontSize:11, color:C.muted, marginTop:4}}>
-                      {isOpen ? 'Live data' : 'Opens 9:30 EST'}
-                    </div>
-                  </>
-                )
-              })()}
-            </div>
-
-            {/* Stats */}
-            <div style={{margin:'0 16px', padding:12, background:'#0f0f15', borderRadius:12, border:`1px solid ${C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
-              <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:8}}>PAPER TRADING</div>
-              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
-                Win rate: <strong style={{color: winRate >= 50 ? C.green : C.red}}>{winRate}%</strong>
-              </div>
-              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
-                P&L: <strong style={{color: totalPnl >= 0 ? C.green : C.red}}>{totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}</strong>
-              </div>
-              <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>
-                Open: <strong>{openTrades.length}</strong>
-              </div>
-            </div>
-          </div>
-        )}
+      <div style={{marginLeft: isMobile ? 0 : 52, paddingTop: isMobile ? 0 : 52}}>
 
         {/* Main content */}
-        <div style={{flex:1, padding: isMobile ? '12px' : '20px', paddingBottom: isMobile ? 80 : 20, overflowX:'hidden'}}>
+        <div style={{padding: isMobile ? '12px' : '20px', paddingBottom: isMobile ? 80 : 20, overflowX:'hidden'}}>
 
           {/* SCANNER SECTION */}
           {section === 'scanner' && (
@@ -883,7 +895,7 @@ export default function OptionsPage() {
               borderTop: section===item.id ? `2px solid ${C.accent}` : '2px solid transparent',
               transition:'all 0.15s'
             }}>
-              <item.Icon size={20}/>
+              {item.icon}
               <span style={{fontSize:11, fontWeight:section===item.id?700:500, letterSpacing:'-0.01em'}}>
                 {item.label}
               </span>

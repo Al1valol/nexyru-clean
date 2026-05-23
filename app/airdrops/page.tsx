@@ -682,9 +682,9 @@ export default function AirdropsPage() {
   const chains = ['all', ...Array.from(new Set(airdrops.map(a => a.chain)))]
 
   const navItems = [
-    {id:'airdrops', Icon: Zap, label:'Airdrops'},
-    {id:'daily', Icon: CheckCircle, label:'Daily Tasks'},
-    {id:'learn', Icon: BookOpen, label:'Learn'},
+    {id:'airdrops', icon: <Zap size={18}/>,         label:'Airdrops'},
+    {id:'daily',    icon: <CheckCircle size={18}/>, label:'Daily Tasks'},
+    {id:'learn',    icon: <BookOpen size={18}/>,    label:'Learn'},
   ]
 
   const probColor = (p: string) => p === 'HIGH' ? C.green : p === 'MEDIUM' ? C.yellow : C.muted
@@ -692,6 +692,75 @@ export default function AirdropsPage() {
 
   return (
     <div style={{background:C.bg, minHeight:'100vh', color:C.text, fontFamily:'system-ui,sans-serif'}}>
+
+      {/* Desktop sidebar */}
+      {!isMobile && (
+        <aside style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 52,
+          background: '#0a0a0f',
+          borderRight: '1px solid #16161f',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingTop: 0,
+          zIndex: 50,
+          gap: 0,
+        }}>
+          <a href="/" aria-label="Nexyru" style={{
+            width: 52,
+            height: 52,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderBottom: '1px solid #16161f',
+            marginBottom: 8,
+            flexShrink: 0,
+            textDecoration: 'none',
+          }}>
+            <div style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 14,
+              fontWeight: 900,
+              color: '#fff',
+              letterSpacing: '-0.05em',
+            }}>N</div>
+          </a>
+
+          {navItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setSection(item.id as any)}
+              title={item.label}
+              style={{
+                width: 52,
+                height: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                background: section === item.id ? 'rgba(99,102,241,0.12)' : 'transparent',
+                color: section === item.id ? '#6366f1' : '#4b5563',
+                cursor: 'pointer',
+                borderLeft: section === item.id ? '2px solid #6366f1' : '2px solid transparent',
+                transition: 'all 0.15s',
+                marginBottom: 2,
+              }}
+            >
+              {item.icon}
+            </button>
+          ))}
+        </aside>
+      )}
 
       {isMobile && (
         <div style={{display:'flex', background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${C.border}`, padding:'0 2px'}}>
@@ -717,9 +786,9 @@ export default function AirdropsPage() {
 
       <div style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
-        padding: isMobile ? '12px 16px' : '14px 24px',
+        padding: isMobile ? '12px 16px' : '0 24px',
         background:'rgba(8,8,8,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${C.border}`,
-        position:'sticky', top:0, zIndex:100
+        position:'fixed', top:0, left: isMobile ? 0 : 52, right:0, height:52, zIndex:100
       }}>
         {/* Left - Logo */}
         <div style={{display:'flex', alignItems:'center', gap:8, fontSize:15, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', minWidth: isMobile ? 'auto' : 80}}>
@@ -754,43 +823,8 @@ export default function AirdropsPage() {
         </div>
       </div>
 
-      <div style={{display:'flex'}}>
-        {!isMobile && (
-          <div style={{width:180, background:'#0a0a0f', borderRight:`1px solid ${C.border}`, padding:'16px 0', position:'sticky', top:53, height:'calc(100vh - 53px)'}}>
-            {navItems.map(item => (
-              <button key={item.id} onClick={() => setSection(item.id as any)} style={{
-                width:'100%', display:'flex', alignItems:'center', gap:10,
-                padding:'10px 16px', border:'none',
-                background: section===item.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                color: section===item.id ? '#a5b4fc' : '#6b7280',
-                fontSize:13, fontWeight: section===item.id?700:500,
-                cursor:'pointer', textAlign:'left',
-                borderLeft: section===item.id ? `3px solid ${C.accent}` : '3px solid transparent',
-                transition:'all 0.15s'
-              }}>
-                <item.Icon size={16}/>
-                {item.label}
-              </button>
-            ))}
-
-            <div style={{margin:'16px', padding:12, background:'#0f0f15', borderRadius:12, border:`1px solid ${C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.3)'}}>
-              <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:8}}>YOUR PROGRESS</div>
-              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
-                Airdrops: <strong style={{color:'#fff'}}>{airdrops.length}</strong>
-              </div>
-              <div style={{fontSize:13, color:'#d1d5db', marginBottom:4, lineHeight:1.6}}>
-                Tasks done: <strong style={{color:C.green}}>
-                  {airdrops.reduce((s,a) => s + getCompletedCount(a), 0)}
-                </strong>/{airdrops.reduce((s,a) => s + a.tasks.length, 0)}
-              </div>
-              <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>
-                Est. value: <strong style={{color:C.green}}>$1,600-25,500</strong>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div style={{flex:1, padding: isMobile?12:20, paddingBottom: isMobile?80:20}}>
+      <div style={{marginLeft: isMobile ? 0 : 52, paddingTop: isMobile ? 0 : 52}}>
+        <div style={{padding: isMobile?12:20, paddingBottom: isMobile?80:20}}>
 
           {section === 'airdrops' && (
             <div>
@@ -1105,7 +1139,7 @@ export default function AirdropsPage() {
               borderTop: section===item.id ? `2px solid ${C.accent}` : '2px solid transparent',
               transition:'all 0.15s'
             }}>
-              <item.Icon size={20}/>
+              {item.icon}
               <span style={{fontSize:11, fontWeight:section===item.id?700:500, letterSpacing:'-0.01em'}}>{item.label}</span>
             </button>
           ))}
