@@ -4653,6 +4653,8 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
       })
 
       const dipCandidates = unique.filter(p => {
+        const h1 = parseFloat(p.priceChange?.h1 || 0)
+        const h6 = parseFloat(p.priceChange?.h6 || 0)
         const h24 = parseFloat(p.priceChange?.h24 || 0)
         const vol = parseFloat(p.volume?.h24 || 0)
         const liq = parseFloat(p.liquidity?.usd || 0)
@@ -4661,11 +4663,11 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
 
         return (
-          h24 < -10 &&
-          h24 > -90 &&
-          vol > 5000 &&
-          liq > 1000 &&
-          buyRatio > 0.40
+          h6 < -5 &&      // Down in last 6 hours (had a dip)
+          h1 > 0 &&       // BUT up in the last hour (bouncing)
+          h24 > -95 &&    // Not completely dead
+          vol > 5000 &&   // Still has volume
+          liq > 1000      // Has liquidity
         )
       })
 
@@ -4681,39 +4683,38 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
 
         let score = 0
 
-        const pullback = Math.abs(h24)
-        if (pullback >= 30 && pullback <= 50) score += 30
-        else if (pullback >= 20 && pullback <= 70) score += 20
-        else if (pullback >= 70 && pullback <= 85) score += 10
-        else score += 5
+        // BOUNCE STRENGTH (40pts) — how strong is the 1h recovery
+        if (h1 > 20) score += 40       // Very strong bounce
+        else if (h1 > 10) score += 30  // Strong bounce
+        else if (h1 > 5) score += 20   // Decent bounce
+        else if (h1 > 2) score += 12   // Mild bounce
+        else score += 5                 // Just turned green
 
-        if (h1 > 5) score += 30
-        else if (h1 > 0) score += 20
-        else if (h1 > -5) score += 10
-        else score += 0
+        // DIP SIZE (30pts) — bigger dip = more room to recover
+        const dip = Math.abs(h6)
+        if (dip > 50) score += 30      // Big dip = big potential bounce
+        else if (dip > 30) score += 22
+        else if (dip > 15) score += 14
+        else if (dip > 5) score += 8
 
+        // BUY PRESSURE (20pts)
         if (buyRatio > 0.65) score += 20
         else if (buyRatio > 0.55) score += 14
         else if (buyRatio > 0.45) score += 8
-        else score += 0
 
-        if (vol > 100000) score += 10
-        else if (vol > 50000) score += 7
-        else if (vol > 10000) score += 4
+        // VOLUME + LIQUIDITY (10pts)
+        if (vol > 50000) score += 10
+        else if (vol > 10000) score += 6
+        else if (vol > 5000) score += 3
 
-        if (liq > 50000) score += 10
-        else if (liq > 20000) score += 7
-        else if (liq > 5000) score += 4
+        const dipLabel = dip > 50 ? '🔴 Big dip (-' + dip.toFixed(0) + '%)'
+          : dip > 30 ? '🟡 Medium dip (-' + dip.toFixed(0) + '%)'
+          : '🟢 Small dip (-' + dip.toFixed(0) + '%)'
 
-        const dipLabel = pullback >= 70 ? '💀 Severe dip'
-          : pullback >= 50 ? '🔴 Deep dip'
-          : pullback >= 30 ? '🟡 Healthy dip'
-          : '🟢 Mild dip'
-
-        const recoveryLabel = h1 > 5 ? '🚀 Recovering'
-          : h1 > 0 ? '📈 Stabilizing'
-          : h1 > -5 ? '😐 Flat'
-          : '📉 Still falling'
+        const recoveryLabel = h1 > 20 ? '🚀 Strong bounce +' + h1.toFixed(0) + '%'
+          : h1 > 10 ? '📈 Good bounce +' + h1.toFixed(0) + '%'
+          : h1 > 5 ? '↗️ Recovering +' + h1.toFixed(0) + '%'
+          : '🌱 Just turned green +' + h1.toFixed(1) + '%'
 
         return {
           ...p,
@@ -4721,7 +4722,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
           h1, h6, h24,
           vol, liq, buyRatio,
           buys, sells,
-          pullback,
+          pullback: dip,
           dipLabel,
           recoveryLabel,
           name: p.baseToken?.name || 'Unknown',
@@ -4813,7 +4814,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
   const cryptoSectionLabel = {
     hotnow:    "What's trending across the market right now (auto-refresh 3m)",
     gems:      'Find meme coins BEFORE they pump — early signals only',
-    dipfinder: 'Coins that pumped and pulled back — looking for the bounce',
+    dipfinder: 'Down in the last 4-6 hours but recovering in the last hour — buy the bounce',
     uptrends:  'Top 100 coins on a confirmed uptrend across 1h / 24h / 7d',
     accounts:  'Paper & real account portfolios',
     mystats:   'Aggregate stats across all your accounts',
@@ -5036,7 +5037,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:8}}>
               <div>
                 <div style={{fontSize:22, fontWeight:800, marginBottom:4}}>🔄 Dip Finder</div>
-                <div style={{fontSize:13, color:'#6b7280'}}>Coins that pumped and pulled back — looking for the bounce</div>
+                <div style={{fontSize:13, color:'#6b7280'}}>Down in the last 4-6 hours but recovering in the last hour — buy the bounce</div>
               </div>
               <button onClick={fetchDips} disabled={dipsLoading} style={{
                 padding:'8px 16px', borderRadius:8, border:'none',
@@ -5045,7 +5046,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             </div>
 
             <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:12, marginBottom:16, fontSize:12, color:'#a5b4fc', lineHeight:1.6}}>
-              💡 <strong>Strategy:</strong> Find coins down 30-70% from their peak that are starting to recover. Buy the stabilization, ride the bounce. Best signals: recovery in last 1h + more buyers than sellers + healthy liquidity still present.
+              💡 <strong>Strategy:</strong> These coins dipped recently but are now bouncing back up in the last hour. The dip already happened — you're buying the recovery. Look for strong 1h bounce + healthy volume.
             </div>
 
             {dipsLoading ? (
