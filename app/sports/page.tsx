@@ -508,6 +508,7 @@ export default function SportsPage() {
               {label:'🪙 Crypto', href:'/crypto', active: false},
               {label:'🎰 Sports', href:'/sports', active: true},
               {label:'📊 Options', href:'/options', active: false},
+              {label:'💧 Airdrops', href:'/airdrops', active: false},
               {label:'⬡ JARVIS', href:'/morning', active: false},
             ].map(link => (
               <a key={link.href} href={link.href} style={{
@@ -562,10 +563,11 @@ export default function SportsPage() {
           {!isMobile && (
             <div style={{ display:"flex", gap:4, alignItems:"center" }}>
               {[
-                { href:"/dashboard", label:"📈 Trading", active:false },
-                { href:"/crypto",    label:"🪙 Crypto",  active:false },
-                { href:"/sports",    label:"🎰 Sports",  active:true  },
-                { href:"/options",   label:"📊 Options", active:false },
+                { href:"/dashboard", label:"📈 Trading",  active:false },
+                { href:"/crypto",    label:"🪙 Crypto",   active:false },
+                { href:"/sports",    label:"🎰 Sports",   active:true  },
+                { href:"/options",   label:"📊 Options",  active:false },
+                { href:"/airdrops",  label:"💧 Airdrops", active:false },
               ].map(l => (
                 <a key={l.href} href={l.href} style={{
                   padding:"6px 12px", fontSize:13,
