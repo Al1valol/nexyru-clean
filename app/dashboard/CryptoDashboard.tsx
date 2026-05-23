@@ -786,23 +786,38 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
     try {
-      // Step 1: latest token profiles from DexScreener
-      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
-      const profiles = await profilesRes.json();
-      const arr = Array.isArray(profiles) ? profiles : [];
+      const [profilesRes, newPairsRes] = await Promise.all([
+        fetch('https://api.dexscreener.com/token-profiles/latest/v1'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=solana&order=pairAge&limit=30'),
+      ])
 
-      // Step 2: extract token addresses
-      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean);
-      if (addresses.length === 0) {
-        setGems([]);
-        setGemsLoading(false);
-        return;
+      const profiles = await profilesRes.json()
+      const newPairsData = await newPairsRes.json()
+
+      // Combine addresses from both sources
+      const profileAddresses = (Array.isArray(profiles) ? profiles : [])
+        .slice(0, 15)
+        .map(p => p?.tokenAddress)
+        .filter(Boolean)
+
+      // Get the newest pairs directly from search
+      const directNewPairs = Array.isArray(newPairsData?.pairs) ? newPairsData.pairs : []
+
+      // Fetch pair data for profile tokens
+      let profilePairs: any[] = []
+      if (profileAddresses.length > 0) {
+        const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${profileAddresses.join(',')}`)
+        const pairsData = await pairsRes.json()
+        profilePairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
       }
 
-      // Step 3: fetch pair data in one batch
-      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`);
-      const pairsData = await pairsRes.json();
-      const pairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : [];
+      // Merge both sources, deduplicate by pairAddress
+      const seen = new Set()
+      const pairs = [...directNewPairs, ...profilePairs].filter(p => {
+        if (!p?.pairAddress || seen.has(p.pairAddress)) return false
+        seen.add(p.pairAddress)
+        return true
+      })
 
       // Step 4: score each pair with the sniper-focused scoring
       const scored = pairs.map(p => {
