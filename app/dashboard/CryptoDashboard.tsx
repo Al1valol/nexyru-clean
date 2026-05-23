@@ -806,6 +806,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
       // Step 4: score each pair with the sniper-focused scoring
       const scored = pairs.map(p => {
+        console.log('pairCreatedAt raw:', p.pairCreatedAt, 'type:', typeof p.pairCreatedAt, 'Date.now():', Date.now())
         const createdAt = p.pairCreatedAt;
         const ageMs = createdAt
           ? (typeof createdAt === 'number'
