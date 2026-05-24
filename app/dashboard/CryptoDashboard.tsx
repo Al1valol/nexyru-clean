@@ -840,28 +840,63 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
     try {
-      // Step 1: Get latest token profiles (has real contract addresses)
-      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1')
-      const profiles = await profilesRes.json().catch(() => [])
-      const arr = Array.isArray(profiles) ? profiles : []
+      // Fetch from multiple sources in parallel
+      const [profilesRes, boostsRes, searchRes1, searchRes2] = await Promise.all([
+        fetch('https://api.dexscreener.com/token-profiles/latest/v1'),
+        fetch('https://api.dexscreener.com/token-boosts/latest/v1'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=solana+new'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=pump+sol'),
+      ])
 
-      // Step 2: Get addresses
-      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean)
-      if (addresses.length === 0) {
-        setGems([])
-        setGemsLoading(false)
-        return
+      const profiles = await profilesRes.json().catch(() => [])
+      const boosts = await boostsRes.json().catch(() => [])
+      const search1 = await searchRes1.json().catch(() => ({}))
+      const search2 = await searchRes2.json().catch(() => ({}))
+
+      // Get addresses from profiles and boosts
+      const profileAddresses = (Array.isArray(profiles) ? profiles : [])
+        .slice(0, 30)
+        .map((p: any) => p?.tokenAddress)
+        .filter(Boolean)
+
+      const boostAddresses = (Array.isArray(boosts) ? boosts : [])
+        .slice(0, 20)
+        .map((b: any) => b?.tokenAddress)
+        .filter(Boolean)
+
+      // Get direct pairs from search
+      const searchPairs = [
+        ...(search1?.pairs || []),
+        ...(search2?.pairs || []),
+      ].filter((p: any) => p?.chainId === 'solana')
+
+      // Combine all addresses
+      const allAddresses = [...new Set([...profileAddresses, ...boostAddresses])]
+
+      // Fetch pair data for all addresses in batches of 30
+      let fetchedPairs: any[] = []
+      if (allAddresses.length > 0) {
+        const batches = []
+        for (let i = 0; i < allAddresses.length; i += 30) {
+          batches.push(allAddresses.slice(i, i + 30))
+        }
+        const batchResults = await Promise.all(
+          batches.map(batch =>
+            fetch(`https://api.dexscreener.com/latest/dex/tokens/${batch.join(',')}`)
+              .then(r => r.json())
+              .then(d => d?.pairs || [])
+              .catch(() => [])
+          )
+        )
+        fetchedPairs = batchResults.flat()
       }
 
-      // Step 3: Fetch from TOKENS endpoint (not search) - this has pairCreatedAt
-      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`)
-      const pairsData = await pairsRes.json().catch(() => ({}))
-      const allPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
+      // Combine all pairs
+      const allPairs = [...fetchedPairs, ...searchPairs]
 
-      // Step 4: Dedupe - one coin can have multiple pairs (SOL/COIN and USDC/COIN)
-      // Keep the pair with highest volume per token
+      // Dedupe by token address keeping highest volume pair
       const bestPairPerToken: Record<string, any> = {}
-      allPairs.forEach(p => {
+      allPairs.forEach((p: any) => {
         const key = p.baseToken?.address
         if (!key) return
         const vol = parseFloat(p.volume?.h24 || 0)
@@ -870,32 +905,23 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           bestPairPerToken[key] = p
         }
       })
+
       const pairs = Object.values(bestPairPerToken)
 
-      // Step 5: Calculate age correctly - pairCreatedAt is in milliseconds from tokens endpoint
-      const scored = pairs.map(p => {
-        const createdAt = p.pairCreatedAt  // milliseconds, e.g. 1768479521000
+      // Score and process
+      const scored = pairs.map((p: any) => {
+        const createdAt = p.pairCreatedAt
         const ageMs = createdAt ? Date.now() - Number(createdAt) : 999 * 3600000
         const ageHours = Math.max(0, ageMs / 3600000)
-        console.log(
-          'COIN:', p.baseToken?.name,
-          '| pairCreatedAt:', p.pairCreatedAt,
-          '| as date:', p.pairCreatedAt ? new Date(Number(p.pairCreatedAt)).toLocaleString() : 'none',
-          '| ageHours:', ageHours.toFixed(2),
-          '| pairAddress:', p.pairAddress
-        )
-
-        const vol = parseFloat(p.volume?.h24 || 0);
-        const change1h = parseFloat(p.priceChange?.h1 || 0);
-        const change24h = parseFloat(p.priceChange?.h24 || 0);
-        const buys = p.txns?.h1?.buys || 0;
-        const sells = p.txns?.h1?.sells || 0;
-        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5;
-
-        const score = scoreGem(p);
-        const signals = getSignals(p);
-        const snipeWindow = getSnipeWindow(p);
-
+        const vol = parseFloat(p.volume?.h24 || 0)
+        const change1h = parseFloat(p.priceChange?.h1 || 0)
+        const change24h = parseFloat(p.priceChange?.h24 || 0)
+        const buys = p.txns?.h1?.buys || 0
+        const sells = p.txns?.h1?.sells || 0
+        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
+        const score = scoreGem(p)
+        const signals = getSignals(p)
+        const snipeWindow = getSnipeWindow(p)
         return {
           ...p,
           gemScore: score,
@@ -908,30 +934,26 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           change1h,
           change24h,
           volume24h: vol,
-          buys,
-          sells,
-          buyRatio,
-          signals,
-          snipeWindow,
+          buys, sells, buyRatio,
+          signals, snipeWindow,
           url: p.url || `https://dexscreener.com/${p.chainId}/${p.pairAddress}`,
           coinId: p.baseToken?.address || p.pairAddress,
           image: p.info?.imageUrl || null,
-        };
-      });
+        }
+      })
 
-      scored.sort((a, b) => b.gemScore - a.gemScore);
-      setGems(scored);
-      const now = Date.now();
-      setGemsLastUpdated(now);
-      setSecondsAgo(0);
-      onUpdated?.(now);
-    } catch (e) {
-      if (typeof console !== 'undefined') console.error('fetchGems error:', e?.message || e);
-      setGems([]);
-    } finally {
-      setGemsLoading(false);
+      scored.sort((a, b) => b.gemScore - a.gemScore)
+      setGems(scored)
+      const now = Date.now()
+      setGemsLastUpdated(now)
+      setSecondsAgo(0)
+      onUpdated?.(now)
+    } catch (e: any) {
+      console.error('fetchGems error:', e?.message || e)
+      setGems([])
     }
-  }, [onUpdated]);
+    setGemsLoading(false)
+  }, [fetchGems, refreshKey])
 
   // Auto-refresh every 60 seconds. The component only mounts while the gems
   // sub-section is active, so this is equivalent to gating on appMode/section.
