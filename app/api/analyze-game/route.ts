@@ -60,7 +60,7 @@ Reply ONLY with JSON: {"pick":"${team1} or ${team2} or SKIP","confidence":"high 
       messages: [{ role: 'user', content: prompt }]
     })
 
-    const text = message.content.find((b: any) => b.type === 'text')?.text || '{}'
+    const text = (message.content.find((b: any) => b.type === 'text') as any)?.text || '{}'
 
     let result: any = null
     try { result = JSON.parse(text.replace(/```json|```/g,'').trim()) } catch(e) {}
