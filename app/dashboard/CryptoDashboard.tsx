@@ -840,11 +840,19 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true)
     try {
-      // Fetch 10 pages of Solana + 3 pages of Base newest pools
-      const [solanaPages, basePages] = await Promise.all([
+      // Solana: new_pools (1-5) + trending_pools (1-5) for newer + volume-history coins.
+      // Base: still 3 pages of new_pools.
+      const [solanaNewPages, solanaTrendPages, basePages] = await Promise.all([
         Promise.all(
-          [1,2,3,4,5,6,7,8,9,10].map(page =>
+          [1,2,3,4,5].map(page =>
             fetch(`https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=${page}&include=base_token`)
+              .then(r => r.json())
+              .catch(() => ({}))
+          )
+        ),
+        Promise.all(
+          [1,2,3,4,5].map(page =>
+            fetch(`https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=${page}&include=base_token`)
               .then(r => r.json())
               .catch(() => ({}))
           )
@@ -859,7 +867,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
       ])
 
       const allPages = [
-        ...solanaPages.map(p => ({ data: p, chain: 'solana' })),
+        ...solanaNewPages.map(p => ({ data: p, chain: 'solana' })),
+        ...solanaTrendPages.map(p => ({ data: p, chain: 'solana' })),
         ...basePages.map(p => ({ data: p, chain: 'base' })),
       ]
 
@@ -1009,19 +1018,17 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         }
       })
 
-      // Filter: under 2h old, decent liquidity/volume, still a meme cap
+      // Filter: under 12h old, decent liquidity, has activity
       const filtered = converted.filter(coin => {
         const liq = parseFloat(coin.liquidity?.usd || 0)
-        const vol24 = parseFloat(coin.volume?.h24 || 0)
         const vol1h = parseFloat(coin.volume?.h1 || 0)
+        const vol24 = parseFloat(coin.volume?.h24 || 0)
         const ageHours = coin.ageHours || 999
-        const mc = parseFloat(coin.marketCap || 0)
 
         return (
-          ageHours <= 2 &&                  // Under 2 hours old
-          liq > 1000 &&                     // Has liquidity
-          (vol1h > 500 || vol24 > 1000) &&  // Has some activity
-          mc < 100000000                    // Under $100M mcap (still a meme)
+          ageHours <= 12 &&                  // Under 12 hours — mix of very new and slightly older
+          liq > 1000 &&                      // Has liquidity
+          (vol1h > 500 || vol24 > 2000)      // Has activity
         )
       }).sort((a, b) => b.score - a.score).slice(0, 50)
 
