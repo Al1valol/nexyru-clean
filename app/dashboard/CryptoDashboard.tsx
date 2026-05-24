@@ -12,14 +12,13 @@ import {
 
 function PriceChangeRow({ priceChange }: { priceChange: any }) {
   const timeframes = [
-    { label: '5m', value: parseFloat(priceChange?.m5 || 0) },
-    { label: '1h', value: parseFloat(priceChange?.h1 || 0) },
-    { label: '6h', value: parseFloat(priceChange?.h6 || 0) },
-    { label: '24h', value: parseFloat(priceChange?.h24 || 0) },
+    { label: '1H', value: parseFloat(priceChange?.h1 || 0) },
+    { label: '6H', value: parseFloat(priceChange?.h6 || 0) },
+    { label: '24H', value: parseFloat(priceChange?.h24 || 0) },
   ]
 
   return (
-    <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, marginBottom:10}}>
+    <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:10}}>
       {timeframes.map(tf => {
         const isPos = tf.value > 0
         const isNeg = tf.value < 0
@@ -1338,7 +1337,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap:12 }}>
-          {visible.map(coin => {
+          {visible.map((coin, idx) => {
+            try {
             const score = coin.gemScore;
             const badge = gemBadge(score);
             const change = Number(coin.change24h) || 0;
@@ -1536,6 +1536,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 </div>
               </div>
             );
+            } catch(e) {
+              console.error('Gem card error:', e, coin);
+              return null;
+            }
           })}
         </div>
       )}
@@ -4890,7 +4894,21 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
           </div>
         </div>
         {cryptoSection === 'hotnow'    && <ChartErrorBoundary resetKey="hotnow"><CryptoHotNow    refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
-        {cryptoSection === 'gems'      && <ChartErrorBoundary resetKey="gems"><CryptoGems      refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
+        {cryptoSection === 'gems' && (
+          <ChartErrorBoundary
+            resetKey="gems"
+            fallback={
+              <div style={{padding:32, color:'#9ca3af', textAlign:'center'}}>
+                <div style={{fontSize:16, marginBottom:8}}>Coin Sniper temporarily unavailable</div>
+                <button onClick={() => window.location.reload()} style={{padding:'8px 16px', borderRadius:8, background:'#6366f1', color:'#fff', border:'none', cursor:'pointer'}}>
+                  Reload
+                </button>
+              </div>
+            }
+          >
+            <CryptoGems refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} signals={cryptoSignals} onLogSignal={logCryptoSignal} onBuy={setBuyModalCoin} />
+          </ChartErrorBoundary>
+        )}
         {cryptoSection === 'dipfinder' && (
           <div>
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16, flexWrap:'wrap', gap:8}}>
