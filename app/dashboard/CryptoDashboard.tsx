@@ -840,21 +840,29 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
     try {
-      // Step 1: Get latest token profiles (has real contract addresses)
-      const profilesRes = await fetch('https://api.dexscreener.com/token-profiles/latest/v1')
+      // Step 1: Fetch from multiple sources in parallel
+      const [profilesRes, boostsRes] = await Promise.all([
+        fetch('https://api.dexscreener.com/token-profiles/latest/v1'),
+        fetch('https://api.dexscreener.com/token-boosts/latest/v1'),
+      ])
       const profiles = await profilesRes.json().catch(() => [])
-      const arr = Array.isArray(profiles) ? profiles : []
+      const boosts = await boostsRes.json().catch(() => [])
 
-      // Step 2: Get addresses
-      const addresses = arr.slice(0, 20).map(p => p?.tokenAddress).filter(Boolean)
+      // Step 2: Combine addresses from both sources
+      const profileAddrs = (Array.isArray(profiles) ? profiles : [])
+        .slice(0, 30).map((p: any) => p?.tokenAddress).filter(Boolean)
+      const boostAddrs = (Array.isArray(boosts) ? boosts : [])
+        .slice(0, 20).map((b: any) => b?.tokenAddress).filter(Boolean)
+      const addresses = [...new Set([...profileAddrs, ...boostAddrs])]
+
       if (addresses.length === 0) {
         setGems([])
         setGemsLoading(false)
         return
       }
 
-      // Step 3: Fetch from TOKENS endpoint (not search) - this has pairCreatedAt
-      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`)
+      // Step 3: Fetch pairs in one batch (DexScreener supports up to 30 addresses)
+      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.slice(0,30).join(',')}`)
       const pairsData = await pairsRes.json().catch(() => ({}))
       const allPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
 
