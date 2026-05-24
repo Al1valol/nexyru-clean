@@ -1018,19 +1018,22 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         }
       })
 
-      // Filter: under 12h old, decent liquidity, has activity
+      // Most permissive: under 24h, any liquidity above $100. Sort newest first.
       const filtered = converted.filter(coin => {
         const liq = parseFloat(coin.liquidity?.usd || 0)
-        const vol1h = parseFloat(coin.volume?.h1 || 0)
-        const vol24 = parseFloat(coin.volume?.h24 || 0)
         const ageHours = coin.ageHours || 999
 
         return (
-          ageHours <= 12 &&                  // Under 12 hours — mix of very new and slightly older
-          liq > 1000 &&                      // Has liquidity
-          (vol1h > 500 || vol24 > 2000)      // Has activity
+          ageHours <= 24 &&   // Under 24 hours
+          liq > 100           // Basically any liquidity
         )
-      }).sort((a, b) => b.score - a.score).slice(0, 50)
+      }).sort((a, b) => a.ageHours - b.ageHours).slice(0, 50)
+
+      console.log('Total pools fetched:', allPools.length)
+      console.log('After dedup:', unique.length)
+      console.log('After convert:', converted.length)
+      console.log('After filter:', filtered.length)
+      console.log('Sample coin:', JSON.stringify(converted[0]).substring(0, 200))
 
       setGems(filtered)
     } catch(e) {
