@@ -666,6 +666,43 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     if (typeof window === 'undefined') return [];
     try { return JSON.parse(localStorage.getItem('sniper_whales') || '[]'); } catch { return []; }
   });
+  const [caSearch, setCaSearch] = useState('')
+  const [caResult, setCaResult] = useState<any>(null)
+  const [caLoading, setCaLoading] = useState(false)
+
+  const searchByCA = async (address: string) => {
+    if (!address.trim()) return
+    setCaLoading(true)
+    setCaResult(null)
+    try {
+      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address.trim()}`)
+      const data = await res.json()
+      const pair = data?.pairs?.[0]
+      if (pair) {
+        const ageMs = pair.pairCreatedAt ? Date.now() - Number(pair.pairCreatedAt) : 0
+        const ageHours = ageMs / 3600000
+        setCaResult({
+          ...pair,
+          coinId: pair.baseToken?.address,
+          name: pair.baseToken?.name,
+          symbol: pair.baseToken?.symbol,
+          chain: pair.chainId,
+          ageHours,
+          priceUsd: pair.priceUsd,
+          buyRatio: (pair.txns?.h1?.buys||0) / Math.max((pair.txns?.h1?.buys||0)+(pair.txns?.h1?.sells||0),1),
+          score: 0,
+          image: pair.info?.imageUrl || null,
+          baseToken: pair.baseToken,
+          info: pair.info || {socials:[], websites:[]},
+        })
+      } else {
+        setCaResult({error: 'Coin not found — check the contract address'})
+      }
+    } catch(e) {
+      setCaResult({error: 'Failed to fetch coin data'})
+    }
+    setCaLoading(false)
+  }
 
   const enableAlerts = async () => {
     if (!('Notification' in window)) {
@@ -1183,6 +1220,35 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         </div>
       </div>
 
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:11, color:'#4b5563', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6}}>
+          Search by Contract Address
+        </div>
+        <div style={{display:'flex', gap:8}}>
+          <input
+            value={caSearch}
+            onChange={e => setCaSearch(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && searchByCA(caSearch)}
+            placeholder="Paste any Solana CA from FOMO..."
+            style={{
+              flex:1, padding:'10px 12px', borderRadius:8,
+              border:'1px solid #1e1e2a', background:'#1a1a24',
+              color:'#fff', fontSize:13, outline:'none',
+              fontFamily:'monospace'
+            }}
+          />
+          <button onClick={() => searchByCA(caSearch)} disabled={caLoading} style={{
+            padding:'10px 16px', borderRadius:8, border:'none',
+            background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
+          }}>
+            {caLoading ? '...' : 'Search'}
+          </button>
+        </div>
+        <div style={{fontSize:11, color:'#4b5563', marginTop:4}}>
+          Find a coin on FOMO → copy its CA → paste here for full analysis
+        </div>
+      </div>
+
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Window</span>
@@ -1221,6 +1287,104 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           ))}
         </div>
       </div>
+
+      {caResult && !caResult.error && (() => {
+        const id = caResult.coinId || caResult.pairAddress
+        const ageH = caResult.ageHours || 0
+        const ageStr = ageH < 1 ? `${Math.round(ageH*60)}m old`
+          : ageH < 24 ? `${ageH.toFixed(1)}h old`
+          : `${Math.floor(ageH/24)}d old`
+        const ageColor = ageH < 2 ? '#22c55e' : ageH < 6 ? '#fbbf24' : '#6b7280'
+        const chainColors: Record<string,string> = { solana:'#9945ff', ethereum:'#627eea', base:'#0052ff', bsc:'#f0b90b' }
+        const chainKey = (caResult.chainId || caResult.chain || '').toLowerCase()
+        const chainColor = chainColors[chainKey] || '#6b7280'
+        const liq = parseFloat(caResult.liquidity?.usd || 0)
+        const ai = snipeAnalysis[id]
+        return (
+          <div style={{
+            background:'rgba(99,102,241,0.08)', border:'2px solid rgba(99,102,241,0.4)',
+            borderRadius:12, padding:14, marginBottom:16
+          }}>
+            <div style={{fontSize:11, color:'#a5b4fc', fontWeight:700, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.06em'}}>
+              Search Result
+            </div>
+            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+              {caResult.image && <img src={caResult.image} alt="" loading="lazy" referrerPolicy="no-referrer" style={{width:36, height:36, borderRadius:'50%', flexShrink:0, objectFit:'cover'}} onError={(e) => { e.currentTarget.style.display='none'; }}/>}
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
+                  <span style={{fontSize:15, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{caResult.name}</span>
+                  <span style={{fontSize:11, color:'#4b5563'}}>{(caResult.symbol || '').toUpperCase()}</span>
+                  <span style={{fontSize:10, padding:'1px 6px', borderRadius:10, background:`${chainColor}26`, color:chainColor, fontWeight:600, textTransform:'uppercase'}}>{caResult.chainId || caResult.chain}</span>
+                </div>
+                <div style={{fontSize:13, fontWeight:700, color:ageColor}}>{ageStr}</div>
+              </div>
+            </div>
+
+            <PriceChangeRow priceChange={caResult.priceChange} />
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:10}}>
+              {[
+                {label:'LIQ', value:`$${formatNum(liq)}`, color: liq > 10000 ? '#22c55e' : liq > 3000 ? '#f59e0b' : '#ef4444'},
+                {label:'MCAP', value:`$${formatNum(parseFloat(caResult.marketCap||0))}`, color:'#fff'},
+                {label:'BUYS', value:`${Math.round((caResult.buyRatio||0.5)*100)}%`, color: (caResult.buyRatio||0) > 0.6 ? '#22c55e' : (caResult.buyRatio||0) > 0.45 ? '#f59e0b' : '#ef4444'},
+              ].map(s => (
+                <div key={s.label} style={{background:'#1a1a24', borderRadius:6, padding:'7px 8px', textAlign:'center'}}>
+                  <div style={{fontSize:9, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:3}}>{s.label}</div>
+                  <div style={{fontSize:13, fontWeight:700, color:s.color}}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {ai && (
+              <div style={{
+                padding:'8px 10px', borderRadius:8, marginBottom:8,
+                background: ai.verdict==='BUY' ? 'rgba(34,197,94,0.08)' : ai.verdict==='SKIP' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
+                border:`1px solid ${ai.verdict==='BUY' ? 'rgba(34,197,94,0.25)' : ai.verdict==='SKIP' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`
+              }}>
+                <span style={{fontSize:12, fontWeight:700, color: ai.verdict==='BUY'?'#22c55e':ai.verdict==='SKIP'?'#ef4444':'#f59e0b'}}>
+                  {ai.verdict==='BUY'?'✓ BUY':ai.verdict==='SKIP'?'✕ SKIP':'◎ WATCH'}
+                </span>
+                <span style={{fontSize:11, color:'#9ca3af', marginLeft:8}}>{ai.reason}</span>
+              </div>
+            )}
+
+            <div style={{display:'grid', gridTemplateColumns: ai ? '1fr 1fr' : '1fr 1fr 1fr', gap:6}}>
+              {!ai && (
+                <button onClick={() => analyzeSnipe(caResult)} disabled={snipeAnalyzing[id]} style={{
+                  padding:'8px', borderRadius:8,
+                  border:'1px solid rgba(99,102,241,0.3)', background:'rgba(99,102,241,0.08)',
+                  color: snipeAnalyzing[id] ? '#4b5563' : '#a5b4fc',
+                  fontSize:11, fontWeight:700, cursor:'pointer'
+                }}>
+                  {snipeAnalyzing[id] ? '...' : 'AI'}
+                </button>
+              )}
+              <button onClick={() => {
+                const addr = caResult.baseToken?.address || caResult.coinId || caResult.pairAddress
+                if(addr){ navigator.clipboard.writeText(addr); window.open('https://fomo.family/r/al1valol','_blank') }
+              }} style={{
+                padding:'8px', borderRadius:8, border:'none',
+                background:'rgba(34,197,94,0.15)', color:'#22c55e',
+                fontSize:11, fontWeight:700, cursor:'pointer'
+              }}>FOMO</button>
+              <button onClick={() => {
+                const addr = caResult.baseToken?.address || caResult.coinId || caResult.pairAddress
+                if(addr) navigator.clipboard.writeText(addr)
+              }} style={{
+                padding:'8px', borderRadius:8,
+                border:'1px solid #1e1e2a', background:'transparent',
+                color:'#4b5563', fontSize:11, cursor:'pointer'
+              }}>CA</button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {caResult?.error && (
+        <div style={{padding:12, borderRadius:8, background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', color:'#ef4444', fontSize:13, marginBottom:16}}>
+          {caResult.error}
+        </div>
+      )}
 
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
         {visible.length} {visible.length === 1 ? 'gem' : 'gems'} found · updated {secondsAgo < 1 ? 'just now' : secondsAgo + 's ago'}
