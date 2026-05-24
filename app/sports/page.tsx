@@ -2568,53 +2568,12 @@ type PropBet = {
   line: number;
   avg: number;
   avgDisplay: string;
-  seasonAvg: number;
-  gamesPlayed: number;
-  lastFive: number[];
-  pick: "OVER" | "UNDER";
+  pick: "OVER";
   edge: number;
   edgePct: number;
   confidence: Confidence;
   odds: number;
-  sport: "NBA" | "MLB" | "NHL" | "NFL";
-};
-
-const calculateEdge = (seasonAvg: number, line: number, gamesPlayed: number) => {
-  if (!line || line === 0) return 0;
-  const rawEdge = (seasonAvg - line) / line;
-  const sampleMultiplier = Math.min(1, gamesPlayed / 30);
-  const edge = rawEdge * sampleMultiplier * 100;
-  return parseFloat(edge.toFixed(1));
-};
-
-const scoreProps = (prop: any) => {
-  const edge = calculateEdge(prop.seasonAvg, prop.line, prop.gamesPlayed || 30);
-  const absEdge = Math.abs(edge);
-  let score = 0;
-  if (absEdge > 30) score += 60;
-  else if (absEdge > 20) score += 48;
-  else if (absEdge > 15) score += 38;
-  else if (absEdge > 10) score += 28;
-  else if (absEdge > 5) score += 15;
-  else score += 5;
-
-  const games = prop.gamesPlayed || 0;
-  if (games > 60) score += 20;
-  else if (games > 40) score += 15;
-  else if (games > 20) score += 10;
-  else if (games > 10) score += 5;
-
-  if (prop.lastFive && prop.lastFive.length > 0) {
-    const lastFiveAvg =
-      prop.lastFive.reduce((s: number, v: number) => s + v, 0) / prop.lastFive.length;
-    const trendEdge = ((lastFiveAvg - prop.line) / prop.line) * 100;
-    if (Math.sign(trendEdge) === Math.sign(edge)) {
-      score += 20;
-    } else {
-      score -= 10;
-    }
-  }
-  return { ...prop, edge, score: Math.min(100, Math.max(0, score)) };
+  sport: "NBA" | "MLB";
 };
 
 const CONF_ORDER: Record<Confidence, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
@@ -2654,9 +2613,6 @@ function generatePropBets(
           line,
           avg,
           avgDisplay: avg.toFixed(decimals),
-          seasonAvg: avg,
-          gamesPlayed: p.gp || 30,
-          lastFive: [],
           pick: "OVER",
           edge,
           edgePct: Math.round((edge / avg) * 100),
@@ -2691,9 +2647,6 @@ function generatePropBets(
           line,
           avg: hrPerGame,
           avgDisplay: hrPerGame.toFixed(3),
-          seasonAvg: hrPerGame,
-          gamesPlayed: p.gamesPlayed || games,
-          lastFive: [],
           pick: "OVER",
           edge,
           edgePct: edge > 0 ? Math.round((edge / hrPerGame) * 100) : 0,
@@ -2715,9 +2668,6 @@ function generatePropBets(
           line,
           avg: hitsPerGame,
           avgDisplay: hitsPerGame.toFixed(2),
-          seasonAvg: hitsPerGame,
-          gamesPlayed: p.gamesPlayed || games,
-          lastFive: [],
           pick: "OVER",
           edge,
           edgePct: edge > 0 ? Math.round((edge / hitsPerGame) * 100) : 0,
@@ -2743,12 +2693,9 @@ function PlayerPropsPanel({
   onAddBet: (b: Omit<PaperBet, "id" | "placedAt" | "status">) => void;
   onSwitchSection: (s: Section) => void;
 }) {
-  const [sport, setSport] = useState<"all" | "nba" | "mlb" | "nhl" | "nfl">("all");
+  const [sport, setSport] = useState<"all" | "nba" | "mlb">("all");
   const [nba, setNba] = useState<NbaPlayer[]>([]);
   const [mlb, setMlb] = useState<MlbPlayer[]>([]);
-  const [nhlProps, setNhlProps] = useState<any[]>([]);
-  const [nflProps, setNflProps] = useState<any[]>([]);
-  const [injuries, setInjuries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -2759,13 +2706,6 @@ function PlayerPropsPanel({
   const [propsMode, setPropsMode] = useState<"avg" | "real">("avg");
   const [realPropLines, setRealPropLines] = useState<any[]>([]);
   const [realPropsLoading, setRealPropsLoading] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/injuries")
-      .then((r) => r.json())
-      .then((d) => setInjuries(d.injuries || []))
-      .catch(() => {});
-  }, []);
 
   const deepDive = async (
     id: string,
@@ -2843,23 +2783,17 @@ function PlayerPropsPanel({
     setLoading(true);
     setError(null);
     try {
-      const [nbaRes, mlbRes, nhlRes, nflRes] = await Promise.all([
+      const [nbaRes, mlbRes] = await Promise.all([
         fetch(`/api/players?sport=nba&search=${search}`),
         fetch("/api/players?sport=mlb"),
-        fetch("/api/players?sport=nhl"),
-        fetch("/api/players?sport=nfl"),
       ]);
       const nbaData = await nbaRes.json();
       const mlbData = await mlbRes.json();
-      const nhlData = await nhlRes.json().catch(() => ({}));
-      const nflData = await nflRes.json().catch(() => ({}));
       if (!nbaRes.ok && !mlbRes.ok) {
         setError(nbaData.error ?? mlbData.error ?? "Failed to load players");
       }
       setNba(((nbaData.data as NbaPlayer[]) ?? []).sort((a, b) => b.ppg - a.ppg));
       setMlb(((mlbData.players as MlbPlayer[]) ?? []).sort((a, b) => b.homeRuns - a.homeRuns));
-      setNhlProps((nhlData?.allProps as any[]) ?? []);
-      setNflProps((nflData?.allProps as any[]) ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
@@ -2874,52 +2808,21 @@ function PlayerPropsPanel({
   const scoredBets = useMemo(() => {
     const nbaBets = generatePropBets(nba, [], "nba");
     const mlbBets = generatePropBets([], mlb, "mlb");
-    const nhlBets: PropBet[] = nhlProps.map((p: any, i: number) => ({
-      id: `nhl_${p.player}_${p.prop}_${i}`,
-      player: p.player,
-      team: p.team,
-      prop: p.prop,
-      propLower: (p.prop || "").toLowerCase(),
-      line: p.line,
-      avg: p.seasonAvg,
-      avgDisplay: p.seasonAvg?.toFixed?.(2) ?? String(p.seasonAvg),
-      seasonAvg: p.seasonAvg,
-      gamesPlayed: p.gamesPlayed || 82,
-      lastFive: p.lastFive || [],
-      pick: p.pick || (p.seasonAvg > p.line ? "OVER" : "UNDER"),
-      edge: p.edge || 0,
-      edgePct: Math.abs(p.edge || 0),
-      confidence: p.confidence === "Strong" ? "HIGH" : "MEDIUM",
-      odds: -110,
-      sport: "NHL",
-    }));
-    const nflBets: PropBet[] = nflProps.map((p: any, i: number) => ({
-      id: `nfl_${p.player}_${p.prop}_${i}`,
-      player: p.player,
-      team: p.team,
-      prop: p.prop,
-      propLower: (p.prop || "").toLowerCase(),
-      line: p.line,
-      avg: p.seasonAvg,
-      avgDisplay: p.seasonAvg?.toFixed?.(2) ?? String(p.seasonAvg),
-      seasonAvg: p.seasonAvg,
-      gamesPlayed: p.gamesPlayed || 17,
-      lastFive: p.lastFive || [],
-      pick: p.pick || (p.seasonAvg > p.line ? "OVER" : "UNDER"),
-      edge: p.edge || 0,
-      edgePct: Math.abs(p.edge || 0),
-      confidence: p.confidence === "Strong" ? "HIGH" : "MEDIUM",
-      odds: -110,
-      sport: "NFL",
-    }));
-    const all = [...nbaBets, ...mlbBets, ...nhlBets, ...nflBets];
+    const all = [...nbaBets, ...mlbBets];
     return all
-      .map((b) => {
-        const scored = scoreProps(b);
-        return { ...b, edge: scored.edge, propScore: scored.score };
-      })
+      .map((b) => ({
+        ...b,
+        propScore: Math.min(
+          100,
+          Math.round(
+            b.edgePct * 3 +
+              (b.confidence === "HIGH" ? 20 : b.confidence === "MEDIUM" ? 10 : 0) +
+              (b.pick === "OVER" ? 5 : 0),
+          ),
+        ),
+      }))
       .sort((a, b) => b.propScore - a.propScore);
-  }, [nba, mlb, nhlProps, nflProps]);
+  }, [nba, mlb]);
 
   const bets = useMemo(() => {
     if (sport === "all") return scoredBets;
@@ -3296,8 +3199,6 @@ function PlayerPropsPanel({
           { id: "all" as const, label: "All" },
           { id: "nba" as const, label: "NBA" },
           { id: "mlb" as const, label: "MLB" },
-          { id: "nhl" as const, label: "NHL" },
-          { id: "nfl" as const, label: "NFL" },
         ].map((s) => (
           <button
             key={s.id}
@@ -3423,12 +3324,6 @@ function PlayerPropsPanel({
                     ? C.amber
                     : C.textMuted;
             const pickColor = b.pick === "OVER" ? C.green : C.red;
-            const playerLast = b.player?.split(" ").slice(-1)[0]?.toLowerCase() || "";
-            const playerInjury = playerLast
-              ? injuries.find((inj: any) =>
-                  (inj.player || "").toLowerCase().includes(playerLast),
-                )
-              : null;
             return (
               <div
                 key={b.id}
@@ -3441,20 +3336,8 @@ function PlayerPropsPanel({
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{b.player}</div>
-                      <span style={{
-                        fontSize: 10,
-                        padding: "2px 6px",
-                        borderRadius: 10,
-                        background: "rgba(99,102,241,0.1)",
-                        color: "#a5b4fc",
-                        fontWeight: 600,
-                      }}>
-                        {b.sport}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 11, color: C.textMuted }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{b.player}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
                       {b.team || b.sport} · {b.prop}
                     </div>
                   </div>
@@ -3472,24 +3355,6 @@ function PlayerPropsPanel({
                     <div style={{ fontSize: 9, color: C.textMuted }}>/ 100</div>
                   </div>
                 </div>
-
-                {playerInjury && (
-                  <div style={{
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    marginBottom: 8,
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.2)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}>
-                    <AlertTriangle size={12} color="#ef4444"/>
-                    <span style={{ fontSize: 11, color: "#ef4444", fontWeight: 600 }}>
-                      {playerInjury.status} — {playerInjury.type}
-                    </span>
-                  </div>
-                )}
 
                 <div
                   style={{
@@ -3519,43 +3384,6 @@ function PlayerPropsPanel({
                 <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 10 }}>
                   Bet $110 → win $100
                 </div>
-
-                {b.lastFive && b.lastFive.length > 0 && (
-                  <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <div style={{
-                      fontSize: 10,
-                      color: "#4b5563",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                      fontWeight: 600,
-                      marginBottom: 5,
-                    }}>Last 5 games</div>
-                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                      {b.lastFive.map((val: number, i: number) => {
-                        const overLine = val > b.line;
-                        return (
-                          <div key={i} style={{
-                            flex: 1,
-                            padding: "4px 2px",
-                            borderRadius: 4,
-                            textAlign: "center",
-                            background: overLine ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
-                            border: `1px solid ${overLine ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-                          }}>
-                            <div style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: overLine ? "#22c55e" : "#ef4444",
-                            }}>{val}</div>
-                          </div>
-                        );
-                      })}
-                      <div style={{ marginLeft: 4, fontSize: 11, color: "#6b7280" }}>
-                        line: <strong style={{ color: "#fff" }}>{b.line}</strong>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 <div style={{ display: "flex", gap: 8 }}>
                   <button

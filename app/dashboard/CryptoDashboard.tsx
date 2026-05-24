@@ -666,43 +666,6 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
     if (typeof window === 'undefined') return [];
     try { return JSON.parse(localStorage.getItem('sniper_whales') || '[]'); } catch { return []; }
   });
-  const [caSearch, setCaSearch] = useState('')
-  const [caResult, setCaResult] = useState<any>(null)
-  const [caLoading, setCaLoading] = useState(false)
-
-  const searchByCA = async (address: string) => {
-    if (!address.trim()) return
-    setCaLoading(true)
-    setCaResult(null)
-    try {
-      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address.trim()}`)
-      const data = await res.json()
-      const pair = data?.pairs?.[0]
-      if (pair) {
-        const ageMs = pair.pairCreatedAt ? Date.now() - Number(pair.pairCreatedAt) : 0
-        const ageHours = ageMs / 3600000
-        setCaResult({
-          ...pair,
-          coinId: pair.baseToken?.address,
-          name: pair.baseToken?.name,
-          symbol: pair.baseToken?.symbol,
-          chain: pair.chainId,
-          ageHours,
-          priceUsd: pair.priceUsd,
-          buyRatio: (pair.txns?.h1?.buys||0) / Math.max((pair.txns?.h1?.buys||0)+(pair.txns?.h1?.sells||0),1),
-          score: 0,
-          image: pair.info?.imageUrl || null,
-          baseToken: pair.baseToken,
-          info: pair.info || {socials:[], websites:[]},
-        })
-      } else {
-        setCaResult({error: 'Coin not found — check the contract address'})
-      }
-    } catch(e) {
-      setCaResult({error: 'Failed to fetch coin data'})
-    }
-    setCaLoading(false)
-  }
 
   const enableAlerts = async () => {
     if (!('Notification' in window)) {
@@ -877,10 +840,148 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true)
     try {
-      const res = await fetch('/api/gems', { cache: 'no-store' })
-      const data = await res.json()
-      setGems(data.coins || [])
-    } catch (e) {
+      // Fetch 5 pages of trending Solana pools = 100 coins
+      const pages = await Promise.all(
+        [1,2,3,4,5].map(page =>
+          fetch(`https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=${page}`)
+            .then(r => r.json())
+            .then(d => d?.data || [])
+            .catch(() => [])
+        )
+      )
+
+      const allPools = pages.flat()
+
+      // Dedupe by pool address
+      const seen = new Set<string>()
+      const unique = allPools.filter(pool => {
+        const addr = pool?.attributes?.address
+        if (!addr || seen.has(addr)) return false
+        seen.add(addr)
+        return true
+      })
+
+      // Convert GeckoTerminal format to our coin format
+      const scored = unique.map(pool => {
+        const attr = pool.attributes
+        const name = attr.name?.split(' / ')?.[0] || 'Unknown'
+        const symbol = name
+
+        const m5 = parseFloat(attr.price_change_percentage?.m5 || 0)
+        const m15 = parseFloat(attr.price_change_percentage?.m15 || 0)
+        const m30 = parseFloat(attr.price_change_percentage?.m30 || 0)
+        const h1 = parseFloat(attr.price_change_percentage?.h1 || 0)
+        const h6 = parseFloat(attr.price_change_percentage?.h6 || 0)
+        const h24 = parseFloat(attr.price_change_percentage?.h24 || 0)
+
+        const liq = parseFloat(attr.reserve_in_usd || 0)
+        const mc = parseFloat(attr.market_cap_usd || attr.fdv_usd || 0)
+        const vol24 = parseFloat(attr.volume_usd?.h24 || 0)
+        const vol1h = parseFloat(attr.volume_usd?.h1 || 0)
+
+        const buys = attr.transactions?.h1?.buys || 0
+        const sells = attr.transactions?.h1?.sells || 0
+        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
+
+        const createdAt = attr.pool_created_at ? new Date(attr.pool_created_at).getTime() : 0
+        const ageMs = createdAt ? Date.now() - createdAt : 999 * 3600000
+        const ageHours = Math.max(0, ageMs / 3600000)
+
+        // Score the gem
+        let score = 0
+
+        // Age (25pts)
+        if (ageHours < 0.5) score += 25
+        else if (ageHours < 1) score += 20
+        else if (ageHours < 2) score += 15
+        else if (ageHours < 6) score += 10
+        else if (ageHours < 24) score += 5
+
+        // 5m momentum (25pts) — key signal
+        if (m5 > 20) score += 25
+        else if (m5 > 10) score += 20
+        else if (m5 > 5) score += 15
+        else if (m5 > 0) score += 8
+        else if (m5 > -5) score += 3
+
+        // Buy pressure (20pts)
+        if (buyRatio > 0.7) score += 20
+        else if (buyRatio > 0.6) score += 14
+        else if (buyRatio > 0.5) score += 8
+
+        // Liquidity (15pts)
+        if (liq > 50000) score += 15
+        else if (liq > 20000) score += 11
+        else if (liq > 5000) score += 7
+        else if (liq > 1000) score += 3
+
+        // Volume (15pts)
+        if (vol1h > 100000) score += 15
+        else if (vol1h > 50000) score += 11
+        else if (vol1h > 10000) score += 7
+        else if (vol1h > 1000) score += 3
+
+        score = Math.min(100, score)
+
+        // Snipe window based on age + m5
+        const getSnipeWindow = () => {
+          if (h24 > 500 || h6 > 200) return {id:'toolate', label:'Too Late', color:'#ef4444'}
+          if (ageHours < 1 && m5 >= 0) return {id:'prime', label:'Prime Snipe', color:'#22c55e'}
+          if (ageHours < 6 && m5 > 0) return {id:'early', label:'Early', color:'#f59e0b'}
+          if (ageHours < 24) return {id:'watch', label:'Watch', color:'#6b7280'}
+          return {id:'toolate', label:'Too Late', color:'#ef4444'}
+        }
+
+        return {
+          // Core identity
+          pairAddress: attr.address,
+          coinId: attr.address,
+          name,
+          symbol,
+          chain: 'solana',
+          chainId: 'solana',
+          price: attr.base_token_price_usd,
+          priceUsd: attr.base_token_price_usd,
+          image: null,
+          url: `https://www.geckoterminal.com/solana/pools/${attr.address}`,
+
+          // Price changes — all timeframes
+          priceChange: { m5, m15, m30, h1, h6, h24 },
+
+          // Volume
+          volume: {
+            m5: parseFloat(attr.volume_usd?.m5 || 0),
+            m15: parseFloat(attr.volume_usd?.m15 || 0),
+            m30: parseFloat(attr.volume_usd?.m30 || 0),
+            h1: vol1h,
+            h6: parseFloat(attr.volume_usd?.h6 || 0),
+            h24: vol24,
+          },
+
+          // Transactions
+          txns: attr.transactions,
+
+          // Liquidity
+          liquidity: { usd: liq },
+          marketCap: mc,
+          fdv: parseFloat(attr.fdv_usd || 0),
+
+          // Computed
+          ageHours,
+          buyRatio,
+          buys,
+          sells,
+          score,
+          snipeWindow: getSnipeWindow(),
+
+          // Socials — GeckoTerminal doesn't have these
+          info: { socials: [], websites: [] },
+          baseToken: { address: attr.address, name, symbol },
+        }
+      }).sort((a, b) => b.score - a.score)
+
+      setGems(scored)
+    } catch(e) {
       console.error('fetchGems error:', e)
     }
     setGemsLoading(false)
@@ -1115,10 +1216,10 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                   <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{coin.name} ({coin.symbol})</div>
                   <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.score}/100 · {coin.snipeWindow?.label}</div>
                 </div>
-                {(coin.baseToken?.address || coin.coinId) && (
+                {getContractAddress(coin) && (
                   <button onClick={() => {
-                    navigator.clipboard.writeText(coin.baseToken?.address || coin.coinId || '');
-                    alert(`Contract copied: ${coin.baseToken?.address || coin.coinId}\n\nPaste this in FOMO or Jupiter to find ${coin.name}`);
+                    navigator.clipboard.writeText(getContractAddress(coin) || '');
+                    alert(`Contract copied: ${getContractAddress(coin)}\n\nPaste this in FOMO or Jupiter to find ${coin.name}`);
                   }} style={{padding:'6px 12px', borderRadius:6, border:'none', background:'#6366f1', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer'}}>
                      Copy CA
                   </button>
@@ -1220,35 +1321,6 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
         </div>
       </div>
 
-      <div style={{marginBottom:16}}>
-        <div style={{fontSize:11, color:'#4b5563', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6}}>
-          Search by Contract Address
-        </div>
-        <div style={{display:'flex', gap:8}}>
-          <input
-            value={caSearch}
-            onChange={e => setCaSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && searchByCA(caSearch)}
-            placeholder="Paste any Solana CA from FOMO..."
-            style={{
-              flex:1, padding:'10px 12px', borderRadius:8,
-              border:'1px solid #1e1e2a', background:'#1a1a24',
-              color:'#fff', fontSize:13, outline:'none',
-              fontFamily:'monospace'
-            }}
-          />
-          <button onClick={() => searchByCA(caSearch)} disabled={caLoading} style={{
-            padding:'10px 16px', borderRadius:8, border:'none',
-            background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
-          }}>
-            {caLoading ? '...' : 'Search'}
-          </button>
-        </div>
-        <div style={{fontSize:11, color:'#4b5563', marginTop:4}}>
-          Find a coin on FOMO → copy its CA → paste here for full analysis
-        </div>
-      </div>
-
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <span style={{ fontSize:11, color:'#6b7280', textTransform:'uppercase', fontWeight:700, minWidth:60 }}>Window</span>
@@ -1287,104 +1359,6 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           ))}
         </div>
       </div>
-
-      {caResult && !caResult.error && (() => {
-        const id = caResult.coinId || caResult.pairAddress
-        const ageH = caResult.ageHours || 0
-        const ageStr = ageH < 1 ? `${Math.round(ageH*60)}m old`
-          : ageH < 24 ? `${ageH.toFixed(1)}h old`
-          : `${Math.floor(ageH/24)}d old`
-        const ageColor = ageH < 2 ? '#22c55e' : ageH < 6 ? '#fbbf24' : '#6b7280'
-        const chainColors: Record<string,string> = { solana:'#9945ff', ethereum:'#627eea', base:'#0052ff', bsc:'#f0b90b' }
-        const chainKey = (caResult.chainId || caResult.chain || '').toLowerCase()
-        const chainColor = chainColors[chainKey] || '#6b7280'
-        const liq = parseFloat(caResult.liquidity?.usd || 0)
-        const ai = snipeAnalysis[id]
-        return (
-          <div style={{
-            background:'rgba(99,102,241,0.08)', border:'2px solid rgba(99,102,241,0.4)',
-            borderRadius:12, padding:14, marginBottom:16
-          }}>
-            <div style={{fontSize:11, color:'#a5b4fc', fontWeight:700, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.06em'}}>
-              Search Result
-            </div>
-            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
-              {caResult.image && <img src={caResult.image} alt="" loading="lazy" referrerPolicy="no-referrer" style={{width:36, height:36, borderRadius:'50%', flexShrink:0, objectFit:'cover'}} onError={(e) => { e.currentTarget.style.display='none'; }}/>}
-              <div style={{flex:1, minWidth:0}}>
-                <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:2}}>
-                  <span style={{fontSize:15, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{caResult.name}</span>
-                  <span style={{fontSize:11, color:'#4b5563'}}>{(caResult.symbol || '').toUpperCase()}</span>
-                  <span style={{fontSize:10, padding:'1px 6px', borderRadius:10, background:`${chainColor}26`, color:chainColor, fontWeight:600, textTransform:'uppercase'}}>{caResult.chainId || caResult.chain}</span>
-                </div>
-                <div style={{fontSize:13, fontWeight:700, color:ageColor}}>{ageStr}</div>
-              </div>
-            </div>
-
-            <PriceChangeRow priceChange={caResult.priceChange} />
-
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:10}}>
-              {[
-                {label:'LIQ', value:`$${formatNum(liq)}`, color: liq > 10000 ? '#22c55e' : liq > 3000 ? '#f59e0b' : '#ef4444'},
-                {label:'MCAP', value:`$${formatNum(parseFloat(caResult.marketCap||0))}`, color:'#fff'},
-                {label:'BUYS', value:`${Math.round((caResult.buyRatio||0.5)*100)}%`, color: (caResult.buyRatio||0) > 0.6 ? '#22c55e' : (caResult.buyRatio||0) > 0.45 ? '#f59e0b' : '#ef4444'},
-              ].map(s => (
-                <div key={s.label} style={{background:'#1a1a24', borderRadius:6, padding:'7px 8px', textAlign:'center'}}>
-                  <div style={{fontSize:9, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:3}}>{s.label}</div>
-                  <div style={{fontSize:13, fontWeight:700, color:s.color}}>{s.value}</div>
-                </div>
-              ))}
-            </div>
-
-            {ai && (
-              <div style={{
-                padding:'8px 10px', borderRadius:8, marginBottom:8,
-                background: ai.verdict==='BUY' ? 'rgba(34,197,94,0.08)' : ai.verdict==='SKIP' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
-                border:`1px solid ${ai.verdict==='BUY' ? 'rgba(34,197,94,0.25)' : ai.verdict==='SKIP' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`
-              }}>
-                <span style={{fontSize:12, fontWeight:700, color: ai.verdict==='BUY'?'#22c55e':ai.verdict==='SKIP'?'#ef4444':'#f59e0b'}}>
-                  {ai.verdict==='BUY'?'✓ BUY':ai.verdict==='SKIP'?'✕ SKIP':'◎ WATCH'}
-                </span>
-                <span style={{fontSize:11, color:'#9ca3af', marginLeft:8}}>{ai.reason}</span>
-              </div>
-            )}
-
-            <div style={{display:'grid', gridTemplateColumns: ai ? '1fr 1fr' : '1fr 1fr 1fr', gap:6}}>
-              {!ai && (
-                <button onClick={() => analyzeSnipe(caResult)} disabled={snipeAnalyzing[id]} style={{
-                  padding:'8px', borderRadius:8,
-                  border:'1px solid rgba(99,102,241,0.3)', background:'rgba(99,102,241,0.08)',
-                  color: snipeAnalyzing[id] ? '#4b5563' : '#a5b4fc',
-                  fontSize:11, fontWeight:700, cursor:'pointer'
-                }}>
-                  {snipeAnalyzing[id] ? '...' : 'AI'}
-                </button>
-              )}
-              <button onClick={() => {
-                const addr = caResult.baseToken?.address || caResult.coinId || caResult.pairAddress
-                if(addr){ navigator.clipboard.writeText(addr); window.open('https://fomo.family/r/al1valol','_blank') }
-              }} style={{
-                padding:'8px', borderRadius:8, border:'none',
-                background:'rgba(34,197,94,0.15)', color:'#22c55e',
-                fontSize:11, fontWeight:700, cursor:'pointer'
-              }}>FOMO</button>
-              <button onClick={() => {
-                const addr = caResult.baseToken?.address || caResult.coinId || caResult.pairAddress
-                if(addr) navigator.clipboard.writeText(addr)
-              }} style={{
-                padding:'8px', borderRadius:8,
-                border:'1px solid #1e1e2a', background:'transparent',
-                color:'#4b5563', fontSize:11, cursor:'pointer'
-              }}>CA</button>
-            </div>
-          </div>
-        )
-      })()}
-
-      {caResult?.error && (
-        <div style={{padding:12, borderRadius:8, background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', color:'#ef4444', fontSize:13, marginBottom:16}}>
-          {caResult.error}
-        </div>
-      )}
 
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
         {visible.length} {visible.length === 1 ? 'gem' : 'gems'} found · updated {secondsAgo < 1 ? 'just now' : secondsAgo + 's ago'}
@@ -1576,7 +1550,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     fontSize:11, fontWeight:700, cursor:'pointer'
                   }}>Paper</button>
                   <button onClick={() => {
-                    const addr = coin.baseToken?.address || coin.coinId || coin.pairAddress;
+                    const addr = coin.baseToken?.address||coin.pairAddress;
                     if(addr){ navigator.clipboard.writeText(addr); window.open('https://fomo.family/r/al1valol','_blank') }
                   }} style={{
                     padding:'8px', borderRadius:8, border:'none',
@@ -1584,7 +1558,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     fontSize:11, fontWeight:700, cursor:'pointer'
                   }}>FOMO</button>
                   <button onClick={() => {
-                    const addr = coin.baseToken?.address || coin.coinId || coin.pairAddress;
+                    const addr = coin.baseToken?.address||coin.pairAddress;
                     if(addr) navigator.clipboard.writeText(addr);
                   }} style={{
                     padding:'8px', borderRadius:8,
