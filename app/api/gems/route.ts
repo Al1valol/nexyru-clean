@@ -110,6 +110,20 @@ export async function GET() {
       else if (vol1h > 10000) score += 10
       else if (vol1h > 1000) score += 5
 
+      // Penalty for red flags
+      if (liq < 5000) score -= 20      // Very low liquidity
+      if (buyRatio < 0.4) score -= 15  // Mostly sells
+      if (vol24 < 5000) score -= 10    // Very low volume
+      if (h1 > 500) score -= 25        // Already pumped huge
+      if (mc > 5000000) score -= 15    // Too big to be early
+
+      // Bonus for quality signals
+      if (liq > 20000) score += 10     // Good liquidity
+      if (vol1h > 10000) score += 10   // Active right now
+      if (buyRatio > 0.65) score += 10 // Strong buyers
+
+      score = Math.max(0, Math.min(100, score))
+
       let snipeWindow = {id:'watch', label:'Watch', color:'#6b7280'}
       if (h24 > 1000 || h6 > 500) snipeWindow = {id:'toolate', label:'Too Late', color:'#ef4444'}
       else if (ageHours < 6 && h24 < 300 && buyRatio > 0.5) snipeWindow = {id:'prime', label:'Prime Snipe', color:'#22c55e'}
@@ -136,7 +150,44 @@ export async function GET() {
         baseToken: { address: tokenAddress, name, symbol },
       }
     })
-    .filter(c => c.coinId && parseFloat(c.liquidity?.usd||0) > 100)
+    .filter(c => {
+      const name = (c.name || '').toLowerCase()
+      const symbol = (c.symbol || '').toLowerCase()
+      const liq = parseFloat(c.liquidity?.usd || 0)
+      const vol1h = parseFloat(c.volume?.h1 || 0)
+      const vol24 = parseFloat(c.volume?.h24 || 0)
+      const mc = parseFloat(c.marketCap || 0)
+
+      // Must have contract address
+      if (!c.coinId) return false
+
+      // Must have real liquidity
+      if (liq < 2000) return false
+
+      // Must have real volume
+      if (vol24 < 1000) return false
+
+      // Remove obvious scam names
+      const scamWords = ['scam', 'rug', 'honeypot', 'fake', 'test', 'xxx', 'porn', 'sex', 'nigga', 'nigger', 'racist']
+      if (scamWords.some(w => name.includes(w) || symbol.includes(w))) return false
+
+      // Remove coins with suspicious names (all numbers, single chars)
+      if (symbol.length <= 1) return false
+      if (/^\d+$/.test(symbol)) return false
+
+      // Remove established large coins (not meme snipes)
+      const bigCoins = ['sol', 'solana', 'usdc', 'usdt', 'eth', 'btc', 'weth', 'wbtc', 'ray', 'jup', 'bonk', 'wif', 'jto', 'pyth', 'usdc', 'msol', 'jsol']
+      if (bigCoins.includes(symbol.toLowerCase())) return false
+      if (mc > 10000000) return false // Over $10M mcap = not early stage
+
+      // Must have some buy pressure
+      if (c.buyRatio < 0.3) return false // Mostly sells = dumping
+
+      // Remove coins with extreme pump (already too late)
+      if (parseFloat(c.priceChange?.h1 || 0) > 1000) return false
+
+      return true
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, 200)
 
