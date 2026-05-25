@@ -10,27 +10,20 @@ export async function GET() {
       'Accept': 'application/json',
     }
 
-    // Step 1: Get newest 50 token listings
+    // Step 1: Get newest 20 token listings
     const listRes = await fetch(
-      'https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=50',
+      'https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20',
       { headers, cache: 'no-store' }
     )
-
-    const responseText = await listRes.text()
-    console.log('Birdeye status:', listRes.status)
-    console.log('Birdeye response:', responseText.substring(0, 300))
-    console.log('API key used:', API_KEY.substring(0, 8) + '...')
 
     if (!listRes.ok) {
       return NextResponse.json({
         coins: [],
         error: 'Birdeye error: ' + listRes.status,
-        detail: responseText.substring(0, 200),
-        keyPrefix: API_KEY.substring(0, 8)
       })
     }
 
-    const listData = JSON.parse(responseText)
+    const listData = await listRes.json()
     const tokens = listData?.data?.items || []
 
     if (tokens.length === 0) {
@@ -102,11 +95,9 @@ export async function GET() {
       }
     }).filter((c: any) => c.coinId && c.ageHours < 48)
 
-    console.log('Returning', coins.length, 'coins')
     return NextResponse.json({ coins, total: coins.length })
 
   } catch(e: any) {
-    console.error('gems error:', e.message)
     return NextResponse.json({ coins: [], error: e.message })
   }
 }
