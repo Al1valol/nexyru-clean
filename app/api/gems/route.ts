@@ -10,28 +10,49 @@ export async function GET() {
       'Accept': 'application/json',
     }
 
-    // Step 1: Get newest 20 token listings
-    const listRes = await fetch(
-      'https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20',
-      { headers, cache: 'no-store' }
-    )
+    // Fetch 3 batches - newest, 1 hour ago, 6 hours ago
+    const now = Math.floor(Date.now() / 1000)
+    const oneHourAgo = now - 3600
+    const sixHoursAgo = now - 21600
 
-    if (!listRes.ok) {
-      return NextResponse.json({
-        coins: [],
-        error: 'Birdeye error: ' + listRes.status,
-      })
-    }
+    const [batch1, batch2, batch3] = await Promise.all([
+      // Newest coins (last few minutes)
+      fetch('https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20',
+        { headers, cache: 'no-store' }),
+      // Coins from ~1 hour ago
+      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&max_liquidity_added_at=${oneHourAgo}`,
+        { headers, cache: 'no-store' }),
+      // Coins from ~6 hours ago
+      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&max_liquidity_added_at=${sixHoursAgo}`,
+        { headers, cache: 'no-store' }),
+    ])
 
-    const listData = await listRes.json()
-    const tokens = listData?.data?.items || []
+    const [data1, data2, data3] = await Promise.all([
+      batch1.ok ? batch1.json() : { data: { items: [] } },
+      batch2.ok ? batch2.json() : { data: { items: [] } },
+      batch3.ok ? batch3.json() : { data: { items: [] } },
+    ])
 
-    if (tokens.length === 0) {
+    // Combine all items and dedupe by address
+    const seen = new Set<string>()
+    const allTokens = [
+      ...(data1?.data?.items || []),
+      ...(data2?.data?.items || []),
+      ...(data3?.data?.items || []),
+    ].filter(t => {
+      if (!t.address || seen.has(t.address)) return false
+      seen.add(t.address)
+      return true
+    })
+
+    console.log('Total unique tokens:', allTokens.length)
+
+    if (allTokens.length === 0) {
       return NextResponse.json({ coins: [], error: 'No tokens returned' })
     }
 
     // Step 2: Get price/volume data for all tokens at once
-    const addresses = tokens.map((t: any) => t.address).join(',')
+    const addresses = allTokens.map((t: any) => t.address).join(',')
     const priceRes = await fetch(
       `https://public-api.birdeye.so/defi/multi_price?list_address=${addresses}`,
       { headers, cache: 'no-store' }
@@ -41,7 +62,7 @@ export async function GET() {
     const prices = priceData?.data || {}
 
     // Step 3: Convert to coin format
-    const coins = tokens.map((token: any) => {
+    const coins = allTokens.map((token: any) => {
       const priceInfo = prices[token.address] || {}
 
       // Parse age from liquidityAddedAt ISO string
