@@ -639,6 +639,59 @@ function getSnipeWindow(coin: any) {
   return { id: 'cold', label: ' COLD', color: '#6b7280', desc: 'Likely missed this one' };
 }
 
+const getVerdict = (coin: any) => {
+  const ageHours = coin.ageHours || 999
+  const liq = parseFloat(coin.liquidity?.usd || 0)
+  const buyRatio = coin.buyRatio || 0.5
+  const h1 = parseFloat(coin.priceChange?.h1 || 0)
+  const h24 = parseFloat(coin.priceChange?.h24 || 0)
+  const hasTwitter = coin.info?.socials?.some((s:any) => s.type === 'twitter')
+  const hasTelegram = coin.info?.socials?.some((s:any) => s.type === 'telegram')
+
+  let positives = 0
+  let negatives = 0
+  const reasons: string[] = []
+
+  // Age check
+  if (ageHours < 2) { positives++; reasons.push('Fresh launch') }
+  else if (ageHours < 6) { positives++ }
+  else if (ageHours > 24) negatives++
+
+  // Pump check
+  if (h24 > 500) { negatives += 2; reasons.push('Already pumped hard') }
+  else if (h24 < 100 && h1 > 0) { positives++; reasons.push('Still early') }
+
+  // Liquidity check
+  if (liq > 20000) { positives++; reasons.push('Strong liquidity') }
+  else if (liq > 5000) positives++
+  else { negatives++; reasons.push('Low liquidity') }
+
+  // Buy pressure
+  if (buyRatio > 0.65) { positives++; reasons.push('Strong buyers') }
+  else if (buyRatio > 0.55) positives++
+  else if (buyRatio < 0.4) { negatives++; reasons.push('Selling pressure') }
+
+  // Socials
+  if (hasTwitter || hasTelegram) positives++
+  else { negatives++; reasons.push('No socials') }
+
+  let verdict: 'STRONG BUY' | 'BUY' | 'WATCH' | 'SKIP'
+  let verdictColor: string
+  let verdictBg: string
+
+  if (negatives >= 2) {
+    verdict = 'SKIP'; verdictColor = '#ef4444'; verdictBg = 'rgba(239,68,68,0.12)'
+  } else if (positives >= 4) {
+    verdict = 'STRONG BUY'; verdictColor = '#22c55e'; verdictBg = 'rgba(34,197,94,0.12)'
+  } else if (positives >= 2) {
+    verdict = 'BUY'; verdictColor = '#86efac'; verdictBg = 'rgba(34,197,94,0.08)'
+  } else {
+    verdict = 'WATCH'; verdictColor = '#f59e0b'; verdictBg = 'rgba(245,158,11,0.1)'
+  }
+
+  return { verdict, verdictColor, verdictBg, reasons: reasons.slice(0, 2) }
+}
+
 function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy }) {
   const [gems, setGems] = React.useState([]);
   const [gemsLoading, setGemsLoading] = React.useState(true);
@@ -840,36 +893,45 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
   const fetchGems = React.useCallback(async () => {
     setGemsLoading(true);
     try {
-      // Step 1: Fetch from multiple sources in parallel
-      const [profilesRes, boostsRes] = await Promise.all([
+      // Step 1: Fetch all sources in parallel
+      const [profilesRes, boostsRes, s1, s2, s3, s4, s5] = await Promise.all([
         fetch('https://api.dexscreener.com/token-profiles/latest/v1'),
         fetch('https://api.dexscreener.com/token-boosts/latest/v1'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=solana+meme'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=sol+new'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=pump+fun'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=solana+token'),
+        fetch('https://api.dexscreener.com/latest/dex/search?q=new+coin+sol'),
       ])
+
       const profiles = await profilesRes.json().catch(() => [])
       const boosts = await boostsRes.json().catch(() => [])
+      const searches = await Promise.all([s1,s2,s3,s4,s5].map(r => r.json().catch(() => ({}))))
 
-      // Step 2: Combine addresses from both sources
+      // Step 2: Get addresses from profiles and boosts
       const profileAddrs = (Array.isArray(profiles) ? profiles : [])
         .slice(0, 30).map((p: any) => p?.tokenAddress).filter(Boolean)
       const boostAddrs = (Array.isArray(boosts) ? boosts : [])
-        .slice(0, 20).map((b: any) => b?.tokenAddress).filter(Boolean)
-      const addresses = [...new Set([...profileAddrs, ...boostAddrs])]
+        .slice(0, 29).map((b: any) => b?.tokenAddress).filter(Boolean)
 
-      if (addresses.length === 0) {
-        setGems([])
-        setGemsLoading(false)
-        return
+      // Get pairs directly from search results (already have full data)
+      const searchPairs = searches
+        .flatMap(d => d?.pairs || [])
+        .filter((p: any) => p?.chainId === 'solana')
+
+      // Step 3: Fetch pair data for profile+boost addresses
+      const addresses = [...new Set([...profileAddrs, ...boostAddrs])]
+      let fetchedPairs: any[] = []
+      if (addresses.length > 0) {
+        const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.join(',')}`)
+        const pairsData = await pairsRes.json().catch(() => ({}))
+        fetchedPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
       }
 
-      // Step 3: Fetch pairs in one batch (DexScreener supports up to 30 addresses)
-      const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addresses.slice(0,30).join(',')}`)
-      const pairsData = await pairsRes.json().catch(() => ({}))
-      const allPairs = Array.isArray(pairsData?.pairs) ? pairsData.pairs : []
-
-      // Step 4: Dedupe - one coin can have multiple pairs (SOL/COIN and USDC/COIN)
-      // Keep the pair with highest volume per token
+      // Combine ALL pairs and dedupe by token address
+      const combined = [...fetchedPairs, ...searchPairs]
       const bestPairPerToken: Record<string, any> = {}
-      allPairs.forEach(p => {
+      combined.forEach((p: any) => {
         const key = p.baseToken?.address
         if (!key) return
         const vol = parseFloat(p.volume?.h24 || 0)
@@ -878,7 +940,8 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
           bestPairPerToken[key] = p
         }
       })
-      const pairs = Object.values(bestPairPerToken)
+      const allPairs = Object.values(bestPairPerToken)
+      const pairs = allPairs
 
       // Step 5: Calculate age correctly - pairCreatedAt is in milliseconds from tokens endpoint
       const scored = pairs.map(p => {
@@ -1402,6 +1465,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
               });
             };
             const verification = getVerificationStatus({ ...coin, source: 'dexscreener' });
+            const { verdict, verdictColor, verdictBg, reasons } = getVerdict(coin)
             return (
               <div key={coin.pairAddress || coin.coinId} style={{background:'#0f0f15', border:`1px solid ${score >= 71 ? 'rgba(99,102,241,0.35)' : '#16161f'}`, borderRadius:12, padding:14, marginBottom:10}}>
 
@@ -1427,6 +1491,21 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     <div style={{fontSize:26, fontWeight:900, color: score >= 80 ? '#22c55e' : score >= 60 ? '#a5b4fc' : '#6b7280', letterSpacing:'-0.03em', lineHeight:1}}>{score}</div>
                     <div style={{fontSize:9, color:'#4b5563'}}>/100</div>
                   </div>
+                </div>
+
+                <div style={{
+                  display:'inline-flex', alignItems:'center', gap:8,
+                  padding:'6px 12px', borderRadius:8, marginBottom:8,
+                  background: verdictBg, border: `1px solid ${verdictColor}40`
+                }}>
+                  <span style={{fontSize:14, fontWeight:900, color: verdictColor, letterSpacing:'-0.01em'}}>
+                    {verdict === 'STRONG BUY' ? '🚀' : verdict === 'BUY' ? '✓' : verdict === 'WATCH' ? '◎' : '✕'} {verdict}
+                  </span>
+                  {reasons.length > 0 && (
+                    <span style={{fontSize:11, color: verdictColor, opacity:0.8}}>
+                      — {reasons.join(', ')}
+                    </span>
+                  )}
                 </div>
 
                 {/* 2. PRICE CHANGES */}
