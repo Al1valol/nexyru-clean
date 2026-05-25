@@ -31,24 +31,11 @@ export async function GET() {
     }
     const [profiles, boosts] = await Promise.all([getJson(profilesRes), getJson(boostsRes)])
 
-    // Additional search queries to find coins with socials
-    const [search1, search2] = await Promise.allSettled([
-      fetch('https://api.dexscreener.com/latest/dex/search?q=twitter+solana'),
-      fetch('https://api.dexscreener.com/latest/dex/search?q=telegram+solana'),
-    ])
-    const searchPairs1 = search1.status==='fulfilled' ? (await search1.value.json().catch(()=>({}))).pairs || [] : []
-    const searchPairs2 = search2.status==='fulfilled' ? (await search2.value.json().catch(()=>({}))).pairs || [] : []
-    const searchAddresses = [...searchPairs1, ...searchPairs2]
-      .filter((p:any) => p?.chainId === 'solana' && p?.info?.socials?.some((s:any) => s.type === 'twitter'))
-      .map((p:any) => p?.baseToken?.address)
-      .filter(Boolean)
-
     // Get all DexScreener addresses
     const dexAddresses = [...new Set([
       ...(Array.isArray(profiles) ? profiles : []).map((p: any) => p?.tokenAddress),
       ...(Array.isArray(boosts) ? boosts : []).map((b: any) => b?.tokenAddress),
-      ...searchAddresses,
-    ])].filter(Boolean).slice(0, 50) as string[]
+    ])].filter(Boolean).slice(0, 30) as string[]
 
     // Fetch full pair data from DexScreener (has socials, price, volume)
     let dexCoins: any[] = []
@@ -114,8 +101,8 @@ export async function GET() {
             hasTelegram,
           }
         })
-        // Filter: must have Twitter
-        .filter(c => c.hasTwitter)
+        // Filter: must have at least Twitter OR Telegram
+        .filter(c => c.hasTwitter || c.hasTelegram)
       }
     }
 
