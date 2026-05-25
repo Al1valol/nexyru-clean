@@ -3,80 +3,143 @@ export const maxDuration = 30
 
 export async function GET() {
   try {
-    const API_KEY = process.env.BIRDEYE_API_KEY || 'e969e629423e472aa5d9adc03fa7e49f'
-    const headers = {
-      'X-API-KEY': API_KEY,
+    const BIRDEYE_KEY = process.env.BIRDEYE_API_KEY || 'e969e629423e472aa5d9adc03fa7e49f'
+    const birdeyeHeaders = {
+      'X-API-KEY': BIRDEYE_KEY,
       'x-chain': 'solana',
       'Accept': 'application/json',
     }
 
-    // Fetch 3 batches - newest, 1 hour ago, 6 hours ago
     const now = Math.floor(Date.now() / 1000)
     const oneHourAgo = now - 3600
+    const threeHoursAgo = now - 10800
     const sixHoursAgo = now - 21600
 
-    const [batch1, batch2, batch3] = await Promise.all([
-      // Newest coins (last few minutes)
-      fetch('https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20',
-        { headers, cache: 'no-store' }),
-      // Coins from ~1 hour ago
-      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&max_liquidity_added_at=${oneHourAgo}`,
-        { headers, cache: 'no-store' }),
-      // Coins from ~6 hours ago
-      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&max_liquidity_added_at=${sixHoursAgo}`,
-        { headers, cache: 'no-store' }),
+    // Fetch ALL sources in parallel
+    const [
+      birdeyeNew,
+      birdeye1h,
+      birdeye3h,
+      birdeye6h,
+      dexProfiles,
+      dexBoosts,
+    ] = await Promise.allSettled([
+      // Birdeye - 4 time windows = 80 coins
+      fetch('https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20', { headers: birdeyeHeaders, cache: 'no-store' }),
+      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&max_liquidity_added_at=${oneHourAgo}`, { headers: birdeyeHeaders, cache: 'no-store' }),
+      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&max_liquidity_added_at=${threeHoursAgo}`, { headers: birdeyeHeaders, cache: 'no-store' }),
+      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&max_liquidity_added_at=${sixHoursAgo}`, { headers: birdeyeHeaders, cache: 'no-store' }),
+      // DexScreener - profiles and boosts
+      fetch('https://api.dexscreener.com/token-profiles/latest/v1'),
+      fetch('https://api.dexscreener.com/token-boosts/latest/v1'),
     ])
 
-    const [data1, data2, data3] = await Promise.all([
-      batch1.ok ? batch1.json() : { data: { items: [] } },
-      batch2.ok ? batch2.json() : { data: { items: [] } },
-      batch3.ok ? batch3.json() : { data: { items: [] } },
+    // Parse Birdeye results
+    const parseBirdeye = async (result: PromiseSettledResult<Response>) => {
+      if (result.status !== 'fulfilled' || !result.value.ok) return []
+      const d = await result.value.json().catch(() => ({}))
+      return d?.data?.items || []
+    }
+
+    const [b1, b2, b3, b4] = await Promise.all([
+      parseBirdeye(birdeyeNew),
+      parseBirdeye(birdeye1h),
+      parseBirdeye(birdeye3h),
+      parseBirdeye(birdeye6h),
     ])
 
-    // Combine all items and dedupe by address
+    // Parse DexScreener results
+    const parseJson = async (result: PromiseSettledResult<Response>) => {
+      if (result.status !== 'fulfilled') return []
+      const d = await result.value.json().catch(() => [])
+      return Array.isArray(d) ? d : []
+    }
+
+    const [profiles, boosts] = await Promise.all([
+      parseJson(dexProfiles),
+      parseJson(dexBoosts),
+    ])
+
+    // Convert Birdeye tokens to our format
+    const birdeyeTokens = [...b1, ...b2, ...b3, ...b4]
     const seen = new Set<string>()
-    const allTokens = [
-      ...(data1?.data?.items || []),
-      ...(data2?.data?.items || []),
-      ...(data3?.data?.items || []),
-    ].filter(t => {
+    const uniqueBirdeye = birdeyeTokens.filter(t => {
       if (!t.address || seen.has(t.address)) return false
       seen.add(t.address)
       return true
     })
 
-    console.log('Total unique tokens:', allTokens.length)
+    // Get DexScreener addresses
+    const dexAddresses = [
+      ...profiles.map((p: any) => p?.tokenAddress),
+      ...boosts.map((b: any) => b?.tokenAddress),
+    ].filter((a): a is string => !!a && !seen.has(a))
 
-    if (allTokens.length === 0) {
-      return NextResponse.json({ coins: [], error: 'No tokens returned' })
+    // Remove dupes from dex addresses too
+    const uniqueDexAddresses = [...new Set(dexAddresses)].slice(0, 30)
+
+    // Fetch pair data for DexScreener addresses
+    let dexPairs: any[] = []
+    if (uniqueDexAddresses.length > 0) {
+      const pairsRes = await fetch(
+        `https://api.dexscreener.com/latest/dex/tokens/${uniqueDexAddresses.join(',')}`,
+        { cache: 'no-store' }
+      )
+      if (pairsRes.ok) {
+        const pairsData = await pairsRes.json().catch(() => ({}))
+        const allPairs = pairsData?.pairs || []
+        // Best pair per token
+        const bestPair: Record<string, any> = {}
+        allPairs.forEach((p: any) => {
+          const key = p.baseToken?.address
+          if (!key) return
+          const vol = parseFloat(p.volume?.h24 || 0)
+          if (!bestPair[key] || vol > parseFloat(bestPair[key].volume?.h24 || 0)) {
+            bestPair[key] = p
+          }
+        })
+        dexPairs = Object.values(bestPair)
+      }
     }
 
-    // Step 2: Get price/volume data for all tokens at once
-    const addresses = allTokens.map((t: any) => t.address).join(',')
-    const priceRes = await fetch(
-      `https://public-api.birdeye.so/defi/multi_price?list_address=${addresses}`,
-      { headers, cache: 'no-store' }
-    )
+    // Convert DexScreener pairs to our format
+    const dexCoins = dexPairs.map((p: any) => {
+      const createdAt = p.pairCreatedAt ? Number(p.pairCreatedAt) : 0
+      const ageHours = createdAt ? Math.max(0, (Date.now() - createdAt) / 3600000) : 999
+      const buys = p.txns?.h1?.buys || 0
+      const sells = p.txns?.h1?.sells || 0
+      return {
+        coinId: p.baseToken?.address || p.pairAddress,
+        pairAddress: p.pairAddress,
+        name: p.baseToken?.name || 'Unknown',
+        symbol: p.baseToken?.symbol || '???',
+        chain: 'solana',
+        chainId: 'solana',
+        price: p.priceUsd,
+        priceUsd: p.priceUsd,
+        image: p.info?.imageUrl || null,
+        url: `https://dexscreener.com/solana/${p.baseToken?.address}`,
+        ageHours,
+        liquidity: { usd: parseFloat(p.liquidity?.usd || 0) },
+        marketCap: parseFloat(p.marketCap || 0),
+        volume: { h24: parseFloat(p.volume?.h24 || 0), h1: parseFloat(p.volume?.h1 || 0) },
+        priceChange: {
+          h1: parseFloat(p.priceChange?.h1 || 0),
+          h6: parseFloat(p.priceChange?.h6 || 0),
+          h24: parseFloat(p.priceChange?.h24 || 0),
+        },
+        txns: p.txns,
+        buyRatio: (buys + sells) > 0 ? buys / (buys + sells) : 0.5,
+        buys, sells,
+        info: p.info || { socials: [], websites: [] },
+        baseToken: p.baseToken,
+      }
+    })
 
-    const priceData = priceRes.ok ? await priceRes.json() : {}
-    const prices = priceData?.data || {}
-
-    // Step 3: Convert to coin format
-    const coins = allTokens.map((token: any) => {
-      const priceInfo = prices[token.address] || {}
-
-      // Parse age from liquidityAddedAt ISO string
-      const createdAt = token.liquidityAddedAt
-        ? new Date(token.liquidityAddedAt).getTime()
-        : 0
-      const ageMs = createdAt ? Date.now() - createdAt : 999 * 3600000
-      const ageHours = Math.max(0, ageMs / 3600000)
-
-      const price = priceInfo.value || priceInfo.price || 0
-      const priceChange1h = priceInfo.priceChange1h || priceInfo.priceChangePercent1h || 0
-      const priceChange24h = priceInfo.priceChange24h || priceInfo.priceChangePercent24h || 0
-      const liq = token.liquidity || 0
-
+    // Convert Birdeye tokens to our format
+    const birdeyeCoins = uniqueBirdeye.map((token: any) => {
+      const createdAt = token.liquidityAddedAt ? new Date(token.liquidityAddedAt).getTime() : 0
+      const ageHours = createdAt ? Math.max(0, (Date.now() - createdAt) / 3600000) : 999
       return {
         coinId: token.address,
         pairAddress: token.address,
@@ -84,41 +147,42 @@ export async function GET() {
         symbol: token.symbol || '???',
         chain: 'solana',
         chainId: 'solana',
-        price: String(price),
-        priceUsd: String(price),
+        price: '0',
+        priceUsd: '0',
         image: token.logoURI || null,
         url: `https://dexscreener.com/solana/${token.address}`,
         ageHours,
-        liquidity: { usd: liq },
+        liquidity: { usd: token.liquidity || 0 },
         marketCap: 0,
         volume: { h24: 0, h1: 0 },
-        priceChange: {
-          h1: priceChange1h,
-          h6: 0,
-          h24: priceChange24h,
-        },
+        priceChange: { h1: 0, h6: 0, h24: 0 },
         txns: { h1: { buys: 0, sells: 0 } },
         buyRatio: 0.5,
-        buys: 0,
-        sells: 0,
-        score: 0,
-        snipeWindow: { id: 'watch', label: 'Watch', color: '#6b7280' },
-        info: {
-          socials: [],
-          websites: [],
-          imageUrl: token.logoURI
-        },
-        baseToken: {
-          address: token.address,
-          name: token.name,
-          symbol: token.symbol,
-        },
+        buys: 0, sells: 0,
+        info: { socials: [], websites: [] },
+        baseToken: { address: token.address, name: token.name, symbol: token.symbol },
       }
-    }).filter((c: any) => c.coinId && c.ageHours < 48)
+    })
 
+    // Merge all coins, dedupe by coinId
+    const allCoins: Record<string, any> = {}
+
+    // DexScreener coins have better data (price, volume, txns) — add first
+    dexCoins.forEach(c => { if (c.coinId) allCoins[c.coinId] = c })
+
+    // Birdeye fills in coins not in DexScreener
+    birdeyeCoins.forEach(c => {
+      if (c.coinId && !allCoins[c.coinId]) allCoins[c.coinId] = c
+    })
+
+    const coins = Object.values(allCoins)
+      .filter(c => c.ageHours < 24 && parseFloat(c.liquidity?.usd || 0) > 500)
+
+    console.log('Total coins:', coins.length, '(Birdeye:', uniqueBirdeye.length, 'DexScreener:', dexCoins.length, ')')
     return NextResponse.json({ coins, total: coins.length })
 
   } catch(e: any) {
+    console.error('gems error:', e.message)
     return NextResponse.json({ coins: [], error: e.message })
   }
 }
