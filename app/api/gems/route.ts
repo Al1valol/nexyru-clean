@@ -16,11 +16,21 @@ export async function GET() {
       { headers, cache: 'no-store' }
     )
 
+    const responseText = await listRes.text()
+    console.log('Birdeye status:', listRes.status)
+    console.log('Birdeye response:', responseText.substring(0, 300))
+    console.log('API key used:', API_KEY.substring(0, 8) + '...')
+
     if (!listRes.ok) {
-      return NextResponse.json({ coins: [], error: 'Birdeye error: ' + listRes.status })
+      return NextResponse.json({
+        coins: [],
+        error: 'Birdeye error: ' + listRes.status,
+        detail: responseText.substring(0, 200),
+        keyPrefix: API_KEY.substring(0, 8)
+      })
     }
 
-    const listData = await listRes.json()
+    const listData = JSON.parse(responseText)
     const tokens = listData?.data?.items || []
 
     if (tokens.length === 0) {
