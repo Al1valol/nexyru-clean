@@ -1511,6 +1511,175 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                 {/* 2. PRICE CHANGES */}
                 <PriceChangeRow priceChange={coin.priceChange} />
 
+                {/* LIQUIDITY + BUYERS/SELLERS */}
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:10}}>
+                  {[
+                    {
+                      label: 'LIQUIDITY',
+                      value: (() => {
+                        const liq = parseFloat(coin.liquidity?.usd || 0)
+                        return liq >= 1000000 ? '$' + (liq/1000000).toFixed(1) + 'M'
+                          : liq >= 1000 ? '$' + (liq/1000).toFixed(0) + 'k'
+                          : '$' + liq.toFixed(0)
+                      })(),
+                      color: parseFloat(coin.liquidity?.usd||0) > 20000 ? '#22c55e'
+                        : parseFloat(coin.liquidity?.usd||0) > 5000 ? '#f59e0b' : '#ef4444'
+                    },
+                    {
+                      label: 'BUYS',
+                      value: (coin.txns?.h1?.buys || 0) + '',
+                      color: '#22c55e'
+                    },
+                    {
+                      label: 'SELLS',
+                      value: (coin.txns?.h1?.sells || 0) + '',
+                      color: '#ef4444'
+                    },
+                  ].map(s => (
+                    <div key={s.label} style={{background:'#1a1a24', borderRadius:6, padding:'8px', textAlign:'center'}}>
+                      <div style={{fontSize:9, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600, marginBottom:3}}>{s.label}</div>
+                      <div style={{fontSize:14, fontWeight:800, color:s.color}}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* BUY PRESSURE BAR */}
+                {(() => {
+                  const buys = coin.txns?.h1?.buys || 0
+                  const sells = coin.txns?.h1?.sells || 0
+                  const total = buys + sells
+                  const buyPct = total > 0 ? Math.round(buys/total*100) : 50
+                  return (
+                    <div style={{marginBottom:10}}>
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#4b5563', marginBottom:4}}>
+                        <span style={{color:'#22c55e', fontWeight:600}}>{buyPct}% buying</span>
+                        <span style={{color:'#ef4444', fontWeight:600}}>{100-buyPct}% selling</span>
+                      </div>
+                      <div style={{height:6, background:'#1a1a24', borderRadius:3, overflow:'hidden'}}>
+                        <div style={{height:'100%', width:buyPct+'%', background: buyPct>60?'#22c55e':buyPct>50?'#f59e0b':'#ef4444', borderRadius:3, transition:'width 0.3s'}}/>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* SOCIALS */}
+                {(() => {
+                  const hasTwitter = coin.info?.socials?.some((s:any) => s.type === 'twitter')
+                  const hasTelegram = coin.info?.socials?.some((s:any) => s.type === 'telegram')
+                  const hasWebsite = (coin.info?.websites || []).length > 0
+                  const twitterUrl = coin.info?.socials?.find((s:any) => s.type === 'twitter')?.url
+                  const telegramUrl = coin.info?.socials?.find((s:any) => s.type === 'telegram')?.url
+                  const websiteUrl = coin.info?.websites?.[0]?.url
+
+                  return (
+                    <div style={{display:'flex', gap:6, marginBottom:10, flexWrap:'wrap', alignItems:'center'}}>
+                      <span style={{fontSize:10, color:'#4b5563', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em'}}>Socials:</span>
+                      {hasTwitter
+                        ? <a href={twitterUrl} target="_blank" rel="noreferrer" style={{fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(29,161,242,0.15)', color:'#1da1f2', textDecoration:'none', fontWeight:600}}>Twitter</a>
+                        : <span style={{fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>No Twitter</span>
+                      }
+                      {hasTelegram
+                        ? <a href={telegramUrl} target="_blank" rel="noreferrer" style={{fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(33,150,243,0.15)', color:'#2196f3', textDecoration:'none', fontWeight:600}}>Telegram</a>
+                        : <span style={{fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(239,68,68,0.1)', color:'#ef4444'}}>No Telegram</span>
+                      }
+                      {hasWebsite
+                        ? <a href={websiteUrl} target="_blank" rel="noreferrer" style={{fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(34,197,94,0.1)', color:'#22c55e', textDecoration:'none', fontWeight:600}}>Website</a>
+                        : <span style={{fontSize:11, padding:'2px 8px', borderRadius:4, background:'rgba(107,114,128,0.1)', color:'#6b7280'}}>No Website</span>
+                      }
+                    </div>
+                  )
+                })()}
+
+                {/* RUG CHECK - holder data */}
+                {(() => {
+                  const address = coin.baseToken?.address || coin.pairAddress
+                  const rug = rugData[address]
+                  const isLoading = rugLoading[address]
+                  const isSolana = (coin.chainId || coin.chain || '').toLowerCase() === 'solana'
+
+                  if (!isSolana) return null
+
+                  if (!rug && !isLoading) return (
+                    <button onClick={() => checkRug(coin)} style={{
+                      width:'100%', padding:'7px', borderRadius:8, marginBottom:8,
+                      border:'1px solid rgba(239,68,68,0.25)', background:'rgba(239,68,68,0.05)',
+                      color:'#fca5a5', fontSize:11, fontWeight:700, cursor:'pointer'
+                    }}>
+                      Check Holder Distribution
+                    </button>
+                  )
+
+                  if (isLoading) return (
+                    <div style={{fontSize:11, color:'#6b7280', textAlign:'center', marginBottom:8, padding:'6px'}}>
+                      Checking holders...
+                    </div>
+                  )
+
+                  if (rug?.error) return null
+
+                  if (rug) return (
+                    <div style={{
+                      background: rug.rugRisk==='EXTREME'?'rgba(239,68,68,0.08)':rug.rugRisk==='HIGH'?'rgba(249,115,22,0.08)':rug.rugRisk==='MEDIUM'?'rgba(245,158,11,0.08)':'rgba(34,197,94,0.06)',
+                      border:`1px solid ${rug.rugRisk==='EXTREME'?'rgba(239,68,68,0.3)':rug.rugRisk==='HIGH'?'rgba(249,115,22,0.3)':rug.rugRisk==='MEDIUM'?'rgba(245,158,11,0.3)':'rgba(34,197,94,0.2)'}`,
+                      borderRadius:8, padding:10, marginBottom:10
+                    }}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                        <span style={{fontSize:12, fontWeight:800, color:
+                          rug.rugRisk==='EXTREME'?'#ef4444':rug.rugRisk==='HIGH'?'#f97316':rug.rugRisk==='MEDIUM'?'#f59e0b':'#22c55e'
+                        }}>
+                          {rug.rugRisk==='EXTREME'?'🚨':rug.rugRisk==='HIGH'?'⚠️':rug.rugRisk==='MEDIUM'?'⚡':'✅'} {rug.rugRisk} RUG RISK
+                        </span>
+                        <span style={{fontSize:10, color:'#6b7280'}}>Score: {rug.score}</span>
+                      </div>
+
+                      {/* Top holder + top 10 */}
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:8}}>
+                        <div style={{background:'rgba(0,0,0,0.2)', borderRadius:6, padding:'8px', textAlign:'center'}}>
+                          <div style={{fontSize:9, color:'#6b7280', marginBottom:2, textTransform:'uppercase', letterSpacing:'0.05em'}}>Top Holder</div>
+                          <div style={{fontSize:18, fontWeight:900, color: parseFloat(rug.top1Pct)>20?'#ef4444':parseFloat(rug.top1Pct)>10?'#f59e0b':'#22c55e'}}>
+                            {rug.top1Pct}%
+                          </div>
+                        </div>
+                        <div style={{background:'rgba(0,0,0,0.2)', borderRadius:6, padding:'8px', textAlign:'center'}}>
+                          <div style={{fontSize:9, color:'#6b7280', marginBottom:2, textTransform:'uppercase', letterSpacing:'0.05em'}}>Top 10 Hold</div>
+                          <div style={{fontSize:18, fontWeight:900, color: parseFloat(rug.top10Pct)>60?'#ef4444':parseFloat(rug.top10Pct)>40?'#f59e0b':'#22c55e'}}>
+                            {rug.top10Pct}%
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Top holders list */}
+                      {rug.topHolders && rug.topHolders.length > 0 && (
+                        <div>
+                          <div style={{fontSize:10, color:'#4b5563', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6}}>
+                            Top Holders
+                          </div>
+                          {rug.topHolders.slice(0, 10).map((h: any, i: number) => (
+                            <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0', borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                              <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                <span style={{fontSize:10, color:'#4b5563', minWidth:16}}>#{i+1}</span>
+                                <span style={{fontSize:10, color:'#9ca3af', fontFamily:'monospace'}}>
+                                  {h.owner ? h.owner.substring(0,6)+'...'+h.owner.slice(-4) : 'unknown'}
+                                </span>
+                                {h.insider && <span style={{fontSize:9, padding:'1px 4px', borderRadius:3, background:'rgba(239,68,68,0.2)', color:'#ef4444', fontWeight:700}}>INSIDER</span>}
+                              </div>
+                              <span style={{fontSize:11, fontWeight:700, color: parseFloat(h.pct)>10?'#ef4444':parseFloat(h.pct)>5?'#f59e0b':'#9ca3af'}}>
+                                {h.pct}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {rug.insiderCount > 0 && (
+                        <div style={{fontSize:11, color:'#ef4444', marginTop:6, fontWeight:600}}>
+                          ⚠️ {rug.insiderCount} insider wallet{rug.insiderCount>1?'s':''} detected
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
                 {/* 3. KEY STATS — 3 only */}
                 <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:10}}>
                   {[
