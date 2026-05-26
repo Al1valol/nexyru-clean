@@ -7012,6 +7012,10 @@ function StrategyFormModal({ initial, onSave, onClose }) {
   const [pineScript, setPineScript] = useState(initial?.pineScript || '');
   const [pineImporting, setPineImporting] = useState(false);
   const [pineImported, setPineImported] = useState(false);
+  const [pineScriptSummary, setPineScriptSummary] = useState(initial?.pineScriptSummary || '');
+  const [jsIndicators, setJsIndicators] = useState(initial?.jsIndicators || '');
+  const [jsEntry, setJsEntry] = useState(initial?.jsEntry || '');
+  const [jsExit, setJsExit] = useState(initial?.jsExit || '');
   // category pickers per section
   const [pickEntryCat,  setPickEntryCat]  = useState("price_action");
   const [pickEntryCond, setPickEntryCond] = useState("");
@@ -7125,6 +7129,11 @@ function StrategyFormModal({ initial, onSave, onClose }) {
       rules:         { entryConds, exitConds, filterConds, slPct, tpPct, riskPct },
       createdAt:     initial?.createdAt ?? Date.now(),
       backtests:     initial?.backtests ?? [],
+      pineScript:    pineScript || '',
+      pineScriptSummary: pineScriptSummary || '',
+      jsIndicators:  jsIndicators || '',
+      jsEntry:       jsEntry || '',
+      jsExit:        jsExit || '',
     });
   };
 
@@ -7289,7 +7298,58 @@ function StrategyFormModal({ initial, onSave, onClose }) {
                       sport: 'PINE_SCRIPT',
                       odds1: 0, odds2: 0,
                       gameTime: 'Now',
-                      context: `You are a trading strategy analyst. Extract the strategy rules from this Pine Script code and convert them into plain English trading rules.\n\nPINE SCRIPT:\n${pineScript}\n\nExtract and explain:\n1. What indicators are used?\n2. What is the exact entry condition in plain English?\n3. What is the exit condition (take profit, stop loss)?\n4. What timeframe/instrument is it designed for?\n5. Any filters or special conditions?\n\nReply ONLY with JSON:\n{\n  "name": "strategy name from code",\n  "description": "one sentence what this strategy does",\n  "indicators": ["EMA 9", "EMA 21", "EMA 200"],\n  "entryRules": "plain english entry condition",\n  "exitRules": "plain english exit condition including TP and SL",\n  "filters": "any additional filters",\n  "timeframe": "recommended timeframe",\n  "instruments": "recommended instruments",\n  "riskPerTrade": "risk per trade if defined",\n  "summary": "2-3 sentence plain english summary of the complete strategy"\n}`
+                      context: `You are an expert Pine Script developer and JavaScript programmer.
+
+Convert this Pine Script strategy into:
+1. A plain English explanation
+2. JavaScript functions for backtesting
+
+PINE SCRIPT:
+${pineScript}
+
+Generate JavaScript functions that replicate this strategy logic exactly.
+The functions must work with this signature:
+- indicators(closes: number[]): object — compute all indicators, return object with arrays
+- entry(i: number, ind: object, closes: number[], highs: number[], lows: number[]): boolean — return true when should enter long
+- exit(i: number, ind: object, closes: number[], highs: number[], lows: number[]): boolean — return true when should exit
+
+For EMA: use this helper:
+function ema(arr, period) {
+  const k = 2/(period+1), out = new Array(arr.length).fill(null);
+  let prev = arr.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  out[period-1] = prev;
+  for(let j=period;j<arr.length;j++){prev=arr[j]*k+prev*(1-k);out[j]=prev;}
+  return out;
+}
+
+For RSI use:
+function rsi(arr, period) {
+  const out = new Array(arr.length).fill(null);
+  let gains=0, losses=0;
+  for(let j=1;j<=period;j++){const d=arr[j]-arr[j-1];if(d>0)gains+=d;else losses-=d;}
+  let avgG=gains/period, avgL=losses/period;
+  out[period]=avgL===0?100:100-100/(1+avgG/avgL);
+  for(let j=period+1;j<arr.length;j++){const d=arr[j]-arr[j-1];avgG=(avgG*(period-1)+(d>0?d:0))/period;avgL=(avgL*(period-1)+(d<0?-d:0))/period;out[j]=avgL===0?100:100-100/(1+avgG/avgL);}
+  return out;
+}
+
+Reply ONLY with valid JSON (no markdown, no backticks):
+{
+  "name": "strategy name",
+  "description": "what it does in one sentence",
+  "indicators": ["EMA 9", "EMA 21", "EMA 200"],
+  "entryConditions": "plain english entry",
+  "exitConditions": "plain english exit including stop loss and take profit",
+  "timeframe": "recommended timeframe",
+  "instruments": "recommended instruments",
+  "riskPerTrade": "risk % if defined",
+  "pineScriptSummary": "2-3 sentence plain english summary",
+  "jsIndicators": "function indicators(closes){const ema9=ema(closes,9);const ema21=ema(closes,21);const ema200=ema(closes,200);return{ema9,ema21,ema200};}",
+  "jsEntry": "function entry(i,ind,closes,highs,lows){const{ema9,ema21,ema200}=ind;if(!ema9[i]||!ema21[i]||!ema200[i])return false;return ema9[i]>ema21[i]&&closes[i]>ema200[i]&&ema9[i-1]<=ema21[i-1];}",
+  "jsExit": "function exit(i,ind,closes,highs,lows){const{ema9,ema21}=ind;if(!ema9[i]||!ema21[i])return false;return ema9[i]<ema21[i];}"
+}
+
+CRITICAL: jsIndicators, jsEntry, jsExit must be valid single-line JavaScript function strings. No newlines inside them. They will be eval()'d directly.`
                     })
                   });
                   const data = await res.json();
@@ -7300,16 +7360,19 @@ function StrategyFormModal({ initial, onSave, onClose }) {
                     if (extracted.name) setName(extracted.name);
                     const descParts = [
                       extracted.description,
-                      extracted.summary       && `\n\nSummary: ${extracted.summary}`,
-                      extracted.entryRules    && `\n\nEntry: ${extracted.entryRules}`,
-                      extracted.exitRules     && `\nExit: ${extracted.exitRules}`,
-                      extracted.filters       && `\nFilters: ${extracted.filters}`,
-                      extracted.timeframe     && `\nTimeframe: ${extracted.timeframe}`,
-                      extracted.instruments   && `\nInstruments: ${extracted.instruments}`,
-                      extracted.riskPerTrade  && `\nRisk/trade: ${extracted.riskPerTrade}`,
+                      extracted.pineScriptSummary && `\n\nSummary: ${extracted.pineScriptSummary}`,
+                      extracted.entryConditions   && `\n\nEntry: ${extracted.entryConditions}`,
+                      extracted.exitConditions    && `\nExit: ${extracted.exitConditions}`,
+                      extracted.timeframe         && `\nTimeframe: ${extracted.timeframe}`,
+                      extracted.instruments       && `\nInstruments: ${extracted.instruments}`,
+                      extracted.riskPerTrade      && `\nRisk/trade: ${extracted.riskPerTrade}`,
                       Array.isArray(extracted.indicators) && extracted.indicators.length && `\nIndicators: ${extracted.indicators.join(', ')}`,
                     ].filter(Boolean).join('');
                     if (descParts) setDescription(descParts);
+                    if (extracted.pineScriptSummary) setPineScriptSummary(extracted.pineScriptSummary);
+                    if (extracted.jsIndicators) setJsIndicators(extracted.jsIndicators);
+                    if (extracted.jsEntry) setJsEntry(extracted.jsEntry);
+                    if (extracted.jsExit) setJsExit(extracted.jsExit);
                     setPineImported(true);
                     toast('Pine Script imported successfully!', 'success');
                   }
@@ -7453,10 +7516,37 @@ function StrategyLabPage({ session, trades }) {
     setFetchStatus("fetching");
     await new Promise(r => setTimeout(r, 40));
 
-    const compiled = compileCustomStrategy(
-      strategy.rules.entryConds,
-      strategy.rules.exitConds,
-    );
+    // Build the strategy object for backtesting
+    let backtestStrategy = null;
+
+    if (strategy.jsIndicators && strategy.jsEntry && strategy.jsExit) {
+      // Use AI-generated JS functions from Pine Script import
+      try {
+        const emaHelper = `function ema(arr,period){const k=2/(period+1),out=new Array(arr.length).fill(null);let prev=arr.slice(0,period).reduce((a,b)=>a+b,0)/period;out[period-1]=prev;for(let j=period;j<arr.length;j++){prev=arr[j]*k+prev*(1-k);out[j]=prev;}return out;}`;
+        const rsiHelper = `function rsi(arr,period){const out=new Array(arr.length).fill(null);let gains=0,losses=0;for(let j=1;j<=period;j++){const d=arr[j]-arr[j-1];if(d>0)gains+=d;else losses-=d;}let avgG=gains/period,avgL=losses/period;out[period]=avgL===0?100:100-100/(1+avgG/avgL);for(let j=period+1;j<arr.length;j++){const d=arr[j]-arr[j-1];avgG=(avgG*(period-1)+(d>0?d:0))/period;avgL=(avgL*(period-1)+(d<0?-d:0))/period;out[j]=avgL===0?100:100-100/(1+avgG/avgL);}return out;}`;
+
+        const indicatorsFn = eval(`(function(){${emaHelper}${rsiHelper}return ${strategy.jsIndicators}})()`);
+        const entryFn = eval(`(function(){${emaHelper}${rsiHelper}return ${strategy.jsEntry}})()`);
+        const exitFn = eval(`(function(){${emaHelper}${rsiHelper}return ${strategy.jsExit}})()`);
+
+        backtestStrategy = {
+          indicators: indicatorsFn,
+          entry: entryFn,
+          exit: exitFn,
+        };
+      } catch (e) {
+        console.error('Failed to parse JS strategy functions:', e);
+        backtestStrategy = null;
+      }
+    }
+
+    // Fall back to compiled custom strategy from entry/exit conditions
+    if (!backtestStrategy) {
+      backtestStrategy = compileCustomStrategy(
+        strategy.rules.entryConds,
+        strategy.rules.exitConds,
+      );
+    }
 
     let candles;
     let dataLabel = "sim";
@@ -7483,7 +7573,7 @@ function StrategyLabPage({ session, trades }) {
 
     const result = runBacktestV2({
       candles,
-      strategy:       compiled,
+      strategy:       backtestStrategy,
       initialBalance: 10000,
       riskPct:        strategy.rules.riskPct ?? 1,
       slPct:          strategy.rules.slPct   ?? 2,
