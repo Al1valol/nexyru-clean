@@ -11,6 +11,7 @@ import {
   Calendar, ArrowUpRight, ArrowDownRight,
   Zap, Shield, Image, Webhook, Wallet, Check, TestTube2, Play,
   CheckSquare, Bell, Trophy, Brain, Settings,
+  Code, Copy, CheckCircle,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -8973,6 +8974,7 @@ function TradingDashboard({ session, onLogout }) {
           {/* Group 4 — Build */}
           <SidebarGroupLabel label="Build"/>
           <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab"  active={tab==="stratlab"}  onClick={()=>setTab("stratlab")}/>
+          <SidebarItem icon={<Code size={20}/>}       label="Script Combiner" active={tab==="scriptcombiner"} onClick={()=>setTab("scriptcombiner")}/>
         </nav>
 
         {/* Settings at bottom */}
@@ -9095,6 +9097,7 @@ function TradingDashboard({ session, onLogout }) {
               : <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Insights</div><InsightsAnalyticsPage trades={activeTrades}/></div>
           )}
           {tab === "stratlab" && <StrategyLabPage session={session} trades={trades} />}
+          {tab === "scriptcombiner" && <ScriptCombinerPage session={session} />}
           {tab==="copy" && <CopyTradingPage session={session} copyTrading={copyTrading}/> }
           </div>
         </main>
@@ -9557,6 +9560,425 @@ function toast(message, type = "info") {
     // Container not yet mounted — retry shortly.
     setTimeout(() => { try { window.showToast?.(message, type); } catch {} }, 50);
   }
+}
+
+// ── Script Combiner ────────────────────────────────────────────
+function ScriptCombinerPage({ session }) {
+  const [scripts, setScripts] = React.useState([
+    { id: 1, label: 'Main Strategy', code: '', description: '' },
+    { id: 2, label: 'Filter / Confirmation', code: '', description: '' },
+  ])
+  const [combining, setCombining] = React.useState(false)
+  const [result, setResult] = React.useState(null)
+  const [activeOutput, setActiveOutput] = React.useState('pine')
+  const [copied, setCopied] = React.useState(false)
+
+  const addScript = () => {
+    if (scripts.length >= 5) return
+    setScripts(prev => [...prev, {
+      id: Date.now(),
+      label: `Script ${prev.length + 1}`,
+      code: '',
+      description: ''
+    }])
+  }
+
+  const removeScript = (id) => {
+    if (scripts.length <= 2) return
+    setScripts(prev => prev.filter(s => s.id !== id))
+  }
+
+  const updateScript = (id, field, value) => {
+    setScripts(prev => prev.map(s => s.id === id ? {...s, [field]: value} : s))
+  }
+
+  const combineScripts = async () => {
+    const filled = scripts.filter(s => s.code.trim())
+    if (filled.length < 1) return
+    setCombining(true)
+    setResult(null)
+    try {
+      const res = await fetch('/api/analyze-game', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          team1: 'COMBINE',
+          team2: 'SCRIPTS',
+          sport: 'PINE_COMBINE',
+          odds1: 0, odds2: 0,
+          gameTime: 'Now',
+          context: `You are an expert Pine Script developer and trading strategy architect.
+
+Your job is to intelligently combine these ${filled.length} Pine Script(s) into ONE unified, clean, working Pine Script v5 strategy.
+
+${filled.map((s, i) => `
+=== SCRIPT ${i+1}: ${s.label} ===
+${s.description ? `Purpose: ${s.description}` : ''}
+\`\`\`pinescript
+${s.code}
+\`\`\`
+`).join('\n')}
+
+Requirements for the combined script:
+1. Use //@version=5
+2. Combine ALL entry conditions using AND logic (all signals must agree)
+3. Keep the best exit/stop loss logic from each script
+4. Remove duplicate indicator calculations
+5. Keep all useful filters
+6. Make it clean and well-commented
+7. Must be a complete working strategy() script
+8. If scripts conflict on exits use the more conservative (smaller risk) option
+
+Also provide:
+- Plain English explanation of what the combined strategy does
+- List of all indicators used
+- Entry conditions in plain English
+- Exit conditions in plain English
+- Recommended timeframe and instruments
+
+Reply with JSON:
+{
+  "combinedPineScript": "complete pine script v5 code here",
+  "name": "combined strategy name",
+  "description": "what the combined strategy does",
+  "indicators": ["list", "of", "indicators"],
+  "entryConditions": "plain english entry",
+  "exitConditions": "plain english exit",
+  "timeframe": "recommended timeframe",
+  "instruments": "recommended instruments",
+  "warnings": ["any warnings or things to check"],
+  "improvements": ["suggestions for further improvement"]
+}`
+        })
+      })
+      const data = await res.json()
+      const text = data.reasoning || data.edge || JSON.stringify(data)
+      const match = text.match(/\{[\s\S]*\}/)
+      if (match) {
+        setResult(JSON.parse(match[0]))
+      }
+    } catch(e) {
+      console.error('Combine error:', e)
+    }
+    setCombining(false)
+  }
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div style={{maxWidth:900, margin:'0 auto', paddingBottom:60}}>
+
+      {/* Header */}
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', marginBottom:4, display:'flex', alignItems:'center', gap:10}}>
+          <Code size={22} color="#6366f1"/>
+          Script Combiner
+        </div>
+        <div style={{fontSize:13, color:'#6b7280', lineHeight:1.6}}>
+          Paste multiple Pine Scripts and AI will merge them into one clean, working strategy.
+          Perfect if you have a main strategy + filters or confirmations from different sources.
+          No need for TradingView Premium — combine scripts for free.
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:12, padding:14, marginBottom:24}}>
+        <div style={{fontSize:12, fontWeight:700, color:'#a5b4fc', marginBottom:8}}>How it works:</div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+          {[
+            {step:'1', text:'Paste your Pine Scripts below'},
+            {step:'2', text:'Label each one (strategy, filter, etc)'},
+            {step:'3', text:'Click Combine — AI merges them'},
+            {step:'4', text:'Copy the result into TradingView'},
+          ].map(s => (
+            <div key={s.step} style={{textAlign:'center'}}>
+              <div style={{width:28, height:28, borderRadius:'50%', background:'rgba(99,102,241,0.2)', color:'#a5b4fc', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 6px'}}>
+                {s.step}
+              </div>
+              <div style={{fontSize:11, color:'#6b7280', lineHeight:1.4}}>{s.text}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Script inputs */}
+      {scripts.map((script, i) => (
+        <div key={script.id} style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:12, padding:16, marginBottom:12}}>
+          <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
+            <div style={{width:28, height:28, borderRadius:'50%', background:'rgba(99,102,241,0.15)', color:'#a5b4fc', fontSize:13, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+              {i+1}
+            </div>
+            <input
+              value={script.label}
+              onChange={e => updateScript(script.id, 'label', e.target.value)}
+              style={{
+                flex:1, padding:'6px 10px', borderRadius:6,
+                border:'1px solid #1e1e2a', background:'#1a1a24',
+                color:'#fff', fontSize:13, outline:'none', fontWeight:600
+              }}
+            />
+            <input
+              value={script.description}
+              onChange={e => updateScript(script.id, 'description', e.target.value)}
+              placeholder="What does this script do? (optional)"
+              style={{
+                flex:2, padding:'6px 10px', borderRadius:6,
+                border:'1px solid #1e1e2a', background:'#1a1a24',
+                color:'#9ca3af', fontSize:12, outline:'none'
+              }}
+            />
+            {scripts.length > 2 && (
+              <button onClick={() => removeScript(script.id)} style={{
+                padding:'6px 10px', borderRadius:6, border:'none',
+                background:'rgba(239,68,68,0.12)', color:'#ef4444',
+                fontSize:12, cursor:'pointer', flexShrink:0
+              }}>Remove</button>
+            )}
+          </div>
+          <textarea
+            value={script.code}
+            onChange={e => updateScript(script.id, 'code', e.target.value)}
+            placeholder={i === 0
+              ? "//@version=5\nstrategy(\"My Strategy\", overlay=true)\n// Paste your main strategy here..."
+              : "//@version=5\nindicator(\"My Filter\", overlay=true)\n// Paste your filter or confirmation script here..."
+            }
+            rows={10}
+            style={{
+              width:'100%', padding:'12px', borderRadius:8,
+              border:'1px solid #1e1e2a', background:'#080808',
+              color:'#a5b4fc', fontSize:12, outline:'none', resize:'vertical',
+              fontFamily:'monospace', lineHeight:1.6, boxSizing:'border-box'
+            }}
+          />
+          {script.code && (
+            <div style={{marginTop:6, fontSize:11, color:'#4b5563'}}>
+              {script.code.split('\n').length} lines
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Add script button */}
+      <div style={{display:'flex', gap:10, marginBottom:24}}>
+        {scripts.length < 5 && (
+          <button onClick={addScript} style={{
+            padding:'9px 18px', borderRadius:8,
+            border:'1px solid #1e1e2a', background:'transparent',
+            color:'#6b7280', fontSize:13, fontWeight:600, cursor:'pointer',
+            display:'flex', alignItems:'center', gap:6
+          }}>
+            + Add Another Script
+          </button>
+        )}
+        <button
+          onClick={combineScripts}
+          disabled={combining || scripts.filter(s=>s.code.trim()).length < 1}
+          style={{
+            flex:1, padding:'12px', borderRadius:10, border:'none',
+            background: combining ? '#1a1a24' : '#6366f1',
+            color: combining ? '#6b7280' : '#fff',
+            fontSize:14, fontWeight:700, cursor: combining ? 'default' : 'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8
+          }}
+        >
+          {combining ? (
+            <>
+              <div style={{width:16, height:16, border:'2px solid #374151', borderTopColor:'#6366f1', borderRadius:'50%', animation:'spin 0.7s linear infinite'}}/>
+              Combining scripts...
+            </>
+          ) : (
+            <>
+              <Code size={16}/>
+              Combine {scripts.filter(s=>s.code.trim()).length} Script{scripts.filter(s=>s.code.trim()).length!==1?'s':''} into One
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Result */}
+      {result && (
+        <div>
+          <div style={{fontSize:16, fontWeight:800, color:'#fff', marginBottom:16, display:'flex', alignItems:'center', gap:8}}>
+            <CheckCircle size={18} color="#22c55e"/>
+            Combined Strategy Ready
+          </div>
+
+          {/* Output tabs */}
+          <div style={{display:'flex', gap:4, marginBottom:16, borderBottom:'1px solid #1e1e2a', paddingBottom:0}}>
+            {[
+              {id:'pine', label:'Pine Script'},
+              {id:'rules', label:'Strategy Rules'},
+              {id:'notes', label:'Notes & Warnings'},
+            ].map(t => (
+              <button key={t.id} onClick={() => setActiveOutput(t.id)} style={{
+                padding:'7px 14px', border:'none', background:'transparent',
+                color: activeOutput===t.id ? '#fff' : '#6b7280',
+                fontSize:13, fontWeight: activeOutput===t.id ? 700 : 500,
+                cursor:'pointer', borderBottom: activeOutput===t.id ? '2px solid #6366f1' : '2px solid transparent',
+                marginBottom:-1
+              }}>{t.label}</button>
+            ))}
+          </div>
+
+          {/* Pine Script output */}
+          {activeOutput === 'pine' && (
+            <div>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                <div style={{fontSize:13, color:'#6b7280'}}>{result.name}</div>
+                <div style={{display:'flex', gap:8}}>
+                  <button onClick={() => copyToClipboard(result.combinedPineScript)} style={{
+                    padding:'7px 14px', borderRadius:7, border:'none',
+                    background: copied ? 'rgba(34,197,94,0.2)' : '#6366f1',
+                    color: copied ? '#22c55e' : '#fff',
+                    fontSize:12, fontWeight:700, cursor:'pointer',
+                    display:'flex', alignItems:'center', gap:5
+                  }}>
+                    {copied ? <><CheckCircle size={13}/> Copied!</> : <><Copy size={13}/> Copy to Clipboard</>}
+                  </button>
+                </div>
+              </div>
+              <div style={{position:'relative'}}>
+                <pre style={{
+                  background:'#080808', border:'1px solid #1e1e2a', borderRadius:10,
+                  padding:16, color:'#a5b4fc', fontSize:12, lineHeight:1.7,
+                  overflowX:'auto', whiteSpace:'pre-wrap', wordBreak:'break-word',
+                  maxHeight:500, overflowY:'auto', margin:0, fontFamily:'monospace'
+                }}>
+                  {result.combinedPineScript}
+                </pre>
+              </div>
+              <div style={{marginTop:10, padding:'10px 14px', borderRadius:8, background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', fontSize:12, color:'#6b7280'}}>
+                💡 Copy this code → open TradingView → Pine Script Editor → paste → Add to chart
+              </div>
+            </div>
+          )}
+
+          {/* Strategy rules output */}
+          {activeOutput === 'rules' && (
+            <div style={{display:'flex', flexDirection:'column', gap:12}}>
+              <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:10, padding:14}}>
+                <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6}}>Strategy Name</div>
+                <div style={{fontSize:15, fontWeight:700, color:'#fff'}}>{result.name}</div>
+              </div>
+              <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:10, padding:14}}>
+                <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6}}>Description</div>
+                <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>{result.description}</div>
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                <div style={{background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:10, padding:14}}>
+                  <div style={{fontSize:11, color:'#22c55e', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6, fontWeight:700}}>Entry Conditions</div>
+                  <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>{result.entryConditions}</div>
+                </div>
+                <div style={{background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:10, padding:14}}>
+                  <div style={{fontSize:11, color:'#ef4444', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6, fontWeight:700}}>Exit Conditions</div>
+                  <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>{result.exitConditions}</div>
+                </div>
+              </div>
+              {result.indicators?.length > 0 && (
+                <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:10, padding:14}}>
+                  <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Indicators Used</div>
+                  <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+                    {result.indicators.map((ind, i) => (
+                      <span key={i} style={{padding:'4px 10px', borderRadius:20, background:'rgba(99,102,241,0.12)', color:'#a5b4fc', fontSize:12, fontWeight:600}}>
+                        {ind}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                {result.timeframe && (
+                  <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:10, padding:14}}>
+                    <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4}}>Timeframe</div>
+                    <div style={{fontSize:14, fontWeight:700, color:'#fff'}}>{result.timeframe}</div>
+                  </div>
+                )}
+                {result.instruments && (
+                  <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:10, padding:14}}>
+                    <div style={{fontSize:11, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4}}>Instruments</div>
+                    <div style={{fontSize:14, fontWeight:700, color:'#fff'}}>{result.instruments}</div>
+                  </div>
+                )}
+              </div>
+              {/* Save to Strategy Lab button */}
+              <button onClick={() => {
+                const newStrategy = {
+                  id: `strat_${Date.now()}`,
+                  name: result.name,
+                  description: result.description,
+                  entryRules: result.entryConditions,
+                  exitRules: result.exitConditions,
+                  timeframe: result.timeframe,
+                  instruments: result.instruments,
+                  pineScript: result.combinedPineScript,
+                  createdAt: Date.now(),
+                  backtests: [],
+                }
+                const existing = JSON.parse(localStorage.getItem(`tradedesk_stratlab_${session.username}_v1`) || '[]')
+                const updated = [...existing, newStrategy]
+                localStorage.setItem(`tradedesk_stratlab_${session.username}_v1`, JSON.stringify(updated))
+                alert('✅ Strategy saved to Strategy Lab!')
+              }} style={{
+                width:'100%', padding:'11px', borderRadius:9, border:'none',
+                background:'#22c55e', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6
+              }}>
+                <CheckCircle size={15}/>
+                Save to Strategy Lab
+              </button>
+            </div>
+          )}
+
+          {/* Notes and warnings */}
+          {activeOutput === 'notes' && (
+            <div style={{display:'flex', flexDirection:'column', gap:12}}>
+              {result.warnings?.length > 0 && (
+                <div style={{background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:10, padding:14}}>
+                  <div style={{fontSize:12, fontWeight:700, color:'#f59e0b', marginBottom:8}}>⚠ Things to check:</div>
+                  {result.warnings.map((w, i) => (
+                    <div key={i} style={{display:'flex', gap:8, marginBottom:6, fontSize:13, color:'#d1d5db'}}>
+                      <span style={{color:'#f59e0b', flexShrink:0}}>•</span>
+                      {w}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {result.improvements?.length > 0 && (
+                <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:14}}>
+                  <div style={{fontSize:12, fontWeight:700, color:'#a5b4fc', marginBottom:8}}>💡 Suggestions for improvement:</div>
+                  {result.improvements.map((imp, i) => (
+                    <div key={i} style={{display:'flex', gap:8, marginBottom:6, fontSize:13, color:'#d1d5db'}}>
+                      <span style={{color:'#6366f1', flexShrink:0}}>{i+1}.</span>
+                      {imp}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{background:'#0f0f15', border:'1px solid #1e1e2a', borderRadius:10, padding:14}}>
+                <div style={{fontSize:12, fontWeight:700, color:'#fff', marginBottom:8}}>Before using in live trading:</div>
+                {[
+                  'Test on TradingView paper trading first',
+                  'Backtest on at least 6 months of historical data',
+                  'Check the strategy performs across different market conditions',
+                  'Start with small position sizes when going live',
+                  'Review all alerts and conditions are triggering correctly',
+                ].map((tip, i) => (
+                  <div key={i} style={{display:'flex', gap:8, marginBottom:5, fontSize:12, color:'#9ca3af'}}>
+                    <span style={{color:'#22c55e', flexShrink:0}}>✓</span>
+                    {tip}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── App ────────────────────────────────────────────────────────
