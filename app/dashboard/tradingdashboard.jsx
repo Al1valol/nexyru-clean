@@ -7307,6 +7307,12 @@ function StrategyLabPage({ session, trades }) {
   const [expanded,   setExpanded]   = useState(null);
   const [justCloned,   setJustCloned]   = useState(null);  // id of newly cloned card
   const [confirmingDelete,  setConfirmingDelete]  = useState(null); // strategy.id awaiting confirm
+  const [subTab, setSubTab] = useState('strategies');
+  const [botRunning, setBotRunning] = useState(() => localStorage.getItem('trading_bot_running') === 'true');
+  const [botTrades, setBotTrades] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('trading_bot_trades') || '[]') } catch { return [] }
+  });
+  const [selectedStrategy, setSelectedStrategy] = useState(null);
 
   // ── Clone — instant duplicate, auto-open editor ───────────
   const cloneStrategy = (source) => {
@@ -7435,6 +7441,24 @@ function StrategyLabPage({ session, trades }) {
 
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}><div><div style={{ fontSize:20, fontWeight:800, color:"#ffffff", display:"flex", alignItems:"center", gap:10 }}><FlaskConical size={20} style={{ color:"#6366f1" }}/>Strategy Lab</div><div style={{ fontSize:11, color:"#6b7280", marginTop:3 }}>Build, document, and backtest your trading strategies</div></div><button onClick={() => { setEditing(null); setShowForm(true); }} style={{ display:"flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:9, border:"none", background:"#6366f1", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,0.3)" }}><Plus size={14}/>New Strategy</button></div>
+
+      {/* Sub tabs */}
+      <div style={{ display:"flex", gap:4, borderBottom:"1px solid #1e1e2a", marginBottom:4 }}>
+        {[
+          { id:'strategies', label:'Strategies' },
+          { id:'autobot',    label:'Auto Bot'  },
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} style={{
+            padding:"10px 16px", border:"none", background:"transparent",
+            color: subTab===t.id ? "#fff" : "#6b7280",
+            fontSize:13, fontWeight:700, cursor:"pointer",
+            borderBottom: `2px solid ${subTab===t.id ? "#6366f1" : "transparent"}`,
+            marginBottom:-1,
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {subTab === 'strategies' && (<>
 
       {/* Empty state */}
       {!strategies.length && (
@@ -7606,6 +7630,269 @@ function StrategyLabPage({ session, trades }) {
           </div>
         );
       })}
+
+      </>)}
+
+      {subTab === 'autobot' && (
+        <div>
+          <div style={{fontSize:13, color:'#6b7280', marginBottom:20, lineHeight:1.6}}>
+            Select a strategy and the bot will automatically paper trade when your entry conditions are met. No human input needed.
+          </div>
+
+          {/* Select strategy to run */}
+          <div style={{marginBottom:20}}>
+            <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:8}}>
+              Select strategy to run:
+            </label>
+            <div style={{display:'flex', flexDirection:'column', gap:8}}>
+              {strategies.map(s => (
+                <div key={s.id} onClick={() => setSelectedStrategy(selectedStrategy?.id === s.id ? null : s)}
+                  style={{
+                    padding:14, borderRadius:10, cursor:'pointer',
+                    background: selectedStrategy?.id === s.id ? 'rgba(99,102,241,0.12)' : '#1a1a24',
+                    border: `1px solid ${selectedStrategy?.id === s.id ? '#6366f1' : '#1e1e2a'}`,
+                  }}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                    <div>
+                      <div style={{fontSize:14, fontWeight:700, color:'#fff'}}>{s.name}</div>
+                      <div style={{fontSize:11, color:'#6b7280', marginTop:2}}>
+                        {s.description || 'No description'} · {s.symbol || 'Any'} · {s.timeframe || 'Any TF'}
+                      </div>
+                    </div>
+                    {selectedStrategy?.id === s.id && (
+                      <div style={{width:20, height:20, borderRadius:'50%', background:'#6366f1', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                        <Check size={12} color="#fff"/>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {strategies.length === 0 && (
+                <div style={{padding:16, borderRadius:10, background:'#1a1a24', color:'#4b5563', fontSize:13, textAlign:'center'}}>
+                  No strategies yet. Create one in the Strategies tab first.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bot status */}
+          {selectedStrategy && (
+            <div style={{
+              background: botRunning ? 'rgba(34,197,94,0.08)' : '#1a1a24',
+              border: `2px solid ${botRunning ? 'rgba(34,197,94,0.4)' : '#1e1e2a'}`,
+              borderRadius:14, padding:20, marginBottom:20,
+            }}>
+              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:15, fontWeight:800, color: botRunning ? '#22c55e' : '#fff', marginBottom:4}}>
+                    {botRunning ? '🟢 Bot Running' : '⚫ Bot Stopped'}
+                  </div>
+                  <div style={{fontSize:12, color:'#6b7280'}}>
+                    Strategy: <strong style={{color:'#fff'}}>{selectedStrategy.name}</strong>
+                    {botRunning && ' · Checking every 5 minutes'}
+                  </div>
+                </div>
+                <button onClick={() => {
+                  const newState = !botRunning
+                  setBotRunning(newState)
+                  localStorage.setItem('trading_bot_running', String(newState))
+
+                  if (newState) {
+                    const runBot = async () => {
+                      if (localStorage.getItem('trading_bot_running') !== 'true') return
+
+                      try {
+                        const strat = JSON.parse(localStorage.getItem('trading_bot_strategy') || '{}')
+                        const now = new Date()
+                        const estHour = now.getUTCHours() - 4
+                        const isMarketHours = now.getUTCDay() >= 1 && now.getUTCDay() <= 5 && estHour >= 9 && estHour < 16
+
+                        if (!isMarketHours) {
+                          setTimeout(runBot, 5 * 60 * 1000)
+                          return
+                        }
+
+                        const res = await fetch('/api/analyze-game', {
+                          method: 'POST',
+                          headers: {'Content-Type':'application/json'},
+                          body: JSON.stringify({
+                            team1: 'ENTER_TRADE',
+                            team2: 'STAY_OUT',
+                            sport: 'TRADING_BOT',
+                            odds1: 0, odds2: 0,
+                            gameTime: new Date().toLocaleString('en-US', {timeZone:'America/New_York'}),
+                            context: `You are an automated trading bot. Current time: ${new Date().toLocaleString('en-US', {timeZone:'America/New_York'})} EST.
+
+STRATEGY: ${strat.name || 'Unnamed'}
+Description: ${strat.description || 'None'}
+Instruments: ${strat.instruments || strat.symbol || 'Any'}
+Timeframe: ${strat.timeframe || 'Not specified'}
+Entry rules: ${strat.entryRules || strat.entry || 'Not specified'}
+Exit rules: ${strat.exitRules || strat.exit || 'Not specified'}
+Filters: ${strat.filters || 'None'}
+Risk per trade: ${strat.riskPerTrade || '1%'}
+
+Based on typical market conditions right now and the strategy rules, should the bot simulate a paper trade entry?
+Consider: is this a good time of day for this strategy? Are conditions generally favorable?
+
+Reply ONLY with JSON:
+{
+  "shouldEnter": true or false,
+  "instrument": "NQ1!" or "ES1!" or "EURUSD" etc,
+  "direction": "LONG" or "SHORT",
+  "reason": "brief explanation",
+  "entryPrice": 12345.00,
+  "stopLoss": 12300.00,
+  "takeProfit": 12420.00,
+  "confidence": "high or medium or low"
+}`
+                          })
+                        })
+
+                        const data = await res.json()
+                        const text = data.reasoning || data.edge || JSON.stringify(data)
+                        const match = text.match(/\{[\s\S]*\}/)
+
+                        if (match) {
+                          const decision = JSON.parse(match[0])
+                          if (decision.shouldEnter && decision.instrument) {
+                            const trade = {
+                              id: Date.now(),
+                              strategyName: strat.name,
+                              instrument: decision.instrument,
+                              direction: decision.direction,
+                              reason: decision.reason,
+                              confidence: decision.confidence,
+                              entryPrice: decision.entryPrice,
+                              stopLoss: decision.stopLoss,
+                              takeProfit: decision.takeProfit,
+                              placedAt: new Date().toISOString(),
+                              status: 'open',
+                              pnl: null,
+                            }
+                            const existing = JSON.parse(localStorage.getItem('trading_bot_trades') || '[]')
+                            const updated = [trade, ...existing].slice(0, 100)
+                            localStorage.setItem('trading_bot_trades', JSON.stringify(updated))
+                            setBotTrades(updated)
+                          }
+                        }
+                      } catch(e) { console.error('Bot error:', e) }
+
+                      setTimeout(runBot, 5 * 60 * 1000)
+                    }
+
+                    localStorage.setItem('trading_bot_strategy', JSON.stringify(selectedStrategy))
+                    runBot()
+                  }
+                }} style={{
+                  padding:'10px 20px', borderRadius:8, border:'none',
+                  background: botRunning ? 'rgba(239,68,68,0.2)' : '#22c55e',
+                  color: botRunning ? '#ef4444' : '#fff',
+                  fontSize:13, fontWeight:700, cursor:'pointer'
+                }}>
+                  {botRunning ? 'Stop Bot' : 'Start Bot'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bot trade history */}
+          <div style={{fontSize:14, fontWeight:700, color:'#fff', marginBottom:12}}>
+            Bot Trades ({botTrades.length})
+          </div>
+
+          {botTrades.length === 0 ? (
+            <div style={{background:'#1a1a24', borderRadius:10, padding:24, textAlign:'center', color:'#4b5563', fontSize:13}}>
+              No bot trades yet. Select a strategy and start the bot.
+            </div>
+          ) : (
+            <div>
+              {/* Stats */}
+              {(() => {
+                const closed = botTrades.filter(t => t.status !== 'open')
+                const wins = closed.filter(t => t.status === 'won')
+                const totalPnl = closed.reduce((s,t) => s + (t.pnl||0), 0)
+                const winRate = closed.length ? Math.round(wins.length/closed.length*100) : 0
+                return (
+                  <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16}}>
+                    {[
+                      {label:'WIN RATE', value:winRate+'%', color:winRate>=50?'#22c55e':'#ef4444'},
+                      {label:'NET P&L', value:(totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(0), color:totalPnl>=0?'#22c55e':'#ef4444'},
+                      {label:'TOTAL', value:botTrades.length, color:'#fff'},
+                    ].map(s => (
+                      <div key={s.label} style={{background:'#1a1a24', borderRadius:10, padding:12, textAlign:'center'}}>
+                        <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4}}>{s.label}</div>
+                        <div style={{fontSize:18, fontWeight:800, color:s.color}}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+
+              {/* Trade list */}
+              {botTrades.map(trade => (
+                <div key={trade.id} style={{
+                  background:'#1a1a24',
+                  border:`1px solid ${trade.status==='won'?'rgba(34,197,94,0.3)':trade.status==='lost'?'rgba(239,68,68,0.3)':'#1e1e2a'}`,
+                  borderRadius:10, padding:14, marginBottom:8
+                }}>
+                  <div style={{display:'flex', justifyContent:'space-between', marginBottom:6}}>
+                    <div>
+                      <span style={{fontSize:14, fontWeight:800, color:'#fff'}}>{trade.instrument}</span>
+                      <span style={{
+                        fontSize:11, marginLeft:8, padding:'2px 8px', borderRadius:4,
+                        background:trade.direction==='LONG'?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)',
+                        color:trade.direction==='LONG'?'#22c55e':'#ef4444', fontWeight:600
+                      }}>{trade.direction}</span>
+                      <span style={{fontSize:11, color:'#6b7280', marginLeft:6}}>{trade.confidence} confidence</span>
+                    </div>
+                    <div style={{textAlign:'right', fontSize:12}}>
+                      {trade.status==='open' && <span style={{color:'#f59e0b', fontWeight:700}}>⏳ Open</span>}
+                      {trade.status==='won' && <span style={{color:'#22c55e', fontWeight:700}}>✓ +${(trade.pnl||0).toFixed(0)}</span>}
+                      {trade.status==='lost' && <span style={{color:'#ef4444', fontWeight:700}}>✗ -${Math.abs(trade.pnl||0).toFixed(0)}</span>}
+                    </div>
+                  </div>
+                  <div style={{fontSize:11, color:'#9ca3af', marginBottom:8}}>{trade.reason}</div>
+                  <div style={{display:'flex', gap:12, fontSize:11, color:'#6b7280', marginBottom:8}}>
+                    <span>Entry: <strong style={{color:'#fff'}}>{trade.entryPrice}</strong></span>
+                    <span>SL: <strong style={{color:'#ef4444'}}>{trade.stopLoss}</strong></span>
+                    <span>TP: <strong style={{color:'#22c55e'}}>{trade.takeProfit}</strong></span>
+                  </div>
+                  <div style={{fontSize:10, color:'#4b5563'}}>{new Date(trade.placedAt).toLocaleString()}</div>
+
+                  {trade.status === 'open' && (
+                    <div style={{display:'flex', gap:6, marginTop:10}}>
+                      <button onClick={() => {
+                        const pnl = Math.abs((trade.takeProfit||0) - (trade.entryPrice||0))
+                        const updated = botTrades.map(t => t.id===trade.id ? {...t, status:'won', pnl} : t)
+                        setBotTrades(updated)
+                        localStorage.setItem('trading_bot_trades', JSON.stringify(updated))
+                      }} style={{padding:'6px 14px', borderRadius:6, border:'none', background:'rgba(34,197,94,0.2)', color:'#22c55e', fontSize:12, fontWeight:700, cursor:'pointer'}}>
+                        ✓ Won
+                      </button>
+                      <button onClick={() => {
+                        const pnl = -Math.abs((trade.stopLoss||0) - (trade.entryPrice||0))
+                        const updated = botTrades.map(t => t.id===trade.id ? {...t, status:'lost', pnl} : t)
+                        setBotTrades(updated)
+                        localStorage.setItem('trading_bot_trades', JSON.stringify(updated))
+                      }} style={{padding:'6px 14px', borderRadius:6, border:'none', background:'rgba(239,68,68,0.2)', color:'#ef4444', fontSize:12, fontWeight:700, cursor:'pointer'}}>
+                        ✗ Lost
+                      </button>
+                      <button onClick={() => {
+                        const updated = botTrades.filter(t => t.id !== trade.id)
+                        setBotTrades(updated)
+                        localStorage.setItem('trading_bot_trades', JSON.stringify(updated))
+                      }} style={{padding:'6px 12px', borderRadius:6, border:'1px solid #1e1e2a', background:'transparent', color:'#6b7280', fontSize:11, cursor:'pointer'}}>
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );
