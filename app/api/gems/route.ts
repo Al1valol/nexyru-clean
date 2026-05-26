@@ -77,19 +77,16 @@ export async function GET() {
       }
     })
     .filter(c => {
-      // Must have real liquidity
-      if (parseFloat(c.liquidity?.usd || 0) < 2000) return false
-      // Must have contract address
       if (!c.coinId) return false
-      // Must have Twitter or Telegram
-      if (!c.hasTwitter && !c.hasTelegram) return false
-      // Under 48 hours
+      if (parseFloat(c.liquidity?.usd || 0) < 500) return false  // lower from 2000 to 500
       if (c.ageHours > 48) return false
+      // Remove the socials requirement - show all coins but rank ones with socials higher
       return true
     })
     .map(c => {
       // Calculate profit potential score
       const h1 = parseFloat(c.priceChange?.h1 || 0)
+      const h6 = parseFloat(c.priceChange?.h6 || 0)
       const h24 = parseFloat(c.priceChange?.h24 || 0)
       const liq = parseFloat(c.liquidity?.usd || 0)
       const buyRatio = c.buyRatio || 0.5
@@ -135,7 +132,17 @@ export async function GET() {
       else if (h24 < 500) score += 2  // already pumped
       else score += 0                  // way pumped = skip
 
-      return { ...c, profitScore: Math.min(100, score) }
+      // SOCIALS BONUS (extra 15pts)
+      if (c.hasTwitter && c.hasTelegram) score += 15
+      else if (c.hasTwitter || c.hasTelegram) score += 8
+
+      // DIP BONUS (extra 20pts) - your favorite strategy
+      if (h6 < -10 && h1 > 0) score += 20  // down 6h but bouncing now
+      if (h6 < -20 && h1 > 5) score += 10  // extra bonus for bigger dip + stronger bounce
+
+      const isDip = h6 < -10 && h1 > 0
+
+      return { ...c, profitScore: Math.min(100, score), isDip }
     })
     .sort((a, b) => b.profitScore - a.profitScore)
 

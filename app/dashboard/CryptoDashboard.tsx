@@ -1072,7 +1072,9 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
 
   const visible = React.useMemo(() => {
     let arr = gems;
-    if (snipeFilter !== 'all') {
+    if (snipeFilter === 'dip') {
+      arr = arr.filter(c => c.isDip === true);
+    } else if (snipeFilter !== 'all') {
       arr = arr.filter(c => c.snipeWindow?.id === snipeFilter);
     }
     if (ageFilter !== 'all') {
@@ -1330,6 +1332,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
             ['early',   'Early',         '#86efac'],
             ['watch',   'Watch',         '#fbbf24'],
             ['toolate', 'Too Late',      '#ef4444'],
+            ['dip',     '🔄 Dip Bounces', '#a5b4fc'],
             ['all',     'All',              '#6366f1'],
           ].map(([id, label, accent]) => (
             <button key={id} onClick={() => setSnipeFilter(id)} style={pillStyle(snipeFilter === id, accent)}>{label}</button>
@@ -1415,6 +1418,22 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
                     </div>
                   )}
                 </div>
+
+                {coin.isDip && (
+                  <div style={{
+                    display:'flex', alignItems:'center', gap:6,
+                    padding:'6px 12px', borderRadius:8, marginBottom:8,
+                    background:'rgba(99,102,241,0.1)', border:'1px solid rgba(99,102,241,0.3)'
+                  }}>
+                    <span style={{fontSize:14}}>🔄</span>
+                    <div>
+                      <span style={{fontSize:12, fontWeight:800, color:'#a5b4fc'}}>DIP BOUNCE</span>
+                      <span style={{fontSize:11, color:'#6b7280', marginLeft:6}}>
+                        Down {Math.abs(parseFloat(coin.priceChange?.h6||0)).toFixed(0)}% in 6h but recovering now
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* COIN HEADER */}
                 <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:12}}>
