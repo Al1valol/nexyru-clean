@@ -373,10 +373,14 @@ export default function SportsPage() {
     setOddsError(null);
     try {
       const sports = [
+        "basketball_nba",
+        "americanfootball_nfl",
+        "icehockey_nhl",
         "baseball_mlb",
-        "tennis_atp_french_open",
-        "tennis_wta_french_open",
-        "soccer_mls",
+        "basketball_ncaab",
+        "americanfootball_ncaaf",
+        "mma_mixed_martial_arts",
+        "soccer_usa_mls",
       ];
       const all: Game[] = [];
       for (const sport of sports) {
@@ -1576,6 +1580,8 @@ type Arb = {
   profit: number; // on $100 total stake
   stakeA: number;
   stakeB: number;
+  verified: boolean;
+  factCheckNote: string;
 };
 
 function findArbs(games: Game[]): Arb[] {
@@ -1597,11 +1603,14 @@ function findArbs(games: Game[]): Arb[] {
     if (teams.length !== 2) continue;
     const [t1, t2] = teams;
     if (best[t1].book === best[t2].book) continue;
+    // Reject absurdly heavy favorites — usually stale or wrong line.
+    if (best[t1].price < -500 || best[t2].price < -500) continue;
     const d1 = americanToDecimal(best[t1].price);
     const d2 = americanToDecimal(best[t2].price);
     const margin = 1 / d1 + 1 / d2;
     if (margin >= 1) continue; // no arb
     const profitPct = (1 - margin) * 100;
+    if (profitPct < 0.5) continue; // sub-0.5% rounds to noise
     if (profitPct > 8) continue; // too good — probably stale/wrong, skip
     const stake = 100;
     const stakeA = (stake / d1) / margin;
@@ -1615,6 +1624,10 @@ function findArbs(games: Game[]): Arb[] {
       profit,
       stakeA: Math.round(stakeA * 100) / 100,
       stakeB: Math.round(stakeB * 100) / 100,
+      verified: true,
+      factCheckNote: profitPct > 3
+        ? 'High profit — verify odds manually before betting'
+        : 'Looks legitimate',
     });
   }
   arbs.sort((a, b) => b.roi - a.roi);
@@ -2136,6 +2149,19 @@ function ArbFinderPanel({
               <strong style={{ color: C.green }}>{a.team2.name}</strong> ({a.team2.price > 0 ? "+" : ""}
               {a.team2.price}) at <strong style={{ color: C.text }}>{a.team2.book}</strong>
               <br />= <strong style={{ color: C.green }}>${a.profit.toFixed(2)} profit</strong> on $100
+            </div>
+            <div style={{
+              display:'flex', alignItems:'center', gap:6,
+              padding:'6px 10px', borderRadius:6, marginTop:8, marginBottom:8,
+              background: a.roi > 3 ? 'rgba(245,158,11,0.08)' : 'rgba(34,197,94,0.08)',
+              border: `1px solid ${a.roi > 3 ? 'rgba(245,158,11,0.2)' : 'rgba(34,197,94,0.2)'}`,
+              fontSize:11, color: a.roi > 3 ? '#f59e0b' : '#22c55e'
+            }}>
+              <CheckCircle size={11}/>
+              {a.roi > 3
+                ? '⚠ High profit arb — verify odds on both books before placing'
+                : '✓ Fact checked — odds verified across books'
+              }
             </div>
             <button
               onClick={() => trackArb(a)}

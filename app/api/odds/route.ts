@@ -29,15 +29,16 @@ const ALLOWED_SPORTS = new Set([
 ]);
 
 // Default fan-out set used by ?sport=all. Each sport costs one upstream
-// credit, so keep this trimmed to leagues currently in season.
-// May 2026: MLB regular season, Roland-Garros, MLS regular season are
-// reliably playing. NBA finals / NHL finals may overlap briefly — re-add
-// basketball_nba and icehockey_nhl during their playoff windows if needed.
+// credit. Tennis removed; NBA / NFL / NHL / NCAA / MMA / MLS / MLB included.
 const ACTIVE_SPORTS = [
+  "basketball_nba",
+  "americanfootball_nfl",
+  "icehockey_nhl",
   "baseball_mlb",
-  "tennis_atp_french_open",
-  "tennis_wta_french_open",
-  "soccer_mls",
+  "basketball_ncaab",
+  "americanfootball_ncaaf",
+  "mma_mixed_martial_arts",
+  "soccer_usa_mls",
 ];
 
 function fetchSport(sport: string, daysFrom: string) {

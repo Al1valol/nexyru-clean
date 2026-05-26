@@ -5442,6 +5442,23 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                   AI analyzes the coins that appeared in your Coin Sniper and shows how your strategy rules would have performed.
                 </div>
 
+                {savedCoinBots.length > 0 && (
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:12, color:'#6b7280', marginBottom:8}}>Load a saved bot config:</div>
+                    <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+                      {savedCoinBots.map(bot => (
+                        <button key={bot.id} onClick={() => loadBotConfig(bot)} style={{
+                          padding:'6px 12px', borderRadius:7,
+                          border:`1px solid ${activeCoinBotId===bot.id?'#6366f1':'#1e1e2a'}`,
+                          background: activeCoinBotId===bot.id?'rgba(99,102,241,0.15)':'#1a1a24',
+                          color: activeCoinBotId===bot.id?'#a5b4fc':'#6b7280',
+                          fontSize:12, fontWeight:600, cursor:'pointer'
+                        }}>{bot.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Strategy summary */}
                 <div style={{background:'#1a1a24', borderRadius:10, padding:14, marginBottom:20}}>
                   <div style={{fontSize:12, fontWeight:700, color:'#fff', marginBottom:10}}>Current Strategy:</div>
@@ -5848,6 +5865,57 @@ Reply with JSON:
                 <div style={{fontSize:13, color:'#6b7280', marginBottom:20}}>
                   Track the bot's performance and learn which entry signals actually predict pumps.
                 </div>
+
+                {savedCoinBots.length > 0 && (
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:12, color:'#6b7280', marginBottom:8}}>Load a saved bot config:</div>
+                    <div style={{display:'flex', gap:6, flexWrap:'wrap', marginBottom:16}}>
+                      {savedCoinBots.map(bot => (
+                        <button key={bot.id} onClick={() => loadBotConfig(bot)} style={{
+                          padding:'6px 12px', borderRadius:7,
+                          border:`1px solid ${activeCoinBotId===bot.id?'#6366f1':'#1e1e2a'}`,
+                          background: activeCoinBotId===bot.id?'rgba(99,102,241,0.15)':'#1a1a24',
+                          color: activeCoinBotId===bot.id?'#a5b4fc':'#6b7280',
+                          fontSize:12, fontWeight:600, cursor:'pointer'
+                        }}>{bot.name}</button>
+                      ))}
+                    </div>
+
+                    <div style={{fontSize:12, fontWeight:700, color:'#fff', marginBottom:8}}>Per-bot performance</div>
+                    {savedCoinBots.map(bot => {
+                      const closed = (bot.trades||[]).filter(t => t.status !== 'open')
+                      const wins = closed.filter(t => t.status === 'won')
+                      const winRate = closed.length ? Math.round(wins.length/closed.length*100) : 0
+                      const totalPnl = closed.reduce((s,t) => s+(t.pnl||0), 0)
+                      return (
+                        <div key={bot.id} style={{
+                          background:'#1a1a24', border:'1px solid #1e1e2a',
+                          borderRadius:10, padding:14, marginBottom:10
+                        }}>
+                          <div style={{display:'flex', justifyContent:'space-between', marginBottom:10}}>
+                            <div style={{fontSize:14, fontWeight:700, color:'#fff'}}>{bot.name}</div>
+                            <div style={{fontSize:13, fontWeight:700, color:totalPnl>=0?'#22c55e':'#ef4444'}}>
+                              {totalPnl>=0?'+':''}${totalPnl.toFixed(0)}
+                            </div>
+                          </div>
+                          <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8}}>
+                            {[
+                              {label:'WIN RATE', value:winRate+'%', color:winRate>=50?'#22c55e':'#ef4444'},
+                              {label:'TRADES', value:(bot.trades||[]).length, color:'#fff'},
+                              {label:'WINS', value:wins.length, color:'#22c55e'},
+                              {label:'LOSSES', value:closed.length-wins.length, color:'#ef4444'},
+                            ].map(s => (
+                              <div key={s.label} style={{background:'#111', borderRadius:6, padding:'8px', textAlign:'center'}}>
+                                <div style={{fontSize:9, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3}}>{s.label}</div>
+                                <div style={{fontSize:15, fontWeight:800, color:s.color}}>{s.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
 
                 {(() => {
                   const closed = coinBotTrades.filter(t => t.status !== 'open')
