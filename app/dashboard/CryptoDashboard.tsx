@@ -1215,7 +1215,7 @@ function CryptoGems({ refreshKey, onUpdated, signals = [], onLogSignal, onBuy })
               <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0', borderBottom:'1px solid #16161f'}}>
                 <div>
                   <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{coin.name} ({coin.symbol})</div>
-                  <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.score}/100 · {coin.snipeWindow?.label}</div>
+                  <div style={{fontSize:11, color:'#6b7280'}}>{coin.chain} · Score {coin.profitScore || coin.score || coin.gemScore}/100 · {coin.snipeWindow?.label}</div>
                 </div>
                 {getContractAddress(coin) && (
                   <button onClick={() => {
@@ -4981,7 +4981,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                   return (
                     <div key={id} style={{
                       background:'#0d0d12',
-                      border:`1px solid ${coin.score >= 70 ? 'rgba(99,102,241,0.4)' : coin.score >= 50 ? 'rgba(245,158,11,0.3)' : '#16161f'}`,
+                      border:`1px solid ${(coin.profitScore || coin.score || coin.gemScore) >= 70 ? 'rgba(99,102,241,0.4)' : (coin.profitScore || coin.score || coin.gemScore) >= 50 ? 'rgba(245,158,11,0.3)' : '#16161f'}`,
                       borderRadius:12, padding:16, marginBottom:12
                     }}>
                       <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
@@ -4993,8 +4993,8 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                           </div>
                         </div>
                         <div style={{textAlign:'right'}}>
-                          <div style={{fontSize:24, fontWeight:900, color: coin.score >= 70 ? '#6366f1' : coin.score >= 50 ? '#f59e0b' : '#6b7280'}}>
-                            {coin.score}
+                          <div style={{fontSize:24, fontWeight:900, color: (coin.profitScore || coin.score || coin.gemScore) >= 70 ? '#6366f1' : (coin.profitScore || coin.score || coin.gemScore) >= 50 ? '#f59e0b' : '#6b7280'}}>
+                            {coin.profitScore || coin.score || coin.gemScore}
                           </div>
                           <div style={{fontSize:10, color:'#6b7280'}}>/100</div>
                         </div>

@@ -76,19 +76,69 @@ export async function GET() {
         hasSocials: hasTwitter || hasTelegram,
       }
     })
-    .filter(c => c.coinId && (c.hasTwitter || c.hasTelegram))
-    .sort((a,b) => {
-      // Sort by score - prioritize fresh coins with good liquidity
-      const scoreA = (a.ageHours < 6 ? 30 : a.ageHours < 24 ? 10 : 0) +
-                     (parseFloat(a.liquidity?.usd||0) > 10000 ? 20 : 0) +
-                     (a.buyRatio > 0.6 ? 15 : 0)
-      const scoreB = (b.ageHours < 6 ? 30 : b.ageHours < 24 ? 10 : 0) +
-                     (parseFloat(b.liquidity?.usd||0) > 10000 ? 20 : 0) +
-                     (b.buyRatio > 0.6 ? 15 : 0)
-      return scoreB - scoreA
+    .filter(c => {
+      // Must have real liquidity
+      if (parseFloat(c.liquidity?.usd || 0) < 2000) return false
+      // Must have contract address
+      if (!c.coinId) return false
+      // Must have Twitter or Telegram
+      if (!c.hasTwitter && !c.hasTelegram) return false
+      // Under 48 hours
+      if (c.ageHours > 48) return false
+      return true
     })
+    .map(c => {
+      // Calculate profit potential score
+      const h1 = parseFloat(c.priceChange?.h1 || 0)
+      const h24 = parseFloat(c.priceChange?.h24 || 0)
+      const liq = parseFloat(c.liquidity?.usd || 0)
+      const buyRatio = c.buyRatio || 0.5
+      const vol24 = parseFloat(c.volume?.h24 || 0)
+      const ageHours = c.ageHours || 999
 
-    console.log('Coins with socials:', coins.length, 'of', Object.keys(bestPair).length)
+      let score = 0
+
+      // 1. MOMENTUM (30pts) - moving up but not exploded
+      if (h1 > 0 && h1 < 50) score += 30      // healthy growth
+      else if (h1 > 50 && h1 < 150) score += 20 // good but getting hot
+      else if (h1 > 150 && h1 < 500) score += 8  // already pumping
+      else if (h1 < 0 && h1 > -30) score += 12  // small dip = buy opportunity
+      else if (h1 <= -30) score += 5             // big dip = risky
+
+      // 2. ENTRY TIMING (25pts)
+      if (ageHours < 1) score += 25
+      else if (ageHours < 2) score += 22
+      else if (ageHours < 6) score += 15
+      else if (ageHours < 12) score += 8
+      else if (ageHours < 24) score += 3
+
+      // 3. SAFETY (20pts)
+      if (liq > 50000) score += 20
+      else if (liq > 20000) score += 16
+      else if (liq > 10000) score += 12
+      else if (liq > 5000) score += 7
+      else if (liq > 2000) score += 3
+      if (buyRatio > 0.65) score += 5
+      else if (buyRatio > 0.55) score += 3
+
+      // 4. VOLUME (15pts)
+      if (vol24 > 500000) score += 15
+      else if (vol24 > 100000) score += 12
+      else if (vol24 > 50000) score += 9
+      else if (vol24 > 10000) score += 5
+      else if (vol24 > 2000) score += 2
+
+      // 5. NOT PUMPED YET (10pts)
+      if (h24 < 50) score += 10      // barely moved = huge opportunity
+      else if (h24 < 100) score += 8  // modest pump
+      else if (h24 < 200) score += 5  // some pump
+      else if (h24 < 500) score += 2  // already pumped
+      else score += 0                  // way pumped = skip
+
+      return { ...c, profitScore: Math.min(100, score) }
+    })
+    .sort((a, b) => b.profitScore - a.profitScore)
+
     return NextResponse.json({ coins, total: coins.length })
 
   } catch(e:any) {
