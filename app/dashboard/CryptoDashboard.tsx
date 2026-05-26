@@ -4484,6 +4484,24 @@ function Stat({ label, value, color }) {
 
 export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean, session: any }) {
   const [cryptoSection, setCryptoSection] = useState('hotnow');
+
+  const [coinBot, setCoinBot] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('nexyru_coinbot') || '{}') } catch { return {} }
+  })
+  const [coinBotRunning, setCoinBotRunning] = React.useState(() => localStorage.getItem('nexyru_coinbot_running') === 'true')
+  const [coinBotTrades, setCoinBotTrades] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('nexyru_coinbot_trades') || '[]') } catch { return [] }
+  })
+  const [coinBotTab, setCoinBotTab] = React.useState('strategy')
+  const [coinBotAnalysis, setCoinBotAnalysis] = React.useState(null)
+  const [coinBotAnalyzing, setCoinBotAnalyzing] = React.useState(false)
+
+  const saveCoinBot = (updates) => {
+    const updated = {...coinBot, ...updates}
+    setCoinBot(updated)
+    localStorage.setItem('nexyru_coinbot', JSON.stringify(updated))
+  }
+
   const [cryptoRefreshKey, setCryptoRefreshKey] = useState(0);
   const [cryptoLastUpdated, setCryptoLastUpdated] = useState(null);
   const [, setCryptoTick] = useState(0);
@@ -4820,6 +4838,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         {[
           {id:'hotnow',    label:'Hot Now',     Icon: Activity},
           {id:'gems',      label:'Coin Sniper', Icon: Target},
+          {id:'coinbot',   label:'Coin Bot',    Icon: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>},
           {id:'dipfinder', label:'Dip Finder',  Icon: TrendingDown},
           {id:'uptrends',  label:'Uptrends',    Icon: TrendingUp},
           {id:'accounts',  label:'Accounts',    Icon: Wallet},
@@ -5070,6 +5089,646 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
         {cryptoSection === 'uptrends'  && <ChartErrorBoundary resetKey="uptrends"><CryptoUptrends  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} onBuy={setBuyModalCoin} /></ChartErrorBoundary>}
         {cryptoSection === 'accounts'  && <ChartErrorBoundary resetKey={`accounts:${cryptoAccountStore?.activeAccountId ?? 'none'}`} fallback={<div style={{ padding:32, color:'#9ca3af', background:'#0d0d12', border:'1px solid #16161f', borderRadius:12, fontSize:13, textAlign:'center' }}>Error loading accounts. Refresh the page or pick a different account.</div>}><CryptoAccounts  refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} onUpdate={updateCryptoAccountStore} onRequestBuy={setBuyModalCoin} /></ChartErrorBoundary>}
         {cryptoSection === 'mystats'   && <ChartErrorBoundary resetKey="mystats"><CryptoMyStats   refreshKey={cryptoRefreshKey} onUpdated={setCryptoLastUpdated} store={cryptoAccountStore} /></ChartErrorBoundary>}
+
+        {cryptoSection === 'coinbot' && (
+          <div style={{maxWidth:800, margin:'0 auto'}}>
+
+            <div style={{marginBottom:24}}>
+              <div style={{fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.02em', marginBottom:4}}>
+                Meme Coin Bot
+              </div>
+              <div style={{fontSize:13, color:'#6b7280'}}>
+                Define your snipe strategy, backtest against past coins, and let the bot auto-paper-trade new launches
+              </div>
+            </div>
+
+            {/* Sub tabs */}
+            <div style={{display:'flex', gap:4, marginBottom:24, borderBottom:'1px solid #1e1e2a', paddingBottom:0}}>
+              {[
+                {id:'strategy', label:'Strategy'},
+                {id:'backtest', label:'Backtest'},
+                {id:'bot', label:'Auto Bot'},
+                {id:'performance', label:'Performance'},
+              ].map(t => (
+                <button key={t.id} onClick={() => setCoinBotTab(t.id)} style={{
+                  padding:'8px 16px', border:'none', background:'transparent',
+                  color: coinBotTab===t.id ? '#fff' : '#6b7280',
+                  fontSize:13, fontWeight: coinBotTab===t.id ? 700 : 500,
+                  cursor:'pointer', borderBottom: coinBotTab===t.id ? '2px solid #6366f1' : '2px solid transparent',
+                  marginBottom:-1
+                }}>{t.label}</button>
+              ))}
+            </div>
+
+            {/* STRATEGY TAB */}
+            {coinBotTab === 'strategy' && (
+              <div>
+                <div style={{fontSize:13, color:'#6b7280', marginBottom:20, lineHeight:1.6}}>
+                  Define the rules the bot uses to decide which coins to paper trade and when to exit.
+                </div>
+
+                {[
+                  {
+                    key: 'maxAge',
+                    question: 'Maximum coin age to enter?',
+                    placeholder: 'e.g. 2 hours — only buy coins under 2 hours old',
+                    hint: 'Coins older than this will be ignored by the bot'
+                  },
+                  {
+                    key: 'minLiquidity',
+                    question: 'Minimum liquidity required?',
+                    placeholder: 'e.g. $5,000 minimum liquidity',
+                    hint: 'Bot will skip coins with less liquidity than this'
+                  },
+                  {
+                    key: 'minBuyRatio',
+                    question: 'Minimum buy pressure %?',
+                    placeholder: 'e.g. 60% — only buy when 60%+ of transactions are buys',
+                    hint: 'Ensures there are more buyers than sellers at entry'
+                  },
+                  {
+                    key: 'maxH24Pump',
+                    question: 'Maximum 24h pump allowed?',
+                    placeholder: 'e.g. 300% — skip coins already up more than 300% in 24h',
+                    hint: 'Avoids coins that have already pumped hard'
+                  },
+                  {
+                    key: 'requireTwitter',
+                    question: 'Require Twitter/Telegram?',
+                    placeholder: 'e.g. Yes — only buy coins with social presence',
+                    hint: 'Filters out coins with no community'
+                  },
+                  {
+                    key: 'takeProfitX',
+                    question: 'Take profit target?',
+                    placeholder: 'e.g. 3x — sell when coin is up 3x from entry',
+                    hint: 'What multiplier do you want to take profit at?'
+                  },
+                  {
+                    key: 'stopLossPct',
+                    question: 'Stop loss %?',
+                    placeholder: 'e.g. 50% — exit if coin drops 50% from entry',
+                    hint: 'Maximum loss you will accept before exiting'
+                  },
+                  {
+                    key: 'maxPositionSize',
+                    question: 'Paper trade size per coin?',
+                    placeholder: 'e.g. $100 per coin',
+                    hint: 'How much simulated money to put in each trade'
+                  },
+                  {
+                    key: 'extraRules',
+                    question: 'Any other rules?',
+                    placeholder: 'e.g. Only buy on Solana, avoid coins with top holder > 20%, only trade during 9am-5pm EST',
+                    hint: 'Any additional conditions the bot should check'
+                  },
+                ].map(q => (
+                  <div key={q.key} style={{marginBottom:18}}>
+                    <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>
+                      {q.question}
+                    </label>
+                    <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>{q.hint}</div>
+                    <textarea
+                      value={coinBot[q.key] || ''}
+                      onChange={e => saveCoinBot({[q.key]: e.target.value})}
+                      placeholder={q.placeholder}
+                      rows={2}
+                      style={{
+                        width:'100%', padding:'10px 12px', borderRadius:8,
+                        border:'1px solid #1e1e2a', background:'#1a1a24',
+                        color:'#fff', fontSize:13, outline:'none', resize:'vertical',
+                        fontFamily:'inherit', lineHeight:1.5
+                      }}
+                    />
+                  </div>
+                ))}
+
+                {/* Signal checklist */}
+                <div style={{marginBottom:20}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:4}}>
+                    Required signals for entry
+                  </label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:8}}>Bot will only enter when ALL selected signals are present</div>
+                  <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
+                    {[
+                      'Price flat (not pumped yet)',
+                      'Volume increasing',
+                      'Buy ratio > 60%',
+                      'Has Twitter',
+                      'Has Telegram',
+                      'Liquidity > $10k',
+                      'Age < 1 hour',
+                      'Age < 2 hours',
+                      'Not already up 100%+',
+                      'Rug check passed',
+                    ].map(signal => {
+                      const selected = (coinBot.requiredSignals || []).includes(signal)
+                      return (
+                        <button key={signal} onClick={() => {
+                          const current = coinBot.requiredSignals || []
+                          const updated = selected ? current.filter(s => s !== signal) : [...current, signal]
+                          saveCoinBot({requiredSignals: updated})
+                        }} style={{
+                          padding:'6px 12px', borderRadius:6, fontSize:12, fontWeight:600,
+                          border: selected ? '1px solid #22c55e' : '1px solid #1e1e2a',
+                          background: selected ? 'rgba(34,197,94,0.12)' : 'transparent',
+                          color: selected ? '#22c55e' : '#6b7280',
+                          cursor:'pointer'
+                        }}>{signal}</button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div style={{padding:14, borderRadius:10, background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)'}}>
+                  <div style={{fontSize:13, fontWeight:700, color:'#22c55e', marginBottom:3}}>✓ Strategy saved</div>
+                  <div style={{fontSize:12, color:'#6b7280'}}>
+                    Go to Backtest to see how these rules would have performed on past coins.
+                    Go to Auto Bot to start automatic paper trading.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* BACKTEST TAB */}
+            {coinBotTab === 'backtest' && (
+              <div>
+                <div style={{fontSize:13, color:'#6b7280', marginBottom:20, lineHeight:1.6}}>
+                  AI analyzes the coins that appeared in your Coin Sniper and shows how your strategy rules would have performed.
+                </div>
+
+                {/* Strategy summary */}
+                <div style={{background:'#1a1a24', borderRadius:10, padding:14, marginBottom:20}}>
+                  <div style={{fontSize:12, fontWeight:700, color:'#fff', marginBottom:10}}>Current Strategy:</div>
+                  {[
+                    {label:'Max age', value: coinBot.maxAge},
+                    {label:'Min liquidity', value: coinBot.minLiquidity},
+                    {label:'Min buy ratio', value: coinBot.minBuyRatio},
+                    {label:'Max 24h pump', value: coinBot.maxH24Pump},
+                    {label:'Take profit', value: coinBot.takeProfitX},
+                    {label:'Stop loss', value: coinBot.stopLossPct},
+                    {label:'Position size', value: coinBot.maxPositionSize},
+                    {label:'Required signals', value: (coinBot.requiredSignals || []).join(', ')},
+                  ].filter(r => r.value).map(r => (
+                    <div key={r.label} style={{display:'flex', gap:8, marginBottom:5, fontSize:12}}>
+                      <span style={{color:'#4b5563', minWidth:100}}>{r.label}:</span>
+                      <span style={{color:'#d1d5db'}}>{r.value}</span>
+                    </div>
+                  ))}
+                  {Object.keys(coinBot).filter(k => coinBot[k]).length === 0 && (
+                    <div style={{color:'#4b5563', fontSize:12}}>No strategy defined — go to Strategy tab first</div>
+                  )}
+                </div>
+
+                <button onClick={async () => {
+                  setCoinBotAnalyzing(true)
+                  try {
+                    // Get tracked coins from API
+                    const tracked = await fetch('/api/track-coin').then(r=>r.json()).catch(()=>({tracked:[]}))
+                    const coins = tracked.tracked || []
+
+                    const res = await fetch('/api/analyze-game', {
+                      method: 'POST',
+                      headers: {'Content-Type':'application/json'},
+                      body: JSON.stringify({
+                        team1: 'STRATEGY',
+                        team2: 'NO_FILTER',
+                        sport: 'COIN_BACKTEST',
+                        odds1: 0, odds2: 0,
+                        gameTime: 'Historical',
+                        context: `You are a meme coin trading analyst. Analyze these strategy rules for snipe trading.
+
+STRATEGY RULES:
+- Max coin age: ${coinBot.maxAge || 'Not set'}
+- Min liquidity: ${coinBot.minLiquidity || 'Not set'}
+- Min buy ratio: ${coinBot.minBuyRatio || 'Not set'}
+- Max 24h pump before entry: ${coinBot.maxH24Pump || 'Not set'}
+- Take profit: ${coinBot.takeProfitX || 'Not set'}
+- Stop loss: ${coinBot.stopLossPct || 'Not set'}
+- Required signals: ${(coinBot.requiredSignals || []).join(', ') || 'None selected'}
+- Extra rules: ${coinBot.extraRules || 'None'}
+
+${coins.length > 0 ? `
+TRACKED COINS (${coins.length} total):
+${coins.slice(0,10).map(c => `${c.name} | entry stats: ${JSON.stringify(c.entry_stats)} | outcome 24h: ${c.outcome_24h || 'unknown'}`).join('\n')}
+` : 'No tracked coin data yet - will analyze based on strategy rules alone'}
+
+Based on these meme coin snipe strategy rules:
+1. Are these rules conservative or aggressive?
+2. What percentage of coins would pass these filters?
+3. Which rules are most important for avoiding rugs?
+4. Which rules might be too strict and miss good trades?
+5. Estimated win rate with these rules applied to meme coin sniping?
+6. What improvements would you suggest?
+
+Reply with JSON:
+{
+  "estimatedWinRate": 45,
+  "coinsPassingFilter": "~15-20 per day",
+  "bestRule": "rule that protects most from rugs",
+  "tooStrictRule": "rule that might miss good trades",
+  "improvements": ["suggestion 1", "suggestion 2", "suggestion 3"],
+  "riskLevel": "Conservative / Balanced / Aggressive",
+  "summary": "2-3 sentence assessment"
+}`
+                      })
+                    })
+                    const data = await res.json()
+                    try {
+                      const text = data.reasoning || data.edge || JSON.stringify(data)
+                      const match = text.match(/\{[\s\S]*\}/)
+                      if (match) {
+                        setCoinBotAnalysis(JSON.parse(match[0]))
+                      } else {
+                        setCoinBotAnalysis({summary: text, improvements: []})
+                      }
+                    } catch {
+                      setCoinBotAnalysis({summary: data.reasoning || 'Analysis complete', improvements: []})
+                    }
+                  } catch(e) { console.error(e) }
+                  setCoinBotAnalyzing(false)
+                }} disabled={coinBotAnalyzing} style={{
+                  width:'100%', padding:'12px', borderRadius:10, border:'none',
+                  background: coinBotAnalyzing ? '#1a1a24' : '#6366f1',
+                  color: coinBotAnalyzing ? '#6b7280' : '#fff',
+                  fontSize:14, fontWeight:700, cursor: coinBotAnalyzing ? 'default' : 'pointer',
+                  marginBottom:20
+                }}>
+                  {coinBotAnalyzing ? '🤔 Analyzing strategy...' : 'Analyze My Strategy'}
+                </button>
+
+                {coinBotAnalysis && (
+                  <div>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16}}>
+                      {[
+                        {label:'EST. WIN RATE', value: coinBotAnalysis.estimatedWinRate ? coinBotAnalysis.estimatedWinRate+'%' : 'N/A', color:'#22c55e'},
+                        {label:'DAILY COINS', value: coinBotAnalysis.coinsPassingFilter || 'N/A', color:'#a5b4fc'},
+                        {label:'RISK LEVEL', value: coinBotAnalysis.riskLevel || 'N/A', color:'#f59e0b'},
+                      ].map(s => (
+                        <div key={s.label} style={{background:'#1a1a24', borderRadius:10, padding:14, textAlign:'center'}}>
+                          <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6}}>{s.label}</div>
+                          <div style={{fontSize:16, fontWeight:800, color:s.color}}>{s.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {coinBotAnalysis.bestRule && (
+                      <div style={{background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)', borderRadius:10, padding:14, marginBottom:10}}>
+                        <div style={{fontSize:12, fontWeight:700, color:'#22c55e', marginBottom:4}}>✓ Strongest Rule</div>
+                        <div style={{fontSize:13, color:'#d1d5db'}}>{coinBotAnalysis.bestRule}</div>
+                      </div>
+                    )}
+
+                    {coinBotAnalysis.tooStrictRule && (
+                      <div style={{background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:10, padding:14, marginBottom:10}}>
+                        <div style={{fontSize:12, fontWeight:700, color:'#f59e0b', marginBottom:4}}>⚠ Possibly Too Strict</div>
+                        <div style={{fontSize:13, color:'#d1d5db'}}>{coinBotAnalysis.tooStrictRule}</div>
+                      </div>
+                    )}
+
+                    {coinBotAnalysis.improvements?.length > 0 && (
+                      <div style={{background:'#1a1a24', borderRadius:10, padding:14, marginBottom:10}}>
+                        <div style={{fontSize:12, fontWeight:700, color:'#fff', marginBottom:10}}>Suggested Improvements:</div>
+                        {coinBotAnalysis.improvements.map((imp, i) => (
+                          <div key={i} style={{display:'flex', gap:8, marginBottom:6, fontSize:13, color:'#d1d5db'}}>
+                            <span style={{color:'#6366f1', flexShrink:0, fontWeight:700}}>{i+1}.</span>
+                            {imp}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {coinBotAnalysis.summary && (
+                      <div style={{background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:14}}>
+                        <div style={{fontSize:12, fontWeight:700, color:'#a5b4fc', marginBottom:4}}>AI Assessment</div>
+                        <div style={{fontSize:13, color:'#d1d5db', lineHeight:1.6}}>{coinBotAnalysis.summary}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* AUTO BOT TAB */}
+            {coinBotTab === 'bot' && (
+              <div>
+                <div style={{fontSize:13, color:'#6b7280', marginBottom:20, lineHeight:1.6}}>
+                  The bot watches new coins every 60 seconds. When a coin matches your strategy rules it automatically places a paper trade.
+                </div>
+
+                {/* Bot status card */}
+                <div style={{
+                  background: coinBotRunning ? 'rgba(34,197,94,0.08)' : '#1a1a24',
+                  border: `2px solid ${coinBotRunning ? 'rgba(34,197,94,0.4)' : '#1e1e2a'}`,
+                  borderRadius:14, padding:20, marginBottom:20,
+                }}>
+                  <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
+                    <div>
+                      <div style={{fontSize:16, fontWeight:800, color: coinBotRunning ? '#22c55e' : '#fff', marginBottom:4}}>
+                        {coinBotRunning ? '🟢 Bot Active' : '⚫ Bot Stopped'}
+                      </div>
+                      <div style={{fontSize:12, color:'#6b7280'}}>
+                        {coinBotRunning
+                          ? 'Scanning new coins every 60 seconds and paper trading matches automatically'
+                          : 'Start to begin automatic paper trading based on your strategy'
+                        }
+                      </div>
+                    </div>
+                    <button onClick={() => {
+                      const newState = !coinBotRunning
+                      setCoinBotRunning(newState)
+                      localStorage.setItem('nexyru_coinbot_running', String(newState))
+
+                      if (newState) {
+                        const runCoinBot = async () => {
+                          if (localStorage.getItem('nexyru_coinbot_running') !== 'true') return
+
+                          try {
+                            const strat = JSON.parse(localStorage.getItem('nexyru_coinbot') || '{}')
+
+                            // Fetch current gems
+                            const gemsRes = await fetch('/api/gems')
+                            const gemsData = await gemsRes.json()
+                            const coins = gemsData.coins || []
+
+                            // Filter coins by strategy rules
+                            const maxAge = parseFloat(strat.maxAge) || 6
+                            const minLiq = parseFloat(strat.minLiquidity?.replace(/[^0-9.]/g,'')) || 3000
+                            const minBuyRatio = parseFloat(strat.minBuyRatio?.replace(/[^0-9.]/g,'')) / 100 || 0.55
+                            const maxPump = parseFloat(strat.maxH24Pump?.replace(/[^0-9.]/g,'')) || 500
+                            const requireSocials = strat.requiredSignals?.includes('Has Twitter') || strat.requireTwitter === 'Yes'
+
+                            const matching = coins.filter(coin => {
+                              if (coin.ageHours > maxAge) return false
+                              if (parseFloat(coin.liquidity?.usd||0) < minLiq) return false
+                              if ((coin.buyRatio||0) < minBuyRatio) return false
+                              if (parseFloat(coin.priceChange?.h24||0) > maxPump) return false
+                              if (requireSocials && !coin.hasTwitter && !coin.hasTelegram) return false
+                              return true
+                            })
+
+                            // For each matching coin not already in bot trades, place a paper trade
+                            const existingTrades = JSON.parse(localStorage.getItem('nexyru_coinbot_trades') || '[]')
+                            const existingIds = new Set(existingTrades.map(t => t.coinId))
+
+                            const newTrades = matching
+                              .filter(coin => !existingIds.has(coin.coinId))
+                              .slice(0, 3) // Max 3 new trades per cycle
+                              .map(coin => {
+                                const entryPrice = parseFloat(coin.priceUsd || '0')
+                                const takeProfitMultiplier = parseFloat(strat.takeProfitX?.replace(/[^0-9.]/g,'')) || 3
+                                const stopLossPct = parseFloat(strat.stopLossPct?.replace(/[^0-9.]/g,'')) / 100 || 0.5
+                                const positionSize = parseFloat(strat.maxPositionSize?.replace(/[^0-9.]/g,'')) || 100
+
+                                return {
+                                  id: Date.now() + Math.random(),
+                                  coinId: coin.coinId,
+                                  name: coin.name,
+                                  symbol: coin.symbol,
+                                  chain: coin.chain,
+                                  entryPrice,
+                                  takeProfitPrice: entryPrice * takeProfitMultiplier,
+                                  stopLossPrice: entryPrice * (1 - stopLossPct),
+                                  positionSize,
+                                  placedAt: new Date().toISOString(),
+                                  status: 'open',
+                                  pnl: null,
+                                  pnlPct: null,
+                                  entryStats: {
+                                    ageHours: coin.ageHours,
+                                    liquidity: parseFloat(coin.liquidity?.usd||0),
+                                    buyRatio: coin.buyRatio,
+                                    h1: parseFloat(coin.priceChange?.h1||0),
+                                    h24: parseFloat(coin.priceChange?.h24||0),
+                                    hasTwitter: coin.hasTwitter,
+                                    hasTelegram: coin.hasTelegram,
+                                  }
+                                }
+                              })
+
+                            if (newTrades.length > 0) {
+                              const updated = [...newTrades, ...existingTrades].slice(0, 100)
+                              localStorage.setItem('nexyru_coinbot_trades', JSON.stringify(updated))
+                              setCoinBotTrades(updated)
+                            }
+
+                            // Check existing open trades for TP/SL hits
+                            const updatedTrades = existingTrades.map(trade => {
+                              if (trade.status !== 'open') return trade
+
+                              // Find current price
+                              const currentCoin = coins.find(c => c.coinId === trade.coinId)
+                              if (!currentCoin) return trade
+
+                              const currentPrice = parseFloat(currentCoin.priceUsd || '0')
+                              if (currentPrice <= 0) return trade
+
+                              const pnlPct = ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100
+                              const pnl = (pnlPct / 100) * trade.positionSize
+
+                              // Check TP hit
+                              if (currentPrice >= trade.takeProfitPrice) {
+                                return {...trade, status:'won', currentPrice, pnl, pnlPct, closedAt: new Date().toISOString()}
+                              }
+                              // Check SL hit
+                              if (currentPrice <= trade.stopLossPrice) {
+                                return {...trade, status:'lost', currentPrice, pnl: -trade.positionSize*(parseFloat((localStorage.getItem('nexyru_coinbot')||'{}').replace(/.*stopLossPct[^0-9.]*([0-9.]+).*/,'$1')||'50')/100), pnlPct, closedAt: new Date().toISOString()}
+                              }
+                              // Update current price
+                              return {...trade, currentPrice, pnl, pnlPct}
+                            })
+
+                            localStorage.setItem('nexyru_coinbot_trades', JSON.stringify(updatedTrades))
+                            setCoinBotTrades(updatedTrades)
+
+                          } catch(e) { console.error('Bot error:', e) }
+
+                          // Run again in 60 seconds
+                          setTimeout(runCoinBot, 60000)
+                        }
+
+                        runCoinBot()
+                      }
+                    }} style={{
+                      padding:'10px 20px', borderRadius:8, border:'none',
+                      background: coinBotRunning ? 'rgba(239,68,68,0.2)' : '#22c55e',
+                      color: coinBotRunning ? '#ef4444' : '#fff',
+                      fontSize:13, fontWeight:700, cursor:'pointer', flexShrink:0
+                    }}>
+                      {coinBotRunning ? 'Stop Bot' : 'Start Bot'}
+                    </button>
+                  </div>
+
+                  {/* Strategy summary in bot card */}
+                  <div style={{fontSize:11, color:'#4b5563', borderTop:'1px solid #1e1e2a', paddingTop:10, display:'flex', gap:16, flexWrap:'wrap'}}>
+                    <span>Age: <strong style={{color:'#9ca3af'}}>{coinBot.maxAge || 'Not set'}</strong></span>
+                    <span>Liq: <strong style={{color:'#9ca3af'}}>{coinBot.minLiquidity || 'Not set'}</strong></span>
+                    <span>TP: <strong style={{color:'#22c55e'}}>{coinBot.takeProfitX || 'Not set'}</strong></span>
+                    <span>SL: <strong style={{color:'#ef4444'}}>{coinBot.stopLossPct || 'Not set'}</strong></span>
+                  </div>
+                </div>
+
+                {/* Bot trades */}
+                <div style={{fontSize:14, fontWeight:700, color:'#fff', marginBottom:12}}>
+                  Bot Trades ({coinBotTrades.length})
+                </div>
+
+                {coinBotTrades.length === 0 ? (
+                  <div style={{background:'#1a1a24', borderRadius:10, padding:24, textAlign:'center', color:'#4b5563', fontSize:13}}>
+                    No bot trades yet. Define your strategy and start the bot — it will paper trade automatically when coins match your rules.
+                  </div>
+                ) : coinBotTrades.map((trade: any) => {
+                  const pnlColor = (trade.pnl||0) >= 0 ? '#22c55e' : '#ef4444'
+                  return (
+                    <div key={trade.id} style={{
+                      background:'#1a1a24',
+                      border:`1px solid ${trade.status==='won'?'rgba(34,197,94,0.3)':trade.status==='lost'?'rgba(239,68,68,0.3)':'#1e1e2a'}`,
+                      borderRadius:10, padding:14, marginBottom:8
+                    }}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8}}>
+                        <div>
+                          <span style={{fontSize:14, fontWeight:800, color:'#fff'}}>{trade.name}</span>
+                          <span style={{fontSize:11, color:'#6b7280', marginLeft:6}}>{trade.symbol}</span>
+                          <div style={{fontSize:11, color:'#4b5563', marginTop:2}}>
+                            {new Date(trade.placedAt).toLocaleString()} · ${trade.positionSize} position
+                          </div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          {trade.status === 'open' && <span style={{fontSize:12, fontWeight:700, color:'#f59e0b'}}>⏳ Open</span>}
+                          {trade.status === 'won' && <span style={{fontSize:12, fontWeight:700, color:'#22c55e'}}>✓ Won +${(trade.pnl||0).toFixed(0)}</span>}
+                          {trade.status === 'lost' && <span style={{fontSize:12, fontWeight:700, color:'#ef4444'}}>✗ Lost ${(trade.pnl||0).toFixed(0)}</span>}
+                        </div>
+                      </div>
+
+                      <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, marginBottom:8}}>
+                        {[
+                          {label:'ENTRY', value:'$'+parseFloat(trade.entryPrice||0).toExponential(2), color:'#fff'},
+                          {label:'CURRENT', value: trade.currentPrice ? '$'+parseFloat(trade.currentPrice).toExponential(2) : 'N/A', color:'#fff'},
+                          {label:'TARGET', value:'$'+parseFloat(trade.takeProfitPrice||0).toExponential(2), color:'#22c55e'},
+                          {label:'STOP', value:'$'+parseFloat(trade.stopLossPrice||0).toExponential(2), color:'#ef4444'},
+                        ].map(s => (
+                          <div key={s.label} style={{background:'#111', borderRadius:6, padding:'6px', textAlign:'center'}}>
+                            <div style={{fontSize:9, color:'#4b5563', marginBottom:2}}>{s.label}</div>
+                            <div style={{fontSize:11, fontWeight:700, color:s.color}}>{s.value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {trade.pnl !== null && trade.status === 'open' && (
+                        <div style={{fontSize:12, fontWeight:700, color:pnlColor, marginBottom:6}}>
+                          Current P&L: {(trade.pnl||0) >= 0 ? '+' : ''}${(trade.pnl||0).toFixed(2)} ({(trade.pnlPct||0).toFixed(1)}%)
+                        </div>
+                      )}
+
+                      {/* Entry stats */}
+                      <div style={{fontSize:10, color:'#4b5563', display:'flex', gap:8, flexWrap:'wrap'}}>
+                        <span>Age: {(trade.entryStats?.ageHours||0).toFixed(1)}h</span>
+                        <span>Liq: ${Math.round(trade.entryStats?.liquidity||0).toLocaleString()}</span>
+                        <span>Buys: {Math.round((trade.entryStats?.buyRatio||0.5)*100)}%</span>
+                        <span>1h: {(trade.entryStats?.h1||0).toFixed(0)}%</span>
+                        {trade.entryStats?.hasTwitter && <span style={{color:'#1da1f2'}}>Twitter ✓</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* PERFORMANCE TAB */}
+            {coinBotTab === 'performance' && (
+              <div>
+                <div style={{fontSize:13, color:'#6b7280', marginBottom:20}}>
+                  Track the bot's performance and learn which entry signals actually predict pumps.
+                </div>
+
+                {(() => {
+                  const closed = coinBotTrades.filter(t => t.status !== 'open')
+                  const wins = closed.filter(t => t.status === 'won')
+                  const losses = closed.filter(t => t.status === 'lost')
+                  const totalPnl = closed.reduce((s,t) => s + (t.pnl||0), 0)
+                  const winRate = closed.length ? Math.round(wins.length/closed.length*100) : 0
+                  const avgWin = wins.length ? wins.reduce((s,t) => s + (t.pnl||0), 0) / wins.length : 0
+                  const avgLoss = losses.length ? Math.abs(losses.reduce((s,t) => s + (t.pnl||0), 0) / losses.length) : 0
+
+                  return (
+                    <div>
+                      {/* Stats grid */}
+                      <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10, marginBottom:20}}>
+                        {[
+                          {label:'WIN RATE', value:winRate+'%', color:winRate>=50?'#22c55e':'#ef4444'},
+                          {label:'NET P&L', value:(totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(0), color:totalPnl>=0?'#22c55e':'#ef4444'},
+                          {label:'AVG WIN', value:'+$'+avgWin.toFixed(0), color:'#22c55e'},
+                          {label:'AVG LOSS', value:'-$'+avgLoss.toFixed(0), color:'#ef4444'},
+                          {label:'TOTAL TRADES', value:coinBotTrades.length, color:'#fff'},
+                          {label:'OPEN', value:coinBotTrades.filter(t=>t.status==='open').length, color:'#f59e0b'},
+                        ].map(s => (
+                          <div key={s.label} style={{background:'#1a1a24', borderRadius:10, padding:14}}>
+                            <div style={{fontSize:10, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4}}>{s.label}</div>
+                            <div style={{fontSize:22, fontWeight:800, color:s.color}}>{s.value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* What signals worked */}
+                      {closed.length >= 5 && (
+                        <div style={{background:'#1a1a24', borderRadius:10, padding:16, marginBottom:16}}>
+                          <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:12}}>What signals predicted wins:</div>
+
+                          {[
+                            {
+                              label:'Had Twitter',
+                              wins: wins.filter(t=>t.entryStats?.hasTwitter).length,
+                              total: closed.filter(t=>t.entryStats?.hasTwitter).length,
+                            },
+                            {
+                              label:'Age < 1h',
+                              wins: wins.filter(t=>(t.entryStats?.ageHours||99)<1).length,
+                              total: closed.filter(t=>(t.entryStats?.ageHours||99)<1).length,
+                            },
+                            {
+                              label:'Age 1-6h',
+                              wins: wins.filter(t=>{const a=t.entryStats?.ageHours||99; return a>=1&&a<6}).length,
+                              total: closed.filter(t=>{const a=t.entryStats?.ageHours||99; return a>=1&&a<6}).length,
+                            },
+                            {
+                              label:'Buy ratio > 60%',
+                              wins: wins.filter(t=>(t.entryStats?.buyRatio||0)>0.6).length,
+                              total: closed.filter(t=>(t.entryStats?.buyRatio||0)>0.6).length,
+                            },
+                            {
+                              label:'1h change > 0%',
+                              wins: wins.filter(t=>(t.entryStats?.h1||0)>0).length,
+                              total: closed.filter(t=>(t.entryStats?.h1||0)>0).length,
+                            },
+                          ].filter(s => s.total > 0).map(s => {
+                            const rate = Math.round(s.wins/s.total*100)
+                            return (
+                              <div key={s.label} style={{marginBottom:10}}>
+                                <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4}}>
+                                  <span style={{color:'#d1d5db'}}>{s.label}</span>
+                                  <span style={{color:rate>=50?'#22c55e':'#ef4444', fontWeight:700}}>{rate}% win rate ({s.wins}/{s.total})</span>
+                                </div>
+                                <div style={{height:6, background:'#111', borderRadius:3, overflow:'hidden'}}>
+                                  <div style={{height:'100%', width:rate+'%', background:rate>=50?'#22c55e':'#ef4444', borderRadius:3}}/>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {closed.length < 5 && (
+                        <div style={{background:'#1a1a24', borderRadius:10, padding:24, textAlign:'center', color:'#4b5563', fontSize:13}}>
+                          Need at least 5 closed trades for performance analysis. Keep the bot running!
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {isMobile && (
