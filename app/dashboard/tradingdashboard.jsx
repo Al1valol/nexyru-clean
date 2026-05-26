@@ -11,7 +11,7 @@ import {
   Calendar, ArrowUpRight, ArrowDownRight,
   Zap, Shield, Image, Webhook, Wallet, Check, TestTube2, Play,
   CheckSquare, Bell, Trophy, Brain, Settings,
-  Code, Copy, CheckCircle,
+  Code, Copy, CheckCircle, Bot,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -6240,6 +6240,7 @@ function ToolsDropdown({ onSelectTab }) {
       items: [
         { key:"replay",   href:"/replay",  emoji:"️", label:"Trade Review",  color:"#6366f1" },
         { key:"stratlab", tab:"stratlab",  emoji:"", label:"Strategy Lab",  color:"#6366f1" },
+        { key:"autobot",  tab:"autobot",   emoji:"", label:"Auto Bot",      color:"#22c55e" },
       ],
     },
   ];
@@ -8205,6 +8206,7 @@ const TAB_LABELS = {
   journal:    "Journal",
   insights:   "Insights",
   stratlab:   "Strategy Lab",
+  autobot:    "Auto Bot",
   strategies: "Strategies",
   copy:       "Copy Trading",
   crypto:     "Crypto",
@@ -9064,6 +9066,7 @@ function TradingDashboard({ session, onLogout }) {
           {/* Group 4 — Build */}
           <SidebarGroupLabel label="Build"/>
           <SidebarItem icon={SIDEBAR_ICONS.flask}     label="Strategy Lab"  active={tab==="stratlab"}  onClick={()=>setTab("stratlab")}/>
+          <SidebarItem icon={<Bot size={20}/>}        label="Auto Bot"      active={tab==="autobot"}   onClick={()=>setTab("autobot")}/>
           <SidebarItem icon={<Code size={20}/>}       label="Script Combiner" active={tab==="scriptcombiner"} onClick={()=>setTab("scriptcombiner")}/>
         </nav>
 
@@ -9187,6 +9190,7 @@ function TradingDashboard({ session, onLogout }) {
               : <div style={{ display:"flex", flexDirection:"column", gap:16 }}><div style={{ fontSize:18, fontWeight:800, color:"#ffffff" }}>Insights</div><InsightsAnalyticsPage trades={activeTrades}/></div>
           )}
           {tab === "stratlab" && <StrategyLabPage session={session} trades={trades} />}
+          {tab === "autobot" && <AutoBotPage session={session} trades={trades} />}
           {tab === "scriptcombiner" && <ScriptCombinerPage session={session} />}
           {tab==="copy" && <CopyTradingPage session={session} copyTrading={copyTrading}/> }
           </div>
@@ -10067,6 +10071,496 @@ Reply with JSON:
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Auto Bot Page ──────────────────────────────────────────────
+function AutoBotPage({ session, trades }) {
+  // Load strategies from Strategy Lab
+  const [strategies] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(`tradedesk_stratlab_${session.username}_v1`) || '[]') } catch { return [] }
+  })
+
+  // Each bot has its own config and trade history
+  const [bots, setBots] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(`autobot_${session.username}`) || '[]') } catch { return [] }
+  })
+  const [activeBot, setActiveBot] = React.useState(null)
+  const [showNewBot, setShowNewBot] = React.useState(false)
+  const [newBotForm, setNewBotForm] = React.useState({
+    name: '',
+    strategyId: '',
+    symbol: '',
+    timeframe: '5m',
+    riskPerTrade: '1',
+    maxDailyTrades: '5',
+    sessionStart: '09:30',
+    sessionEnd: '16:00',
+    enabled: true,
+  })
+
+  const saveBots = (updated) => {
+    setBots(updated)
+    localStorage.setItem(`autobot_${session.username}`, JSON.stringify(updated))
+  }
+
+  const createBot = () => {
+    if (!newBotForm.name || !newBotForm.symbol) return
+    const strategy = strategies.find(s => s.id === newBotForm.strategyId)
+    const bot = {
+      id: `bot_${Date.now()}`,
+      name: newBotForm.name,
+      strategyId: newBotForm.strategyId,
+      strategyName: strategy?.name || 'Custom',
+      symbol: newBotForm.symbol.toUpperCase(),
+      timeframe: newBotForm.timeframe,
+      riskPerTrade: parseFloat(newBotForm.riskPerTrade) || 1,
+      maxDailyTrades: parseInt(newBotForm.maxDailyTrades) || 5,
+      sessionStart: newBotForm.sessionStart,
+      sessionEnd: newBotForm.sessionEnd,
+      enabled: true,
+      running: false,
+      createdAt: new Date().toISOString(),
+      trades: [],
+      stats: { wins: 0, losses: 0, totalPnl: 0, todayTrades: 0 },
+      lastCheck: null,
+      intervalId: null,
+    }
+    const updated = [...bots, bot]
+    saveBots(updated)
+    setActiveBot(bot.id)
+    setShowNewBot(false)
+    setNewBotForm({name:'',strategyId:'',symbol:'',timeframe:'5m',riskPerTrade:'1',maxDailyTrades:'5',sessionStart:'09:30',sessionEnd:'16:00',enabled:true})
+  }
+
+  const toggleBot = (botId) => {
+    const bot = bots.find(b => b.id === botId)
+    if (!bot) return
+
+    if (bot.running) {
+      // Stop bot
+      if (bot._intervalId) clearInterval(bot._intervalId)
+      const updated = bots.map(b => b.id === botId ? {...b, running: false, _intervalId: null} : b)
+      saveBots(updated)
+    } else {
+      // Start bot
+      const runBotCycle = async (botId) => {
+        const currentBots = JSON.parse(localStorage.getItem(`autobot_${session.username}`) || '[]')
+        const currentBot = currentBots.find(b => b.id === botId)
+        if (!currentBot || !currentBot.running) return
+
+        const now = new Date()
+        const estTime = new Date(now.toLocaleString('en-US', {timeZone:'America/New_York'}))
+        const estHour = estTime.getHours()
+        const estMin = estTime.getMinutes()
+        const currentTimeStr = `${String(estHour).padStart(2,'0')}:${String(estMin).padStart(2,'0')}`
+        const isWeekday = estTime.getDay() >= 1 && estTime.getDay() <= 5
+        const inSession = currentTimeStr >= currentBot.sessionStart && currentTimeStr <= currentBot.sessionEnd
+
+        if (!isWeekday || !inSession) return
+
+        const todayTrades = (currentBot.trades || []).filter(t => {
+          const tradeDate = new Date(t.placedAt).toDateString()
+          return tradeDate === new Date().toDateString()
+        }).length
+
+        if (todayTrades >= currentBot.maxDailyTrades) return
+
+        try {
+          const strat = strategies.find(s => s.id === currentBot.strategyId) || {}
+
+          const res = await fetch('/api/analyze-game', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+              team1: 'ENTER',
+              team2: 'SKIP',
+              sport: 'TRADING_BOT',
+              odds1: 0, odds2: 0,
+              gameTime: new Date().toLocaleString('en-US', {timeZone:'America/New_York'}),
+              context: `You are an automated trading bot making paper trade decisions.
+
+BOT: ${currentBot.name}
+SYMBOL: ${currentBot.symbol}
+TIMEFRAME: ${currentBot.timeframe}
+TIME (EST): ${new Date().toLocaleString('en-US', {timeZone:'America/New_York'})}
+TRADES TODAY: ${todayTrades}/${currentBot.maxDailyTrades}
+
+STRATEGY: ${strat.name || 'Custom'}
+Entry rules: ${strat.entryRules || strat.entry || 'Not defined'}
+Exit rules: ${strat.exitRules || strat.exit || 'Not defined'}
+Filters: ${strat.filters || 'None'}
+Indicators: ${(strat.indicators || []).join(', ') || 'None defined'}
+
+Should the bot enter a paper trade on ${currentBot.symbol} right now?
+Consider current market session, typical price action at this time, and strategy rules.
+
+Reply ONLY with JSON:
+{
+  "shouldEnter": true,
+  "direction": "LONG",
+  "entryPrice": 18450.25,
+  "stopLoss": 18400.00,
+  "takeProfit": 18550.75,
+  "reason": "EMA9 crossed above EMA21 with price above EMA200, strong momentum",
+  "confidence": "high",
+  "riskReward": "2.1"
+}`
+            })
+          })
+
+          const data = await res.json()
+          const text = data.reasoning || data.edge || JSON.stringify(data)
+          const match = text.match(/\{[\s\S]*\}/)
+
+          if (match) {
+            const decision = JSON.parse(match[0])
+            if (decision.shouldEnter) {
+              const trade = {
+                id: `trade_${Date.now()}`,
+                symbol: currentBot.symbol,
+                direction: decision.direction,
+                entryPrice: decision.entryPrice,
+                stopLoss: decision.stopLoss,
+                takeProfit: decision.takeProfit,
+                reason: decision.reason,
+                confidence: decision.confidence,
+                riskReward: decision.riskReward,
+                placedAt: new Date().toISOString(),
+                status: 'open',
+                pnl: null,
+              }
+
+              const latestBots = JSON.parse(localStorage.getItem(`autobot_${session.username}`) || '[]')
+              const updatedBots = latestBots.map(b => {
+                if (b.id !== botId) return b
+                const newTrades = [trade, ...(b.trades || [])]
+                const closed = newTrades.filter(t => t.status !== 'open')
+                const wins = closed.filter(t => t.pnl > 0)
+                return {
+                  ...b,
+                  trades: newTrades,
+                  lastCheck: new Date().toISOString(),
+                  stats: {
+                    wins: wins.length,
+                    losses: closed.length - wins.length,
+                    totalPnl: closed.reduce((s,t) => s+(t.pnl||0), 0),
+                    todayTrades: newTrades.filter(t => new Date(t.placedAt).toDateString() === new Date().toDateString()).length,
+                  }
+                }
+              })
+              localStorage.setItem(`autobot_${session.username}`, JSON.stringify(updatedBots))
+              setBots(updatedBots)
+            }
+          }
+        } catch(e) { console.error('Bot cycle error:', e) }
+      }
+
+      const intervalId = setInterval(() => runBotCycle(botId), 5 * 60 * 1000)
+      runBotCycle(botId) // Run immediately
+
+      const updated = bots.map(b => b.id === botId ? {...b, running: true, _intervalId: intervalId} : b)
+      saveBots(updated)
+    }
+  }
+
+  const closeTradeManually = (botId, tradeId, result) => {
+    const updatedBots = bots.map(b => {
+      if (b.id !== botId) return b
+      const updatedTrades = b.trades.map(t => {
+        if (t.id !== tradeId) return t
+        const pnl = result === 'won'
+          ? Math.abs((t.takeProfit||0) - (t.entryPrice||0)) * 1
+          : -Math.abs((t.entryPrice||0) - (t.stopLoss||0)) * 1
+        return {...t, status: result === 'won' ? 'won' : 'lost', pnl, closedAt: new Date().toISOString()}
+      })
+      const closed = updatedTrades.filter(t => t.status !== 'open')
+      const wins = closed.filter(t => t.pnl > 0)
+      return {
+        ...b,
+        trades: updatedTrades,
+        stats: {
+          wins: wins.length,
+          losses: closed.length - wins.length,
+          totalPnl: closed.reduce((s,t) => s+(t.pnl||0), 0),
+          todayTrades: updatedTrades.filter(t => new Date(t.placedAt).toDateString() === new Date().toDateString()).length,
+        }
+      }
+    })
+    saveBots(updatedBots)
+  }
+
+  const deleteBot = (botId) => {
+    const bot = bots.find(b => b.id === botId)
+    if (bot?._intervalId) clearInterval(bot._intervalId)
+    const updated = bots.filter(b => b.id !== botId)
+    saveBots(updated)
+    if (activeBot === botId) setActiveBot(null)
+  }
+
+  const activeBotData = bots.find(b => b.id === activeBot)
+
+  return (
+    <div style={{display:'flex', height:'100%', gap:0}}>
+
+      {/* Left panel - bot list */}
+      <div style={{width:240, borderRight:'1px solid #1e1e2a', paddingRight:16, marginRight:16, flexShrink:0}}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16}}>
+          <div style={{fontSize:15, fontWeight:800, color:'#fff'}}>Auto Bots</div>
+          <button onClick={() => setShowNewBot(true)} style={{
+            width:28, height:28, borderRadius:6, border:'none',
+            background:'#6366f1', color:'#fff', fontSize:18, cursor:'pointer',
+            display:'flex', alignItems:'center', justifyContent:'center'
+          }}>+</button>
+        </div>
+
+        {bots.length === 0 && !showNewBot && (
+          <div style={{fontSize:12, color:'#4b5563', textAlign:'center', padding:'20px 0', lineHeight:1.6}}>
+            No bots yet.<br/>Click + to create your first bot.
+          </div>
+        )}
+
+        {bots.map(bot => (
+          <div key={bot.id} onClick={() => setActiveBot(bot.id)} style={{
+            padding:'10px 12px', borderRadius:10, marginBottom:6, cursor:'pointer',
+            background: activeBot === bot.id ? 'rgba(99,102,241,0.12)' : '#1a1a24',
+            border: `1px solid ${activeBot === bot.id ? '#6366f1' : '#1e1e2a'}`,
+          }}>
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4}}>
+              <div style={{fontSize:13, fontWeight:700, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                {bot.name}
+              </div>
+              <div style={{width:8, height:8, borderRadius:'50%', background: bot.running ? '#22c55e' : '#374151', flexShrink:0, marginLeft:4}}/>
+            </div>
+            <div style={{fontSize:11, color:'#6b7280'}}>{bot.symbol} · {bot.timeframe}</div>
+            <div style={{fontSize:11, marginTop:3, color: (bot.stats?.totalPnl||0) >= 0 ? '#22c55e' : '#ef4444', fontWeight:600}}>
+              {(bot.stats?.totalPnl||0) >= 0 ? '+' : ''}${(bot.stats?.totalPnl||0).toFixed(0)} · {bot.stats?.wins||0}W/{bot.stats?.losses||0}L
+            </div>
+          </div>
+        ))}
+
+        {/* New bot form */}
+        {showNewBot && (
+          <div style={{background:'#1a1a24', border:'1px solid #6366f1', borderRadius:10, padding:14, marginTop:8}}>
+            <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:12}}>New Bot</div>
+
+            {[
+              {key:'name', label:'Bot Name', placeholder:'e.g. NQ Momentum Bot'},
+              {key:'symbol', label:'Symbol', placeholder:'e.g. NQ1!, AAPL, BTCUSD'},
+            ].map(f => (
+              <div key={f.key} style={{marginBottom:10}}>
+                <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>{f.label}</label>
+                <input
+                  value={newBotForm[f.key]}
+                  onChange={e => setNewBotForm(p => ({...p, [f.key]: e.target.value}))}
+                  placeholder={f.placeholder}
+                  style={{width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}
+                />
+              </div>
+            ))}
+
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Strategy</label>
+              <select
+                value={newBotForm.strategyId}
+                onChange={e => setNewBotForm(p => ({...p, strategyId: e.target.value}))}
+                style={{width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}
+              >
+                <option value="">Select strategy...</option>
+                {strategies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10}}>
+              <div>
+                <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Timeframe</label>
+                <select value={newBotForm.timeframe} onChange={e => setNewBotForm(p=>({...p,timeframe:e.target.value}))}
+                  style={{width:'100%', padding:'7px 8px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none'}}>
+                  {['1m','5m','15m','1h','4h','1d'].map(tf => <option key={tf} value={tf}>{tf}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Risk %</label>
+                <input value={newBotForm.riskPerTrade} onChange={e => setNewBotForm(p=>({...p,riskPerTrade:e.target.value}))}
+                  placeholder="1" style={{width:'100%', padding:'7px 8px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}/>
+              </div>
+            </div>
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10}}>
+              <div>
+                <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Session Start</label>
+                <input type="time" value={newBotForm.sessionStart} onChange={e => setNewBotForm(p=>({...p,sessionStart:e.target.value}))}
+                  style={{width:'100%', padding:'7px 8px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Session End</label>
+                <input type="time" value={newBotForm.sessionEnd} onChange={e => setNewBotForm(p=>({...p,sessionEnd:e.target.value}))}
+                  style={{width:'100%', padding:'7px 8px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}/>
+              </div>
+            </div>
+
+            <div style={{display:'flex', gap:6}}>
+              <button onClick={createBot} disabled={!newBotForm.name||!newBotForm.symbol} style={{
+                flex:1, padding:'8px', borderRadius:7, border:'none',
+                background: (!newBotForm.name||!newBotForm.symbol) ? '#1e1e2a' : '#6366f1',
+                color: (!newBotForm.name||!newBotForm.symbol) ? '#4b5563' : '#fff',
+                fontSize:12, fontWeight:700, cursor:'pointer'
+              }}>Create Bot</button>
+              <button onClick={() => setShowNewBot(false)} style={{
+                padding:'8px 12px', borderRadius:7, border:'1px solid #1e1e2a',
+                background:'transparent', color:'#6b7280', fontSize:12, cursor:'pointer'
+              }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right panel - active bot detail */}
+      <div style={{flex:1, minWidth:0}}>
+        {!activeBotData ? (
+          <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:400, color:'#4b5563', textAlign:'center'}}>
+            <div style={{fontSize:40, marginBottom:16}}>🤖</div>
+            <div style={{fontSize:16, fontWeight:700, color:'#fff', marginBottom:8}}>Auto Bot</div>
+            <div style={{fontSize:13, marginBottom:20, lineHeight:1.6}}>
+              Create a bot and it will automatically paper trade<br/>your strategy every 5 minutes during market hours.
+            </div>
+            <button onClick={() => setShowNewBot(true)} style={{
+              padding:'10px 24px', borderRadius:9, border:'none',
+              background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
+            }}>+ Create First Bot</button>
+          </div>
+        ) : (
+          <div>
+            {/* Bot header */}
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20, flexWrap:'wrap', gap:10}}>
+              <div>
+                <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:4}}>
+                  <div style={{width:10, height:10, borderRadius:'50%', background: activeBotData.running ? '#22c55e' : '#374151'}}/>
+                  <div style={{fontSize:20, fontWeight:800, color:'#fff'}}>{activeBotData.name}</div>
+                </div>
+                <div style={{fontSize:12, color:'#6b7280'}}>
+                  {activeBotData.symbol} · {activeBotData.timeframe} · {activeBotData.strategyName}
+                  {activeBotData.lastCheck && ` · Last check: ${new Date(activeBotData.lastCheck).toLocaleTimeString()}`}
+                </div>
+              </div>
+              <div style={{display:'flex', gap:8}}>
+                <button onClick={() => toggleBot(activeBotData.id)} style={{
+                  padding:'9px 20px', borderRadius:8, border:'none',
+                  background: activeBotData.running ? 'rgba(239,68,68,0.2)' : '#22c55e',
+                  color: activeBotData.running ? '#ef4444' : '#fff',
+                  fontSize:13, fontWeight:700, cursor:'pointer'
+                }}>
+                  {activeBotData.running ? 'Stop Bot' : 'Start Bot'}
+                </button>
+                <button onClick={() => deleteBot(activeBotData.id)} style={{
+                  padding:'9px 14px', borderRadius:8,
+                  border:'1px solid rgba(239,68,68,0.3)', background:'transparent',
+                  color:'#ef4444', fontSize:13, cursor:'pointer'
+                }}>Delete</button>
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div style={{display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:20}}>
+              {(() => {
+                const closed = (activeBotData.trades||[]).filter(t => t.status !== 'open')
+                const wins = closed.filter(t => (t.pnl||0) > 0)
+                const winRate = closed.length ? Math.round(wins.length/closed.length*100) : 0
+                const totalPnl = closed.reduce((s,t) => s+(t.pnl||0), 0)
+                const todayTrades = (activeBotData.trades||[]).filter(t => new Date(t.placedAt).toDateString() === new Date().toDateString()).length
+                return [
+                  {label:'WIN RATE', value:winRate+'%', color:winRate>=50?'#22c55e':'#ef4444'},
+                  {label:'TOTAL P&L', value:(totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(0), color:totalPnl>=0?'#22c55e':'#ef4444'},
+                  {label:'WINS', value:wins.length, color:'#22c55e'},
+                  {label:'LOSSES', value:closed.length-wins.length, color:'#ef4444'},
+                  {label:'TODAY', value:`${todayTrades}/${activeBotData.maxDailyTrades}`, color:'#f59e0b'},
+                ].map(s => (
+                  <div key={s.label} style={{background:'#1a1a24', borderRadius:10, padding:'12px 10px', textAlign:'center'}}>
+                    <div style={{fontSize:9, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4}}>{s.label}</div>
+                    <div style={{fontSize:18, fontWeight:800, color:s.color}}>{s.value}</div>
+                  </div>
+                ))
+              })()}
+            </div>
+
+            {/* Session info */}
+            <div style={{background:'#1a1a24', borderRadius:10, padding:12, marginBottom:16, display:'flex', gap:16, fontSize:12, color:'#6b7280', flexWrap:'wrap'}}>
+              <span>Session: <strong style={{color:'#fff'}}>{activeBotData.sessionStart} – {activeBotData.sessionEnd} EST</strong></span>
+              <span>Risk: <strong style={{color:'#fff'}}>{activeBotData.riskPerTrade}% per trade</strong></span>
+              <span>Max daily: <strong style={{color:'#fff'}}>{activeBotData.maxDailyTrades} trades</strong></span>
+              <span>Checks every: <strong style={{color:'#fff'}}>5 minutes</strong></span>
+            </div>
+
+            {/* Trades */}
+            <div style={{fontSize:14, fontWeight:700, color:'#fff', marginBottom:12}}>
+              Trade History ({(activeBotData.trades||[]).length})
+            </div>
+
+            {(activeBotData.trades||[]).length === 0 ? (
+              <div style={{background:'#1a1a24', borderRadius:10, padding:24, textAlign:'center', color:'#4b5563', fontSize:13}}>
+                {activeBotData.running
+                  ? '🔍 Bot is running — will place paper trades when strategy conditions are met during your session hours'
+                  : 'Start the bot to begin automatic paper trading'
+                }
+              </div>
+            ) : (activeBotData.trades||[]).map(trade => (
+              <div key={trade.id} style={{
+                background:'#1a1a24',
+                border:`1px solid ${trade.status==='won'?'rgba(34,197,94,0.3)':trade.status==='lost'?'rgba(239,68,68,0.3)':'#1e1e2a'}`,
+                borderRadius:10, padding:14, marginBottom:8
+              }}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8}}>
+                  <div>
+                    <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:3}}>
+                      <span style={{fontSize:14, fontWeight:800, color:'#fff'}}>{trade.symbol}</span>
+                      <span style={{
+                        fontSize:11, padding:'2px 8px', borderRadius:4, fontWeight:700,
+                        background:trade.direction==='LONG'?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)',
+                        color:trade.direction==='LONG'?'#22c55e':'#ef4444'
+                      }}>{trade.direction}</span>
+                      <span style={{fontSize:11, color:'#6b7280'}}>{trade.confidence} conf · R:R {trade.riskReward}</span>
+                    </div>
+                    <div style={{fontSize:11, color:'#9ca3af'}}>{trade.reason}</div>
+                  </div>
+                  <div style={{textAlign:'right', flexShrink:0}}>
+                    {trade.status==='open' && <span style={{fontSize:12, fontWeight:700, color:'#f59e0b'}}>⏳ Open</span>}
+                    {trade.status==='won' && <span style={{fontSize:13, fontWeight:800, color:'#22c55e'}}>+${(trade.pnl||0).toFixed(0)}</span>}
+                    {trade.status==='lost' && <span style={{fontSize:13, fontWeight:800, color:'#ef4444'}}>-${Math.abs(trade.pnl||0).toFixed(0)}</span>}
+                  </div>
+                </div>
+
+                <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, marginBottom:8}}>
+                  {[
+                    {label:'ENTRY', value:trade.entryPrice, color:'#fff'},
+                    {label:'STOP', value:trade.stopLoss, color:'#ef4444'},
+                    {label:'TARGET', value:trade.takeProfit, color:'#22c55e'},
+                    {label:'TIME', value:new Date(trade.placedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}), color:'#6b7280'},
+                  ].map(s => (
+                    <div key={s.label} style={{background:'#111', borderRadius:6, padding:'6px', textAlign:'center'}}>
+                      <div style={{fontSize:9, color:'#4b5563', marginBottom:2}}>{s.label}</div>
+                      <div style={{fontSize:11, fontWeight:700, color:s.color}}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {trade.status === 'open' && (
+                  <div style={{display:'flex', gap:6}}>
+                    <button onClick={() => closeTradeManually(activeBotData.id, trade.id, 'won')} style={{
+                      padding:'6px 14px', borderRadius:6, border:'none',
+                      background:'rgba(34,197,94,0.2)', color:'#22c55e', fontSize:12, fontWeight:700, cursor:'pointer'
+                    }}>✓ Won</button>
+                    <button onClick={() => closeTradeManually(activeBotData.id, trade.id, 'lost')} style={{
+                      padding:'6px 14px', borderRadius:6, border:'none',
+                      background:'rgba(239,68,68,0.2)', color:'#ef4444', fontSize:12, fontWeight:700, cursor:'pointer'
+                    }}>✗ Lost</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
