@@ -13,7 +13,14 @@ export async function POST(req: NextRequest) {
     weekday:'long', year:'numeric', month:'long', day:'numeric'
   })
 
-  const prompt = sport === 'PARLAY'
+  const prompt = sport === 'PRODUCT_ANALYSIS'
+    ? `You are an expert e-commerce and dropshipping strategist with deep knowledge of TikTok marketing, Shopify stores, and viral products.
+
+${context}
+
+Reply ONLY with valid JSON. No markdown, no backticks, no explanation before or after. Just the raw JSON object.`
+
+    : sport === 'PARLAY'
     ? `You are a sharp sports betting analyst. Today is ${today}.
 
 ${context}
@@ -56,7 +63,7 @@ Reply ONLY with JSON: {"pick":"${team1} or ${team2} or SKIP","confidence":"high 
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 250,
+      max_tokens: sport === 'PRODUCT_ANALYSIS' ? 2000 : 250,
       messages: [{ role: 'user', content: prompt }]
     })
 
