@@ -10345,20 +10345,66 @@ Reply ONLY with JSON:
           <div style={{background:'#1a1a24', border:'1px solid #6366f1', borderRadius:10, padding:14, marginTop:8}}>
             <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:12}}>New Bot</div>
 
-            {[
-              {key:'name', label:'Bot Name', placeholder:'e.g. NQ Momentum Bot'},
-              {key:'symbol', label:'Symbol', placeholder:'e.g. NQ1!, AAPL, BTCUSD'},
-            ].map(f => (
-              <div key={f.key} style={{marginBottom:10}}>
-                <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>{f.label}</label>
-                <input
-                  value={newBotForm[f.key]}
-                  onChange={e => setNewBotForm(p => ({...p, [f.key]: e.target.value}))}
-                  placeholder={f.placeholder}
-                  style={{width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}
-                />
-              </div>
-            ))}
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Bot Name</label>
+              <input
+                value={newBotForm.name}
+                onChange={e => setNewBotForm(p => ({...p, name: e.target.value}))}
+                placeholder="e.g. NQ Momentum Bot"
+                style={{width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}
+              />
+            </div>
+
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Symbol</label>
+              <select
+                value={newBotForm.symbol}
+                onChange={e => {
+                  const sym = e.target.value
+                  setNewBotForm(p => ({
+                    ...p,
+                    symbol: sym,
+                    name: p.name || (sym ? sym + ' Bot' : ''),
+                  }))
+                }}
+                style={{width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #1e1e2a', background:'#111', color:'#fff', fontSize:12, outline:'none', boxSizing:'border-box'}}
+              >
+                <option value="">Select symbol...</option>
+                <optgroup label="Futures">
+                  <option value="NQ1!">NQ1! — Nasdaq Futures</option>
+                  <option value="ES1!">ES1! — S&P 500 Futures</option>
+                  <option value="YM1!">YM1! — Dow Futures</option>
+                  <option value="RTY1!">RTY1! — Russell 2000 Futures</option>
+                  <option value="CL1!">CL1! — Crude Oil Futures</option>
+                  <option value="GC1!">GC1! — Gold Futures</option>
+                  <option value="SI1!">SI1! — Silver Futures</option>
+                </optgroup>
+                <optgroup label="Forex">
+                  <option value="EURUSD">EUR/USD</option>
+                  <option value="GBPUSD">GBP/USD</option>
+                  <option value="USDJPY">USD/JPY</option>
+                  <option value="AUDUSD">AUD/USD</option>
+                  <option value="USDCAD">USD/CAD</option>
+                  <option value="USDCHF">USD/CHF</option>
+                </optgroup>
+                <optgroup label="Crypto">
+                  <option value="BTCUSD">BTC/USD</option>
+                  <option value="ETHUSD">ETH/USD</option>
+                  <option value="SOLUSD">SOL/USD</option>
+                </optgroup>
+                <optgroup label="Stocks">
+                  <option value="AAPL">AAPL — Apple</option>
+                  <option value="NVDA">NVDA — Nvidia</option>
+                  <option value="TSLA">TSLA — Tesla</option>
+                  <option value="META">META — Meta</option>
+                  <option value="AMZN">AMZN — Amazon</option>
+                  <option value="GOOGL">GOOGL — Google</option>
+                  <option value="MSFT">MSFT — Microsoft</option>
+                  <option value="SPY">SPY — S&P 500 ETF</option>
+                  <option value="QQQ">QQQ — Nasdaq ETF</option>
+                </optgroup>
+              </select>
+            </div>
 
             <div style={{marginBottom:10}}>
               <label style={{fontSize:11, color:'#6b7280', display:'block', marginBottom:4}}>Strategy</label>

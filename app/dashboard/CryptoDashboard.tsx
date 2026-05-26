@@ -5147,81 +5147,125 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                   Define the rules the bot uses to decide which coins to paper trade and when to exit.
                 </div>
 
-                {[
-                  {
-                    key: 'maxAge',
-                    question: 'Maximum coin age to enter?',
-                    placeholder: 'e.g. 2 hours — only buy coins under 2 hours old',
-                    hint: 'Coins older than this will be ignored by the bot'
-                  },
-                  {
-                    key: 'minLiquidity',
-                    question: 'Minimum liquidity required?',
-                    placeholder: 'e.g. $5,000 minimum liquidity',
-                    hint: 'Bot will skip coins with less liquidity than this'
-                  },
-                  {
-                    key: 'minBuyRatio',
-                    question: 'Minimum buy pressure %?',
-                    placeholder: 'e.g. 60% — only buy when 60%+ of transactions are buys',
-                    hint: 'Ensures there are more buyers than sellers at entry'
-                  },
-                  {
-                    key: 'maxH24Pump',
-                    question: 'Maximum 24h pump allowed?',
-                    placeholder: 'e.g. 300% — skip coins already up more than 300% in 24h',
-                    hint: 'Avoids coins that have already pumped hard'
-                  },
-                  {
-                    key: 'requireTwitter',
-                    question: 'Require Twitter/Telegram?',
-                    placeholder: 'e.g. Yes — only buy coins with social presence',
-                    hint: 'Filters out coins with no community'
-                  },
-                  {
-                    key: 'takeProfitX',
-                    question: 'Take profit target?',
-                    placeholder: 'e.g. 3x — sell when coin is up 3x from entry',
-                    hint: 'What multiplier do you want to take profit at?'
-                  },
-                  {
-                    key: 'stopLossPct',
-                    question: 'Stop loss %?',
-                    placeholder: 'e.g. 50% — exit if coin drops 50% from entry',
-                    hint: 'Maximum loss you will accept before exiting'
-                  },
-                  {
-                    key: 'maxPositionSize',
-                    question: 'Paper trade size per coin?',
-                    placeholder: 'e.g. $100 per coin',
-                    hint: 'How much simulated money to put in each trade'
-                  },
-                  {
-                    key: 'extraRules',
-                    question: 'Any other rules?',
-                    placeholder: 'e.g. Only buy on Solana, avoid coins with top holder > 20%, only trade during 9am-5pm EST',
-                    hint: 'Any additional conditions the bot should check'
-                  },
-                ].map(q => (
-                  <div key={q.key} style={{marginBottom:18}}>
-                    <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>
-                      {q.question}
-                    </label>
-                    <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>{q.hint}</div>
-                    <textarea
-                      value={coinBot[q.key] || ''}
-                      onChange={e => saveCoinBot({[q.key]: e.target.value})}
-                      placeholder={q.placeholder}
-                      rows={2}
-                      style={{
-                        width:'100%', padding:'10px 12px', borderRadius:8,
-                        border:'1px solid #1e1e2a', background:'#1a1a24',
-                        color:'#fff', fontSize:13, outline:'none', resize:'vertical',
-                        fontFamily:'inherit', lineHeight:1.5
-                      }}
-                    />
-                  </div>
-                ))}
+                {/* Max Age */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Maximum coin age to enter?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Bot will ignore coins older than this</div>
+                  <select value={coinBot.maxAge || '2'} onChange={e => saveCoinBot({maxAge: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="0.5">30 minutes — ultra fresh only</option>
+                    <option value="1">1 hour</option>
+                    <option value="2">2 hours (recommended)</option>
+                    <option value="4">4 hours</option>
+                    <option value="6">6 hours</option>
+                    <option value="12">12 hours</option>
+                    <option value="24">24 hours</option>
+                  </select>
+                </div>
+
+                {/* Min Liquidity */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Minimum liquidity required?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Skip coins with less liquidity than this</div>
+                  <select value={coinBot.minLiquidity || '5000'} onChange={e => saveCoinBot({minLiquidity: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="1000">$1,000 — accept almost anything</option>
+                    <option value="3000">$3,000</option>
+                    <option value="5000">$5,000 (recommended)</option>
+                    <option value="10000">$10,000 — safer entries</option>
+                    <option value="20000">$20,000 — conservative</option>
+                    <option value="50000">$50,000 — very safe only</option>
+                  </select>
+                </div>
+
+                {/* Min Buy Ratio */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Minimum buy pressure?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Only enter when this % of transactions are buys</div>
+                  <select value={coinBot.minBuyRatio || '55'} onChange={e => saveCoinBot({minBuyRatio: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="45">45% — allow slight sell pressure</option>
+                    <option value="50">50% — balanced</option>
+                    <option value="55">55% (recommended)</option>
+                    <option value="60">60% — clear buy pressure</option>
+                    <option value="65">65% — strong buyers only</option>
+                    <option value="70">70% — very aggressive buying only</option>
+                  </select>
+                </div>
+
+                {/* Max 24h Pump */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Maximum 24h pump allowed?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Skip coins already up more than this in 24h</div>
+                  <select value={coinBot.maxH24Pump || '300'} onChange={e => saveCoinBot({maxH24Pump: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="50">50% — only barely moved coins</option>
+                    <option value="100">100% — under 2x</option>
+                    <option value="200">200%</option>
+                    <option value="300">300% (recommended)</option>
+                    <option value="500">500% — allow big pumps</option>
+                    <option value="1000">1000% — anything goes</option>
+                  </select>
+                </div>
+
+                {/* Take Profit */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Take profit target?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Exit when coin reaches this multiplier from entry</div>
+                  <select value={coinBot.takeProfitX || '3'} onChange={e => saveCoinBot({takeProfitX: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="1.5">1.5x — quick 50% profit</option>
+                    <option value="2">2x — double your money</option>
+                    <option value="3">3x (recommended)</option>
+                    <option value="5">5x — moonshot target</option>
+                    <option value="10">10x — high risk high reward</option>
+                    <option value="20">20x — lottery ticket</option>
+                  </select>
+                </div>
+
+                {/* Stop Loss */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Stop loss?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Exit if coin drops this much from entry price</div>
+                  <select value={coinBot.stopLossPct || '50'} onChange={e => saveCoinBot({stopLossPct: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="20">20% — very tight stop</option>
+                    <option value="30">30% — tight stop</option>
+                    <option value="40">40%</option>
+                    <option value="50">50% (recommended)</option>
+                    <option value="60">60% — loose stop</option>
+                    <option value="75">75% — very loose</option>
+                  </select>
+                </div>
+
+                {/* Position Size */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Paper trade size per coin?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Simulated money per trade</div>
+                  <select value={coinBot.maxPositionSize || '100'} onChange={e => saveCoinBot({maxPositionSize: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="25">$25 per trade</option>
+                    <option value="50">$50 per trade</option>
+                    <option value="100">$100 per trade (recommended)</option>
+                    <option value="250">$250 per trade</option>
+                    <option value="500">$500 per trade</option>
+                    <option value="1000">$1,000 per trade</option>
+                  </select>
+                </div>
+
+                {/* Require Twitter */}
+                <div style={{marginBottom:16}}>
+                  <label style={{display:'block', fontSize:13, fontWeight:700, color:'#fff', marginBottom:3}}>Require social presence?</label>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:6}}>Filter out coins with no Twitter or Telegram</div>
+                  <select value={coinBot.requireTwitter || 'yes'} onChange={e => saveCoinBot({requireTwitter: e.target.value})}
+                    style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #1e1e2a', background:'#1a1a24', color:'#fff', fontSize:13, outline:'none'}}>
+                    <option value="yes">Yes — must have Twitter or Telegram</option>
+                    <option value="twitter">Twitter only</option>
+                    <option value="telegram">Telegram only</option>
+                    <option value="both">Both Twitter AND Telegram</option>
+                    <option value="no">No — show all coins</option>
+                  </select>
+                </div>
 
                 {/* Signal checklist */}
                 <div style={{marginBottom:20}}>
