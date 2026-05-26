@@ -8920,6 +8920,7 @@ function TradingDashboard({ session, onLogout }) {
               {label:'Sports', href:'/sports', active: false},
               {label:'Options', href:'/options', active: false},
               {label:'Airdrops', href:'/airdrops', active: false},
+              {label:'Product Lab', href:'/productlab', active: false},
               {label:'Briefing', href:'/morning', active: false},
             ].map(link => (
               <a key={link.href} href={link.href} style={{
@@ -9092,6 +9093,7 @@ function TradingDashboard({ session, onLogout }) {
                 {label:'Sports', href:'/sports'},
                 {label:'Options', href:'/options'},
                 {label:'Airdrops', href:'/airdrops'},
+                {label:'Product Lab', href:'/productlab'},
               ].map(l => (
                 <a key={l.href} href={l.href} style={{
                   padding:'6px 14px', fontSize:13,

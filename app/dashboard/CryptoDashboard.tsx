@@ -4927,6 +4927,7 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
             { href:'/sports',    label:'Sports',  active:false },
             { href:'/options',   label:'Options', active:false },
             { href:'/airdrops',  label:'Airdrops', active:false },
+            { href:'/productlab', label:'Product Lab', active:false },
           ].map(l => (
             <a key={l.href} href={l.href} style={{
               padding:'6px 14px', fontSize:13,
