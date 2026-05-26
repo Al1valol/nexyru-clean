@@ -4502,6 +4502,43 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
     localStorage.setItem('nexyru_coinbot', JSON.stringify(updated))
   }
 
+  const [savedCoinBots, setSavedCoinBots] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('nexyru_saved_coinbots') || '[]') } catch { return [] }
+  })
+  const [activeCoinBotId, setActiveCoinBotId] = React.useState(null)
+  const [newBotName, setNewBotName] = React.useState('')
+
+  const saveCoinBotConfig = () => {
+    if (!newBotName.trim()) return
+    const bot = {
+      id: `coinbot_${Date.now()}`,
+      name: newBotName.trim(),
+      createdAt: new Date().toISOString(),
+      running: false,
+      trades: [],
+      stats: { wins: 0, losses: 0, totalPnl: 0 },
+      config: { ...coinBot }
+    }
+    const updated = [...savedCoinBots, bot]
+    setSavedCoinBots(updated)
+    localStorage.setItem('nexyru_saved_coinbots', JSON.stringify(updated))
+    setNewBotName('')
+    setActiveCoinBotId(bot.id)
+  }
+
+  const deleteSavedBot = (botId) => {
+    const updated = savedCoinBots.filter(b => b.id !== botId)
+    setSavedCoinBots(updated)
+    localStorage.setItem('nexyru_saved_coinbots', JSON.stringify(updated))
+    if (activeCoinBotId === botId) setActiveCoinBotId(null)
+  }
+
+  const loadBotConfig = (bot) => {
+    setCoinBot(bot.config)
+    localStorage.setItem('nexyru_coinbot', JSON.stringify(bot.config))
+    setActiveCoinBotId(bot.id)
+  }
+
   useEffect(() => {
     const saved = localStorage.getItem('nexyru_coinbot')
     if (!saved || Object.keys(JSON.parse(saved || '{}')).length === 0) {
@@ -5304,6 +5341,89 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                   </div>
                 </div>
 
+                {/* Saved bots list */}
+                {savedCoinBots.length > 0 && (
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:12, fontWeight:700, color:'#fff', marginBottom:10}}>Your Saved Bots</div>
+                    <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                      {savedCoinBots.map(bot => (
+                        <div key={bot.id} style={{
+                          display:'flex', alignItems:'center', justifyContent:'space-between',
+                          padding:'10px 14px', borderRadius:8,
+                          background: activeCoinBotId===bot.id ? 'rgba(99,102,241,0.12)' : '#1a1a24',
+                          border:`1px solid ${activeCoinBotId===bot.id ? '#6366f1' : '#1e1e2a'}`,
+                        }}>
+                          <div>
+                            <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{bot.name}</div>
+                            <div style={{fontSize:11, color:'#4b5563', marginTop:2}}>
+                              {new Date(bot.createdAt).toLocaleDateString()} ·
+                              Age: {bot.config.maxAge}h ·
+                              TP: {bot.config.takeProfitX}x ·
+                              SL: {bot.config.stopLossPct}%
+                            </div>
+                          </div>
+                          <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                            <div style={{
+                              fontSize:11, fontWeight:700,
+                              color:(bot.stats?.totalPnl||0)>=0?'#22c55e':'#ef4444'
+                            }}>
+                              {(bot.stats?.totalPnl||0)>=0?'+':''}${(bot.stats?.totalPnl||0).toFixed(0)}
+                            </div>
+                            <button onClick={() => loadBotConfig(bot)} style={{
+                              padding:'5px 10px', borderRadius:6, border:'none',
+                              background:'rgba(99,102,241,0.15)', color:'#a5b4fc',
+                              fontSize:11, fontWeight:700, cursor:'pointer'
+                            }}>Load</button>
+                            <button onClick={() => deleteSavedBot(bot.id)} style={{
+                              padding:'5px 8px', borderRadius:6,
+                              border:'1px solid rgba(239,68,68,0.2)', background:'transparent',
+                              color:'#ef4444', fontSize:11, cursor:'pointer'
+                            }}>×</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Create new bot */}
+                <div style={{
+                  padding:16, borderRadius:10,
+                  background:'#1a1a24', border:'1px solid #1e1e2a',
+                  marginTop:8, marginBottom:16
+                }}>
+                  <div style={{fontSize:13, fontWeight:700, color:'#fff', marginBottom:4}}>Save as New Bot</div>
+                  <div style={{fontSize:11, color:'#4b5563', marginBottom:12}}>
+                    Give this configuration a name to save it. You can run multiple bots with different settings at the same time.
+                  </div>
+                  <div style={{display:'flex', gap:8}}>
+                    <input
+                      value={newBotName}
+                      onChange={e => setNewBotName(e.target.value)}
+                      onKeyDown={e => e.key==='Enter' && saveCoinBotConfig()}
+                      placeholder='e.g. "Conservative 2h Bot" or "Aggressive Degen Bot"'
+                      style={{
+                        flex:1, padding:'9px 12px', borderRadius:8,
+                        border:'1px solid #1e1e2a', background:'#111',
+                        color:'#fff', fontSize:13, outline:'none',
+                      }}
+                    />
+                    <button
+                      onClick={saveCoinBotConfig}
+                      disabled={!newBotName.trim()}
+                      style={{
+                        padding:'9px 18px', borderRadius:8, border:'none',
+                        background: newBotName.trim() ? '#6366f1' : '#1e1e2a',
+                        color: newBotName.trim() ? '#fff' : '#4b5563',
+                        fontSize:13, fontWeight:700, cursor: newBotName.trim() ? 'pointer' : 'default',
+                        whiteSpace:'nowrap'
+                      }}
+                    >
+                      + Save Bot
+                    </button>
+                  </div>
+                </div>
+
                 <div style={{padding:14, borderRadius:10, background:'rgba(34,197,94,0.06)', border:'1px solid rgba(34,197,94,0.2)'}}>
                   <div style={{fontSize:13, fontWeight:700, color:'#22c55e', marginBottom:3}}>✓ Strategy saved</div>
                   <div style={{fontSize:12, color:'#6b7280'}}>
@@ -5476,6 +5596,29 @@ Reply with JSON:
             {/* AUTO BOT TAB */}
             {coinBotTab === 'bot' && (
               <div>
+                {savedCoinBots.length > 0 && (
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:12, fontWeight:700, color:'#fff', marginBottom:8}}>Select bot to run:</div>
+                    <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                      {savedCoinBots.map(bot => (
+                        <button key={bot.id} onClick={() => {
+                          loadBotConfig(bot)
+                          setCoinBotTab('bot')
+                        }} style={{
+                          padding:'8px 14px', borderRadius:8,
+                          border:`1px solid ${activeCoinBotId===bot.id?'#6366f1':'#1e1e2a'}`,
+                          background: activeCoinBotId===bot.id?'rgba(99,102,241,0.15)':'transparent',
+                          color: activeCoinBotId===bot.id?'#a5b4fc':'#6b7280',
+                          fontSize:12, fontWeight:600, cursor:'pointer'
+                        }}>
+                          {bot.name}
+                          {bot.running && <span style={{marginLeft:6, width:6, height:6, borderRadius:'50%', background:'#22c55e', display:'inline-block'}}/>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{fontSize:13, color:'#6b7280', marginBottom:20, lineHeight:1.6}}>
                   The bot watches new coins every 60 seconds. When a coin matches your strategy rules it automatically places a paper trade.
                 </div>
