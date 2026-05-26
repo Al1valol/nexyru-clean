@@ -7008,6 +7008,9 @@ function StrategyFormModal({ initial, onSave, onClose }) {
   const [aiLoading,   setAiLoading]   = useState(false);
   const [aiErr,       setAiErr]       = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [pineScript, setPineScript] = useState(initial?.pineScript || '');
+  const [pineImporting, setPineImporting] = useState(false);
+  const [pineImported, setPineImported] = useState(false);
   // category pickers per section
   const [pickEntryCat,  setPickEntryCat]  = useState("price_action");
   const [pickEntryCond, setPickEntryCond] = useState("");
@@ -7245,7 +7248,96 @@ function StrategyFormModal({ initial, onSave, onClose }) {
               {aiLoading
                 ? <><span style={{ display:"inline-block", width:11, height:11, border:"2px solid #374151", borderTopColor:"#6366f1", borderRadius:"50%", animation:"spin 0.7s linear infinite" }}/>Generating…</>:<><Sparkles size={12}/>Generate Strategy<span style={{ fontSize:10, opacity:0.7 }}>⌘↵</span></>
               }
-            </button></div><div style={{ display:"flex", alignItems:"center", gap:8 }}><div style={{ flex:1, height:1, background:"#2a2a3a" }}/><span style={{ fontSize:10, color:"#374151" }}>or fill in manually</span><div style={{ flex:1, height:1, background:"#2a2a3a" }}/></div><div><label style={lbl}>Strategy Name *</label><input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. EMA Breakout with RSI Filter"/></div><div><label style={lbl}>Description</label><textarea style={{ ...inp, resize:"vertical", minHeight:60, fontFamily:"inherit", lineHeight:1.5 }}
+            </button></div>
+
+          {/* Pine Script Import */}
+          <div style={{marginBottom:0, padding:16, borderRadius:12, background:'rgba(99,102,241,0.06)', border:'1px solid rgba(99,102,241,0.2)'}}>
+            <div style={{fontSize:13, fontWeight:700, color:'#a5b4fc', marginBottom:4, display:'flex', alignItems:'center', gap:6}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              Import from Pine Script
+            </div>
+            <div style={{fontSize:11, color:'#6b7280', marginBottom:12, lineHeight:1.5}}>
+              Paste your TradingView Pine Script strategy and AI will extract the entry/exit rules, indicators, and conditions automatically.
+            </div>
+
+            <textarea
+              placeholder={`//@version=5\nstrategy("My Strategy", overlay=true)\nema200 = ta.ema(close, 200)\nema9 = ta.ema(close, 9)\nema21 = ta.ema(close, 21)\n\nlongCondition = ta.crossover(ema9, ema21) and close > ema200\nif longCondition\n    strategy.entry("Long", strategy.long)\n\nstrategy.exit("Exit", "Long", profit=100, loss=50)`}
+              rows={12}
+              value={pineScript || ''}
+              onChange={e => setPineScript(e.target.value)}
+              style={{
+                width:'100%', padding:'12px', borderRadius:8,
+                border:'1px solid #1e1e2a', background:'#0f0f15',
+                color:'#a5b4fc', fontSize:12, outline:'none', resize:'vertical',
+                fontFamily:'monospace', lineHeight:1.6,
+                boxSizing:'border-box'
+              }}
+            />
+
+            <button
+              onClick={async () => {
+                if (!pineScript?.trim()) return;
+                setPineImporting(true);
+                try {
+                  const res = await fetch('/api/analyze-game', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                      team1: 'EXTRACT',
+                      team2: 'PINE',
+                      sport: 'PINE_SCRIPT',
+                      odds1: 0, odds2: 0,
+                      gameTime: 'Now',
+                      context: `You are a trading strategy analyst. Extract the strategy rules from this Pine Script code and convert them into plain English trading rules.\n\nPINE SCRIPT:\n${pineScript}\n\nExtract and explain:\n1. What indicators are used?\n2. What is the exact entry condition in plain English?\n3. What is the exit condition (take profit, stop loss)?\n4. What timeframe/instrument is it designed for?\n5. Any filters or special conditions?\n\nReply ONLY with JSON:\n{\n  "name": "strategy name from code",\n  "description": "one sentence what this strategy does",\n  "indicators": ["EMA 9", "EMA 21", "EMA 200"],\n  "entryRules": "plain english entry condition",\n  "exitRules": "plain english exit condition including TP and SL",\n  "filters": "any additional filters",\n  "timeframe": "recommended timeframe",\n  "instruments": "recommended instruments",\n  "riskPerTrade": "risk per trade if defined",\n  "summary": "2-3 sentence plain english summary of the complete strategy"\n}`
+                    })
+                  });
+                  const data = await res.json();
+                  const text = data.reasoning || data.edge || JSON.stringify(data);
+                  const match = text.match(/\{[\s\S]*\}/);
+                  if (match) {
+                    const extracted = JSON.parse(match[0]);
+                    if (extracted.name) setName(extracted.name);
+                    const descParts = [
+                      extracted.description,
+                      extracted.summary       && `\n\nSummary: ${extracted.summary}`,
+                      extracted.entryRules    && `\n\nEntry: ${extracted.entryRules}`,
+                      extracted.exitRules     && `\nExit: ${extracted.exitRules}`,
+                      extracted.filters       && `\nFilters: ${extracted.filters}`,
+                      extracted.timeframe     && `\nTimeframe: ${extracted.timeframe}`,
+                      extracted.instruments   && `\nInstruments: ${extracted.instruments}`,
+                      extracted.riskPerTrade  && `\nRisk/trade: ${extracted.riskPerTrade}`,
+                      Array.isArray(extracted.indicators) && extracted.indicators.length && `\nIndicators: ${extracted.indicators.join(', ')}`,
+                    ].filter(Boolean).join('');
+                    if (descParts) setDescription(descParts);
+                    setPineImported(true);
+                    toast('Pine Script imported successfully!', 'success');
+                  }
+                } catch(e) {
+                  console.error('Pine import error:', e);
+                  toast('Failed to parse Pine Script', 'error');
+                }
+                setPineImporting(false);
+              }}
+              disabled={pineImporting || !pineScript?.trim()}
+              style={{
+                marginTop:10, padding:'9px 18px', borderRadius:8, border:'none',
+                background: pineImporting ? '#1a1a24' : '#6366f1',
+                color: pineImporting ? '#6b7280' : '#fff',
+                fontSize:13, fontWeight:700, cursor: pineImporting ? 'default' : 'pointer',
+                display:'flex', alignItems:'center', gap:6
+              }}
+            >
+              {pineImporting ? '🤔 Extracting rules...' : '✦ Extract Strategy Rules'}
+            </button>
+
+            {pineImported && (
+              <div style={{marginTop:10, padding:'8px 12px', borderRadius:6, background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', fontSize:12, color:'#22c55e', fontWeight:600}}>
+                ✓ Strategy rules extracted and filled in below. Review and save.
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}><div style={{ flex:1, height:1, background:"#2a2a3a" }}/><span style={{ fontSize:10, color:"#374151" }}>or fill in manually</span><div style={{ flex:1, height:1, background:"#2a2a3a" }}/></div><div><label style={lbl}>Strategy Name *</label><input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. EMA Breakout with RSI Filter"/></div><div><label style={lbl}>Description</label><textarea style={{ ...inp, resize:"vertical", minHeight:60, fontFamily:"inherit", lineHeight:1.5 }}
               value={description} onChange={e => setDescription(e.target.value)}
               placeholder="Describe when this strategy works and what market conditions it targets..."/></div>
 
