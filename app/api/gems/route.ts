@@ -15,6 +15,14 @@ export async function GET() {
       fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&min_liquidity=1000&max_liquidity_added_at=${now-14400}`, {headers:bh, cache:'no-store'}),
       fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&min_liquidity=1000&max_liquidity_added_at=${now-28800}`, {headers:bh, cache:'no-store'}),
       fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&min_liquidity=1000&max_liquidity_added_at=${now-57600}`, {headers:bh, cache:'no-store'}),
+      // Trending by volume - active coins that might be older but still moving
+      fetch('https://public-api.birdeye.so/defi/v2/tokens/trending?limit=20&sort_by=volume_24h_usd&sort_type=desc', {headers:bh, cache:'no-store'}),
+      // Trending by price change - coins moving right now
+      fetch('https://public-api.birdeye.so/defi/v2/tokens/trending?limit=20&sort_by=price_change_24h_percent&sort_type=desc', {headers:bh, cache:'no-store'}),
+      // New listing from 8h ago
+      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&min_liquidity=1000&max_liquidity_added_at=${now-28800}`, {headers:bh, cache:'no-store'}),
+      // New listing from 16h ago
+      fetch(`https://public-api.birdeye.so/defi/v2/tokens/new_listing?limit=20&min_liquidity=1000&max_liquidity_added_at=${now-57600}`, {headers:bh, cache:'no-store'}),
     ])
 
     // Parse all Birdeye results
