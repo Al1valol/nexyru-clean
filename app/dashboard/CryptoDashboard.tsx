@@ -4502,6 +4502,26 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
     localStorage.setItem('nexyru_coinbot', JSON.stringify(updated))
   }
 
+  useEffect(() => {
+    const saved = localStorage.getItem('nexyru_coinbot')
+    if (!saved || Object.keys(JSON.parse(saved || '{}')).length === 0) {
+      const defaults = {
+        maxAge: '2 hours',
+        minLiquidity: '$5,000',
+        minBuyRatio: '55%',
+        maxH24Pump: '300%',
+        requireTwitter: 'Yes',
+        takeProfitX: '3x',
+        stopLossPct: '50%',
+        maxPositionSize: '$100',
+        extraRules: 'Only Solana. Skip if top holder > 20%. Prefer active buy pressure.',
+        requiredSignals: ['Has Twitter', 'Buy ratio > 60%', 'Not already up 100%+', 'Liquidity > $10k'],
+      }
+      setCoinBot(defaults)
+      localStorage.setItem('nexyru_coinbot', JSON.stringify(defaults))
+    }
+  }, [])
+
   const [cryptoRefreshKey, setCryptoRefreshKey] = useState(0);
   const [cryptoLastUpdated, setCryptoLastUpdated] = useState(null);
   const [, setCryptoTick] = useState(0);
