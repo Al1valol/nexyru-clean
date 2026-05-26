@@ -4518,125 +4518,82 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
   const fetchDips = async () => {
     setDipsLoading(true)
     try {
-      // Fetch from multiple search queries to get more coins
-      const searches = [
-        'https://api.dexscreener.com/latest/dex/search?q=solana',
-        'https://api.dexscreener.com/latest/dex/search?q=pump',
-        'https://api.dexscreener.com/latest/dex/search?q=meme',
-        'https://api.dexscreener.com/latest/dex/search?q=dog',
-        'https://api.dexscreener.com/latest/dex/search?q=cat',
-        'https://api.dexscreener.com/latest/dex/search?q=pepe',
-        'https://api.dexscreener.com/latest/dex/search?q=ai',
-        'https://api.dexscreener.com/latest/dex/search?q=trump',
-        'https://api.dexscreener.com/latest/dex/search?q=base+meme',
-        'https://api.dexscreener.com/latest/dex/search?q=sol+token',
-      ]
+      // Use same gems API but filter for dip pattern
+      const res = await fetch('/api/gems', { cache: 'no-store' })
+      const data = await res.json()
+      const allCoins = data.coins || []
 
-      // Fetch all in parallel
-      const results = await Promise.all(
-        searches.map(url =>
-          fetch(url)
-            .then(r => r.json())
-            .then(d => d?.pairs || [])
-            .catch(() => [])
-        )
-      )
-
-      const allPairs = results.flat()
-
-      // Dedupe by token address
-      const seen = new Set<string>()
-      const unique = allPairs.filter(p => {
-        const key = p.baseToken?.address
-        if (!key || seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-
-      console.log('Total unique coins scanned:', unique.length)
-      setDipsScanned(unique.length)
-
-      // Filter: down in 6h but up in last 1h
-      const dipCandidates = unique.filter(p => {
-        const h1 = parseFloat(p.priceChange?.h1 || 0)
-        const h6 = parseFloat(p.priceChange?.h6 || 0)
-        const h24 = parseFloat(p.priceChange?.h24 || 0)
-        const vol = parseFloat(p.volume?.h24 || 0)
-        const liq = parseFloat(p.liquidity?.usd || 0)
+      // Filter for dip bounce pattern: down in 6h but up in last 1h
+      const dips = allCoins.filter((coin: any) => {
+        const h1 = parseFloat(coin.priceChange?.h1 || 0)
+        const h6 = parseFloat(coin.priceChange?.h6 || 0)
+        const liq = parseFloat(coin.liquidity?.usd || 0)
+        const vol24 = parseFloat(coin.volume?.h24 || 0)
 
         return (
-          h6 < -5 &&     // Down in last 6 hours
-          h1 > 0 &&      // But up in last hour
-          h24 > -95 &&   // Not completely dead
-          vol > 5000 &&  // Has volume
-          liq > 1000     // Has liquidity
+          h6 < -5 &&        // Down in last 6 hours
+          h1 > 0 &&         // But up in last 1 hour (bouncing)
+          liq > 1000 &&     // Has liquidity
+          vol24 > 500       // Has volume
         )
-      })
+      }).map((coin: any) => {
+        const h1 = parseFloat(coin.priceChange?.h1 || 0)
+        const h6 = parseFloat(coin.priceChange?.h6 || 0)
+        const liq = parseFloat(coin.liquidity?.usd || 0)
+        const vol24 = parseFloat(coin.volume?.h24 || 0)
+        const buyRatio = coin.buyRatio || 0.5
 
-      const scored = dipCandidates.map(p => {
-        const h1 = parseFloat(p.priceChange?.h1 || 0)
-        const h6 = parseFloat(p.priceChange?.h6 || 0)
-        const h24 = parseFloat(p.priceChange?.h24 || 0)
-        const vol = parseFloat(p.volume?.h24 || 0)
-        const liq = parseFloat(p.liquidity?.usd || 0)
-        const buys = p.txns?.h1?.buys || 0
-        const sells = p.txns?.h1?.sells || 0
-        const buyRatio = (buys + sells) > 0 ? buys / (buys + sells) : 0.5
-
+        // Score the dip
         let score = 0
 
-        // BOUNCE STRENGTH (40pts) — how strong is the 1h recovery
-        if (h1 > 20) score += 40       // Very strong bounce
-        else if (h1 > 10) score += 30  // Strong bounce
-        else if (h1 > 5) score += 20   // Decent bounce
-        else if (h1 > 2) score += 12   // Mild bounce
-        else score += 5                 // Just turned green
+        // Bounce strength (40pts)
+        if (h1 > 20) score += 40
+        else if (h1 > 10) score += 30
+        else if (h1 > 5) score += 20
+        else if (h1 > 2) score += 12
+        else score += 5
 
-        // DIP SIZE (30pts) — bigger dip = more room to recover
+        // Dip size (30pts) - bigger dip = more room to recover
         const dip = Math.abs(h6)
-        if (dip > 50) score += 30      // Big dip = big potential bounce
+        if (dip > 50) score += 30
         else if (dip > 30) score += 22
         else if (dip > 15) score += 14
         else if (dip > 5) score += 8
 
-        // BUY PRESSURE (20pts)
+        // Buy pressure (20pts)
         if (buyRatio > 0.65) score += 20
         else if (buyRatio > 0.55) score += 14
         else if (buyRatio > 0.45) score += 8
 
-        // VOLUME + LIQUIDITY (10pts)
-        if (vol > 50000) score += 10
-        else if (vol > 10000) score += 6
-        else if (vol > 5000) score += 3
+        // Volume + liquidity (10pts)
+        if (vol24 > 50000) score += 10
+        else if (vol24 > 10000) score += 6
+        else if (vol24 > 1000) score += 3
 
-        const dipLabel = dip > 50 ? 'Big dip (-' + dip.toFixed(0) + '%)'
-          : dip > 30 ? 'Medium dip (-' + dip.toFixed(0) + '%)'
-          : 'Small dip (-' + dip.toFixed(0) + '%)'
+        const dipLabel = dip > 50 ? 'Big dip -' + dip.toFixed(0) + '%'
+          : dip > 30 ? 'Medium dip -' + dip.toFixed(0) + '%'
+          : 'Small dip -' + dip.toFixed(0) + '%'
 
         const recoveryLabel = h1 > 20 ? 'Strong bounce +' + h1.toFixed(0) + '%'
           : h1 > 10 ? 'Good bounce +' + h1.toFixed(0) + '%'
-          : h1 > 5 ? '↗ Recovering +' + h1.toFixed(0) + '%'
+          : h1 > 5 ? 'Recovering +' + h1.toFixed(0) + '%'
           : 'Just turned green +' + h1.toFixed(1) + '%'
 
         return {
-          ...p,
+          ...coin,
           score: Math.min(100, score),
-          h1, h6, h24,
-          vol, liq, buyRatio,
-          buys, sells,
-          pullback: dip,
+          h1, h6,
+          vol: vol24,
+          liq,
           dipLabel,
           recoveryLabel,
-          name: p.baseToken?.name || 'Unknown',
-          symbol: p.baseToken?.symbol || '???',
-          chain: p.chainId,
-          price: p.priceUsd,
         }
-      }).sort((a, b) => b.score - a.score)
+      }).sort((a: any, b: any) => b.score - a.score)
 
-      setDips(scored.slice(0, 50)) // Show up to 50 results
-    } catch(e) {
-      console.error(e)
+      console.log('Dip coins found:', dips.length, 'from', allCoins.length, 'total')
+      setDips(dips)
+    } catch(e: any) {
+      console.error('fetchDips error:', e)
     }
     setDipsLoading(false)
   }
@@ -4963,27 +4920,19 @@ export default function CryptoDashboard({ isAdmin, session }: { isAdmin: boolean
                 <RefreshCw size={32} style={{marginBottom:12, opacity:0.5}}/>
                 <div style={{fontSize:16, fontWeight:700}}>Scanning for dips...</div>
               </div>
-            ) : dips.length === 0 ? (
-              <div style={{background:'#0f0f15', border:'1px solid #16161f', borderRadius:12, padding:32, textAlign:'center'}}>
-                <TrendingUp size={32} style={{marginBottom:12, opacity:0.5, color:'#22c55e'}}/>
-                <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:8}}>Market Trending Up</div>
+            ) : dips.length === 0 && !dipsLoading ? (
+              <div style={{background:'#111', border:'1px solid #1e1e2a', borderRadius:12, padding:32, textAlign:'center'}}>
+                <div style={{fontSize:32, marginBottom:12}}>📈</div>
+                <div style={{fontSize:15, fontWeight:700, color:'#fff', marginBottom:8}}>No dip bounces right now</div>
                 <div style={{fontSize:13, color:'#6b7280', marginBottom:16, lineHeight:1.6}}>
-                  No good dip opportunities right now. Most coins are rising or stable —
-                  which means your existing positions are probably doing well!
-                </div>
-                <div style={{background:'#1a1a24', borderRadius:8, padding:12, marginBottom:16, fontSize:12, color:'#9ca3af', textAlign:'left'}}>
-                  <div style={{fontWeight:700, color:'#fff', marginBottom:6}}>Best times to find dips:</div>
-                  <div style={{marginBottom:3}}>• After a big market drop (BTC down 5%+)</div>
-                  <div style={{marginBottom:3}}>• 2-6 hours after a coin's initial pump</div>
-                  <div style={{marginBottom:3}}>• Early morning EST when Asian markets sell off</div>
-                  <div>• Check back every few hours</div>
+                  Looking for coins that dropped in the last 6 hours but are now recovering.<br/>
+                  Market might be trending up — check back after a selloff.
                 </div>
                 <button onClick={fetchDips} style={{
-                  display:'inline-flex', alignItems:'center', gap:6,
-                  padding:'9px 18px', borderRadius:8, border:'none',
-                  background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', transition:'all 0.15s'
+                  padding:'10px 24px', borderRadius:8, border:'none',
+                  background:'#6366f1', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer'
                 }}>
-                  <RefreshCw size={14}/> Check Again
+                  Scan Again
                 </button>
               </div>
             ) : (
